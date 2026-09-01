@@ -103,6 +103,7 @@ def find_claude():
 
 # 오해하기 쉬운 라벨의 정의·금지 조건 (분류 정확도의 핵심)
 LABEL_NOTES = {
+    "Review": "기존 연구를 종합·정리하는 리뷰/총설 논문일 때만. 일반 연구 논문에는 절대 붙이지 않음",
     "Ductile-brittle transition": "취성 재료(Si, 세라믹, ZnSe 등)가 연성 모드로 가공되는 전이를 실제로 다룰 때만. 연성 금속의 유동 모드 전이(laminar→sinuous 등)는 절대 아님",
     "Sinuous flow": "연성 금속 절삭에서 sinuous/folding 유동을 다룰 때",
     "Difficult-to-cut": "난삭성 자체가 논문의 주제일 때만",

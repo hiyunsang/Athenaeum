@@ -68,6 +68,7 @@ TITLE_RULES = [
     (r"molecular dynamics", ["Molecular dynamics"]),
     (r"analytical (model|approach|tool)|slip-? ?line|machining theory", ["Analytical model"]),
     (r"machine learning|neural network|artificial intelligence|\bdeep learning", ["Machine learning"]),
+    (r"\breview\b|\bsurvey\b|state of the art|recent advances|recent progress", ["Review"]),
     (r"strain hardening|work hardening", ["Strain hardening"]),
     (r"thermal soften", ["Thermal softening"]),
     (r"thermal|temperature|heat transfer", ["Thermal effect"]),

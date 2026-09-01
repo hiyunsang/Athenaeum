@@ -2824,20 +2824,19 @@
  },
  "2025_JMP_Xing_Deformation and material removal mechanisms during precision cutting of duplex heterogeneous high-entropy alloys revealed by in-situ SEM.pdf": {
   "labels": [
-   "Polycrystal",
    "Scratching",
-   "Chip formation",
-   "Fracture",
-   "Plastic flow",
    "In-situ",
    "SEM",
    "EBSD",
-   "FEM"
+   "FEM",
+   "Micro-machining",
+   "Chip formation",
+   "Plastic flow",
+   "Fracture",
+   "Polycrystal",
+   "Anisotropic"
   ],
-  "suggested": [
-   "Orthogonal cutting",
-   "Micro-machining"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Deformation and material removal mechanisms during precision cutting of duplex heterogeneous high-entropy alloys revealed by in-situ SEM scratch testing"
  },
@@ -2847,14 +2846,16 @@
    "Ti6Al4V",
    "Rolled",
    "Anisotropic",
-   "Difficult-to-cut",
+   "Polycrystal",
    "Orthogonal cutting",
    "Chip formation",
-   "Shear localization",
-   "Optical microscopy",
    "Analytical model"
   ],
-  "suggested": [],
+  "suggested": [
+   "Difficult-to-cut",
+   "Shear localization",
+   "Optical microscopy"
+  ],
   "rejected": [],
   "title": "Anisotropy in Chip Formation in Orthogonal Cutting of Rolled Ti-6Al-4V"
  },
@@ -2879,12 +2880,13 @@
   "labels": [
    "Shear localization",
    "Fracture",
-   "Damage",
-   "Material separation",
    "In-situ",
    "Analytical model"
   ],
-  "suggested": [],
+  "suggested": [
+   "Damage",
+   "Material separation"
+  ],
   "rejected": [],
   "title": "Microcrack avalanche behavior during intermittent shear fracture for metallic alloy"
  },
@@ -3193,15 +3195,16 @@
  "2025_JMPT_Wang_Towards understanding the mechanisms of material removal and deformation in GaAs during nanomilling.pdf": {
   "labels": [
    "Single crystal",
-   "Milling",
    "Nano-cutting",
    "Chip formation",
    "Subsurface damage",
    "Molecular dynamics",
-   "Plastic flow",
-   "Phase transformation"
+   "Phase transformation",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Milling"
+  ],
   "rejected": [],
   "title": "Towards understanding the mechanisms of material removal and deformation in GaAs during nanomilling"
  },
@@ -3249,20 +3252,117 @@
  "2026_PE_Chen_Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping.pdf": {
   "labels": [
    "ZnSe",
-   "Soft-brittle",
-   "Polycrystal",
    "Turning",
    "Ultra-precision machining",
    "Ductile-brittle transition",
    "Tool wear",
-   "Fracture",
+   "Surface defect",
+   "Fracture"
+  ],
+  "suggested": [
+   "Soft-brittle",
+   "Polycrystal",
    "Optical microscopy",
    "SEM"
   ],
-  "suggested": [
-   "Surface defect"
-  ],
   "rejected": [],
   "title": "Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping"
+ },
+ "2018_IJMTM_Chaudhari_Rehbinder effect in ultraprecision machining of ductile materials (2).pdf": {
+  "labels": [
+   "Copper",
+   "Aluminum",
+   "Al6061",
+   "Annealed",
+   "Polycrystal",
+   "Ultra-precision machining",
+   "Micro-machining",
+   "Chip formation",
+   "FEM",
+   "Analytical model"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Rehbinder effect in ultraprecision machining of ductile materials"
+ },
+ "2018_IJMTM_Chaudhari_Rehbinder effect in ultraprecision machining of ductile materials.pdf": {
+  "labels": [
+   "Copper",
+   "Aluminum",
+   "Al6061",
+   "Annealed",
+   "Polycrystal",
+   "Micro-machining",
+   "Ultra-precision machining",
+   "Chip formation",
+   "FEM",
+   "Analytical model"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Rehbinder effect in ultraprecision machining of ductile materials"
+ },
+ "2018_IJMTM_Dargusch_Effect of tool wear evolution on chip formation during dry machining of Ti-6Al-4V alloy.pdf": {
+  "labels": [
+   "Titanium",
+   "Ti6Al4V",
+   "Turning",
+   "Chip formation",
+   "Tool wear",
+   "Shear localization",
+   "SEM",
+   "EBSD"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Effect of tool wear evolution on chip formation during dry machining of Ti-6Al-4V alloy"
+ },
+ "2024_JMP_Kumar_Multi-scale surface folding in metal cutting (2).pdf": {
+  "labels": [
+   "Copper",
+   "Polycrystal",
+   "Sinuous flow",
+   "Chip formation",
+   "Plastic flow",
+   "In-situ",
+   "High-speed imaging",
+   "SEM",
+   "EBSD"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Multi-scale surface folding in metal cutting"
+ },
+ "2024_JMP_Kumar_Multi-scale surface folding in metal cutting.pdf": {
+  "labels": [
+   "Copper",
+   "Polycrystal",
+   "Sinuous flow",
+   "Plastic flow",
+   "Chip formation",
+   "In-situ",
+   "High-speed imaging",
+   "SEM",
+   "EBSD"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Multi-scale surface folding in metal cutting"
+ },
+ "2024_JMP_Zhang_Machining of Invar 36 alloy Chip-flow behaviors and formation mechanisms.pdf": {
+  "labels": [
+   "Polycrystal",
+   "Chip formation",
+   "Sinuous flow",
+   "Plastic flow",
+   "Fracture",
+   "Adhesion",
+   "Thermal effect",
+   "FEM",
+   "Analytical model"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Machining of Invar 36 alloy: Chip-flow behaviors and formation mechanisms"
  }
 }
