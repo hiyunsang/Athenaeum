@@ -18,14 +18,18 @@ MAX_NODES = 45
 
 
 def _get(url, params=None):
-    for i in range(4):
+    for i in range(6):
         r = requests.get(url, params=params, headers=HEADERS, timeout=40)
-        if r.status_code == 429:
-            time.sleep(2 + i * 3)
+        if r.status_code == 429 or r.status_code >= 500:
+            try:
+                wait = float(r.headers.get("Retry-After", 0))
+            except (TypeError, ValueError):
+                wait = 0
+            time.sleep(min(30, max(wait, 3 * (2 ** i))))
             continue
         r.raise_for_status()
         return r.json()
-    raise RuntimeError("OpenAlex가 요청을 계속 거절합니다 (잠시 후 다시 시도)")
+    raise RuntimeError("OpenAlex가 계속 바쁩니다 - 몇 분 뒤 다시 시도해 주세요")
 
 
 def norm_title(t):
@@ -59,14 +63,14 @@ def fetch_many(ids):
                 out[wid(it["id"])] = it
         except Exception:
             pass
-        time.sleep(0.15)
+        time.sleep(0.3)
     missing = [t for t in todo if t not in out]
     for t in missing[:60]:
         try:
             out[t] = _get(API + "/works/" + t)
         except Exception:
             pass
-        time.sleep(0.12)
+        time.sleep(0.25)
     return out
 
 

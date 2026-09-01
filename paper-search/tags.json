@@ -1169,7 +1169,8 @@
    "Subsurface damage",
    "Plastic flow",
    "Fracture",
-   "Molecular dynamics"
+   "Molecular dynamics",
+   "Review"
   ],
   "suggested": [
    "Chip formation"
@@ -1255,7 +1256,8 @@
    "Phase transformation",
    "Thermal effect",
    "Analytical model",
-   "SEM"
+   "SEM",
+   "Review"
   ],
   "suggested": [
    "Material separation",
@@ -1428,7 +1430,8 @@
  },
  "2020_AS_Chen_A Review of the Artificial Neural Network Models for Water Quality Prediction.pdf": {
   "labels": [
-   "Machine learning"
+   "Machine learning",
+   "Review"
   ],
   "suggested": [],
   "rejected": [],
@@ -1685,7 +1688,8 @@
    "Milling",
    "Micro-machining",
    "Chip formation",
-   "Tool wear"
+   "Tool wear",
+   "Review"
   ],
   "suggested": [
    "Ultra-precision machining",
@@ -1927,7 +1931,8 @@
  },
  "2021_JMS_Leukel_Adoption of machine learning technology for failure prediction in industrial maintenance A systematic review.pdf": {
   "labels": [
-   "Machine learning"
+   "Machine learning",
+   "Review"
   ],
   "suggested": [],
   "rejected": [],
@@ -1985,7 +1990,8 @@
    "High-speed imaging",
    "Friction",
    "Plastic flow",
-   "Subsurface damage"
+   "Subsurface damage",
+   "Review"
   ],
   "suggested": [
    "DIC",
@@ -2136,7 +2142,8 @@
    "Anisotropic",
    "Difficult-to-cut",
    "Tool wear",
-   "Molecular dynamics"
+   "Molecular dynamics",
+   "Review"
   ],
   "suggested": [
    "Turning",
@@ -2280,7 +2287,8 @@
    "Thermal effect",
    "Analytical model",
    "Textured tool",
-   "Material separation"
+   "Material separation",
+   "Review"
   ],
   "suggested": [
    "Orthogonal cutting",
@@ -2599,7 +2607,8 @@
    "Turning",
    "Milling",
    "Tool wear",
-   "Analytical model"
+   "Analytical model",
+   "Review"
   ],
   "suggested": [
    "Single crystal",
@@ -2899,7 +2908,8 @@
    "Chip formation",
    "Phase transformation",
    "Analytical model",
-   "Thermal effect"
+   "Thermal effect",
+   "Review"
   ],
   "suggested": [
    "Material separation",
@@ -2920,7 +2930,8 @@
    "Thermal effect",
    "Analytical model",
    "SEM",
-   "Polycrystal"
+   "Polycrystal",
+   "Review"
   ],
   "suggested": [
    "Ductile-brittle transition",
@@ -2942,7 +2953,8 @@
    "Thermal effect",
    "Analytical model",
    "SEM",
-   "Polycrystal"
+   "Polycrystal",
+   "Review"
   ],
   "suggested": [
    "Material separation",
@@ -2964,7 +2976,8 @@
    "SEM",
    "In-situ",
    "Analytical model",
-   "Polycrystal"
+   "Polycrystal",
+   "Review"
   ],
   "suggested": [
    "Material separation",
@@ -3134,7 +3147,8 @@
    "Micro-machining",
    "Chip formation",
    "Subsurface damage",
-   "Ductile-brittle transition"
+   "Ductile-brittle transition",
+   "Review"
   ],
   "suggested": [
    "Single crystal"
@@ -3364,5 +3378,22 @@
   "suggested": [],
   "rejected": [],
   "title": "Machining of Invar 36 alloy: Chip-flow behaviors and formation mechanisms"
+ },
+ "2017_PRA_Yeung_Sinuous Flow in Cutting of Metals.pdf": {
+  "labels": [
+   "Annealed",
+   "Polycrystal",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Sinuous flow",
+   "In-situ",
+   "High-speed imaging",
+   "Classical theory",
+   "Strain hardening",
+   "Plastic flow"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Sinuous Flow in Cutting of Metals"
  }
 }

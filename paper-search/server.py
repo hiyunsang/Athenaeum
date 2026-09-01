@@ -29,6 +29,7 @@ _refreshing = threading.Event()
 GEN_DIR = os.path.join(os.path.dirname(ARCHIVE), "번역")
 _jobs = {}  # (파일명, 종류) -> {"status": "running"|"error", "error": str}
 _gen_sem = threading.BoundedSemaphore(2)  # 동시 생성 2개까지, 나머지는 자동 대기
+_map_sem = threading.BoundedSemaphore(1)  # 맵은 한 번에 하나 (OpenAlex 속도 제한 보호)
 
 def paper_header(name):
     """'[저널약어] (연도), 제목' - 요약/번역 첫 줄용."""
@@ -164,7 +165,8 @@ def run_generation(name, kind):
     key = (name, kind)
     try:
         if kind == "map":
-            _run_map(name)
+            with _map_sem:
+                _run_map(name)
         else:
             with _gen_sem:
                 _run_generation(name, kind)
