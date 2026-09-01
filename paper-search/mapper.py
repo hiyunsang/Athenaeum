@@ -102,12 +102,16 @@ def _node(it, refs, inter, owned_file):
 
 
 def build_map(seed_title, archive_titles):
-    """archive_titles: {정규화된 제목: 파일명} - 보유 논문 표시용."""
+    """Connected Papers 방식: 2단계 후보 확장 -> coupling+co-citation 유사도
+    -> 상위 선택 -> 유사도 행렬 -> Prior/Derivative works.
+    archive_titles: {정규화된 제목: 파일명} - 보유 논문 표시용."""
+    from collections import Counter
+
     seed = find_seed(seed_title)
     seed_id = wid(seed["id"])
     seed_refs = set(wid(x) for x in seed.get("referenced_works", []))
 
-    # 후보군: 참고문헌 + 이 논문을 인용한 논문들
+    # [1단계 이웃] 참고문헌 + 이 논문을 인용한 논문들
     pool = {}
     d = _get(API + "/works", {"filter": "cites:" + seed_id, "per-page": "100",
                               "sort": "cited_by_count:desc", "select": SELECT})
@@ -119,59 +123,111 @@ def build_map(seed_title, archive_titles):
     pool.update(fetch_many(list(seed_refs)))
     pool.pop(seed_id, None)
 
-    # 시드와의 유사도 = 공통 참고문헌 수 (+ 많이 인용된 논문 약간 우대)
+    # [2단계 후보] 1단계 논문들의 참고문헌에 자주 등장하는 논문을 후보로 확장
+    freq = Counter()
+    for it in pool.values():
+        for rid in it.get("referenced_works", []):
+            freq[wid(rid)] += 1
+    for k in [k for k in freq if k in pool or k == seed_id]:
+        del freq[k]
+    second_hop = [k for k, c in freq.most_common(120) if c >= 2]
+    pool.update(fetch_many(second_hop))
+    pool.pop(seed_id, None)
+
+    # 후보들의 참고문헌 집합 + '모집단 내 피인용' 벡터 (co-citation 계산용)
+    refs_of = {seed_id: seed_refs}
+    for k, it in pool.items():
+        refs_of[k] = set(wid(x) for x in it.get("referenced_works", []))
+    cited_by = {}
+    for pid, refs in refs_of.items():
+        for r in refs:
+            cited_by.setdefault(r, set()).add(pid)
+
+    def similarity(a, b):
+        ra, rb = refs_of.get(a, set()), refs_of.get(b, set())
+        coup = len(ra & rb) / math.sqrt(max(1, len(ra)) * max(1, len(rb)))
+        ca, cb = cited_by.get(a, set()), cited_by.get(b, set())
+        cc_inter = len(ca & cb)
+        cocite = cc_inter / math.sqrt(max(1, len(ca)) * max(1, len(cb))) if cc_inter else 0.0
+        s = 0.6 * coup + 0.4 * cocite
+        if b in ra or a in rb:
+            s += 0.12
+        return min(1.0, s)
+
+    # [선택] 시드와의 결합 유사도 상위 MAX_NODES편
     scored = []
     for k, it in pool.items():
-        refs = set(wid(x) for x in it.get("referenced_works", []))
-        inter = len(refs & seed_refs)
+        s = similarity(seed_id, k)
+        if s <= 0:
+            continue
         owned = archive_titles.get(norm_title(it.get("display_name")))
-        scored.append((inter, it.get("cited_by_count") or 0, k, it, refs, owned))
+        inter = len(refs_of[k] & seed_refs)
+        scored.append((s, it.get("cited_by_count") or 0, k, it, owned, inter))
     scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
     chosen = scored[:MAX_NODES]
 
-    nodes = [_node(it, refs, inter, owned)
-             for inter, cit, k, it, refs, owned in chosen]
-
-    # 모든 쌍의 유사도 행렬 (공통 참고문헌 코사인 + 직접 인용 보너스) - 군집 배치용
-    ref_sets = [seed_refs] + [refs for _, _, _, _, refs, _ in chosen]
-    ids = [seed_id] + [k for _, _, k, _, _, _ in chosen]
-    sims = [[0.0] * len(ids) for _ in ids]
-    for i in range(len(ids)):
-        for j in range(i + 1, len(ids)):
-            a, b = ref_sets[i], ref_sets[j]
-            base = len(a & b) / math.sqrt(max(1, len(a)) * max(1, len(b)))
-            if ids[j] in a or ids[i] in b:
-                base += 0.12
-            sims[i][j] = sims[j][i] = round(min(1.0, base), 3)
-
-    # 노드끼리의 간선: 공통 참고문헌 수 + 직접 인용 보너스, 노드당 상위 4개
-    edges = {}
-    for i in range(len(nodes)):
-        cand = []
-        for j in range(len(nodes)):
-            if i == j:
-                continue
-            a, b = nodes[i], nodes[j]
-            w = len(a["_refs"] & b["_refs"])
-            if b["id"] in a["_refs"] or a["id"] in b["_refs"]:
-                w += 3
-            if w >= 2:
-                cand.append((w, j))
-        cand.sort(reverse=True)
-        for w, j in cand[:4]:
-            key = (min(i, j), max(i, j))
-            edges[key] = max(edges.get(key, 0), w)
-
-    # 시드 간선: 유사도 상위 8개와 연결
+    nodes = []
+    for s, cit, k, it, owned, inter in chosen:
+        n = _node(it, refs_of[k], inter, owned)
+        n.pop("_refs", None)
+        n["sim"] = round(s, 3)
+        nodes.append(n)
     seed_node = _node(seed, set(), 0, "")
     seed_node.pop("_refs", None)
     seed_node["seed"] = True
-    for n in nodes:
-        n.pop("_refs", None)
     nodes.insert(0, seed_node)
-    edge_list = [[a + 1, b + 1, w] for (a, b), w in edges.items()]
-    for idx in range(1, min(9, len(nodes))):
-        edge_list.append([0, idx, 5])
+
+    # [유사도 행렬] 배치용 - coupling + co-citation
+    ids = [seed_id] + [x[2] for x in chosen]
+    sims = [[0.0] * len(ids) for _ in ids]
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            sims[i][j] = sims[j][i] = round(similarity(ids[i], ids[j]), 3)
+
+    # [간선] 노드당 유사도 상위 4개만 (표시용)
+    edges = {}
+    for i in range(len(ids)):
+        cand = sorted(((sims[i][j], j) for j in range(len(ids)) if j != i), reverse=True)
+        for s, j in cand[:4]:
+            if s < 0.05:
+                break
+            key = (min(i, j), max(i, j))
+            edges[key] = max(edges.get(key, 0), int(round(s * 10)))
+    edge_list = [[a, b, w] for (a, b), w in edges.items()]
+
+    # [Prior works] 이 그래프의 논문들이 공통으로 인용하는 조상 논문
+    graph_ids = set(ids)
+    prior_cnt = Counter()
+    for k in ids[1:]:
+        for r in refs_of.get(k, set()):
+            if r not in graph_ids:
+                prior_cnt[r] += 1
+    prior_ids = [k for k, c in prior_cnt.most_common(10) if c >= max(3, len(ids) // 6)][:8]
+    prior_meta = fetch_many(prior_ids)
+    prior = []
+    for k in prior_ids:
+        if k in prior_meta:
+            n = _node(prior_meta[k], set(), prior_cnt[k],
+                      archive_titles.get(norm_title(prior_meta[k].get("display_name"))))
+            n.pop("_refs", None)
+            prior.append(n)
+
+    # [Derivative works] 이 그래프의 논문 여러 편을 인용하는 후속 논문 (시드 인용자들 중)
+    derived = []
+    for k in citer_ids:
+        if k in graph_ids or k not in pool:
+            continue
+        hit = len(refs_of.get(k, set()) & graph_ids)
+        if hit >= 3:
+            derived.append((hit, k))
+    derived.sort(reverse=True)
+    derived_nodes = []
+    for hit, k in derived[:8]:
+        n = _node(pool[k], set(), hit, archive_titles.get(norm_title(pool[k].get("display_name"))))
+        n.pop("_refs", None)
+        derived_nodes.append(n)
 
     return {"nodes": nodes, "edges": edge_list, "sims": sims,
-            "refs": len(seed_refs), "citers": len(citer_ids)}
+            "prior": prior, "derived": derived_nodes,
+            "refs": len(seed_refs), "citers": len(citer_ids),
+            "pool": len(pool)}

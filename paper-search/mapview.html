@@ -84,12 +84,42 @@ fetch("/api/mapdata?file=" + encodeURIComponent(file)).then(r => r.json()).then(
     if (n.seed) n.r = Math.max(n.r, 13);
   });
   document.getElementById("legend").innerHTML =
-    "논문 " + (nodes.length - 1) + "편 · 참고문헌 " + d.refs + " · 피인용 " + d.citers +
+    "표시 " + (nodes.length - 1) + "편 / 후보 " + (d.pool || "?") + "편 분석 · 참고문헌 " + d.refs + " · 피인용 " + d.citers +
     " · <span class='dot' style='background:" + yearColor(yMin) + "'></span>" + yMin +
     " ~ <span class='dot' style='background:" + yearColor(yMax) + "'></span>" + yMax;
   buildPanel();
+  buildExtraSections(d.prior || [], d.derived || []);
   simulate(); fit(); draw();
 });
+
+function extraRow(n, metaText) {
+  const row = document.createElement("div");
+  row.className = "prow" + (n.owned ? " owned" : "");
+  row.innerHTML = "<div class='pt'>" + n.title + "</div><div class='pm'>" +
+    (n.author || "?") + " · " + (n.year || "?") + (n.venue ? " · " + n.venue : "") +
+    " · 피인용 <b>" + n.cit + "</b> · " + metaText +
+    (n.owned ? " · <b style='color:#2456d6'>보유</b>" : "") + "</div>";
+  row.onclick = () => openPaper(n);
+  return row;
+}
+
+function buildExtraSections(prior, derived) {
+  const mk = (title, desc) => {
+    const h = document.createElement("div");
+    h.className = "prow";
+    h.style.background = "#f4f2ec";
+    h.innerHTML = "<div class='pt'><b>" + title + "</b></div><div class='pm'>" + desc + "</div>";
+    panel.appendChild(h);
+  };
+  if (prior.length) {
+    mk("📜 Prior works - 이 분야의 뿌리 논문", "이 맵의 논문들이 공통으로 인용하는 조상 논문");
+    for (const n of prior) panel.appendChild(extraRow(n, "맵 논문 " + n.inter + "편이 인용"));
+  }
+  if (derived.length) {
+    mk("🌱 Derivative works - 후속·종합 연구", "이 맵의 논문 여러 편을 인용하는 후속 논문 (리뷰 후보)");
+    for (const n of derived) panel.appendChild(extraRow(n, "맵 논문 " + n.inter + "편을 인용"));
+  }
+}
 
 function yearColor(y) {
   if (!y) return "#bbb";
