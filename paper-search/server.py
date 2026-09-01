@@ -318,6 +318,10 @@ class Handler(BaseHTTPRequestHandler):
             papers = []
             for f in archive_pdfs():
                 meta = parse_name(f)
+                try:
+                    meta["added"] = os.path.getmtime(os.path.join(ARCHIVE, f))
+                except OSError:
+                    meta["added"] = 0
                 t = tags.get(f, {})
                 if t.get("title"):  # 파일명은 80자로 잘리므로 전체 제목이 있으면 그걸 사용
                     meta["title"] = t["title"]

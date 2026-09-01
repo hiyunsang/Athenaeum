@@ -2251,5 +2251,26 @@
   "suggested": [],
   "rejected": [],
   "title": "Effect of tool geometry on ultraprecision machining of soft-brittle materials: a comprehensive review"
+ },
+ "2021_JMP_Zhao_Molecular dynamics simulation study of interaction mechanism between grain boundaries and subgrain boundaries in nano-cutting.pdf": {
+  "labels": [
+   "Nano-cutting",
+   "Surface defect",
+   "Molecular dynamics"
+  ],
+  "suggested": [
+   "Ultra-precision machining"
+  ],
+  "rejected": [],
+  "title": "Molecular dynamics simulation study of interaction mechanism between grain boundaries and subgrain boundaries in nano-cutting"
+ },
+ "2025_AM_la Monaca_Interaction and competition between continuous and geometric dynamic recrystallization in high-strain-rate deformation of nickel-based.pdf": {
+  "labels": [
+   "Nickel-based alloy",
+   "Recrystallization"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Interaction and competition between continuous and geometric dynamic recrystallization in high-strain-rate deformation of nickel-based superalloys"
  }
 }

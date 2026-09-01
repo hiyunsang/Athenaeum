@@ -58,6 +58,10 @@
   <input type="text" id="ft" placeholder="본문 검색 (Enter) - PDF 안 단어 검색">
   <label class="toggle"><input type="checkbox" id="incSug" checked> 제안 라벨 포함</label>
   <label class="toggle"><input type="checkbox" id="onlyUntagged"> 미분류만</label>
+  <label class="toggle">정렬 <select id="sortSel" style="padding:4px;border:1px solid #ccc;border-radius:6px">
+    <option value="year">연도순</option>
+    <option value="added">최신 추가순</option>
+  </select></label>
   <div id="summary"></div>
 </header>
 <div id="chips"></div>
@@ -174,7 +178,10 @@ function render() {
 
   const main = document.getElementById("main");
   main.innerHTML = "";
-  const sorted = cur.slice().sort((a, b) => (b.year || "0").localeCompare(a.year || "0"));
+  const mode = document.getElementById("sortSel").value;
+  const sorted = cur.slice().sort((a, b) =>
+    mode === "added" ? (b.added || 0) - (a.added || 0)
+                     : (b.year || "0").localeCompare(a.year || "0"));
   for (const p of sorted) {
     const row = document.createElement("div"); row.className = "row";
     const btn = document.createElement("button");
@@ -185,7 +192,12 @@ function render() {
     row.appendChild(genButton(p, "translation", "번역", p.has_translation));
     row.appendChild(genButton(p, "summary", "요약", p.has_summary));
     const meta = document.createElement("div"); meta.className = "meta";
-    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-");
+    let addedTxt = "";
+    if (mode === "added" && p.added) {
+      const dt = new Date(p.added * 1000);
+      addedTxt = " · 추가 " + (dt.getMonth() + 1) + "/" + dt.getDate();
+    }
+    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-") + addedTxt;
     row.appendChild(meta);
     const t = document.createElement("div"); t.className = "title"; t.textContent = p.title;
     row.appendChild(t);
@@ -312,6 +324,7 @@ document.getElementById("ft").addEventListener("keydown", async (e) => {
 });
 document.getElementById("incSug").addEventListener("change", render);
 document.getElementById("onlyUntagged").addEventListener("change", render);
+document.getElementById("sortSel").addEventListener("change", render);
 loadData();
 </script>
 </body>
