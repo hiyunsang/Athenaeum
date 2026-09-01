@@ -1,0 +1,16 @@
+{
+  "감시폴더": "C:\\Users\\PC1\\Downloads",
+  "논문폴더": "C:\\Users\\PC1\\Documents\\MAENG_paper\\논문모음",
+  "주제폴더": "C:\\Users\\PC1\\Desktop\\MAENG\\논문주제",
+  "검사주기_초": 3,
+  "제목최대길이": 140,
+  "저널약어": {
+    "International Journal of Machine Tools and Manufacture": "IJMTM",
+    "Journal of Materials Processing Technology": "JMPT",
+    "Journal of Manufacturing Processes": "JMP",
+    "International Journal of Advanced Manufacturing Technology": "AMT",
+    "Tribology International": "Trib",
+    "International Journal of Mechanical Sciences": "IJMS",
+    "Applied Thermal Engineering": "ATE"
+  }
+}

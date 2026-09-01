@@ -1,0 +1,8 @@
+{
+  "재료": ["Silicon", "Aluminum", "Titanium", "Steel", "Stainless steel", "Nickel-based alloy", "Copper", "Tantalum", "Ceramic", "Composite", "Difficult-to-cut", "Al6061", "Ti6Al4V", "Inconel 718", "SUS304", "AISI 1045"],
+  "재료 상태·구조": ["Single crystal", "Polycrystal", "Rolled", "Annealed", "Heat-treated", "Additive manufactured", "Anisotropic"],
+  "공정·규모": ["Orthogonal cutting", "Turning", "Milling", "Drilling", "Grinding", "Scratching", "Sliding", "Micro-machining", "Nano-cutting", "Ultra-precision machining", "Cryogenic", "Textured tool"],
+  "현상": ["BUE", "Built-up layer", "Dead metal zone", "Stagnation zone", "Chip formation", "Shear localization", "Ductile-brittle transition", "Sinuous flow", "Surface defect", "Burr", "Tool wear", "Adhesion", "Friction", "Subsurface damage"],
+  "방법": ["In-situ", "High-speed imaging", "SEM", "Optical microscopy", "DIC", "PIV", "EBSD", "EDS", "Quick-stop", "FEM", "Molecular dynamics", "Analytical model", "Classical theory", "Machine learning"],
+  "메커니즘": ["Strain hardening", "Thermal softening", "Thermal effect", "Plastic flow", "Fracture", "Damage", "Phase transformation", "Material separation", "Recrystallization"]
+}

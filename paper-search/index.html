@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>MAENG 논문 검색</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: "Malgun Gothic", sans-serif; font-size: 14px; color: #222; background: #f7f6f3; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd; position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin-right: 8px; }
+  header input[type=text] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; width: 230px; }
+  .toggle { font-size: 13px; color: #555; user-select: none; cursor: pointer; }
+  #summary { margin-left: auto; font-size: 13px; color: #666; }
+  #chips { padding: 8px 16px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: #3b5bd6; color: #fff; border-radius: 14px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  .chip.ft { background: #8a6d1d; }
+  .chip span { margin-left: 6px; font-weight: bold; }
+  #layout { display: flex; gap: 0; }
+  #side { width: 250px; min-width: 250px; padding: 10px 8px 40px 16px; height: calc(100vh - 90px); overflow-y: auto; }
+  .group h3 { font-size: 13px; color: #8a6d1d; margin: 14px 0 4px; }
+  .lbl { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 6px; cursor: pointer; }
+  .lbl:hover { background: #eceae4; }
+  .lbl.on { background: #3b5bd6; color: #fff; }
+  .lbl.zero { color: #bbb; }
+  .lbl .n { color: #999; font-size: 12px; }
+  .lbl.on .n { color: #cfd8ff; }
+  #main { flex: 1; padding: 10px 16px 60px; height: calc(100vh - 90px); overflow-y: auto; }
+  .row { background: #fff; border: 1px solid #e2e0da; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; cursor: pointer; }
+  .row:hover { border-color: #3b5bd6; }
+  .meta { font-size: 12px; color: #777; margin-bottom: 2px; }
+  .meta b { color: #3b5bd6; }
+  .title { font-size: 14px; margin-bottom: 4px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #e7ebfa; color: #2b45a5; }
+  .tag.sug { background: #fff; border: 1px dashed #b78f24; color: #8a6d1d; }
+  .editbtn { float: right; font-size: 12px; color: #888; border: 1px solid #ddd; border-radius: 6px; padding: 2px 8px; background: #fafafa; }
+  .editbtn:hover { color: #3b5bd6; border-color: #3b5bd6; }
+  #drawer { display: none; width: 320px; min-width: 320px; border-left: 1px solid #ddd; background: #fff; padding: 12px 14px 40px; height: calc(100vh - 90px); overflow-y: auto; }
+  #drawer.open { display: block; }
+  #drawer h2 { font-size: 14px; margin-bottom: 10px; }
+  #drawer .group h3 { margin-top: 12px; }
+  .dlbl { display: inline-block; margin: 2px 3px 2px 0; padding: 3px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; background: #f0efe9; color: #555; }
+  .dlbl.on { background: #3b5bd6; color: #fff; }
+  .dlbl.sug { background: #fff; border: 1px dashed #b78f24; color: #8a6d1d; }
+  .addlbl { margin-top: 4px; display: flex; gap: 4px; }
+  .addlbl input { flex: 1; padding: 3px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 12px; }
+  .hint { font-size: 12px; color: #999; margin: 6px 0; }
+  #closeDrawer { float: right; cursor: pointer; color: #999; font-size: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MAENG 논문 검색</h1>
+  <input type="text" id="ft" placeholder="본문 검색 (Enter) - PDF 안 단어 검색">
+  <label class="toggle"><input type="checkbox" id="incSug" checked> 제안 라벨 포함</label>
+  <label class="toggle"><input type="checkbox" id="onlyUntagged"> 미분류만</label>
+  <div id="summary"></div>
+</header>
+<div id="chips"></div>
+<div id="layout">
+  <div id="side"></div>
+  <div id="main"></div>
+  <div id="drawer"></div>
+</div>
+<script>
+let papers = [], groups = {}, selected = [], ftQuery = "", ftFiles = null, editing = null;
+
+async function loadData() {
+  const r = await fetch("/api/data");
+  const d = await r.json();
+  papers = d.papers; groups = d.groups;
+  render();
+}
+
+function paperLabels(p) {
+  return document.getElementById("incSug").checked ? p.labels.concat(p.suggested) : p.labels;
+}
+
+function filtered() {
+  const untag = document.getElementById("onlyUntagged").checked;
+  return papers.filter(p => {
+    if (untag && p.labels.length > 0) return false;
+    if (ftFiles && !ftFiles.has(p.file)) return false;
+    const ls = paperLabels(p);
+    return selected.every(s => ls.includes(s));
+  });
+}
+
+function render() {
+  const cur = filtered();
+  document.getElementById("summary").textContent =
+    "검색 결과 " + cur.length + "편 / 전체 " + papers.length + "편";
+
+  const chips = document.getElementById("chips");
+  chips.innerHTML = "";
+  for (const s of selected) {
+    const c = document.createElement("div");
+    c.className = "chip"; c.textContent = s;
+    const x = document.createElement("span"); x.textContent = "×";
+    c.appendChild(x);
+    c.onclick = () => { selected = selected.filter(v => v !== s); render(); };
+    chips.appendChild(c);
+  }
+  if (ftFiles) {
+    const c = document.createElement("div");
+    c.className = "chip ft"; c.textContent = "본문: " + ftQuery;
+    const x = document.createElement("span"); x.textContent = "×";
+    c.appendChild(x);
+    c.onclick = () => { ftFiles = null; ftQuery = ""; document.getElementById("ft").value = ""; render(); };
+    chips.appendChild(c);
+  }
+
+  const side = document.getElementById("side");
+  side.innerHTML = "";
+  for (const [gname, labels] of Object.entries(groups)) {
+    const g = document.createElement("div"); g.className = "group";
+    const h = document.createElement("h3"); h.textContent = gname; g.appendChild(h);
+    for (const lb of labels) {
+      const cnt = selected.includes(lb)
+        ? cur.length
+        : cur.filter(p => paperLabels(p).includes(lb)).length;
+      const el = document.createElement("div");
+      el.className = "lbl" + (selected.includes(lb) ? " on" : "") + (cnt === 0 ? " zero" : "");
+      el.innerHTML = "<span>" + lb + "</span><span class='n'>" + cnt + "</span>";
+      el.onclick = () => {
+        if (selected.includes(lb)) selected = selected.filter(v => v !== lb);
+        else if (cnt > 0 || selected.includes(lb)) selected.push(lb);
+        else return;
+        render();
+      };
+      g.appendChild(el);
+    }
+    side.appendChild(g);
+  }
+
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  const sorted = cur.slice().sort((a, b) => (b.year || "0").localeCompare(a.year || "0"));
+  for (const p of sorted) {
+    const row = document.createElement("div"); row.className = "row";
+    const btn = document.createElement("button");
+    btn.className = "editbtn"; btn.textContent = "라벨 편집";
+    btn.onclick = (e) => { e.stopPropagation(); openDrawer(p.file); };
+    row.appendChild(btn);
+    row.appendChild(genButton(p, "translation", "번역", p.has_translation));
+    row.appendChild(genButton(p, "summary", "요약", p.has_summary));
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-");
+    row.appendChild(meta);
+    const t = document.createElement("div"); t.className = "title"; t.textContent = p.title;
+    row.appendChild(t);
+    const tags = document.createElement("div"); tags.className = "tags";
+    for (const lb of p.labels) { const s = document.createElement("span"); s.className = "tag"; s.textContent = lb; tags.appendChild(s); }
+    for (const lb of p.suggested) { const s = document.createElement("span"); s.className = "tag sug"; s.textContent = lb + "?"; tags.appendChild(s); }
+    row.appendChild(tags);
+    row.onclick = () => fetch("/api/open", { method: "POST", body: JSON.stringify({ file: p.file }) });
+    main.appendChild(row);
+  }
+  if (editing) renderDrawer();
+}
+
+const polling = {};
+
+function genButton(p, kind, label, ready) {
+  const b = document.createElement("button");
+  b.className = "editbtn";
+  const key = p.file + "|" + kind;
+  if (polling[key]) { b.textContent = label + " 생성중"; b.disabled = true; return b; }
+  b.textContent = ready ? label + " 보기" : label;
+  if (ready) b.style.color = "#1d7a4f";
+  b.onclick = async (e) => {
+    e.stopPropagation();
+    if (ready) { window.open("/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind); return; }
+    if (!confirm((kind === "summary" ? "요약" : "전문 번역") + "을 생성할까요?\n(Claude 구독 사용량을 씁니다. 요약 ~1분, 번역 3~10분)")) return;
+    await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file: p.file, kind }) });
+    polling[key] = setInterval(async () => {
+      const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(p.file) + "&kind=" + kind)).json();
+      if (s.status === "done") {
+        clearInterval(polling[key]); delete polling[key];
+        if (kind === "summary") p.has_summary = true; else p.has_translation = true;
+        render();
+        window.open("/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind);
+      } else if (s.status === "error") {
+        clearInterval(polling[key]); delete polling[key];
+        alert("생성 실패: " + (s.error || "원인 불명"));
+        render();
+      }
+    }, 7000);
+    render();
+  };
+  return b;
+}
+
+async function saveTags(p) {
+  await fetch("/api/tags", { method: "POST", body: JSON.stringify({ file: p.file, labels: p.labels, suggested: p.suggested, rejected: p.rejected || [] }) });
+}
+
+function openDrawer(file) { editing = file; document.getElementById("drawer").classList.add("open"); renderDrawer(); }
+
+function renderDrawer() {
+  const d = document.getElementById("drawer");
+  const p = papers.find(v => v.file === editing);
+  if (!p) { d.classList.remove("open"); return; }
+  d.innerHTML = "";
+  const close = document.createElement("div");
+  close.id = "closeDrawer"; close.textContent = "✕";
+  close.onclick = () => { editing = null; d.classList.remove("open"); };
+  d.appendChild(close);
+  const h = document.createElement("h2"); h.textContent = p.title; d.appendChild(h);
+  const hint = document.createElement("div"); hint.className = "hint";
+  hint.textContent = "클릭: 라벨 켜고 끄기 · 노란 점선(제안)은 클릭하면 확정, ✕로 제거";
+  d.appendChild(hint);
+  for (const [gname, labels] of Object.entries(groups)) {
+    const g = document.createElement("div"); g.className = "group";
+    const h3 = document.createElement("h3"); h3.textContent = gname; g.appendChild(h3);
+    for (const lb of labels) {
+      const el = document.createElement("span");
+      const isOn = p.labels.includes(lb), isSug = p.suggested.includes(lb);
+      el.className = "dlbl" + (isOn ? " on" : isSug ? " sug" : "");
+      el.textContent = isSug ? lb + " ?" : lb;
+      el.onclick = async () => {
+        if (isOn) p.labels = p.labels.filter(v => v !== lb);
+        else { p.labels.push(lb); p.suggested = p.suggested.filter(v => v !== lb); }
+        await saveTags(p); render();
+      };
+      g.appendChild(el);
+      if (isSug) {
+        const x = document.createElement("span");
+        x.className = "dlbl"; x.textContent = "✕"; x.title = "제안 제거";
+        x.onclick = async () => {
+          p.suggested = p.suggested.filter(v => v !== lb);
+          p.rejected = (p.rejected || []).concat([lb]);
+          await saveTags(p); render();
+        };
+        g.appendChild(x);
+      }
+    }
+    const add = document.createElement("div"); add.className = "addlbl";
+    const inp = document.createElement("input"); inp.placeholder = "+ 새 라벨";
+    inp.onkeydown = async (e) => {
+      if (e.key !== "Enter" || !inp.value.trim()) return;
+      const label = inp.value.trim();
+      await fetch("/api/labels", { method: "POST", body: JSON.stringify({ group: gname, label }) });
+      if (!groups[gname].includes(label)) groups[gname].push(label);
+      p.labels.push(label);
+      await saveTags(p); render();
+    };
+    add.appendChild(inp);
+    g.appendChild(add);
+    d.appendChild(g);
+  }
+}
+
+document.getElementById("ft").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  const q = e.target.value.trim();
+  if (!q) { ftFiles = null; ftQuery = ""; render(); return; }
+  const r = await fetch("/api/fulltext?q=" + encodeURIComponent(q));
+  const d = await r.json();
+  ftQuery = q; ftFiles = new Set(d.files);
+  render();
+});
+document.getElementById("incSug").addEventListener("change", render);
+document.getElementById("onlyUntagged").addEventListener("change", render);
+loadData();
+</script>
+</body>
+</html>
