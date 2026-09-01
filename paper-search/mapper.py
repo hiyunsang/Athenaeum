@@ -12,8 +12,8 @@ import requests
 API = "https://api.openalex.org"
 HEADERS = {"User-Agent": "maeng-paper-map/1.0"}
 SELECT = ("id,doi,display_name,publication_year,cited_by_count,"
-          "referenced_works,authorships,primary_location")
-MAX_NODES = 40
+          "referenced_works,authorships,primary_location,keywords")
+MAX_NODES = 45
 
 
 def _get(url, params=None):
@@ -80,6 +80,11 @@ def _node(it, refs, inter, owned_file):
         venue = (it.get("primary_location") or {}).get("source", {}).get("display_name", "") or ""
     except AttributeError:
         pass
+    kw = []
+    try:
+        kw = [k["display_name"] for k in (it.get("keywords") or [])[:5]]
+    except (KeyError, TypeError):
+        pass
     return {
         "id": wid(it["id"]),
         "doi": it.get("doi") or "",
@@ -88,6 +93,7 @@ def _node(it, refs, inter, owned_file):
         "cit": it.get("cited_by_count") or 0,
         "author": auth,
         "venue": venue[:60],
+        "kw": kw,
         "inter": inter,
         "owned": owned_file or "",
         "_refs": refs,
@@ -144,13 +150,9 @@ def build_map(seed_title, archive_titles):
             edges[key] = max(edges.get(key, 0), w)
 
     # 시드 간선: 유사도 상위 8개와 연결
-    seed_node = {
-        "id": seed_id, "doi": seed.get("doi") or "",
-        "title": seed.get("display_name") or seed_title,
-        "year": seed.get("publication_year") or 0,
-        "cit": seed.get("cited_by_count") or 0,
-        "author": "", "venue": "", "inter": 0, "owned": "", "seed": True,
-    }
+    seed_node = _node(seed, set(), 0, "")
+    seed_node.pop("_refs", None)
+    seed_node["seed"] = True
     for n in nodes:
         n.pop("_refs", None)
     nodes.insert(0, seed_node)
