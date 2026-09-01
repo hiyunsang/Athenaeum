@@ -1,4 +1,7 @@
 {
+ "유형": [
+  "Review"
+ ],
  "재료": [
   "Silicon",
   "Aluminum",
@@ -89,8 +92,5 @@
   "Phase transformation",
   "Material separation",
   "Recrystallization"
- ],
- "유형": [
-  "Review"
  ]
 }
