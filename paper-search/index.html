@@ -15,6 +15,9 @@
   .chip { background: #3b5bd6; color: #fff; border-radius: 14px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
   .chip.ft { background: #8a6d1d; }
   .chip.jn { background: #0f6e56; }
+  .jlist { max-height: 138px; overflow-y: auto; border: 1px solid #e2e0da; border-radius: 6px; }
+  .jlist::-webkit-scrollbar { width: 8px; }
+  .jlist::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
   .chip span { margin-left: 6px; font-weight: bold; }
   #layout { display: flex; gap: 0; }
   #side { width: 250px; min-width: 250px; padding: 10px 8px 40px 16px; height: calc(100vh - 90px); overflow-y: auto; }
@@ -132,6 +135,7 @@ function render() {
   for (const p of base) { const j = p.journal || "?"; jcounts[j] = (jcounts[j] || 0) + 1; }
   const jg = document.createElement("div"); jg.className = "group";
   const jh = document.createElement("h3"); jh.textContent = "저널"; jg.appendChild(jh);
+  const jlist = document.createElement("div"); jlist.className = "jlist";
   const jorder = Object.entries(jcounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   for (const [j, cnt] of jorder) {
     const el = document.createElement("div");
@@ -142,8 +146,9 @@ function render() {
       else selectedJournals.push(j);
       render();
     };
-    jg.appendChild(el);
+    jlist.appendChild(el);
   }
+  jg.appendChild(jlist);
   side.appendChild(jg);
 
   for (const [gname, labels] of Object.entries(groups)) {
