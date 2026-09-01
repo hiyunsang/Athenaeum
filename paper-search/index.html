@@ -14,6 +14,7 @@
   #chips { padding: 8px 16px 0; display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { background: #3b5bd6; color: #fff; border-radius: 14px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
   .chip.ft { background: #8a6d1d; }
+  .chip.jn { background: #0f6e56; }
   .chip span { margin-left: 6px; font-weight: bold; }
   #layout { display: flex; gap: 0; }
   #side { width: 250px; min-width: 250px; padding: 10px 8px 40px 16px; height: calc(100vh - 90px); overflow-y: auto; }
@@ -63,7 +64,7 @@
   <div id="drawer"></div>
 </div>
 <script>
-let papers = [], groups = {}, selected = [], ftQuery = "", ftFiles = null, editing = null;
+let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, editing = null;
 
 async function loadData() {
   const r = await fetch("/api/data");
@@ -76,7 +77,7 @@ function paperLabels(p) {
   return document.getElementById("incSug").checked ? p.labels.concat(p.suggested) : p.labels;
 }
 
-function filtered() {
+function baseFiltered() {
   const untag = document.getElementById("onlyUntagged").checked;
   return papers.filter(p => {
     if (untag && p.labels.length > 0) return false;
@@ -86,13 +87,27 @@ function filtered() {
   });
 }
 
+function filtered() {
+  const b = baseFiltered();
+  return selectedJournals.length ? b.filter(p => selectedJournals.includes(p.journal || "?")) : b;
+}
+
 function render() {
+  const base = baseFiltered();
   const cur = filtered();
   document.getElementById("summary").textContent =
     "검색 결과 " + cur.length + "편 / 전체 " + papers.length + "편";
 
   const chips = document.getElementById("chips");
   chips.innerHTML = "";
+  for (const j of selectedJournals) {
+    const c = document.createElement("div");
+    c.className = "chip jn"; c.textContent = j;
+    const x = document.createElement("span"); x.textContent = "×";
+    c.appendChild(x);
+    c.onclick = () => { selectedJournals = selectedJournals.filter(v => v !== j); render(); };
+    chips.appendChild(c);
+  }
   for (const s of selected) {
     const c = document.createElement("div");
     c.className = "chip"; c.textContent = s;
@@ -112,6 +127,25 @@ function render() {
 
   const side = document.getElementById("side");
   side.innerHTML = "";
+
+  const jcounts = {};
+  for (const p of base) { const j = p.journal || "?"; jcounts[j] = (jcounts[j] || 0) + 1; }
+  const jg = document.createElement("div"); jg.className = "group";
+  const jh = document.createElement("h3"); jh.textContent = "저널"; jg.appendChild(jh);
+  const jorder = Object.entries(jcounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  for (const [j, cnt] of jorder) {
+    const el = document.createElement("div");
+    el.className = "lbl" + (selectedJournals.includes(j) ? " on" : "");
+    el.innerHTML = "<span>" + j + "</span><span class='n'>" + cnt + "</span>";
+    el.onclick = () => {
+      if (selectedJournals.includes(j)) selectedJournals = selectedJournals.filter(v => v !== j);
+      else selectedJournals.push(j);
+      render();
+    };
+    jg.appendChild(el);
+  }
+  side.appendChild(jg);
+
   for (const [gname, labels] of Object.entries(groups)) {
     const g = document.createElement("div"); g.className = "group";
     const h = document.createElement("h3"); h.textContent = gname; g.appendChild(h);
