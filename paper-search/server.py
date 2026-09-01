@@ -3,6 +3,7 @@
 import html as html_mod
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -98,6 +99,38 @@ def find_claude():
         if p:
             return p
     return None
+
+
+def classify_with_claude(title, kw, front, groups):
+    """Claude에게 논문의 '실제 연구 주제' 라벨만 고르게 한다. 실패하면 None."""
+    exe = find_claude()
+    if not exe:
+        return None
+    catalog = "\n".join("[{}] {}".format(g, ", ".join(ls)) for g, ls in groups.items())
+    prompt = (
+        "당신은 기계가공(machining) 분야 논문 분류 전문가다. 아래 논문에 붙일 라벨을 "
+        "카탈로그에서 고르라.\n\n규칙:\n"
+        "- 카탈로그에 있는 라벨만, 논문이 '실제로 연구·사용한 것'만 고른다.\n"
+        "- 서론에서 언급만 한 주제, 비교 대상으로 스친 재료·방법은 절대 넣지 않는다.\n"
+        "- 재료는 실제 가공/해석 대상만, 방법은 실제 사용한 관찰·해석 방법만.\n"
+        "- 보통 논문당 4~8개가 적당하다.\n"
+        "- 답은 JSON 한 줄만: {\"labels\": [\"...\"]}\n\n"
+        "[라벨 카탈로그]\n" + catalog + "\n\n"
+        "[논문 제목] " + title + "\n"
+        "[저자 키워드] " + (kw or "(없음)") + "\n"
+        "[본문 앞부분]\n" + front
+    )
+    try:
+        r = subprocess.run([exe, "-p", "--output-format", "text"],
+                           input=prompt.encode("utf-8"),
+                           capture_output=True, timeout=240)
+        m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
+        labels = json.loads(m.group(0))["labels"]
+        valid = set(sum(groups.values(), []))
+        picked = [l for l in labels if l in valid]
+        return picked if picked else None
+    except Exception:
+        return None
 
 
 def run_generation(name, kind):
@@ -279,16 +312,24 @@ def _refresh_new_papers():
                     pass
         except ImportError:
             pass
-        with _lock:
-            tags = load_json(TAGS_PATH, {})
-            for f in new_files:
+        groups = load_json(LABELS_PATH, {})
+        for f in new_files:
+            title = new_titles.get(f) or parse_name(f)["title"]
+            text = texts.get(f, "")
+            # 1순위: Claude가 실제 주제를 판정 / 실패 시 규칙 기반으로 폴백
+            picked = classify_with_claude(title, rules.keyword_section(text), text[:3000], groups)
+            if picked is not None:
+                entry = {"labels": picked, "suggested": [], "rejected": []}
+            else:
+                auto, sugg = rules.classify_labels(title, text)
+                entry = {"labels": auto, "suggested": sugg, "rejected": []}
+            if f in new_titles:
+                entry["title"] = new_titles[f]
+            with _lock:
+                tags = load_json(TAGS_PATH, {})
                 if f not in tags:
-                    title = new_titles.get(f) or parse_name(f)["title"]
-                    auto, sugg = rules.classify_labels(title, texts.get(f, ""))
-                    tags[f] = {"labels": auto, "suggested": sugg, "rejected": []}
-                    if f in new_titles:
-                        tags[f]["title"] = new_titles[f]
-            save_json(TAGS_PATH, tags)
+                    tags[f] = entry
+                    save_json(TAGS_PATH, tags)
     with _lock:
         _texts_cache = texts
 
