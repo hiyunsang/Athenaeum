@@ -167,31 +167,32 @@ function render() {
     const g = document.createElement("div"); g.className = "group";
     const h = document.createElement("h3"); h.textContent = gname; g.appendChild(h);
     if (gname === "재료") {
-      const assigned = new Set(Object.values(MATERIAL_TREE).flat());
+      const assigned = new Set(MATERIAL_TREE.flatMap(treeLeaves));
       const extras = labels.filter(lb => !assigned.has(lb));
-      for (const [parent, children] of Object.entries(MATERIAL_TREE)) {
-        let kids = children.filter(k => labels.includes(k));
-        if (parent === "기타") kids = kids.concat(extras);
-        if (!kids.length) continue;
-        if (kids.length === 1 && kids[0] === parent) {  // 단독 항목은 접기 없이 바로 표시
-          g.appendChild(labelRow(kids[0], cnt(kids[0])));
-          continue;
+      const known = new Set(labels.concat(extras));
+      const renderNode = (node, depth) => {
+        if (typeof node === "string") {
+          if (!known.has(node)) return;
+          const row = labelRow(node, cnt(node));
+          row.style.marginLeft = (depth * 16) + "px";
+          g.appendChild(row);
+          return;
         }
-        const pcount = cur.filter(p => kids.some(k => paperLabels(p).includes(k))).length;
-        const open = matOpen[parent] || kids.some(k => selected.includes(k));
+        let kids = node.kids;
+        if (node.name === "기타") kids = kids.concat(extras);
+        const leaves = kids.flatMap(treeLeaves).filter(k => known.has(k));
+        if (!leaves.length) return;
+        const pcount = cur.filter(p => leaves.some(k => paperLabels(p).includes(k))).length;
+        const open = matOpen[node.name] || leaves.some(k => selected.includes(k));
         const ph = document.createElement("div");
         ph.className = "mparent";
-        ph.innerHTML = "<span>" + (open ? "▾ " : "▸ ") + parent + "</span><span class='n'>" + pcount + "</span>";
-        ph.onclick = () => { matOpen[parent] = !open; render(); };
+        ph.style.marginLeft = (depth * 16) + "px";
+        ph.innerHTML = "<span>" + (open ? "▾ " : "▸ ") + node.name + "</span><span class='n'>" + pcount + "</span>";
+        ph.onclick = () => { matOpen[node.name] = !open; render(); };
         g.appendChild(ph);
-        if (open) {
-          for (const k of kids) {
-            const row = labelRow(k, cnt(k));
-            row.classList.add("mchild");
-            g.appendChild(row);
-          }
-        }
-      }
+        if (open) for (const k of kids) renderNode(k, depth + 1);
+      };
+      for (const node of MATERIAL_TREE) renderNode(node, 0);
     } else {
       for (const lb of labels) g.appendChild(labelRow(lb, cnt(lb)));
     }
@@ -235,15 +236,22 @@ function render() {
 
 const polling = {};
 
-// 재료 라벨의 2단 분류 (여기 없는 새 재료 라벨은 자동으로 '기타'에 들어감)
-const MATERIAL_TREE = {
-  "금속": ["Aluminum", "Al6061", "Copper", "Titanium", "Ti6Al4V", "Steel", "AISI 1045",
-           "Stainless steel", "SUS304", "Nickel-based alloy", "Inconel 718", "Tantalum"],
-  "취성": ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium", "Silicon", "Sapphire", "Glass", "Ceramic"],
-  "Composite": ["Composite"],
-  "기타": ["Difficult-to-cut"]
-};
+// 재료 라벨의 계층 분류 (문자열 = 라벨, {name, kids} = 접히는 분류. 몇 단이든 가능)
+// 여기 없는 새 재료 라벨은 자동으로 '기타'에 들어감
+const MATERIAL_TREE = [
+  { name: "금속", kids: ["Aluminum", "Al6061", "Copper", "Titanium", "Ti6Al4V", "Steel",
+    "AISI 1045", "Stainless steel", "SUS304", "Nickel-based alloy", "Inconel 718", "Tantalum"] },
+  { name: "취성", kids: [
+      { name: "Soft-brittle", kids: ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium"] },
+      "Silicon", "Sapphire", "Glass", "Ceramic"] },
+  "Composite",
+  { name: "기타", kids: ["Difficult-to-cut"] }
+];
 let matOpen = {};
+
+function treeLeaves(node) {
+  return typeof node === "string" ? [node] : node.kids.flatMap(treeLeaves);
+}
 
 function labelRow(lb, cnt) {
   const el = document.createElement("div");
