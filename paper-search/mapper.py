@@ -12,12 +12,16 @@ import requests
 
 API = "https://api.openalex.org"
 HEADERS = {"User-Agent": "maeng-paper-map/1.0"}
+# OpenAlex polite pool: 연락용 이메일을 보내면 요청 우선순위가 높아짐 (사용자 허락받음, 2026-09-02)
+MAILTO = "maenglaboratory@gmail.com"
 SELECT = ("id,doi,display_name,publication_year,cited_by_count,"
           "referenced_works,authorships,primary_location,keywords")
 MAX_NODES = 45
 
 
 def _get(url, params=None):
+    params = dict(params or {})
+    params["mailto"] = MAILTO
     for i in range(6):
         r = requests.get(url, params=params, headers=HEADERS, timeout=40)
         if r.status_code == 429 or r.status_code >= 500:
