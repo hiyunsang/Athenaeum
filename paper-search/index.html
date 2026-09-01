@@ -178,8 +178,7 @@ function render() {
           g.appendChild(row);
           return;
         }
-        let kids = node.kids;
-        if (node.name === "기타") kids = kids.concat(extras);
+        const kids = node.kids;
         const leaves = kids.flatMap(treeLeaves).filter(k => known.has(k));
         if (!leaves.length) return;
         const pcount = cur.filter(p => leaves.some(k => paperLabels(p).includes(k))).length;
@@ -193,6 +192,7 @@ function render() {
         if (open) for (const k of kids) renderNode(k, depth + 1);
       };
       for (const node of MATERIAL_TREE) renderNode(node, 0);
+      for (const lb of extras) renderNode(lb, 0);  // 아직 분류 안 된 새 재료
     } else {
       for (const lb of labels) g.appendChild(labelRow(lb, cnt(lb)));
     }
@@ -241,11 +241,10 @@ const polling = {};
 const MATERIAL_TREE = [
   { name: "금속", kids: ["Aluminum", "Al6061", "Copper", "Titanium", "Ti6Al4V", "Steel",
     "AISI 1045", "Stainless steel", "SUS304", "Nickel-based alloy", "Inconel 718", "Tantalum"] },
-  { name: "취성", kids: [
+  { name: "세라믹", kids: [
       { name: "Soft-brittle", kids: ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium"] },
       "Silicon", "Sapphire", "Glass", "Ceramic"] },
-  "Composite",
-  { name: "기타", kids: ["Difficult-to-cut"] }
+  "Composite"
 ];
 let matOpen = {};
 
