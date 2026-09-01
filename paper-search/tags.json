@@ -307,7 +307,8 @@
  "2011_IJPEM_Hwang_Contact conditions at the chip-tool interface in machining.pdf": {
   "labels": [
    "BUE",
-   "Sliding"
+   "Sliding",
+   "Sapphire"
   ],
   "suggested": [
    "Quick-stop"
@@ -803,7 +804,9 @@
    "Silicon",
    "Grinding",
    "Subsurface damage",
-   "Damage"
+   "Damage",
+   "Germanium",
+   "Glass"
   ],
   "suggested": [],
   "rejected": [],
@@ -1044,7 +1047,8 @@
    "Shear localization",
    "Sinuous flow",
    "Surface defect",
-   "High-speed imaging"
+   "High-speed imaging",
+   "Ductile-brittle transition"
   ],
   "suggested": [],
   "rejected": [],
@@ -1092,7 +1096,8 @@
    "Single crystal",
    "Ultra-precision machining",
    "Surface defect",
-   "Subsurface damage"
+   "Subsurface damage",
+   "Glass"
   ],
   "suggested": [],
   "rejected": [],
@@ -1848,7 +1853,9 @@
    "FEM",
    "Thermal softening"
   ],
-  "suggested": [],
+  "suggested": [
+   "Glass"
+  ],
   "rejected": [],
   "title": "Temperature-dependent cutting physics in orthogonal cutting of carbon fibre reinforced thermoplastic (CFRTP) composite"
  },
@@ -2152,7 +2159,9 @@
    "Ultra-precision machining",
    "Subsurface damage",
    "Thermal effect",
-   "Fracture"
+   "Fracture",
+   "KDP",
+   "Soft-brittle"
   ],
   "suggested": [],
   "rejected": [],
@@ -2246,7 +2255,8 @@
    "Grinding",
    "Ultra-precision machining",
    "Surface defect",
-   "Subsurface damage"
+   "Subsurface damage",
+   "Soft-brittle"
   ],
   "suggested": [],
   "rejected": [],
@@ -2272,5 +2282,78 @@
   "suggested": [],
   "rejected": [],
   "title": "Interaction and competition between continuous and geometric dynamic recrystallization in high-strain-rate deformation of nickel-based superalloys"
+ },
+ "2024_IJMS_Zhu_Effect of grain boundary on scratch behavior of polycrystalline copper.pdf": {
+  "labels": [
+   "Copper",
+   "Polycrystal",
+   "Anisotropic",
+   "Scratching",
+   "Subsurface damage"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Effect of grain boundary on scratch behavior of polycrystalline copper"
+ },
+ "2025_JMPT_Wang_Towards understanding the mechanisms of material removal and deformation in GaAs during nanomilling.pdf": {
+  "labels": [
+   "Single crystal",
+   "Milling",
+   "Plastic flow"
+  ],
+  "suggested": [
+   "Ultra-precision machining",
+   "Phase transformation"
+  ],
+  "rejected": [],
+  "title": "Towards understanding the mechanisms of material removal and deformation in GaAs during nanomilling"
+ },
+ "2025_JMP_Khatri_Single-step precision manufacturing of ZnSe lenses for FLIR thermal imaging From atomic insights to lab-scale fabrication and integration.pdf": {
+  "labels": [
+   "Silicon",
+   "Nano-cutting",
+   "Molecular dynamics",
+   "Thermal effect",
+   "Phase transformation",
+   "ZnSe",
+   "Soft-brittle"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Single-step precision manufacturing of ZnSe lenses for FLIR thermal imaging: From atomic insights to lab-scale fabrication and integration"
+ },
+ "2025_JMP_Zhang_Cutting mechanism and parameter optimization in ultra-precision ductile-regime machining zinc selenide crystals.pdf": {
+  "labels": [
+   "Single crystal",
+   "Polycrystal",
+   "Ultra-precision machining",
+   "Ductile-brittle transition",
+   "Surface defect",
+   "Molecular dynamics",
+   "Fracture",
+   "ZnSe",
+   "Soft-brittle"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Cutting mechanism and parameter optimization in ultra-precision ductile-regime machining zinc selenide crystals"
+ },
+ "2026_PE_Chen_Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping.pdf": {
+  "labels": [
+   "Silicon",
+   "Turning",
+   "Ultra-precision machining",
+   "Surface defect",
+   "Tool wear",
+   "ZnSe",
+   "Soft-brittle"
+  ],
+  "suggested": [
+   "Single crystal",
+   "Polycrystal",
+   "Grinding"
+  ],
+  "rejected": [],
+  "title": "Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping"
  }
 }
