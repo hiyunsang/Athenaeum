@@ -15,6 +15,10 @@
   .chip { background: #3b5bd6; color: #fff; border-radius: 14px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
   .chip.ft { background: #8a6d1d; }
   .chip.jn { background: #0f6e56; }
+  .mparent { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 6px;
+             cursor: pointer; font-weight: bold; color: #555; }
+  .mparent:hover { background: #eceae4; }
+  .mchild { margin-left: 16px; }
   .jlist { max-height: 138px; overflow-y: auto; border: 1px solid #e2e0da; border-radius: 6px; }
   .jlist::-webkit-scrollbar { width: 8px; }
   .jlist::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
@@ -155,23 +159,37 @@ function render() {
   jg.appendChild(jlist);
   side.appendChild(jg);
 
+  const cnt = (lb) => selected.includes(lb)
+    ? cur.length
+    : cur.filter(p => paperLabels(p).includes(lb)).length;
+
   for (const [gname, labels] of Object.entries(groups)) {
     const g = document.createElement("div"); g.className = "group";
     const h = document.createElement("h3"); h.textContent = gname; g.appendChild(h);
-    for (const lb of labels) {
-      const cnt = selected.includes(lb)
-        ? cur.length
-        : cur.filter(p => paperLabels(p).includes(lb)).length;
-      const el = document.createElement("div");
-      el.className = "lbl" + (selected.includes(lb) ? " on" : "") + (cnt === 0 ? " zero" : "");
-      el.innerHTML = "<span>" + lb + "</span><span class='n'>" + cnt + "</span>";
-      el.onclick = () => {
-        if (selected.includes(lb)) selected = selected.filter(v => v !== lb);
-        else if (cnt > 0 || selected.includes(lb)) selected.push(lb);
-        else return;
-        render();
-      };
-      g.appendChild(el);
+    if (gname === "재료") {
+      const assigned = new Set(Object.values(MATERIAL_TREE).flat());
+      const extras = labels.filter(lb => !assigned.has(lb));
+      for (const [parent, children] of Object.entries(MATERIAL_TREE)) {
+        let kids = children.filter(k => labels.includes(k));
+        if (parent === "기타") kids = kids.concat(extras);
+        if (!kids.length) continue;
+        const pcount = cur.filter(p => kids.some(k => paperLabels(p).includes(k))).length;
+        const open = matOpen[parent] || kids.some(k => selected.includes(k));
+        const ph = document.createElement("div");
+        ph.className = "mparent";
+        ph.innerHTML = "<span>" + (open ? "▾ " : "▸ ") + parent + "</span><span class='n'>" + pcount + "</span>";
+        ph.onclick = () => { matOpen[parent] = !open; render(); };
+        g.appendChild(ph);
+        if (open) {
+          for (const k of kids) {
+            const row = labelRow(k, cnt(k));
+            row.classList.add("mchild");
+            g.appendChild(row);
+          }
+        }
+      }
+    } else {
+      for (const lb of labels) g.appendChild(labelRow(lb, cnt(lb)));
     }
     side.appendChild(g);
   }
@@ -212,6 +230,29 @@ function render() {
 }
 
 const polling = {};
+
+// 재료 라벨의 2단 분류 (여기 없는 새 재료 라벨은 자동으로 '기타'에 들어감)
+const MATERIAL_TREE = {
+  "금속": ["Aluminum", "Al6061", "Copper", "Titanium", "Ti6Al4V", "Steel", "AISI 1045",
+           "Stainless steel", "SUS304", "Nickel-based alloy", "Inconel 718", "Tantalum"],
+  "Soft-brittle": ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium"],
+  "취성·세라믹": ["Silicon", "Sapphire", "Glass", "Ceramic"],
+  "기타": ["Composite", "Difficult-to-cut"]
+};
+let matOpen = {};
+
+function labelRow(lb, cnt) {
+  const el = document.createElement("div");
+  el.className = "lbl" + (selected.includes(lb) ? " on" : "") + (cnt === 0 ? " zero" : "");
+  el.innerHTML = "<span>" + lb + "</span><span class='n'>" + cnt + "</span>";
+  el.onclick = () => {
+    if (selected.includes(lb)) selected = selected.filter(v => v !== lb);
+    else if (cnt > 0) selected.push(lb);
+    else return;
+    render();
+  };
+  return el;
+}
 
 function viewUrl(p, kind) {
   if (kind === "map") return "/mapview?file=" + encodeURIComponent(p.file);
