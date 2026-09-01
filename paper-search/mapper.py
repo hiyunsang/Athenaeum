@@ -5,10 +5,21 @@
 '공통 참고문헌 수(bibliographic coupling)'로 유사도를 계산해 그래프를 만든다.
 """
 import math
+import os
 import re
 import time
 
 import requests
+
+LOGFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "맵생성기록.txt")
+
+
+def _log(msg):
+    try:
+        with open(LOGFILE, "a", encoding="utf-8") as f:
+            f.write(time.strftime("[%m-%d %H:%M:%S] ") + msg + "\n")
+    except OSError:
+        pass
 
 API = "https://api.openalex.org"
 HEADERS = {"User-Agent": "maeng-paper-map/1.0"}
@@ -23,16 +34,24 @@ def _get(url, params=None):
     params = dict(params or {})
     params["mailto"] = MAILTO
     for i in range(6):
-        r = requests.get(url, params=params, headers=HEADERS, timeout=40)
+        try:
+            r = requests.get(url, params=params, headers=HEADERS, timeout=40)
+        except requests.RequestException as e:
+            _log("연결 오류({}) 재시도 {}회: {}".format(type(e).__name__, i + 1, url[:90]))
+            time.sleep(3 * (2 ** i))
+            continue
         if r.status_code == 429 or r.status_code >= 500:
             try:
                 wait = float(r.headers.get("Retry-After", 0))
             except (TypeError, ValueError):
                 wait = 0
-            time.sleep(min(30, max(wait, 3 * (2 ** i))))
+            wait = min(30, max(wait, 3 * (2 ** i)))
+            _log("HTTP {} 재시도 {}회, {}초 대기: {}".format(r.status_code, i + 1, int(wait), url[:90]))
+            time.sleep(wait)
             continue
         r.raise_for_status()
         return r.json()
+    _log("포기: " + url[:120])
     raise RuntimeError("OpenAlex가 계속 바쁩니다 - 몇 분 뒤 다시 시도해 주세요")
 
 
@@ -44,9 +63,19 @@ def wid(url_id):
     return url_id.rsplit("/", 1)[-1] if url_id else ""
 
 
-def find_seed(title):
-    d = _get(API + "/works", {"search": title, "per-page": "5"})
+def find_seed(title, dois=None):
     want = norm_title(title)
+    # 1순위: DOI 직접 조회 (검색보다 빠르고 속도 제한도 훨씬 널널함)
+    for doi in (dois or []):
+        try:
+            it = _get(API + "/works/doi:" + doi)
+        except Exception:
+            continue
+        got = norm_title(it.get("display_name"))
+        if got and (got[:50] == want[:50] or want in got or got in want):
+            return it
+    # 2순위: 제목 검색
+    d = _get(API + "/works", {"search": title, "per-page": "5"})
     for it in d.get("results", []):
         got = norm_title(it.get("display_name"))
         if got[:50] == want[:50] or want in got or got in want:
@@ -109,17 +138,24 @@ def _node(it, refs, inter, owned_file):
     }
 
 
-def build_map(seed_title, archive_titles):
+def build_map(seed_title, archive_titles, progress=None, dois=None):
     """Connected Papers 방식: 2단계 후보 확장 -> coupling+co-citation 유사도
     -> 상위 선택 -> 유사도 행렬 -> Prior/Derivative works.
     archive_titles: {정규화된 제목: 파일명} - 보유 논문 표시용."""
     from collections import Counter
 
-    seed = find_seed(seed_title)
+    def report(stage):
+        _log(stage + " - " + seed_title[:50])
+        if progress:
+            progress(stage)
+
+    report("1/5 논문 검색")
+    seed = find_seed(seed_title, dois)
     seed_id = wid(seed["id"])
     seed_refs = set(wid(x) for x in seed.get("referenced_works", []))
 
     # [1단계 이웃] 참고문헌 + 이 논문을 인용한 논문들
+    report("2/5 인용·참고문헌 수집")
     pool = {}
     d = _get(API + "/works", {"filter": "cites:" + seed_id, "per-page": "100",
                               "sort": "cited_by_count:desc", "select": SELECT})
@@ -132,6 +168,7 @@ def build_map(seed_title, archive_titles):
     pool.pop(seed_id, None)
 
     # [2단계 후보] 1단계 논문들의 참고문헌에 자주 등장하는 논문을 후보로 확장
+    report("3/5 후보 확장 (2단계)")
     freq = Counter()
     for it in pool.values():
         for rid in it.get("referenced_works", []):
@@ -163,6 +200,7 @@ def build_map(seed_title, archive_titles):
         return min(1.0, s)
 
     # [선택] 시드와의 결합 유사도 상위 MAX_NODES편
+    report("4/5 유사도 계산")
     scored = []
     for k, it in pool.items():
         s = similarity(seed_id, k)
@@ -204,6 +242,7 @@ def build_map(seed_title, archive_titles):
     edge_list = [[a, b, w] for (a, b), w in edges.items()]
 
     # [Prior works] 이 그래프의 논문들이 공통으로 인용하는 조상 논문
+    report("5/5 Prior/Derivative 정리")
     graph_ids = set(ids)
     prior_cnt = Counter()
     for k in ids[1:]:

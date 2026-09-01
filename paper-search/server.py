@@ -180,13 +180,32 @@ def run_generation(name, kind):
 
 def _run_map(name):
     import mapper
+    key = (name, "map")
+
+    def prog(stage):
+        job = _jobs.get(key)
+        if job and job.get("status") == "running":
+            job["stage"] = stage
+
     with _lock:
         tags = load_json(TAGS_PATH, {})
     title = tags.get(name, {}).get("title") or parse_name(name)["title"]
     archive_titles = {}
     for f, t in tags.items():
         archive_titles[mapper.norm_title(t.get("title") or parse_name(f)["title"])] = f
-    data = mapper.build_map(title, archive_titles)
+    # PDF에서 DOI를 뽑아 검색 대신 직접 조회 (검색 API 속도 제한 회피)
+    dois = []
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(BASE), "paper-organizer"))
+        import paper_organizer as po
+        cands, _ = po.extract_doi_candidates(os.path.join(ARCHIVE, name))
+        for c in cands[:2]:
+            for v in po.doi_variants(c):
+                if v not in dois:
+                    dois.append(v)
+    except Exception:
+        pass
+    data = mapper.build_map(title, archive_titles, progress=prog, dois=dois[:5])
     os.makedirs(MAPS_DIR, exist_ok=True)
     save_json(gen_path(name, "map"), data)
 
@@ -455,8 +474,10 @@ class Handler(BaseHTTPRequestHandler):
                 job = _jobs.get((name, kind))
                 if job is None:
                     self._send(200, {"status": "none"})
+                elif job["status"] == "error":
+                    self._send(200, job)
                 else:
-                    self._send(200, job if job["status"] == "error" else {"status": "running"})
+                    self._send(200, {"status": "running", "stage": job.get("stage", "")})
         elif url.path == "/api/fulltext":
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})

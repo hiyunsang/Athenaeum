@@ -235,6 +235,7 @@ function render() {
 }
 
 const polling = {};
+const stages = {};
 
 // 재료 라벨의 계층 분류 (문자열 = 라벨, {name, kids} = 접히는 분류. 몇 단이든 가능)
 // 여기 없는 새 재료 라벨은 자동으로 '기타'에 들어감
@@ -274,7 +275,7 @@ function genButton(p, kind, label, ready) {
   const b = document.createElement("button");
   b.className = "editbtn";
   const key = p.file + "|" + kind;
-  if (polling[key]) { b.textContent = label + " 생성중"; b.disabled = true; return b; }
+  if (polling[key]) { b.textContent = stages[key] || (label + " 생성중"); b.disabled = true; return b; }
   b.textContent = ready ? label + " 보기" : label;
   if (ready) b.style.color = "#1d7a4f";
   b.onclick = async (e) => {
@@ -295,9 +296,11 @@ function genButton(p, kind, label, ready) {
         render();
         window.open(viewUrl(p, kind));
       } else if (s.status === "error") {
-        clearInterval(polling[key]); delete polling[key];
+        clearInterval(polling[key]); delete polling[key]; delete stages[key];
         alert("생성 실패: " + (s.error || "원인 불명"));
         render();
+      } else if (s.stage && stages[key] !== s.stage) {
+        stages[key] = s.stage; render();
       }
     }, 7000);
     render();

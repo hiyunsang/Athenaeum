@@ -1,0 +1,8 @@
+[09-02 01:35:41] 1/5 논문 검색 - Recent Advances in Micro/Nano-cutting: Effect of T
+[09-02 01:35:41] HTTP 429 재시도 1회, 30초 대기: https://api.openalex.org/works
+[09-02 01:36:11] HTTP 429 재시도 2회, 30초 대기: https://api.openalex.org/works
+[09-02 01:36:41] HTTP 429 재시도 3회, 30초 대기: https://api.openalex.org/works
+[09-02 01:37:11] HTTP 429 재시도 4회, 30초 대기: https://api.openalex.org/works
+[09-02 01:37:42] HTTP 429 재시도 5회, 30초 대기: https://api.openalex.org/works
+[09-02 01:38:12] HTTP 429 재시도 6회, 30초 대기: https://api.openalex.org/works
+[09-02 01:38:42] 포기: https://api.openalex.org/works
