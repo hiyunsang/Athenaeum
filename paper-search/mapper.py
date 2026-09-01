@@ -30,7 +30,23 @@ SELECT = ("id,doi,display_name,publication_year,cited_by_count,"
 MAX_NODES = 45
 
 
+class RateLimited(RuntimeError):
+    pass
+
+
+_breaker = {"fails": 0, "t": 0.0}   # 연속 실패 시 10분간 요청 중단 (제한 악화 방지)
+_last_req = [0.0]                    # 전역 요청 간격 강제
+
+
 def _get(url, params=None):
+    if _breaker["fails"] >= 2:
+        if time.time() - _breaker["t"] < 600:
+            raise RateLimited("OpenAlex가 오늘 우리 사용량 때문에 당분간 제한 중입니다 - 10분+ 후 다시 시도해 주세요")
+        _breaker["fails"] = 0
+    gap = 0.4 - (time.time() - _last_req[0])
+    if gap > 0:
+        time.sleep(gap)
+    _last_req[0] = time.time()
     params = dict(params or {})
     params["mailto"] = MAILTO
     for i in range(6):
@@ -50,9 +66,12 @@ def _get(url, params=None):
             time.sleep(wait)
             continue
         r.raise_for_status()
+        _breaker["fails"] = 0
         return r.json()
-    _log("포기: " + url[:120])
-    raise RuntimeError("OpenAlex가 계속 바쁩니다 - 몇 분 뒤 다시 시도해 주세요")
+    _breaker["fails"] += 1
+    _breaker["t"] = time.time()
+    _log("포기 (연속 {}회): {}".format(_breaker["fails"], url[:110]))
+    raise RateLimited("OpenAlex가 계속 바쁩니다 - 몇 분 뒤 다시 시도해 주세요")
 
 
 def norm_title(t):
@@ -94,6 +113,8 @@ def fetch_many(ids):
                                       "per-page": str(len(chunk)), "select": SELECT})
             for it in d.get("results", []):
                 out[wid(it["id"])] = it
+        except RateLimited:
+            raise
         except Exception:
             pass
         time.sleep(0.3)
@@ -101,6 +122,8 @@ def fetch_many(ids):
     for t in missing[:60]:
         try:
             out[t] = _get(API + "/works/" + t)
+        except RateLimited:
+            raise
         except Exception:
             pass
         time.sleep(0.25)
