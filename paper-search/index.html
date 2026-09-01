@@ -173,6 +173,10 @@ function render() {
         let kids = children.filter(k => labels.includes(k));
         if (parent === "기타") kids = kids.concat(extras);
         if (!kids.length) continue;
+        if (kids.length === 1 && kids[0] === parent) {  // 단독 항목은 접기 없이 바로 표시
+          g.appendChild(labelRow(kids[0], cnt(kids[0])));
+          continue;
+        }
         const pcount = cur.filter(p => kids.some(k => paperLabels(p).includes(k))).length;
         const open = matOpen[parent] || kids.some(k => selected.includes(k));
         const ph = document.createElement("div");
@@ -235,9 +239,9 @@ const polling = {};
 const MATERIAL_TREE = {
   "금속": ["Aluminum", "Al6061", "Copper", "Titanium", "Ti6Al4V", "Steel", "AISI 1045",
            "Stainless steel", "SUS304", "Nickel-based alloy", "Inconel 718", "Tantalum"],
-  "Soft-brittle": ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium"],
-  "취성·세라믹": ["Silicon", "Sapphire", "Glass", "Ceramic"],
-  "기타": ["Composite", "Difficult-to-cut"]
+  "취성": ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium", "Silicon", "Sapphire", "Glass", "Ceramic"],
+  "Composite": ["Composite"],
+  "기타": ["Difficult-to-cut"]
 };
 let matOpen = {};
 
