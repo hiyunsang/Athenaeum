@@ -4,6 +4,7 @@
 무료 OpenAlex API에서 시드 논문의 참고문헌·피인용 논문을 모으고,
 '공통 참고문헌 수(bibliographic coupling)'로 유사도를 계산해 그래프를 만든다.
 """
+import math
 import re
 import time
 
@@ -131,6 +132,18 @@ def build_map(seed_title, archive_titles):
     nodes = [_node(it, refs, inter, owned)
              for inter, cit, k, it, refs, owned in chosen]
 
+    # 모든 쌍의 유사도 행렬 (공통 참고문헌 코사인 + 직접 인용 보너스) - 군집 배치용
+    ref_sets = [seed_refs] + [refs for _, _, _, _, refs, _ in chosen]
+    ids = [seed_id] + [k for _, _, k, _, _, _ in chosen]
+    sims = [[0.0] * len(ids) for _ in ids]
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            a, b = ref_sets[i], ref_sets[j]
+            base = len(a & b) / math.sqrt(max(1, len(a)) * max(1, len(b)))
+            if ids[j] in a or ids[i] in b:
+                base += 0.12
+            sims[i][j] = sims[j][i] = round(min(1.0, base), 3)
+
     # 노드끼리의 간선: 공통 참고문헌 수 + 직접 인용 보너스, 노드당 상위 4개
     edges = {}
     for i in range(len(nodes)):
@@ -160,5 +173,5 @@ def build_map(seed_title, archive_titles):
     for idx in range(1, min(9, len(nodes))):
         edge_list.append([0, idx, 5])
 
-    return {"nodes": nodes, "edges": edge_list,
+    return {"nodes": nodes, "edges": edge_list, "sims": sims,
             "refs": len(seed_refs), "citers": len(citer_ids)}

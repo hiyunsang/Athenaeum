@@ -5,7 +5,11 @@
    "Turning",
    "BUE",
    "Built-up layer",
-   "Tool wear"
+   "Tool wear",
+   "Adhesion",
+   "Surface defect",
+   "SEM",
+   "Optical microscopy"
   ],
   "suggested": [],
   "rejected": [],
@@ -13,34 +17,48 @@
  },
  "1961_JEI_Okushima_An Analysis of the Mechanism of Orthogonal Cutting and Its Application to Discontinuous Chip Formation.pdf": {
   "labels": [
-   "Nickel-based alloy",
    "Orthogonal cutting",
-   "Sliding",
    "Chip formation",
-   "In-situ",
-   "PIV"
+   "Fracture",
+   "Material separation",
+   "Analytical model",
+   "Classical theory"
   ],
   "suggested": [
-   "Inconel 718",
-   "Textured tool"
+   "Nickel-based alloy",
+   "Sliding",
+   "In-situ",
+   "PIV"
   ],
   "rejected": [],
   "title": "An Analysis of the Mechanism of Orthogonal Cutting and Its Application to Discontinuous Chip Formation"
  },
  "1980_PRSLMPS_Hastings_A machining theory for predicting chip geometry, cutting forces etc. from work.pdf": {
   "labels": [
-   "Friction",
-   "BUE",
+   "Steel",
+   "Orthogonal cutting",
    "Chip formation",
-   "Analytical model"
+   "BUE",
+   "Analytical model",
+   "Classical theory",
+   "Strain hardening",
+   "Thermal softening",
+   "Friction",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": []
  },
  "1991_WEAR_Williams_Mechanics of machining an analytical approach to assessing machinability.pdf": {
   "labels": [
+   "Orthogonal cutting",
+   "Chip formation",
+   "Quick-stop",
+   "Analytical model",
    "Classical theory",
-   "Analytical model"
+   "Strain hardening",
+   "Thermal effect",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": []
@@ -53,65 +71,99 @@
  },
  "2000_IJMTM_Ozel_Determination of workpiece flow stress and friction at the chip-tool contact.pdf": {
   "labels": [
-   "Classical theory",
+   "Steel",
    "Orthogonal cutting",
-   "Sliding",
    "Friction",
-   "FEM"
+   "Chip formation",
+   "FEM",
+   "Analytical model",
+   "Thermal softening",
+   "Strain hardening",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Classical theory",
+   "Sliding"
+  ],
   "rejected": []
  },
  "2000_WEAR_Qi_Formation of a transfer layer at the tool-chip interface during machining.pdf": {
   "labels": [
-   "Friction",
    "Stainless steel",
-   "Ceramic",
+   "Turning",
    "Tool wear",
    "Adhesion",
-   "Thermal effect"
+   "Built-up layer",
+   "Chip formation",
+   "Friction",
+   "Analytical model",
+   "SEM",
+   "Plastic flow"
   ],
   "suggested": [
-   "Micro-machining"
+   "Ceramic",
+   "Thermal effect"
   ],
   "rejected": []
  },
  "2002_JMSE_Barry_The Mechanisms of Chip Formation in Machining Hardened Steels.pdf": {
   "labels": [
-   "Classical theory",
    "Steel",
+   "Heat-treated",
+   "Orthogonal cutting",
+   "Turning",
    "Chip formation",
-   "Shear localization"
+   "Shear localization",
+   "Fracture",
+   "Thermal softening",
+   "Optical microscopy",
+   "SEM",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Classical theory"
+  ],
   "rejected": [],
   "title": "The Mechanisms of Chip Formation in Machining Hardened Steels"
  },
  "2003_JMPS_Fang_Slip-line modeling of machining with a rounded-edge tool-Part I new model and.pdf": {
   "labels": [
+   "Orthogonal cutting",
+   "Chip formation",
+   "Friction",
+   "Plastic flow",
    "Analytical model",
-   "Friction"
+   "Classical theory"
   ],
   "suggested": [],
   "rejected": []
  },
  "2003_JMPS_Fang_Slip-line modeling of machining with a rounded-edge tool-Part II analysis of.pdf": {
   "labels": [
-   "Analytical model",
    "Orthogonal cutting",
    "Stagnation zone",
-   "Friction"
+   "Chip formation",
+   "Friction",
+   "Plastic flow",
+   "Analytical model",
+   "Classical theory"
   ],
   "suggested": [],
   "rejected": []
  },
  "2003_JMPT_Qi_Modelling of the dynamic tool-chip interface in metal cutting.pdf": {
   "labels": [
-   "Friction"
+   "Steel",
+   "Orthogonal cutting",
+   "Built-up layer",
+   "Adhesion",
+   "Friction",
+   "Tool wear",
+   "Plastic flow",
+   "Analytical model",
+   "Classical theory"
   ],
-  "suggested": [
-   "Built-up layer"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Modelling of the dynamic tool–chip interface in metal cutting"
  },
@@ -119,13 +171,15 @@
   "labels": [
    "Aluminum",
    "Composite",
-   "BUE",
    "Chip formation",
-   "In-situ",
-   "SEM"
+   "BUE",
+   "Quick-stop",
+   "SEM",
+   "Orthogonal cutting",
+   "Fracture"
   ],
   "suggested": [
-   "Quick-stop"
+   "In-situ"
   ],
   "rejected": [],
   "title": "Chip and built-up edge formation in the machining of in situ Al4C3–Al composite"
@@ -134,7 +188,13 @@
   "labels": [
    "Titanium",
    "Orthogonal cutting",
-   "Fracture"
+   "Chip formation",
+   "Shear localization",
+   "Fracture",
+   "Strain hardening",
+   "Optical microscopy",
+   "Analytical model",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -142,9 +202,13 @@
  },
  "2005_IJMS_Fang_Slip-line modeling of built-up edge formation in machining.pdf": {
   "labels": [
-   "Analytical model",
+   "Orthogonal cutting",
    "BUE",
-   "Friction"
+   "Chip formation",
+   "Friction",
+   "Analytical model",
+   "Classical theory",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -153,9 +217,13 @@
  "2005_PE_Lee_Micro-burr formation and minimization through process control.pdf": {
   "labels": [
    "Stainless steel",
-   "Drilling",
+   "SUS304",
    "Micro-machining",
-   "Burr"
+   "Drilling",
+   "Milling",
+   "Burr",
+   "Tool wear",
+   "Optical microscopy"
   ],
   "suggested": [],
   "rejected": [],
@@ -163,36 +231,46 @@
  },
  "2005_WEAR_Fang_Tool-chip friction in machining with a large negative rake angle tool.pdf": {
   "labels": [
-   "Analytical model",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Friction",
    "Stagnation zone",
-   "Friction"
+   "Analytical model",
+   "Classical theory",
+   "Plastic flow"
   ],
-  "suggested": [
-   "Grinding"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Tool-chip friction in machining with a large negative rake angle tool"
  },
  "2006_JMSE_Liu_An Analytical Model for the Prediction of Minimum Chip Thickness in Micromachining.pdf": {
   "labels": [
+   "Steel",
+   "Aluminum",
    "Micro-machining",
+   "Orthogonal cutting",
+   "Chip formation",
    "Analytical model",
+   "FEM",
+   "Strain hardening",
    "Thermal softening"
   ],
-  "suggested": [
-   "Ultra-precision machining"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "An Analytical Model for the Prediction of Minimum Chip Thickness in Micromachining"
  },
  "2006_WEAR_Childs_Friction modelling in metal cutting.pdf": {
   "labels": [
-   "Classical theory",
+   "Turning",
    "Friction",
-   "Thermal softening"
+   "Chip formation",
+   "FEM",
+   "Analytical model",
+   "Thermal softening",
+   "Plastic flow"
   ],
   "suggested": [
-   "Sliding"
+   "Classical theory"
   ],
   "rejected": [],
   "title": "Friction modelling in metal cutting"
@@ -200,8 +278,14 @@
  "2008_IJMTM_Lai_Modelling and analysis of micro scale milling considering size effect, micro cutter edge radius and minimum chip thickness.pdf": {
   "labels": [
    "Copper",
+   "Milling",
    "Orthogonal cutting",
-   "Milling"
+   "Micro-machining",
+   "Chip formation",
+   "FEM",
+   "Analytical model",
+   "Strain hardening",
+   "Fracture"
   ],
   "suggested": [],
   "rejected": [],
@@ -209,9 +293,15 @@
  },
  "2008_MT_Wang_Surface generation analysis in micro end-milling considering the influences of grain.pdf": {
   "labels": [
-   "Milling",
    "Micro-machining",
-   "Surface defect"
+   "Milling",
+   "Polycrystal",
+   "Anisotropic",
+   "Chip formation",
+   "Friction",
+   "Surface defect",
+   "Analytical model",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -219,8 +309,15 @@
  },
  "2009_CIRPA_Aurich_Burrs-Analysis, control and removal.pdf": {
   "labels": [
+   "Burr",
    "Drilling",
-   "Burr"
+   "Milling",
+   "Chip formation",
+   "Material separation",
+   "FEM",
+   "Analytical model",
+   "Aluminum",
+   "Steel"
   ],
   "suggested": [],
   "rejected": [],
@@ -228,22 +325,30 @@
  },
  "2009_IJMS_Karpat_Investigation of the effect of cutting tool edge radius on material separation due to ductile fracture in machining.pdf": {
   "labels": [
-   "BUE",
    "Orthogonal cutting",
    "Micro-machining",
-   "Friction",
+   "Chip formation",
+   "Material separation",
    "Fracture",
-   "Material separation"
+   "Analytical model",
+   "Classical theory",
+   "Friction"
   ],
-  "suggested": [],
+  "suggested": [
+   "BUE"
+  ],
   "rejected": [],
   "title": "Investigation of the effect of cutting tool edge radius on material separation due to ductile fracture in machining"
  },
  "2009_IJMTM_Malekian_Modeling of dynamic micro-milling cutting forces.pdf": {
   "labels": [
    "Milling",
+   "Micro-machining",
    "Scratching",
-   "Micro-machining"
+   "Analytical model",
+   "Friction",
+   "Plastic flow",
+   "Tool wear"
   ],
   "suggested": [],
   "rejected": [],
@@ -252,9 +357,13 @@
  "2009_PE_Aramcharoen_Size effect and tool geometry in micromilling of tool steel.pdf": {
   "labels": [
    "Steel",
+   "Heat-treated",
    "Milling",
    "Micro-machining",
-   "Burr"
+   "Burr",
+   "Surface defect",
+   "Optical microscopy",
+   "SEM"
   ],
   "suggested": [],
   "rejected": [],
@@ -262,9 +371,13 @@
  },
  "2010_AMT_Fang_The effect of built-up edge on the cutting vibrations in machining 2024-T351 aluminum alloy.pdf": {
   "labels": [
-   "BUE",
    "Aluminum",
-   "Tool wear"
+   "Turning",
+   "BUE",
+   "Tool wear",
+   "Adhesion",
+   "Chip formation",
+   "Strain hardening"
   ],
   "suggested": [],
   "rejected": [],
@@ -273,7 +386,9 @@
  "2010_AMT_Popov_New tool-workpiece setting up technology for micro-milling.pdf": {
   "labels": [
    "Milling",
-   "Micro-machining"
+   "Micro-machining",
+   "Ultra-precision machining",
+   "In-situ"
   ],
   "suggested": [],
   "rejected": [],
@@ -283,22 +398,31 @@
   "labels": [
    "Steel",
    "Orthogonal cutting",
+   "In-situ",
+   "High-speed imaging",
+   "DIC",
    "Thermal effect",
-   "Plastic flow"
+   "Chip formation",
+   "Friction",
+   "Tool wear",
+   "Built-up layer"
   ],
   "suggested": [
-   "High-speed imaging"
+   "Plastic flow"
   ],
   "rejected": [],
   "title": "Relationship between machinability index and in-process parameters during orthogonal cutting of steels"
  },
  "2011_CIRPJMST_Childs_Towards simulating built-up-edge formation in the machining of steel.pdf": {
   "labels": [
-   "BUE",
    "Steel",
+   "Orthogonal cutting",
+   "BUE",
    "Chip formation",
    "FEM",
-   "Strain hardening"
+   "Thermal softening",
+   "Strain hardening",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -306,31 +430,52 @@
  },
  "2011_IJPEM_Hwang_Contact conditions at the chip-tool interface in machining.pdf": {
   "labels": [
+   "Aluminum",
+   "Copper",
+   "Orthogonal cutting",
+   "In-situ",
+   "High-speed imaging",
+   "Chip formation",
+   "Stagnation zone",
+   "Friction"
+  ],
+  "suggested": [
    "BUE",
    "Sliding",
    "Sapphire"
-  ],
-  "suggested": [
-   "Quick-stop"
   ],
   "rejected": [],
   "title": "Contact conditions at the chip-tool interface in machining"
  },
  "2011_JMPT_Jin_Slip-line field model of micro-cutting process with round tool edge effect.pdf": {
   "labels": [
-   "Analytical model",
-   "Sliding",
    "Micro-machining",
+   "Orthogonal cutting",
+   "Turning",
+   "Chip formation",
    "Friction",
+   "Plastic flow",
+   "Analytical model",
+   "Classical theory",
+   "Strain hardening",
+   "Thermal softening"
+  ],
+  "suggested": [
+   "Sliding",
    "Thermal effect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Slip-line field model of micro-cutting process with round tool edge effect"
  },
  "2011_RER_Emel’yanov_Chip curling in metal cutting.pdf": {
   "labels": [
-   "Chip formation"
+   "Orthogonal cutting",
+   "Chip formation",
+   "Dead metal zone",
+   "Plastic flow",
+   "Fracture",
+   "Analytical model",
+   "Classical theory"
   ],
   "suggested": [],
   "rejected": [],
@@ -338,42 +483,64 @@
  },
  "2011_Trib_Bahi_A new friction law for sticking and sliding contacts in machining.pdf": {
   "labels": [
+   "Orthogonal cutting",
+   "Chip formation",
    "Friction",
-   "Sliding",
-   "Thermal effect"
+   "Tool wear",
+   "FEM",
+   "Analytical model",
+   "Thermal effect",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Sliding"
+  ],
   "rejected": [],
   "title": "A new friction law for sticking and sliding contacts in machining"
  },
  "2012_IJMTM_Jang_Deburring microparts using a magnetorheological fluid.pdf": {
   "labels": [
    "Micro-machining",
+   "Milling",
    "Burr",
+   "Plastic flow",
+   "Material separation",
+   "Analytical model",
+   "SEM"
+  ],
+  "suggested": [
    "Damage"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Deburring microparts using a magnetorheological fluid"
  },
  "2012_MSE_Wan_Microstructure evolution of adiabatic shear bands and mechanisms of saw-tooth chip formation in machining Ti6Al4V.pdf": {
   "labels": [
-   "Classical theory",
    "Titanium",
    "Ti6Al4V",
-   "Steel",
+   "Difficult-to-cut",
    "Turning",
    "Chip formation",
-   "Shear localization"
+   "Shear localization",
+   "Optical microscopy",
+   "SEM",
+   "Thermal softening",
+   "Phase transformation"
   ],
-  "suggested": [],
+  "suggested": [
+   "Classical theory",
+   "Steel"
+  ],
   "rejected": [],
   "title": "Microstructure evolution of adiabatic shear bands and mechanisms of saw-tooth chip formation in machining Ti6Al4V"
  },
  "2013_AMT_Fatima_Assessment of tool rake surface structure geometry for enhanced contact phenomena.pdf": {
   "labels": [
    "Textured tool",
-   "Friction"
+   "Turning",
+   "Friction",
+   "Chip formation",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -391,29 +558,38 @@
  },
  "2013_IJMTM_Sutter_Very high speed cutting of Ti-6Al-4V titanium alloy - change in morphology and mechanism of chip formation.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
+   "Ti6Al4V",
    "Titanium",
-   "Chip formation"
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "High-speed imaging",
+   "In-situ",
+   "Optical microscopy",
+   "Strain hardening",
+   "Thermal softening",
+   "Fracture"
   ],
-  "suggested": [
-   "Thermal softening"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Very high speed cutting of Ti–6Al–4V titanium alloy – change in morphology and mechanism of chip formation"
  },
  "2013_JMPT_Childs_Ductile shear failure damage modelling and predicting built-up edge in steel machining.pdf": {
   "labels": [
-   "BUE",
    "Steel",
-   "Ductile-brittle transition",
+   "Orthogonal cutting",
+   "BUE",
+   "Chip formation",
+   "Friction",
    "FEM",
-   "Fracture",
-   "Damage"
+   "Strain hardening",
+   "Thermal softening",
+   "Damage",
+   "Fracture"
   ],
   "suggested": [
-   "Orthogonal cutting",
-   "Micro-machining"
+   "Ductile-brittle transition"
   ],
   "rejected": [],
   "title": "Ductile shear failure damage modelling and predicting built-up edge in steel machining"
@@ -421,9 +597,12 @@
  "2013_PE_Sugihara_Crater and flank wear resistance of cutting tools having micro textured surfaces.pdf": {
   "labels": [
    "Steel",
+   "Milling",
    "Textured tool",
    "Tool wear",
-   "Friction"
+   "Adhesion",
+   "Friction",
+   "SEM"
   ],
   "suggested": [],
   "rejected": [],
@@ -431,11 +610,15 @@
  },
  "2013_WEAR_Gomez-Parra_Analysis of the evolution of the Built-Up Edge and Built-Up Layer formation mechanisms in the dry turning of aeronautical aluminium alloys.pdf": {
   "labels": [
-   "BUE",
    "Aluminum",
    "Turning",
+   "BUE",
    "Built-up layer",
-   "Tool wear"
+   "Tool wear",
+   "Adhesion",
+   "SEM",
+   "Optical microscopy",
+   "Surface defect"
   ],
   "suggested": [],
   "rejected": [],
@@ -443,37 +626,52 @@
  },
  "2014_AMT_Zhou_A new analytical tool-chip friction model in dry cutting.pdf": {
   "labels": [
-   "Classical theory",
-   "Sliding",
+   "Orthogonal cutting",
    "Friction",
-   "Analytical model"
+   "Chip formation",
+   "Analytical model",
+   "Classical theory",
+   "Stagnation zone",
+   "Built-up layer",
+   "Plastic flow",
+   "Thermal effect"
   ],
   "suggested": [
-   "Stagnation zone"
+   "Sliding"
   ],
   "rejected": [],
   "title": "A new analytical tool-chip friction model in dry cutting"
  },
  "2014_MATERIALS_Jomaa_Surface Finish and Residual Stresses Induced by Orthogonal Dry Machining of AA7075-T651.pdf": {
   "labels": [
-   "BUE",
    "Aluminum",
    "Orthogonal cutting",
+   "BUE",
    "Surface defect",
+   "Tool wear",
    "SEM",
    "EDS",
+   "Optical microscopy"
+  ],
+  "suggested": [
    "Fracture"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Surface Finish and Residual Stresses Induced by Orthogonal Dry Machining of AA7075-T651"
  },
  "2014_WEAR_Kummel_Detailed analysis of microstructure of intentionally formed built-up edges for improving wear behaviour in dry metal cutting process of.pdf": {
   "labels": [
-   "BUE",
    "Steel",
+   "AISI 1045",
+   "Orthogonal cutting",
+   "Turning",
+   "BUE",
+   "Built-up layer",
    "Tool wear",
-   "SEM"
+   "Adhesion",
+   "SEM",
+   "Optical microscopy",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -481,23 +679,32 @@
  },
  "2015_CIRPA_Arrazola_Metal cutting experiments and modelling for improved determination of chip tool contact temperature by infrared thermography.pdf": {
   "labels": [
+   "Steel",
+   "Titanium",
    "Orthogonal cutting",
-   "In-situ",
    "Thermal effect",
-   "Surface defect",
+   "Analytical model",
+   "FEM",
    "Tool wear",
    "Friction"
   ],
-  "suggested": [],
+  "suggested": [
+   "In-situ",
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Metal cutting experiments and modelling for improved determination of chip/tool contact temperature by infrared thermography"
  },
  "2015_IJMS_Wang_Investigations of critical cutting speed and ductile-to-brittle transition mechanism for workpiece material in ultra-high speed machining.pdf": {
   "labels": [
-   "Ductile-brittle transition",
    "Aluminum",
+   "Ductile-brittle transition",
+   "Chip formation",
+   "Shear localization",
+   "Fracture",
    "SEM",
-   "Fracture"
+   "Analytical model",
+   "Surface defect"
   ],
   "suggested": [],
   "rejected": [],
@@ -509,22 +716,28 @@
    "AISI 1045",
    "Milling",
    "Micro-machining",
-   "Chip formation"
+   "Chip formation",
+   "Surface defect",
+   "Optical microscopy",
+   "Analytical model",
+   "Material separation"
   ],
-  "suggested": [
-   "Grinding"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Size effect and minimum chip thickness in micromilling"
  },
  "2015_JMPT_Kummel_Study on micro texturing of uncoated cemented carbide cutting tools for wear improvement and built-up edge stabilisation.pdf": {
   "labels": [
-   "BUE",
    "Steel",
+   "AISI 1045",
    "Turning",
    "Textured tool",
+   "BUE",
    "Built-up layer",
-   "Tool wear"
+   "Tool wear",
+   "Adhesion",
+   "SEM",
+   "Optical microscopy"
   ],
   "suggested": [],
   "rejected": [],
@@ -534,76 +747,104 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
-   "Composite",
-   "Cryogenic",
-   "Thermal effect"
+   "Difficult-to-cut",
+   "Turning",
+   "Chip formation",
+   "Shear localization",
+   "Tool wear",
+   "Thermal effect",
+   "Cryogenic"
   ],
-  "suggested": [],
+  "suggested": [
+   "Composite"
+  ],
   "rejected": [],
   "title": "Machining of Titanium Alloy(Ti-6Al-4V)—Theory to Application"
  },
  "2015_PE_Fang_Nanometric cutting in a scanning electron microscope.pdf": {
   "labels": [
+   "Silicon",
+   "Single crystal",
+   "Nano-cutting",
+   "Ultra-precision machining",
    "Orthogonal cutting",
    "In-situ",
    "SEM",
-   "Single crystal",
-   "Nano-cutting",
-   "Ultra-precision machining"
+   "Chip formation",
+   "Ductile-brittle transition",
+   "Material separation"
   ],
-  "suggested": [
-   "Silicon"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Nanometric cutting in a scanning electron microscope"
  },
  "2015_PNAS_Yeung_Sinuous flow in metals.pdf": {
   "labels": [
-   "Sinuous flow",
-   "In-situ"
-  ],
-  "suggested": [
    "Copper",
-   "Shear localization"
+   "Annealed",
+   "Polycrystal",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Sinuous flow",
+   "Plastic flow",
+   "In-situ",
+   "High-speed imaging",
+   "Optical microscopy",
+   "Material separation"
   ],
+  "suggested": [],
   "rejected": [],
   "title": "Sinuous flow in metals"
  },
  "2015_PRSMPES_Guo_In situ analysis of flow dynamics and deformation fields in cutting and sliding of metals.pdf": {
   "labels": [
+   "Copper",
    "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Sliding",
+   "In-situ",
    "High-speed imaging",
+   "PIV",
+   "Chip formation",
    "Plastic flow",
    "Fracture"
   ],
-  "suggested": [],
+  "suggested": [
+   "DIC"
+  ],
   "rejected": [],
   "title": "In situ\n                    analysis of flow dynamics and deformation fields in cutting and sliding of metals"
  },
  "2015_SENSORS_Kus_Thermocouple and Infrared Sensor-Based Measurement of Temperature Distribution in Metal Cutting.pdf": {
   "labels": [
+   "Steel",
+   "Heat-treated",
+   "Turning",
    "Orthogonal cutting",
-   "Chip formation",
+   "In-situ",
+   "FEM",
    "Thermal effect"
   ],
-  "suggested": [],
+  "suggested": [
+   "Chip formation"
+  ],
   "rejected": [],
   "title": "Thermocouple and Infrared Sensor-Based Measurement of Temperature Distribution in Metal Cutting"
  },
  "2015_Trib_Atlati_Effect of the local friction and contact nature on the Built-Up Edge formation process in machining ductile metals.pdf": {
   "labels": [
-   "BUE",
    "Aluminum",
    "Orthogonal cutting",
-   "Surface defect",
+   "BUE",
+   "Chip formation",
+   "Friction",
    "Tool wear",
-   "Friction"
+   "FEM",
+   "Thermal effect",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Effect of the local friction and contact nature on the Built-Up Edge formation process in machining ductile metals"
  },
@@ -612,11 +853,17 @@
    "Aluminum",
    "Orthogonal cutting",
    "BUE",
-   "Surface defect",
-   "Tool wear",
-   "Friction"
+   "Chip formation",
+   "Friction",
+   "Adhesion",
+   "FEM",
+   "Thermal effect",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect",
+   "Tool wear"
+  ],
   "rejected": [],
   "title": "Effect of the local friction and contact nature on the Built-Up Edge formation process in machining ductile metals"
  },
@@ -624,52 +871,75 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
-   "Nickel-based alloy",
+   "Difficult-to-cut",
    "Turning",
    "Chip formation",
    "Shear localization",
-   "Surface defect",
-   "SEM"
+   "Optical microscopy",
+   "SEM",
+   "Phase transformation",
+   "Thermal softening"
   ],
-  "suggested": [],
+  "suggested": [
+   "Nickel-based alloy",
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Morphological investigation of Ti-6Al-4V chips produced by conventional turning"
  },
  "2016_IJMS_Ducobu_Material constitutive model and chip separation criterion influence on the modeling of Ti6Al4V machining with experimental validation in.pdf": {
   "labels": [
-   "Classical theory",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
    "Orthogonal cutting",
+   "Milling",
    "Chip formation",
    "Shear localization",
-   "FEM"
+   "FEM",
+   "Thermal softening",
+   "Fracture",
+   "Material separation"
   ],
   "suggested": [
-   "Aluminum"
+   "Classical theory"
   ],
   "rejected": [],
   "title": "Material constitutive model and chip separation criterion influence on the modeling of Ti6Al4V machining with experimental validation in strictly orthogonal cutting condition"
  },
  "2016_JMPT_Desaigues_Experimental study of Built-Up Layer formation during machining of high strength free-cutting steel.pdf": {
   "labels": [
-   "BUE",
+   "Steel",
+   "Turning",
    "Built-up layer",
-   "Steel"
+   "Tool wear",
+   "Adhesion",
+   "Chip formation",
+   "SEM",
+   "EDS",
+   "Optical microscopy",
+   "Thermal effect",
+   "Difficult-to-cut"
   ],
-  "suggested": [],
+  "suggested": [
+   "BUE"
+  ],
   "rejected": [],
   "title": "Experimental study of Built-Up Layer formation during machining of high strength free-cutting steel"
  },
  "2016_JMPT_Oliaei_Investigating the influence of built-up edge on forces and surface roughness in micro scale orthogonal machining of titanium alloy Ti6Al4V.pdf": {
   "labels": [
-   "BUE",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
    "Orthogonal cutting",
    "Micro-machining",
+   "BUE",
    "Chip formation",
-   "Surface defect"
+   "Surface defect",
+   "Tool wear",
+   "SEM",
+   "Optical microscopy"
   ],
   "suggested": [],
   "rejected": [],
@@ -677,12 +947,14 @@
  },
  "2016_JMP_Wang_Built-up-edge effects on surface deterioration in micromilling processes.pdf": {
   "labels": [
-   "BUE",
    "Stainless steel",
    "Milling",
    "Micro-machining",
+   "BUE",
    "Surface defect",
-   "SEM"
+   "Optical microscopy",
+   "SEM",
+   "Adhesion"
   ],
   "suggested": [],
   "rejected": [],
@@ -690,33 +962,54 @@
  },
  "2016_MEJ_SONG_Predicting periodic evolution of BUE formation mechanisms during machining ductile material using damage mechanics.pdf": {
   "labels": [
+   "Aluminum",
+   "Steel",
+   "Orthogonal cutting",
    "BUE",
-   "Sliding",
    "Adhesion",
    "Thermal effect",
-   "Damage"
+   "Damage",
+   "Analytical model"
   ],
   "suggested": [
-   "Aluminum"
+   "Sliding"
   ],
   "rejected": [],
   "title": "Predicting periodic evolution of BUE formation mechanisms during machining ductile material using damage mechanics"
  },
  "2016_PRSMPES_Sagapuram_Geometric flow control of shear bands by suppression of viscous sliding (3).pdf": {
   "labels": [
-   "Sliding",
-   "Shear localization"
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "In-situ",
+   "High-speed imaging",
+   "Optical microscopy",
+   "Analytical model",
+   "Plastic flow",
+   "Copper"
   ],
-  "suggested": [],
+  "suggested": [
+   "Sliding"
+  ],
   "rejected": [],
   "title": "Geometric flow control of shear bands by suppression of viscous sliding"
  },
  "2016_PRSMPES_Sagapuram_Geometric flow control of shear bands by suppression of viscous sliding.pdf": {
   "labels": [
-   "Sliding",
-   "Shear localization"
+   "Ti6Al4V",
+   "Orthogonal cutting",
+   "Shear localization",
+   "Chip formation",
+   "Plastic flow",
+   "In-situ",
+   "High-speed imaging",
+   "PIV",
+   "Analytical model"
   ],
-  "suggested": [],
+  "suggested": [
+   "Sliding"
+  ],
   "rejected": [],
   "title": "Geometric flow control of shear bands by suppression of viscous sliding"
  },
@@ -725,8 +1018,12 @@
    "Silicon",
    "Single crystal",
    "Scratching",
+   "Micro-machining",
    "Ductile-brittle transition",
-   "Fracture"
+   "Fracture",
+   "Surface defect",
+   "SEM",
+   "Material separation"
   ],
   "suggested": [],
   "rejected": [],
@@ -734,40 +1031,56 @@
  },
  "2017_MATERIALS_Ahmed_Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of.pdf": {
   "labels": [
-   "BUE",
-   "Steel",
    "Stainless steel",
-   "Surface defect",
+   "SUS304",
+   "Difficult-to-cut",
+   "Turning",
+   "BUE",
    "Tool wear",
-   "SEM"
+   "Chip formation",
+   "Adhesion",
+   "Surface defect",
+   "SEM",
+   "Optical microscopy"
   ],
-  "suggested": [],
+  "suggested": [
+   "Steel"
+  ],
   "rejected": [],
   "title": "Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of the Machined Part"
  },
  "2017_MATERIALS_Ahmed_Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of (2).pdf": {
   "labels": [
-   "Steel",
    "Stainless steel",
+   "SUS304",
+   "Difficult-to-cut",
+   "Turning",
    "BUE",
-   "Surface defect",
    "Tool wear",
-   "SEM"
+   "Adhesion",
+   "Chip formation",
+   "Surface defect",
+   "SEM",
+   "Optical microscopy"
   ],
-  "suggested": [],
+  "suggested": [
+   "Steel"
+  ],
   "rejected": [],
   "title": "Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of the Machined Part"
  },
  "2017_PE_Oliaei_Built-up edge effects on process outputs of titanium alloy micro milling.pdf": {
   "labels": [
-   "BUE",
    "Titanium",
    "Ti6Al4V",
    "Milling",
    "Micro-machining",
-   "Surface defect",
+   "BUE",
    "Burr",
-   "Tool wear"
+   "Tool wear",
+   "Surface defect",
+   "SEM",
+   "Optical microscopy"
   ],
   "suggested": [],
   "rejected": [],
@@ -775,75 +1088,105 @@
  },
  "2017_PRSMPES_Udupa_The cutting of metals via plastic buckling.pdf": {
   "labels": [
-   "Sliding",
+   "Copper",
+   "Aluminum",
+   "Annealed",
+   "Orthogonal cutting",
+   "Chip formation",
    "Sinuous flow",
-   "In-situ"
+   "Plastic flow",
+   "In-situ",
+   "High-speed imaging",
+   "Optical microscopy",
+   "PIV",
+   "Analytical model",
+   "Strain hardening",
+   "Surface defect"
   ],
-  "suggested": [],
+  "suggested": [
+   "Sliding"
+  ],
   "rejected": [],
   "title": "The cutting of metals via plastic buckling"
  },
  "2018_AMT_Liu_Experimental study on size effect of tool edge and subsurface damage of single crystal silicon in nano-cutting.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
    "Silicon",
    "Single crystal",
    "Nano-cutting",
    "Ultra-precision machining",
    "Subsurface damage",
+   "Chip formation",
+   "Ductile-brittle transition",
+   "In-situ",
+   "SEM",
+   "EBSD",
+   "Phase transformation"
+  ],
+  "suggested": [
+   "Orthogonal cutting",
    "Damage"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Experimental study on size effect of tool edge and subsurface damage of single crystal silicon in nano-cutting"
  },
  "2018_FME_Antwi_A review on ductile mode cutting of brittle materials.pdf": {
   "labels": [
+   "Silicon",
+   "Glass",
+   "Ultra-precision machining",
    "Ductile-brittle transition",
-   "Grinding",
    "Subsurface damage",
-   "Damage",
-   "Germanium",
-   "Glass"
+   "Chip formation",
+   "Fracture",
+   "Molecular dynamics"
   ],
   "suggested": [
-   "Silicon"
+   "Grinding",
+   "Damage",
+   "Germanium"
   ],
   "rejected": [],
   "title": "A review on ductile mode cutting of brittle materials"
  },
  "2018_IJMTM_Harzallah_A coupled in-situ measurement of temperature and kinematic fields in Ti-6Al-4V serrated chip formation at micro-scale.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Micro-machining",
    "Chip formation",
-   "Thermal effect"
+   "Shear localization",
+   "In-situ",
+   "High-speed imaging",
+   "DIC",
+   "Thermal effect",
+   "Plastic flow"
   ],
   "suggested": [
-   "SEM"
+   "PIV"
   ],
   "rejected": [],
   "title": "A coupled in-situ measurement of temperature and kinematic fields in Ti-6Al-4V serrated chip formation at micro-scale"
  },
  "2018_IJMTM_Harzallah_A coupled in-situ measurement of temperature and kinematic fields in Ti-6Al-4V serrated chip formation at micro-scale (2).pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Micro-machining",
    "Chip formation",
-   "Thermal effect"
+   "Shear localization",
+   "In-situ",
+   "High-speed imaging",
+   "DIC",
+   "Thermal effect",
+   "Thermal softening"
   ],
   "suggested": [
-   "SEM"
+   "PIV"
   ],
   "rejected": [],
   "title": "A coupled in-situ measurement of temperature and kinematic fields in Ti-6Al-4V serrated chip formation at micro-scale"
@@ -860,11 +1203,18 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
-   "Nickel-based alloy",
+   "Difficult-to-cut",
    "Milling",
-   "Chip formation"
+   "Chip formation",
+   "Shear localization",
+   "Subsurface damage",
+   "Optical microscopy",
+   "SEM",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Nickel-based alloy"
+  ],
   "rejected": [],
   "title": "Analysis of Microstructure and Chip Formation When Machining Ti-6Al-4V"
  },
@@ -872,66 +1222,90 @@
   "labels": [
    "Micro-machining",
    "Nano-cutting",
-   "Surface defect"
+   "Chip formation",
+   "Material separation",
+   "Phase transformation",
+   "Molecular dynamics",
+   "FEM",
+   "Analytical model"
   ],
   "suggested": [
-   "Phase transformation"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
  },
  "2018_PRA_Udupa_Material-Independent Mechanochemical Effect in the Deformation of Highly-Strain-Hardening Metals.pdf": {
   "labels": [
+   "Aluminum",
    "Copper",
-   "Ductile-brittle transition",
+   "Tantalum",
+   "Steel",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
    "Sinuous flow",
-   "In-situ"
+   "Plastic flow",
+   "Ductile-brittle transition",
+   "Surface defect",
+   "In-situ",
+   "High-speed imaging",
+   "Analytical model",
+   "Strain hardening"
   ],
-  "suggested": [
-   "Aluminum"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Material-Independent Mechanochemical Effect in the Deformation of Highly-Strain-Hardening Metals"
  },
  "2019_IJHMT_Hao_Experimental study on the formation of TCR and thermal behavior of hard machining using TiAlN coated tools.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "Thermal effect",
    "Steel",
-   "Friction",
+   "Heat-treated",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Tool wear",
+   "Adhesion",
+   "Thermal effect",
    "SEM",
-   "EDS"
+   "EDS",
+   "FEM"
   ],
-  "suggested": [],
+  "suggested": [
+   "In-situ",
+   "Friction"
+  ],
   "rejected": [],
   "title": "Experimental study on the formation of TCR and thermal behavior of hard machining using TiAlN coated tools"
  },
  "2019_IJMS_Hu_Thermal-mechanical model for cutting with negative rake angle based on a modified slip-line field approach.pdf": {
   "labels": [
-   "Analytical model",
    "Orthogonal cutting",
    "Dead metal zone",
-   "Thermal effect"
+   "Stagnation zone",
+   "Chip formation",
+   "Friction",
+   "Analytical model",
+   "FEM",
+   "Thermal effect",
+   "Plastic flow"
   ],
-  "suggested": [
-   "Grinding"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Thermal-mechanical model for cutting with negative rake angle based on a modified slip-line field approach"
  },
  "2019_IJMS_Liu_In situ experimental study on material removal behaviour of single-crystal silicon in nanocutting.pdf": {
   "labels": [
-   "Difficult-to-cut",
-   "Single crystal",
    "Silicon",
+   "Single crystal",
    "Nano-cutting",
    "Ductile-brittle transition",
+   "Fracture",
+   "Anisotropic",
    "In-situ",
-   "SEM"
+   "SEM",
+   "Chip formation"
   ],
   "suggested": [
-   "Subsurface damage"
+   "Difficult-to-cut"
   ],
   "rejected": [],
   "title": "In situ experimental study on material removal behaviour of single-crystal silicon in nanocutting"
@@ -939,58 +1313,85 @@
  "2019_JMR_Chen_Revealing the ductility of nanoceramic MgAl2O4.pdf": {
   "labels": [
    "Ceramic",
-   "Textured tool",
-   "Ductile-brittle transition"
+   "Polycrystal",
+   "Ductile-brittle transition",
+   "Plastic flow",
+   "Fracture",
+   "In-situ"
   ],
-  "suggested": [],
+  "suggested": [
+   "Textured tool"
+  ],
   "rejected": [],
   "title": "Revealing the ductility of nanoceramic MgAl2O4"
  },
  "2019_MATERIALS_Murugesan_Johnson Cook Material and Failure Model Parameters Estimation of AISI-1045 Medium Carbon Steel for Metal Forming Applications.pdf": {
   "labels": [
    "Steel",
-   "Plastic flow",
-   "Damage"
+   "AISI 1045",
+   "Analytical model",
+   "Strain hardening",
+   "Thermal softening",
+   "Damage",
+   "Fracture"
   ],
-  "suggested": [],
+  "suggested": [
+   "Plastic flow"
+  ],
   "rejected": [],
   "title": "Johnson Cook Material and Failure Model Parameters Estimation of AISI-1045 Medium Carbon Steel for Metal Forming Applications"
  },
  "2019_PML_Udupa_Influencing surface plastic flow in metals using common chemical media.pdf": {
   "labels": [
-   "Steel",
+   "Aluminum",
+   "Copper",
+   "Orthogonal cutting",
+   "Sinuous flow",
    "Ductile-brittle transition",
    "In-situ",
-   "Plastic flow"
+   "High-speed imaging",
+   "Plastic flow",
+   "Fracture"
   ],
-  "suggested": [],
+  "suggested": [
+   "Steel"
+  ],
   "rejected": [],
   "title": "Influencing surface plastic flow in metals using common chemical media"
  },
  "2019_Trib_Ahmed_New observations on built-up edge structures for improving machining performance during the cutting of superduplex stainless steel.pdf": {
   "labels": [
-   "BUE",
-   "Steel",
    "Stainless steel",
-   "Surface defect",
-   "Tool wear",
+   "Turning",
+   "BUE",
+   "Adhesion",
    "Friction",
+   "Tool wear",
+   "Chip formation",
    "SEM",
-   "EBSD"
+   "EBSD",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Steel",
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "New observations on built-up edge structures for improving machining performance during the cutting of superduplex stainless steel"
  },
  "2020_AMT_Chen_Geometric- and force-induced errors compensation and uncertainty analysis of rotary axis in 5-axis ultra-precision machine tool.pdf": {
   "labels": [
-   "Aluminum",
+   "Steel",
    "Al6061",
-   "Micro-machining",
    "Ultra-precision machining",
+   "Micro-machining",
+   "Milling",
+   "Analytical model"
+  ],
+  "suggested": [
+   "Aluminum",
    "Thermal effect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Geometric- and force-induced errors compensation and uncertainty analysis of rotary axis in 5-axis ultra-precision machine tool"
  },
@@ -1012,28 +1413,39 @@
  },
  "2020_IJMS_Harzallah_Thermomechanical coupling investigation in Ti-6Al-4V orthogonal cutting Experimental and numerical confrontation.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
-   "Titanium",
    "Ti6Al4V",
+   "Titanium",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
    "Chip formation",
-   "Damage"
+   "Shear localization",
+   "In-situ",
+   "High-speed imaging",
+   "DIC",
+   "FEM",
+   "Thermal softening",
+   "Thermal effect",
+   "Damage",
+   "Fracture"
   ],
   "suggested": [
-   "Cryogenic"
+   "PIV"
   ],
   "rejected": [],
   "title": "Thermomechanical coupling investigation in Ti-6Al-4V orthogonal cutting: Experimental and numerical confrontation"
  },
  "2020_IJMS_Hu_Cutting temperature prediction in negative-rake-angle machining with chamfered insert based on a modified slip-line field model.pdf": {
   "labels": [
-   "Analytical model",
    "Stainless steel",
+   "SUS304",
    "Orthogonal cutting",
    "Dead metal zone",
-   "Thermal effect"
+   "Friction",
+   "FEM",
+   "Analytical model",
+   "Classical theory",
+   "Thermal effect",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -1041,38 +1453,49 @@
  },
  "2020_IJMTM_Davis_Cutting of tantalum Why it is so difficult and what can be done about it.pdf": {
   "labels": [
+   "Tantalum",
+   "Copper",
+   "Aluminum",
+   "Difficult-to-cut",
    "Orthogonal cutting",
+   "Sinuous flow",
+   "Chip formation",
+   "Ductile-brittle transition",
+   "Surface defect",
    "In-situ",
+   "High-speed imaging",
+   "Optical microscopy",
+   "Plastic flow",
+   "Strain hardening"
+  ],
+  "suggested": [
    "DIC",
    "PIV",
-   "Tantalum",
-   "Shear localization",
-   "Sinuous flow",
-   "Surface defect",
-   "High-speed imaging",
-   "Ductile-brittle transition"
+   "Shear localization"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Cutting of tantalum: Why it is so difficult and what can be done about it"
  },
  "2020_IJPEMGT_Maeng_An Analytical Model for Grinding Force Prediction in Ultra-Precision Machining of WC with PCD Micro Grinding Tool.pdf": {
   "labels": [
+   "Ceramic",
+   "Difficult-to-cut",
    "Grinding",
    "Micro-machining",
    "Ultra-precision machining",
-   "Analytical model"
+   "Analytical model",
+   "Friction",
+   "Plastic flow"
   ],
-  "suggested": [
-   "Scratching"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "An Analytical Model for Grinding Force Prediction in Ultra-Precision Machining of WC with PCD Micro Grinding Tool"
  },
  "2020_JIM_Vaishnav_Machine learning-based instantaneous cutting force model for end milling operation.pdf": {
   "labels": [
    "Milling",
-   "Machine learning"
+   "Machine learning",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -1080,33 +1503,47 @@
  },
  "2020_JMPT_Toubhans_Machinability of inconel 718 during turning Cutting force model considering tool wear, influence on surface integrity.pdf": {
   "labels": [
-   "BUE",
    "Nickel-based alloy",
    "Inconel 718",
+   "Difficult-to-cut",
    "Turning",
-   "Surface defect",
    "Tool wear",
-   "Subsurface damage"
+   "Subsurface damage",
+   "Analytical model",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "BUE",
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Machinability of inconel 718 during turning: Cutting force model considering tool wear, influence on surface integrity"
  },
  "2020_JMSE_Lucca_Ultra-Precision Machining Cutting With Diamond Tools.pdf": {
   "labels": [
-   "Difficult-to-cut",
-   "Single crystal",
    "Ultra-precision machining",
-   "Surface defect",
+   "Turning",
+   "Milling",
+   "Single crystal",
+   "Ductile-brittle transition",
    "Subsurface damage",
+   "FEM",
+   "Molecular dynamics"
+  ],
+  "suggested": [
+   "Difficult-to-cut",
+   "Surface defect",
    "Glass"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Ultra-Precision Machining: Cutting With Diamond Tools"
  },
  "2020_JPS_Maeng_Enhanced mechanical strength and electrochemical performance of core-shell structured high-nickel cathode material.pdf": {
   "labels": [
+   "Ceramic",
+   "SEM",
+   "Fracture",
+   "Damage",
    "Thermal effect"
   ],
   "suggested": [],
@@ -1117,21 +1554,29 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
    "Turning",
-   "Milling",
    "Micro-machining",
-   "Surface defect",
    "Tool wear",
+   "Surface defect",
    "SEM"
   ],
-  "suggested": [],
+  "suggested": [
+   "Milling"
+  ],
   "rejected": [],
   "title": "Investigations on Surface Roughness and Tool Wear Characteristics in Micro-Turning of Ti-6Al-4V Alloy"
  },
  "2020_MICROMACHINES_Wu_Experimental Study on the Minimum Undeformed Chip Thickness Based on Effective Rake Angle in Micro Milling.pdf": {
   "labels": [
+   "Micro-machining",
    "Milling",
-   "Micro-machining"
+   "Chip formation",
+   "Friction",
+   "Optical microscopy",
+   "Analytical model",
+   "Plastic flow",
+   "Material separation"
   ],
   "suggested": [],
   "rejected": [],
@@ -1139,27 +1584,31 @@
  },
  "2020_NM_Wang_Anisotropy-Related Machining Characteristics in Ultra-Precision Diamond Cutting of Crystalline Copper.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
-   "Difficult-to-cut",
-   "Single crystal",
    "Copper",
+   "Single crystal",
    "Polycrystal",
    "Anisotropic",
+   "Orthogonal cutting",
+   "Turning",
    "Ultra-precision machining",
+   "Chip formation",
    "Surface defect",
-   "FEM"
+   "In-situ",
+   "SEM",
+   "FEM",
+   "Plastic flow"
   ],
   "suggested": [
-   "Ceramic"
+   "Difficult-to-cut"
   ],
   "rejected": [],
   "title": "Anisotropy-Related Machining Characteristics in Ultra-Precision Diamond Cutting of Crystalline Copper"
  },
  "2020_PE_Maeng_Simultaneous geometric error identification of rotary axis and tool setting in an ultra-precision 5-axis machine tool using on-machine.pdf": {
   "labels": [
-   "Ultra-precision machining"
+   "Ultra-precision machining",
+   "Analytical model",
+   "In-situ"
   ],
   "suggested": [],
   "rejected": [],
@@ -1167,32 +1616,37 @@
  },
  "2020_PE_Wang_Crystal anisotropy-dependent shear angle variation in orthogonal cutting of single crystalline copper.pdf": {
   "labels": [
-   "Difficult-to-cut",
-   "Single crystal",
    "Copper",
+   "Single crystal",
    "Anisotropic",
    "Orthogonal cutting",
    "Ultra-precision machining",
    "Chip formation",
    "In-situ",
    "SEM",
-   "FEM"
+   "FEM",
+   "Analytical model",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Difficult-to-cut"
+  ],
   "rejected": [],
   "title": "Crystal anisotropy-dependent shear angle variation in orthogonal cutting of single crystalline copper"
  },
  "2020_PE_Wang_Crystal anisotropy-dependent shear angle variation in orthogonal cutting of single crystalline copper (2).pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
    "Copper",
    "Single crystal",
    "Anisotropic",
+   "Orthogonal cutting",
    "Ultra-precision machining",
    "Chip formation",
-   "FEM"
+   "In-situ",
+   "SEM",
+   "FEM",
+   "Analytical model",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -1202,39 +1656,51 @@
   "labels": [
    "Milling",
    "Micro-machining",
-   "Textured tool",
-   "Tool wear"
+   "Ultra-precision machining",
+   "Chip formation",
+   "Tool wear",
+   "Burr",
+   "Difficult-to-cut"
   ],
-  "suggested": [],
+  "suggested": [
+   "Textured tool"
+  ],
   "rejected": [],
   "title": "Precision micro-milling process: state of the art"
  },
  "2021_AM_Xu_Revealing Nanoscale deformation mechanisms caused by shear-based material removal on individual grains of a Ni-based superalloy.pdf": {
   "labels": [
-   "Difficult-to-cut",
    "Nickel-based alloy",
    "Polycrystal",
    "Nano-cutting",
    "In-situ",
-   "SEM"
+   "SEM",
+   "EBSD",
+   "Subsurface damage",
+   "Recrystallization"
   ],
   "suggested": [
-   "Micro-machining"
+   "Difficult-to-cut"
   ],
   "rejected": [],
   "title": "Revealing Nanoscale deformation mechanisms caused by shear-based material removal on individual grains of a Ni-based superalloy"
  },
  "2021_AM_Xu_Revealing Nanoscale deformation mechanisms caused by shear-based material removal on individual grains of a Ni-based superalloy (2).pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
    "Nickel-based alloy",
    "Polycrystal",
-   "Nano-cutting"
+   "Nano-cutting",
+   "In-situ",
+   "SEM",
+   "EBSD",
+   "Chip formation",
+   "Subsurface damage",
+   "Plastic flow",
+   "Recrystallization",
+   "Difficult-to-cut"
   ],
   "suggested": [
-   "Micro-machining"
+   "Orthogonal cutting"
   ],
   "rejected": [],
   "title": "Revealing Nanoscale deformation mechanisms caused by shear-based material removal on individual grains of a Ni-based superalloy"
@@ -1242,14 +1708,16 @@
  "2021_CIRPJMST_Denkena_A novel approach to determine the velocity dependency of the friction behavior during machining by means of digital particle image.pdf": {
   "labels": [
    "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
-   "Sliding",
    "Chip formation",
-   "Friction"
+   "Friction",
+   "In-situ",
+   "High-speed imaging",
+   "PIV"
   ],
-  "suggested": [],
+  "suggested": [
+   "DIC",
+   "Sliding"
+  ],
   "rejected": [],
   "title": "A novel approach to determine the velocity dependency of the friction behavior during machining by means of digital particle image velocimetry (DPIV)"
  },
@@ -1257,49 +1725,73 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Turning",
    "BUE",
    "Tool wear",
-   "SEM"
+   "Adhesion",
+   "Friction",
+   "Chip formation",
+   "SEM",
+   "Thermal effect"
   ],
-  "suggested": [
-   "In-situ"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Investigation of the Wear Behavior of PVD Coated Carbide Tools during Ti6Al4V Machining with Intensive Built Up Edge Formation"
  },
  "2021_IJMS_Sela_Measurement of plastic strain and plastic strain rate during orthogonal cutting for Ti-6Al-4V.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "DIC",
    "FEM",
+   "Analytical model",
+   "Optical microscopy",
    "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "In-situ",
+   "PIV"
+  ],
   "rejected": [],
   "title": "Measurement of plastic strain and plastic strain rate during orthogonal cutting for Ti-6Al-4V"
  },
  "2021_IJMTM_Fu_Size effects in multi-scale materials processing and manufacturing.pdf": {
-  "labels": [],
+  "labels": [
+   "Micro-machining",
+   "Nano-cutting",
+   "Chip formation",
+   "Burr",
+   "Polycrystal",
+   "FEM",
+   "Molecular dynamics",
+   "Analytical model"
+  ],
   "suggested": [],
   "rejected": [],
   "title": "Size effects in multi-scale materials processing and manufacturing"
  },
  "2021_IJMTM_Sugihara_Direct observations of tribological behavior in cutting with textured cutting tools.pdf": {
   "labels": [
+   "Textured tool",
    "Orthogonal cutting",
    "In-situ",
-   "DIC",
    "PIV",
-   "Textured tool",
-   "Tool wear",
+   "High-speed imaging",
    "Friction",
+   "Chip formation",
+   "Plastic flow",
+   "Shear localization"
+  ],
+  "suggested": [
+   "DIC",
+   "Tool wear",
    "Thermal effect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Direct observations of tribological behavior in cutting with textured cutting tools"
  },
@@ -1307,83 +1799,112 @@
   "labels": [
    "Orthogonal cutting",
    "In-situ",
-   "Thermal effect",
    "High-speed imaging",
    "DIC",
+   "Chip formation",
+   "Shear localization",
    "Thermal softening",
+   "Plastic flow"
+  ],
+  "suggested": [
+   "Thermal effect",
    "Recrystallization"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Characterization of material strain and thermal softening effects in the cutting process"
  },
  "2021_IJMTM_la Monaca_Towards understanding the thermal history of microstructural surface deformation when cutting a next generation powder metallurgy.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "Thermal effect",
    "Nickel-based alloy",
-   "Surface defect",
-   "Subsurface damage"
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Thermal effect",
+   "Plastic flow",
+   "In-situ",
+   "Subsurface damage",
+   "SEM",
+   "Analytical model"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Towards understanding the thermal history of microstructural surface deformation when cutting a next generation powder metallurgy nickel-base superalloy"
  },
  "2021_JMPT_Thimm_Determination of chip speed and shear strain rate in primary shear zone using digital image correlation (DIC) in linear-orthogonal cutting.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Steel",
    "AISI 1045",
+   "Orthogonal cutting",
    "Chip formation",
-   "High-speed imaging"
+   "In-situ",
+   "High-speed imaging",
+   "DIC",
+   "Optical microscopy",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "PIV"
+  ],
   "rejected": [],
   "title": "Determination of chip speed and shear strain rate in primary shear zone using digital image correlation (DIC) in linear-orthogonal cutting experiments"
  },
  "2021_JMP_Liu_Coupled thermo-mechanical sticking-sliding friction model along tool-chip interface in diamond cutting of copper.pdf": {
   "labels": [
-   "BUE",
    "Copper",
-   "Sliding",
    "Ultra-precision machining",
+   "Orthogonal cutting",
    "Friction",
-   "High-speed imaging",
+   "Chip formation",
+   "Thermal effect",
    "FEM",
-   "Thermal effect"
+   "Analytical model",
+   "High-speed imaging"
   ],
   "suggested": [
-   "Single crystal"
+   "BUE",
+   "Sliding"
   ],
   "rejected": [],
   "title": "Coupled thermo-mechanical sticking-sliding friction model along tool-chip interface in diamond cutting of copper"
  },
  "2021_JMP_Zhang_In situ imaging based thermo-mechanical analysis of built-up edge in cutting process.pdf": {
   "labels": [
+   "Steel",
+   "Orthogonal cutting",
    "BUE",
-   "Stainless steel",
-   "Built-up layer",
+   "Chip formation",
    "In-situ",
-   "High-speed imaging"
+   "High-speed imaging",
+   "DIC",
+   "FEM",
+   "Strain hardening",
+   "Thermal effect",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Stainless steel",
+   "Built-up layer"
+  ],
   "rejected": [],
   "title": "In situ imaging based thermo-mechanical analysis of built-up edge in cutting process"
  },
  "2021_JMSE_Yang_A Comprehensive Experiment-Based Approach to Generate Stress Field and Slip Lines in Cutting Process.pdf": {
   "labels": [
    "Orthogonal cutting",
-   "Chip formation",
-   "Surface defect",
-   "Tool wear",
    "In-situ",
-   "Analytical model"
+   "High-speed imaging",
+   "DIC",
+   "Chip formation",
+   "Analytical model",
+   "Classical theory",
+   "Plastic flow",
+   "Thermal effect"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect",
+   "Tool wear"
+  ],
   "rejected": [],
   "title": "A Comprehensive Experiment-Based Approach to Generate Stress Field and Slip Lines in Cutting Process"
  },
@@ -1398,7 +1919,13 @@
  "2021_MATERIALS_Park_Numerical and Experimental Investigation on the Surface Defect Generation during the Hot Extrusion of Al6063 Alloy.pdf": {
   "labels": [
    "Aluminum",
-   "Surface defect"
+   "Surface defect",
+   "FEM",
+   "SEM",
+   "EBSD",
+   "Plastic flow",
+   "Thermal effect",
+   "Recrystallization"
   ],
   "suggested": [],
   "rejected": [],
@@ -1407,9 +1934,14 @@
  "2021_SR_Medina-Clavijo_In-SEM micro-machining reveals the origins of the size effect in the cutting energy.pdf": {
   "labels": [
    "Orthogonal cutting",
+   "Micro-machining",
    "In-situ",
    "SEM",
-   "Micro-machining"
+   "Chip formation",
+   "Strain hardening",
+   "Plastic flow",
+   "Friction",
+   "Polycrystal"
   ],
   "suggested": [],
   "rejected": [],
@@ -1417,59 +1949,83 @@
  },
  "2022_ER_Cui_Heat transfer analysis of phase change material composited with metal foam-fin hybrid structure in inclination container by numerical.pdf": {
   "labels": [
-   "Composite",
-   "FEM",
    "Machine learning",
-   "Thermal effect"
+   "Thermal effect",
+   "Phase transformation"
   ],
-  "suggested": [],
+  "suggested": [
+   "Composite",
+   "FEM"
+  ],
   "rejected": [],
   "title": "Heat transfer analysis of phase change material composited with metal foam-fin hybrid structure in inclination container by numerical simulation and artificial neural network"
  },
  "2022_IJMSD_Nie_Dynamics of chip formation during the cutting process using imaging techniques A review.pdf": {
   "labels": [
-   "Orthogonal cutting",
+   "Chip formation",
    "In-situ",
+   "High-speed imaging",
    "DIC",
    "PIV",
-   "Chip formation",
-   "Surface defect",
-   "Subsurface damage"
+   "Friction",
+   "Shear localization",
+   "Subsurface damage",
+   "Orthogonal cutting",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Dynamics of chip formation during the cutting process using imaging techniques: A review"
  },
  "2022_IJMTM_Axinte_What micro-mechanical testing can reveal about machining processes.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
-   "Difficult-to-cut",
    "Scratching",
    "Micro-machining",
+   "In-situ",
+   "SEM",
+   "Subsurface damage",
+   "Plastic flow",
+   "Fracture"
+  ],
+  "suggested": [
+   "Orthogonal cutting",
+   "Difficult-to-cut",
    "Surface defect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "What micro-mechanical testing can reveal about machining processes"
  },
  "2022_IJMTM_Fang_Nanometric cutting Mechanisms, practices and future perspectives (3).pdf": {
   "labels": [
+   "Nano-cutting",
+   "Ultra-precision machining",
+   "Difficult-to-cut",
+   "Molecular dynamics",
+   "Tool wear",
+   "Ductile-brittle transition",
+   "Subsurface damage",
+   "Phase transformation"
+  ],
+  "suggested": [
    "Orthogonal cutting",
    "In-situ",
-   "SEM",
-   "Nano-cutting",
-   "Ultra-precision machining"
+   "SEM"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Nanometric cutting: Mechanisms, practices and future perspectives"
  },
  "2022_IJMTM_Fang_Nanometric cutting Mechanisms, practices and future perspectives.pdf": {
   "labels": [
    "Nano-cutting",
-   "Ultra-precision machining"
+   "Ultra-precision machining",
+   "Difficult-to-cut",
+   "Chip formation",
+   "Ductile-brittle transition",
+   "Tool wear",
+   "Molecular dynamics",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -1477,91 +2033,122 @@
  },
  "2022_IJMTM_Issahaq_Dual-scale folding in cutting of commercially pure aluminum alloys.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Aluminum",
-   "Tantalum",
+   "Orthogonal cutting",
    "Chip formation",
-   "Sinuous flow"
+   "Sinuous flow",
+   "Adhesion",
+   "Friction",
+   "Plastic flow",
+   "In-situ",
+   "High-speed imaging",
+   "Optical microscopy",
+   "PIV",
+   "Strain hardening"
   ],
-  "suggested": [],
+  "suggested": [
+   "DIC",
+   "Tantalum"
+  ],
   "rejected": [],
   "title": "Dual-scale folding in cutting of commercially pure aluminum alloys"
  },
  "2022_JMPT_Hu_Characterization of material flow mechanism for chamfered tools utilizing coupled slip-line-slab method.pdf": {
   "labels": [
-   "Dead metal zone",
    "Orthogonal cutting",
    "BUE",
    "Burr",
+   "Plastic flow",
+   "Material separation",
+   "Friction",
    "Analytical model",
+   "Chip formation"
+  ],
+  "suggested": [
+   "Dead metal zone",
    "Fracture"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Characterization of material flow mechanism for chamfered tools utilizing coupled slip-line-slab method"
  },
  "2022_JMP_Chen_Numerical modeling of Ti-6Al-4V alloy orthogonal cutting considering microstructure dependent work hardening and energy density-based.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "FEM",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
    "Stagnation zone",
-   "Surface defect",
    "Subsurface damage",
-   "Strain hardening"
+   "FEM",
+   "Strain hardening",
+   "Thermal softening",
+   "Damage",
+   "Recrystallization"
   ],
   "suggested": [
-   "Shear localization"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Numerical modeling of Ti-6Al-4V alloy orthogonal cutting considering microstructure dependent work hardening and energy density-based failure behaviors"
  },
  "2022_JMP_Fu_Delamination and chip breaking mechanism of orthogonal cutting CFRP Ti6Al4V composite.pdf": {
   "labels": [
+   "Composite",
+   "Ti6Al4V",
    "Orthogonal cutting",
    "FEM",
-   "Titanium",
-   "Ti6Al4V",
-   "Composite",
    "Chip formation",
    "Burr",
    "Fracture",
-   "Damage"
+   "Damage",
+   "Difficult-to-cut",
+   "Material separation"
   ],
-  "suggested": [],
+  "suggested": [
+   "Titanium"
+  ],
   "rejected": [],
   "title": "Delamination and chip breaking mechanism of orthogonal cutting CFRP/Ti6Al4V composite"
  },
  "2022_JMSE_Abdallah_Conventional Machining of Single Crystal Metals and Super Alloys A Review.pdf": {
   "labels": [
-   "Difficult-to-cut",
-   "Single crystal",
    "Aluminum",
-   "Nickel-based alloy",
    "Copper",
-   "Surface defect",
-   "Tool wear"
+   "Nickel-based alloy",
+   "Single crystal",
+   "Anisotropic",
+   "Difficult-to-cut",
+   "Turning",
+   "Milling",
+   "Molecular dynamics",
+   "Tool wear",
+   "Chip formation",
+   "BUE"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Conventional Machining of Single Crystal Metals and Super Alloys: A Review"
  },
  "2022_MICROMACHINES_Wu_Study on the Formation Mechanism of Cutting Dead Metal Zone for Turning AISI4340 with Different Chamfering Tools.pdf": {
   "labels": [
    "Steel",
+   "Difficult-to-cut",
    "Orthogonal cutting",
    "Turning",
    "Dead metal zone",
-   "Tool wear",
+   "Chip formation",
    "Friction",
+   "Tool wear",
    "FEM",
+   "Plastic flow"
+  ],
+  "suggested": [
    "Thermal effect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Study on the Formation Mechanism of Cutting Dead Metal Zone for Turning AISI4340 with Different Chamfering Tools"
  },
@@ -1569,34 +2156,45 @@
   "labels": [
    "Silicon",
    "Single crystal",
-   "Grinding",
    "Scratching",
+   "Grinding",
    "Ultra-precision machining",
+   "Ductile-brittle transition",
+   "Subsurface damage",
+   "Fracture"
+  ],
+  "suggested": [
    "In-situ",
    "SEM",
    "Damage"
-  ],
-  "suggested": [
-   "Ductile-brittle transition"
   ],
   "rejected": [],
   "title": "Effect of grinding damage on cutting force and ductile machining during single grain scratching of monocrystalline silicon"
  },
  "2022_SUSTAINABILITY_Soliman_Effect of Mushy Zone Parameter on Phase Change Behavior of Different Configurations Storage Unit Numerical Simulation and Experimental.pdf": {
   "labels": [
+   "Phase transformation",
+   "Thermal effect"
+  ],
+  "suggested": [
    "FEM"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Effect of Mushy Zone Parameter on Phase Change Behavior of Different Configurations Storage Unit: Numerical Simulation and Experimental Validation"
  },
  "2022_Trib_Liu_Impacts of flank wear and cooling strategies on evolutions of built-up edges, diffusion wear and cutting forces in Ti6Al4V machining.pdf": {
   "labels": [
-   "BUE",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Turning",
    "Cryogenic",
-   "Tool wear"
+   "BUE",
+   "Tool wear",
+   "Friction",
+   "SEM",
+   "EDS",
+   "Thermal effect"
   ],
   "suggested": [],
   "rejected": [],
@@ -1606,9 +2204,16 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Turning",
    "Cryogenic",
    "BUE",
-   "Tool wear"
+   "Tool wear",
+   "Friction",
+   "SEM",
+   "EDS",
+   "Thermal effect",
+   "Adhesion"
   ],
   "suggested": [],
   "rejected": [],
@@ -1616,20 +2221,21 @@
  },
  "2023_AMT_Lowery_Investigation of work coordinate system setting in ultra-precision machining using electrical breakdown for non-conductive materials.pdf": {
   "labels": [
-   "Ultra-precision machining"
+   "Ultra-precision machining",
+   "Analytical model"
   ],
-  "suggested": [
-   "Polycrystal"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Investigation of work coordinate system setting in ultra-precision machining using electrical breakdown for non-conductive materials"
  },
  "2023_ENERGIES_Piasecka_An Experimental Investigation and Numerical Simulation of Photovoltaic Cells with Enhanced Surfaces Using the Simcenter STAR-CCM+ Software.pdf": {
   "labels": [
    "Copper",
+   "Thermal effect"
+  ],
+  "suggested": [
    "FEM"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "An Experimental Investigation and Numerical Simulation of Photovoltaic Cells with Enhanced Surfaces Using the Simcenter STAR-CCM+ Software"
  },
@@ -1637,9 +2243,13 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Turning",
    "Orthogonal cutting",
    "Chip formation",
-   "Thermal effect"
+   "Thermal effect",
+   "Optical microscopy",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -1647,28 +2257,41 @@
  },
  "2023_IJEM_Liang_Friction behaviors in the metal cutting process state of the art and future perspectives.pdf": {
   "labels": [
+   "Orthogonal cutting",
+   "Friction",
+   "Tool wear",
+   "Chip formation",
+   "Adhesion",
+   "Textured tool",
+   "FEM",
+   "Analytical model"
+  ],
+  "suggested": [
    "Classical theory",
    "Sliding",
-   "Ultra-precision machining",
-   "Textured tool",
-   "Friction"
+   "Ultra-precision machining"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Friction behaviors in the metal cutting process: state of the art and future perspectives"
  },
  "2023_IJMTM_Zannoun_Analysis of burr formation in finish machining of nickel-based superalloy with worn tools using micro-scale in-situ techniques.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Nickel-based alloy",
    "Inconel 718",
-   "Burr"
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Burr",
+   "Tool wear",
+   "Fracture",
+   "Chip formation",
+   "In-situ",
+   "High-speed imaging",
+   "DIC",
+   "Optical microscopy",
+   "Analytical model"
   ],
   "suggested": [
-   "High-speed imaging"
+   "PIV"
   ],
   "rejected": [],
   "title": "Analysis of burr formation in finish machining of nickel-based superalloy with worn tools using micro-scale in-situ techniques"
@@ -1676,24 +2299,29 @@
  "2023_IJPEMGT_Maeng_Study on Cutting Force and Tool Wear in Machining of Die Materials with Textured PCD Tools Under Ultrasonic Elliptical Vibration.pdf": {
   "labels": [
    "Steel",
+   "Ceramic",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
    "Ultra-precision machining",
    "Textured tool",
    "Tool wear",
-   "Friction",
-   "Thermal effect"
+   "Friction"
   ],
   "suggested": [
-   "Polycrystal",
-   "Orthogonal cutting"
+   "Thermal effect"
   ],
   "rejected": [],
   "title": "Study on Cutting Force and Tool Wear in Machining of Die Materials with Textured PCD Tools Under Ultrasonic Elliptical Vibration"
  },
  "2023_IJPEM_Maeng_Work Coordinate Setup in the Ultra-precision Machine Tool Using Electrical Breakdown.pdf": {
   "labels": [
-   "Aluminum",
    "Al6061",
-   "Ultra-precision machining"
+   "Aluminum",
+   "Stainless steel",
+   "Steel",
+   "Copper",
+   "Ultra-precision machining",
+   "Surface defect"
   ],
   "suggested": [],
   "rejected": [],
@@ -1701,13 +2329,22 @@
  },
  "2023_JCP_Li_Tough-brittle transition mechanism and specific cutting energy analysis during cryogenic machining of Ti-6Al-4V alloy.pdf": {
   "labels": [
-   "Cryogenic",
    "Titanium",
+   "Ti6Al4V",
+   "Difficult-to-cut",
+   "Cryogenic",
+   "Milling",
    "Orthogonal cutting",
+   "Chip formation",
    "Shear localization",
+   "SEM",
+   "Analytical model",
+   "Thermal softening",
+   "Fracture"
+  ],
+  "suggested": [
    "Ductile-brittle transition"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Tough-brittle transition mechanism and specific cutting energy analysis during cryogenic machining of Ti–6Al–4V alloy"
  },
@@ -1715,35 +2352,44 @@
   "labels": [
    "Steel",
    "AISI 1045",
-   "Ceramic",
    "Turning",
+   "In-situ",
    "Thermal effect"
   ],
-  "suggested": [],
+  "suggested": [
+   "Ceramic"
+  ],
   "rejected": [],
   "title": "Real-Time Cutting Temperature Measurement in Turning of AISI 1045 Steel through an Embedded Thermocouple—A Comparative Study with Infrared Thermography"
  },
  "2023_JMPT_Pouliquen_Influence of the microstructure of a Ti5553 titanium alloy on chip morphology and cutting forces during orthogonal cutting.pdf": {
   "labels": [
    "Titanium",
+   "Difficult-to-cut",
    "Orthogonal cutting",
    "Chip formation",
-   "Tool wear",
+   "Shear localization",
    "High-speed imaging",
-   "Machine learning"
+   "Machine learning",
+   "EBSD",
+   "Optical microscopy"
   ],
-  "suggested": [],
+  "suggested": [
+   "Tool wear"
+  ],
   "rejected": [],
   "title": "Influence of the microstructure of a Ti5553 titanium alloy on chip morphology and cutting forces during orthogonal cutting"
  },
  "2023_JMP_Ahmed_Development of cryogenic assisted machining strategy to reduce the burr formation during micro-milling of ductile material.pdf": {
   "labels": [
-   "Milling",
    "Micro-machining",
+   "Milling",
    "Cryogenic",
+   "Burr",
+   "Plastic flow",
    "Chip formation",
    "Surface defect",
-   "Burr"
+   "Optical microscopy"
   ],
   "suggested": [],
   "rejected": [],
@@ -1751,14 +2397,20 @@
  },
  "2023_JMP_Song_On unsteady-cutting state material separation and dead metal zone modeling considering chip fracture.pdf": {
   "labels": [
-   "BUE",
+   "Aluminum",
+   "Turning",
    "Dead metal zone",
    "Chip formation",
-   "Analytical model",
+   "Material separation",
+   "Plastic flow",
    "Fracture",
-   "Material separation"
+   "FEM",
+   "Analytical model",
+   "Optical microscopy"
   ],
-  "suggested": [],
+  "suggested": [
+   "BUE"
+  ],
   "rejected": [],
   "title": "On unsteady-cutting state material separation and dead metal zone modeling considering chip fracture"
  },
@@ -1777,16 +2429,20 @@
  },
  "2023_MEASUREMENT_Ma_In-situ DIC measurement of material deformation through spatial-temporal kinematics analysis during orthogonal cutting Ti6Al4V.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Chip formation",
    "Shear localization",
-   "High-speed imaging"
+   "Plastic flow",
+   "In-situ",
+   "High-speed imaging",
+   "DIC"
   ],
-  "suggested": [],
+  "suggested": [
+   "PIV"
+  ],
   "rejected": [],
   "title": "In-situ DIC measurement of material deformation through spatial–temporal kinematics analysis during orthogonal cutting Ti6Al4V"
  },
@@ -1802,43 +2458,58 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Turning",
    "Tool wear",
+   "Fracture",
    "In-situ",
-   "FEM",
+   "Analytical model",
    "Thermal effect"
   ],
-  "suggested": [],
+  "suggested": [
+   "FEM"
+  ],
   "rejected": [],
   "title": "A novel approach for in-situ characterization and probabilistic prediction of cutting tool fatigue in machining of Ti-6Al-4V"
  },
  "2023_WEVJ_Kim_A Numerical Study of the Suitability of Phase-Change Materials for Battery Thermal Management in Flight Applications.pdf": {
   "labels": [
-   "FEM",
-   "Thermal effect"
+   "Thermal effect",
+   "Phase transformation"
   ],
-  "suggested": [],
+  "suggested": [
+   "FEM"
+  ],
   "rejected": [],
   "title": "A Numerical Study of the Suitability of Phase-Change Materials for Battery Thermal Management in Flight Applications"
  },
  "2024_AMT_Zouabi_Kinematic fields measurement during Ti-6Al-4V chip formation using new high-speed imaging system.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
    "Chip formation",
+   "Shear localization",
+   "In-situ",
    "High-speed imaging",
-   "SEM"
+   "DIC",
+   "SEM",
+   "Fracture",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "PIV"
+  ],
   "rejected": [],
   "title": "Kinematic fields measurement during Ti-6Al-4V chip formation using new high-speed imaging system"
  },
  "2024_COATINGS_Li_Study on Mechanism of Microstructure Refinement by Ultrasonic Cavitation Effect.pdf": {
   "labels": [
-   "Thermal effect"
+   "FEM",
+   "Thermal effect",
+   "Phase transformation",
+   "Fracture"
   ],
   "suggested": [],
   "rejected": [],
@@ -1846,17 +2517,19 @@
  },
  "2024_CPASM_Ge_Temperature-dependent cutting physics in orthogonal cutting of carbon fibre reinforced thermoplastic (CFRTP) composite.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "Thermal effect",
    "Composite",
-   "Ductile-brittle transition",
+   "Orthogonal cutting",
+   "Chip formation",
    "Subsurface damage",
-   "FEM",
-   "Thermal softening"
+   "Fracture",
+   "Thermal softening",
+   "Thermal effect",
+   "SEM",
+   "FEM"
   ],
   "suggested": [
-   "Glass"
+   "In-situ",
+   "Ductile-brittle transition"
   ],
   "rejected": [],
   "title": "Temperature-dependent cutting physics in orthogonal cutting of carbon fibre reinforced thermoplastic (CFRTP) composite"
@@ -1865,22 +2538,29 @@
   "labels": [
    "Ceramic",
    "Composite",
-   "Textured tool",
+   "SEM",
+   "FEM",
    "Thermal effect"
   ],
-  "suggested": [],
+  "suggested": [
+   "Textured tool"
+  ],
   "rejected": [],
   "title": "Processing and performance of ultra high temperature ceramic matrix composite (UHTCMCs) using radio frequency assisted chemical vapour infiltration (RF-CVI)"
  },
  "2024_EM_Yang_Novel Speckle Preparation and Heat Insulation Method for DIC Strain Measurement at Cryogenic Temperature and Large Deformation Environment.pdf": {
   "labels": [
-   "Steel",
    "Stainless steel",
    "Cryogenic",
    "DIC",
+   "In-situ",
+   "Shear localization",
+   "Plastic flow"
+  ],
+  "suggested": [
+   "Steel",
    "Thermal effect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Novel Speckle Preparation and Heat Insulation Method for DIC Strain Measurement at Cryogenic Temperature and Large Deformation Environment"
  },
@@ -1892,16 +2572,20 @@
  },
  "2024_IJEM_Liu_Recent advances in design and preparation of micro diamond cutting tools.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
-   "Difficult-to-cut",
-   "Single crystal",
    "Micro-machining",
    "Ultra-precision machining",
-   "Tool wear"
+   "Single crystal",
+   "Tool wear",
+   "Surface defect",
+   "SEM",
+   "Analytical model",
+   "Fracture"
   ],
-  "suggested": [],
+  "suggested": [
+   "Orthogonal cutting",
+   "In-situ",
+   "Difficult-to-cut"
+  ],
   "rejected": [],
   "title": "Recent advances in design and preparation of micro diamond cutting tools"
  },
@@ -1918,10 +2602,14 @@
  "2024_IJMTM_Ma_How does the uncut chip thickness affect the deformation states within the primary shear zone during metal cutting.pdf": {
   "labels": [
    "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "Plastic flow",
    "In-situ",
    "DIC",
    "PIV",
-   "EBSD"
+   "EBSD",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -1929,32 +2617,46 @@
  },
  "2024_IJPEM_Maeng_Effect of the Built-Up-Edge on Tool Wear in Machining of STAVAX.pdf": {
   "labels": [
-   "BUE",
-   "Textured tool",
    "Steel",
+   "Difficult-to-cut",
    "Orthogonal cutting",
+   "Textured tool",
+   "BUE",
    "Tool wear",
+   "Chip formation",
    "FEM",
+   "SEM"
+  ],
+  "suggested": [
    "Thermal effect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Effect of the Built-Up-Edge on Tool Wear in Machining of STAVAX"
  },
  "2024_JMMP_Eto_Study on Extraordinarily High-Speed Cutting Mechanics and Its Application to Dry Cutting of Aluminum Alloys with Non-Coated Carbide Tools.pdf": {
   "labels": [
    "Aluminum",
-   "Copper",
+   "Orthogonal cutting",
    "Friction",
-   "Thermal effect"
+   "Adhesion",
+   "BUE",
+   "Analytical model",
+   "Thermal softening",
+   "Thermal effect",
+   "Tool wear"
   ],
-  "suggested": [],
+  "suggested": [
+   "Copper"
+  ],
   "rejected": [],
   "title": "Study on Extraordinarily High-Speed Cutting Mechanics and Its Application to Dry Cutting of Aluminum Alloys with Non-Coated Carbide Tools"
  },
  "2024_MICROSTRUCTURES_Liu_In-situ transmission electron microscopy shedding light on the mechanical properties of nanoscale materials.pdf": {
   "labels": [
-   "In-situ"
+   "In-situ",
+   "Plastic flow",
+   "Fracture",
+   "Phase transformation"
   ],
   "suggested": [],
   "rejected": [],
@@ -1965,20 +2667,29 @@
    "Turning",
    "BUE",
    "Chip formation",
-   "Surface defect",
    "Tool wear",
+   "Adhesion",
    "SEM"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Investigatıon of the Effect of Built-Up Edge on Chip Morphology at the Cutting Edge During Turning Operation"
  },
  "2024_Trib_Zhang_Effects of chip breaker groove and tool nose radius on progressive tool wear and behavior when turning GH3536 nickel-based superalloys.pdf": {
   "labels": [
-   "BUE",
    "Nickel-based alloy",
+   "Difficult-to-cut",
    "Turning",
-   "Tool wear"
+   "Tool wear",
+   "Adhesion",
+   "BUE",
+   "Chip formation",
+   "SEM",
+   "EDS",
+   "Analytical model",
+   "Strain hardening"
   ],
   "suggested": [],
   "rejected": [],
@@ -1986,67 +2697,96 @@
  },
  "2025_AM_Liang_Twinning-dominated scratch mechanism transitions in commercial pure Titanium from micro to macro scales.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
    "Titanium",
+   "Polycrystal",
    "Scratching",
-   "Subsurface damage"
+   "Subsurface damage",
+   "In-situ",
+   "DIC",
+   "EBSD",
+   "Damage"
   ],
-  "suggested": [],
+  "suggested": [
+   "Orthogonal cutting",
+   "SEM"
+  ],
   "rejected": [],
   "title": "Twinning-dominated scratch mechanism transitions in commercial pure Titanium from micro to macro scales"
  },
  "2025_IJMTM_Wang_How does ultrasonic cutting affect the macroscopic deformation and microstructure evolution of fibre-reinforced titanium matrix composites.pdf": {
   "labels": [
-   "Silicon",
    "Titanium",
    "Composite",
+   "Orthogonal cutting",
+   "Ultra-precision machining",
    "Subsurface damage",
-   "DIC"
+   "Damage",
+   "DIC",
+   "SEM",
+   "EBSD",
+   "Recrystallization",
+   "Phase transformation",
+   "Difficult-to-cut"
   ],
   "suggested": [
-   "Orthogonal cutting"
+   "Silicon"
   ],
   "rejected": [],
   "title": "How does ultrasonic cutting affect the macroscopic deformation and microstructure evolution of fibre-reinforced titanium matrix composites?"
  },
  "2025_IJSS_Gupta_Probing the origin of surface defects in large strain deformation processes.pdf": {
   "labels": [
-   "BUE",
+   "Orthogonal cutting",
+   "Dead metal zone",
    "Surface defect",
-   "Friction",
+   "Plastic flow",
+   "Material separation",
    "In-situ",
+   "High-speed imaging",
    "DIC"
   ],
-  "suggested": [],
+  "suggested": [
+   "BUE",
+   "Friction"
+  ],
   "rejected": [],
   "title": "Probing the origin of surface defects in large strain deformation processes"
  },
  "2025_JMPT_Sodje_New insights into variable thermomechanical loads due to chip formation size effects in machining of Ti-6Al4V alloy.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "DIC",
-   "PIV",
    "Titanium",
    "Ti6Al4V",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
    "Chip formation",
    "Shear localization",
+   "In-situ",
+   "High-speed imaging",
+   "Optical microscopy",
+   "DIC",
+   "PIV",
+   "Thermal softening",
+   "Thermal effect",
+   "Plastic flow"
+  ],
+  "suggested": [
    "Surface defect"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "New insights into variable thermomechanical loads due to chip formation size effects in machining of Ti-6Al4V alloy"
  },
  "2025_JMP_Tamil Alagan_Sustainable machining of aluminum MMCs The role of biomimetic textured cutting tools in cryogenic conditions.pdf": {
   "labels": [
-   "BUE",
-   "Textured tool",
    "Aluminum",
    "Composite",
+   "Turning",
    "Cryogenic",
-   "Friction"
+   "Textured tool",
+   "BUE",
+   "Adhesion",
+   "Friction",
+   "SEM",
+   "Tool wear"
   ],
   "suggested": [],
   "rejected": [],
@@ -2054,15 +2794,20 @@
  },
  "2025_JMP_Xing_Deformation and material removal mechanisms during precision cutting of duplex heterogeneous high-entropy alloys revealed by in-situ SEM.pdf": {
   "labels": [
-   "Orthogonal cutting",
+   "Polycrystal",
+   "Scratching",
+   "Chip formation",
+   "Fracture",
+   "Plastic flow",
    "In-situ",
    "SEM",
-   "Scratching",
-   "Micro-machining",
-   "Chip formation",
-   "EBSD"
+   "EBSD",
+   "FEM"
   ],
-  "suggested": [],
+  "suggested": [
+   "Orthogonal cutting",
+   "Micro-machining"
+  ],
   "rejected": [],
   "title": "Deformation and material removal mechanisms during precision cutting of duplex heterogeneous high-entropy alloys revealed by in-situ SEM scratch testing"
  },
@@ -2070,37 +2815,47 @@
   "labels": [
    "Titanium",
    "Ti6Al4V",
+   "Rolled",
    "Anisotropic",
+   "Difficult-to-cut",
    "Orthogonal cutting",
-   "Chip formation"
+   "Chip formation",
+   "Shear localization",
+   "Optical microscopy",
+   "Analytical model"
   ],
-  "suggested": [
-   "Drilling",
-   "Textured tool"
-  ],
+  "suggested": [],
   "rejected": [],
   "title": "Anisotropy in Chip Formation in Orthogonal Cutting of Rolled Ti-6Al-4V"
  },
  "2026_IJMTM_Zan_Micrometric orthogonal cutting can lead to sideway chip flow Uncovering crystallographic orientation and grain boundary effects.pdf": {
   "labels": [
-   "Orthogonal cutting",
-   "In-situ",
-   "SEM",
-   "Micro-machining",
    "Nickel-based alloy",
+   "Polycrystal",
+   "Anisotropic",
+   "Orthogonal cutting",
+   "Micro-machining",
+   "Chip formation",
+   "SEM",
+   "EBSD"
+  ],
+  "suggested": [
+   "In-situ",
    "Scratching",
    "Sliding",
    "Ultra-precision machining"
   ],
-  "suggested": [],
   "rejected": [],
   "title": "Micrometric orthogonal cutting can lead to sideway chip flow: Uncovering crystallographic orientation and grain boundary effects"
  },
  "2026_IJMS_Ma_Microcrack avalanche behavior during intermittent shear fracture for metallic.pdf": {
   "labels": [
    "Shear localization",
+   "Fracture",
+   "Damage",
+   "Material separation",
    "In-situ",
-   "Fracture"
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -2110,10 +2865,15 @@
   "labels": [
    "Micro-machining",
    "Nano-cutting",
-   "Surface defect"
+   "Orthogonal cutting",
+   "Chip formation",
+   "Material separation",
+   "Molecular dynamics",
+   "FEM",
+   "Phase transformation"
   ],
   "suggested": [
-   "Phase transformation"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
@@ -2122,10 +2882,17 @@
   "labels": [
    "Micro-machining",
    "Nano-cutting",
-   "Surface defect"
+   "Orthogonal cutting",
+   "Chip formation",
+   "Ductile-brittle transition",
+   "Molecular dynamics",
+   "FEM",
+   "Analytical model",
+   "Phase transformation",
+   "Material separation"
   ],
   "suggested": [
-   "Phase transformation"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
@@ -2134,10 +2901,15 @@
   "labels": [
    "Micro-machining",
    "Nano-cutting",
-   "Surface defect"
+   "Chip formation",
+   "Material separation",
+   "Phase transformation",
+   "Molecular dynamics",
+   "FEM",
+   "Analytical model"
   ],
   "suggested": [
-   "Phase transformation"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
@@ -2146,37 +2918,54 @@
   "labels": [
    "Micro-machining",
    "Nano-cutting",
-   "Surface defect"
+   "Chip formation",
+   "Material separation",
+   "Ductile-brittle transition",
+   "Molecular dynamics",
+   "FEM",
+   "Analytical model",
+   "Phase transformation"
   ],
   "suggested": [
-   "Phase transformation"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
  },
  "2020_IJMTM_Liu_Temperature effect on the material removal mechanism of soft-brittle crystals at nano micron scale.pdf": {
   "labels": [
-   "Ceramic",
+   "Soft-brittle",
+   "KDP",
+   "Single crystal",
    "Scratching",
-   "Ultra-precision machining",
+   "Micro-machining",
+   "Nano-cutting",
+   "Ductile-brittle transition",
+   "Fracture",
    "Subsurface damage",
    "Thermal effect",
-   "Fracture",
-   "KDP",
-   "Soft-brittle"
+   "SEM",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Ceramic",
+   "Ultra-precision machining"
+  ],
   "rejected": [],
   "title": "Temperature effect on the material removal mechanism of soft-brittle crystals at nano/micron scale"
  },
  "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper (2).pdf": {
   "labels": [
    "Copper",
-   "Single crystal",
    "Polycrystal",
+   "Single crystal",
+   "Anisotropic",
    "Orthogonal cutting",
    "Ultra-precision machining",
-   "FEM"
+   "Surface defect",
+   "Plastic flow",
+   "FEM",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -2185,66 +2974,99 @@
  "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper (3).pdf": {
   "labels": [
    "Copper",
-   "Single crystal",
    "Polycrystal",
+   "Anisotropic",
    "Orthogonal cutting",
    "Ultra-precision machining",
-   "FEM"
+   "Surface defect",
+   "FEM",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Single crystal"
+  ],
   "rejected": [],
   "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
  },
  "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper (4).pdf": {
   "labels": [
    "Copper",
-   "Single crystal",
    "Polycrystal",
-   "Orthogonal cutting",
+   "Anisotropic",
    "Ultra-precision machining",
-   "FEM"
+   "Orthogonal cutting",
+   "Turning",
+   "Surface defect",
+   "Plastic flow",
+   "FEM",
+   "Analytical model"
   ],
-  "suggested": [],
+  "suggested": [
+   "Single crystal"
+  ],
   "rejected": [],
   "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
  },
  "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper.pdf": {
   "labels": [
    "Copper",
-   "Single crystal",
    "Polycrystal",
+   "Anisotropic",
    "Orthogonal cutting",
    "Ultra-precision machining",
-   "FEM"
+   "Surface defect",
+   "FEM",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Single crystal"
+  ],
   "rejected": [],
   "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
  },
  "2021_IJMTM_Huang_Science and art of ductile grinding of brittle solids.pdf": {
   "labels": [
    "Ceramic",
-   "Single crystal",
+   "Glass",
    "Grinding",
-   "Scratching"
+   "Scratching",
+   "Ductile-brittle transition",
+   "Subsurface damage",
+   "Fracture",
+   "Plastic flow"
   ],
-  "suggested": [],
+  "suggested": [
+   "Single crystal"
+  ],
   "rejected": [],
   "title": "Science and art of ductile grinding of brittle solids"
  },
  "2022_MD_la Monaca_Temperature-dependent shear localisation and microstructural evolution in machining of nickel-base superalloys.pdf": {
   "labels": [
    "Nickel-based alloy",
-   "Surface defect",
-   "Thermal effect"
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "SEM",
+   "EBSD",
+   "Thermal effect",
+   "Recrystallization",
+   "Thermal softening"
   ],
-  "suggested": [],
+  "suggested": [
+   "Surface defect"
+  ],
   "rejected": [],
   "title": "Temperature-dependent shear localisation and microstructural evolution in machining of nickel-base superalloys"
  },
  "2022_NC_Ispanovity_Dislocation avalanches are like earthquakes on the micron scale.pdf": {
   "labels": [
-   "Single crystal"
+   "Single crystal",
+   "In-situ",
+   "Plastic flow",
+   "Shear localization",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
@@ -2252,27 +3074,39 @@
  },
  "2023_IJEM_Huang_Effect of tool geometry on ultraprecision machining of soft-brittle materials a comprehensive review.pdf": {
   "labels": [
+   "Soft-brittle",
+   "ZnSe",
+   "KDP",
+   "CaF2",
    "Single crystal",
-   "Grinding",
    "Ultra-precision machining",
-   "Surface defect",
-   "Subsurface damage",
-   "Soft-brittle"
+   "Turning",
+   "Milling",
+   "Grinding",
+   "Micro-machining",
+   "Ductile-brittle transition",
+   "Chip formation",
+   "Subsurface damage"
   ],
   "suggested": [
-   "Silicon"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Effect of tool geometry on ultraprecision machining of soft-brittle materials: a comprehensive review"
  },
  "2021_JMP_Zhao_Molecular dynamics simulation study of interaction mechanism between grain boundaries and subgrain boundaries in nano-cutting.pdf": {
   "labels": [
+   "Copper",
+   "Polycrystal",
    "Nano-cutting",
-   "Surface defect",
-   "Molecular dynamics"
+   "Molecular dynamics",
+   "Plastic flow",
+   "Material separation",
+   "Subsurface damage",
+   "Chip formation"
   ],
   "suggested": [
-   "Ultra-precision machining"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Molecular dynamics simulation study of interaction mechanism between grain boundaries and subgrain boundaries in nano-cutting"
@@ -2280,7 +3114,14 @@
  "2025_AM_la Monaca_Interaction and competition between continuous and geometric dynamic recrystallization in high-strain-rate deformation of nickel-based.pdf": {
   "labels": [
    "Nickel-based alloy",
-   "Recrystallization"
+   "Polycrystal",
+   "Difficult-to-cut",
+   "Orthogonal cutting",
+   "Quick-stop",
+   "EBSD",
+   "Shear localization",
+   "Recrystallization",
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -2292,6 +3133,10 @@
    "Polycrystal",
    "Anisotropic",
    "Scratching",
+   "Nano-cutting",
+   "FEM",
+   "Plastic flow",
+   "Friction",
    "Subsurface damage"
   ],
   "suggested": [],
@@ -2302,41 +3147,50 @@
   "labels": [
    "Single crystal",
    "Milling",
-   "Plastic flow"
-  ],
-  "suggested": [
-   "Ultra-precision machining",
+   "Nano-cutting",
+   "Chip formation",
+   "Subsurface damage",
+   "Molecular dynamics",
+   "Plastic flow",
    "Phase transformation"
   ],
+  "suggested": [],
   "rejected": [],
   "title": "Towards understanding the mechanisms of material removal and deformation in GaAs during nanomilling"
  },
  "2025_JMP_Khatri_Single-step precision manufacturing of ZnSe lenses for FLIR thermal imaging From atomic insights to lab-scale fabrication and integration.pdf": {
   "labels": [
+   "ZnSe",
+   "Soft-brittle",
+   "Single crystal",
+   "Ultra-precision machining",
    "Nano-cutting",
    "Molecular dynamics",
-   "Thermal effect",
+   "Plastic flow",
    "Phase transformation",
-   "ZnSe",
-   "Soft-brittle"
+   "Ductile-brittle transition",
+   "Anisotropic"
   ],
   "suggested": [
-   "Silicon"
+   "Thermal effect"
   ],
   "rejected": [],
   "title": "Single-step precision manufacturing of ZnSe lenses for FLIR thermal imaging: From atomic insights to lab-scale fabrication and integration"
  },
  "2025_JMP_Zhang_Cutting mechanism and parameter optimization in ultra-precision ductile-regime machining zinc selenide crystals.pdf": {
   "labels": [
+   "ZnSe",
+   "Soft-brittle",
    "Single crystal",
    "Polycrystal",
    "Ultra-precision machining",
+   "Turning",
    "Ductile-brittle transition",
    "Surface defect",
    "Molecular dynamics",
+   "Material separation",
    "Fracture",
-   "ZnSe",
-   "Soft-brittle"
+   "Plastic flow"
   ],
   "suggested": [],
   "rejected": [],
@@ -2344,18 +3198,19 @@
  },
  "2026_PE_Chen_Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping.pdf": {
   "labels": [
+   "ZnSe",
+   "Soft-brittle",
+   "Polycrystal",
    "Turning",
    "Ultra-precision machining",
-   "Surface defect",
+   "Ductile-brittle transition",
    "Tool wear",
-   "ZnSe",
-   "Soft-brittle"
+   "Fracture",
+   "Optical microscopy",
+   "SEM"
   ],
   "suggested": [
-   "Single crystal",
-   "Polycrystal",
-   "Grinding",
-   "Silicon"
+   "Surface defect"
   ],
   "rejected": [],
   "title": "Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping"

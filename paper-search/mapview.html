@@ -44,7 +44,7 @@
 <script>
 const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
 const tip = document.getElementById("tip"), panel = document.getElementById("panel");
-let nodes = [], edges = [], hovered = null, W = 830, H = 720;
+let nodes = [], edges = [], sims = null, hovered = null, W = 830, H = 720;
 const file = new URLSearchParams(location.search).get("file");
 
 function resize() {
@@ -63,7 +63,16 @@ function openPaper(n) {
 
 fetch("/api/mapdata?file=" + encodeURIComponent(file)).then(r => r.json()).then(d => {
   resize();
-  nodes = d.nodes; edges = d.edges;
+  nodes = d.nodes; edges = d.edges; sims = d.sims || null;
+  if (sims) {  // 유사도 정규화 (상위값 기준) - 군집이 뚜렷해지게
+    const flat = [];
+    for (let i = 0; i < sims.length; i++)
+      for (let j = i + 1; j < sims.length; j++) if (sims[i][j] > 0) flat.push(sims[i][j]);
+    flat.sort((a, b) => b - a);
+    const hi = flat[Math.floor(flat.length * 0.05)] || 1;
+    for (let i = 0; i < sims.length; i++)
+      for (let j = 0; j < sims.length; j++) sims[i][j] = Math.min(1, sims[i][j] / hi);
+  }
   const years = nodes.map(n => n.year).filter(y => y > 0);
   window.yMin = Math.min(...years); window.yMax = Math.max(...years);
   nodes.forEach((n, i) => {
@@ -109,6 +118,33 @@ function buildPanel() {
 }
 
 function simulate() {
+  if (!sims) return simulateOld();
+  // 유사도 -> 목표 거리 임베딩: 비슷한 논문은 가깝게(강하게), 다른 논문은 멀게(약하게)
+  const n = nodes.length, DMIN = 85, DMAX = 640;
+  for (let step = 0; step < 900; step++) {
+    const lr = 0.10 * (1 - step / 1000);
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const dd = Math.sqrt(dx * dx + dy * dy) + 0.01;
+        dx /= dd; dy /= dd;
+        const s = sims[i][j];
+        const ideal = DMIN + Math.pow(1 - s, 2.5) * (DMAX - DMIN);
+        const f = (dd - ideal) * (0.03 + s * 1.7) * lr;
+        a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
+        const mind = a.r + b.r + 16;  // 겹침 방지
+        if (dd < mind) {
+          const push = (mind - dd) * 0.4;
+          a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push;
+        }
+      }
+    }
+  }
+}
+
+function simulateOld() {
   const cx = W / 2, cy = H / 2;
   for (let step = 0; step < 400; step++) {
     for (let i = 0; i < nodes.length; i++) {
