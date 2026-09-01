@@ -333,8 +333,14 @@ function renderDrawer() {
       el.className = "dlbl" + (isOn ? " on" : isSug ? " sug" : "");
       el.textContent = isSug ? lb + " ?" : lb;
       el.onclick = async () => {
-        if (isOn) p.labels = p.labels.filter(v => v !== lb);
-        else { p.labels.push(lb); p.suggested = p.suggested.filter(v => v !== lb); }
+        if (isOn) {
+          p.labels = p.labels.filter(v => v !== lb);
+          p.rejected = (p.rejected || []).concat([lb]);  // 껐던 라벨은 자동으로 다시 안 붙게
+        } else {
+          p.labels.push(lb);
+          p.suggested = p.suggested.filter(v => v !== lb);
+          p.rejected = (p.rejected || []).filter(v => v !== lb);
+        }
         await saveTags(p); render();
       };
       g.appendChild(el);

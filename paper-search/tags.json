@@ -547,12 +547,13 @@
    "Orthogonal cutting",
    "In-situ",
    "SEM",
-   "Silicon",
    "Single crystal",
    "Nano-cutting",
    "Ultra-precision machining"
   ],
-  "suggested": [],
+  "suggested": [
+   "Silicon"
+  ],
   "rejected": [],
   "title": "Nanometric cutting in a scanning electron microscope"
  },
@@ -801,14 +802,15 @@
  "2018_FME_Antwi_A review on ductile mode cutting of brittle materials.pdf": {
   "labels": [
    "Ductile-brittle transition",
-   "Silicon",
    "Grinding",
    "Subsurface damage",
    "Damage",
    "Germanium",
    "Glass"
   ],
-  "suggested": [],
+  "suggested": [
+   "Silicon"
+  ],
   "rejected": [],
   "title": "A review on ductile mode cutting of brittle materials"
  },
@@ -2250,7 +2252,6 @@
  },
  "2023_IJEM_Huang_Effect of tool geometry on ultraprecision machining of soft-brittle materials a comprehensive review.pdf": {
   "labels": [
-   "Silicon",
    "Single crystal",
    "Grinding",
    "Ultra-precision machining",
@@ -2258,7 +2259,9 @@
    "Subsurface damage",
    "Soft-brittle"
   ],
-  "suggested": [],
+  "suggested": [
+   "Silicon"
+  ],
   "rejected": [],
   "title": "Effect of tool geometry on ultraprecision machining of soft-brittle materials: a comprehensive review"
  },
@@ -2310,7 +2313,6 @@
  },
  "2025_JMP_Khatri_Single-step precision manufacturing of ZnSe lenses for FLIR thermal imaging From atomic insights to lab-scale fabrication and integration.pdf": {
   "labels": [
-   "Silicon",
    "Nano-cutting",
    "Molecular dynamics",
    "Thermal effect",
@@ -2318,7 +2320,9 @@
    "ZnSe",
    "Soft-brittle"
   ],
-  "suggested": [],
+  "suggested": [
+   "Silicon"
+  ],
   "rejected": [],
   "title": "Single-step precision manufacturing of ZnSe lenses for FLIR thermal imaging: From atomic insights to lab-scale fabrication and integration"
  },
@@ -2340,7 +2344,6 @@
  },
  "2026_PE_Chen_Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping.pdf": {
   "labels": [
-   "Silicon",
    "Turning",
    "Ultra-precision machining",
    "Surface defect",
@@ -2351,7 +2354,8 @@
   "suggested": [
    "Single crystal",
    "Polycrystal",
-   "Grinding"
+   "Grinding",
+   "Silicon"
   ],
   "rejected": [],
   "title": "Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping"

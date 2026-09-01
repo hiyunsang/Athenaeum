@@ -87,6 +87,7 @@ TEXT_TOO_GENERIC = {
     "Plastic flow", "Tool wear", "Surface defect", "Adhesion", "Steel",
     "Analytical model", "FEM", "Anisotropic", "Strain hardening",
     "Material separation", "Turning", "Milling",
+    "Silicon",  # 다른 재료 논문에서 비교 재료로 자주 언급되어 오탐이 잦음
 }
 
 
@@ -102,9 +103,13 @@ def suggest_labels(title):
 
 
 def keyword_section(fulltext):
-    """논문의 저자 키워드(Keywords:) 부분을 뽑는다."""
-    m = re.search(r"(?:key ?words?|index terms)[:\-\s]+(.{5,400})", fulltext)
-    return m.group(1) if m else ""
+    """논문의 저자 키워드(Keywords:) 부분을 뽑는다. 서론이 섞여 들어가지 않게 자른다."""
+    m = re.search(r"(?:key ?words?|index terms)[:\-\s]+(.{5,300})", fulltext)
+    if not m:
+        return ""
+    kw = m.group(1)
+    cut = re.search(r"\b(?:1\.?\s*)?introduction\b", kw)
+    return kw[:cut.start()] if cut else kw
 
 
 def classify_labels(title, fulltext):
