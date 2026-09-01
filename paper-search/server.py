@@ -82,8 +82,13 @@ def build_prompt(kind, header):
     )
 
 
+MAPS_DIR = os.path.join(os.path.dirname(ARCHIVE), "관련맵")
+
+
 def gen_path(name, kind):
     stem = os.path.splitext(name)[0]
+    if kind == "map":
+        return os.path.join(MAPS_DIR, stem + ".map.json")
     return os.path.join(GEN_DIR, "{}.{}.md".format(stem, "요약" if kind == "summary" else "번역"))
 
 
@@ -98,14 +103,30 @@ def find_claude():
 def run_generation(name, kind):
     key = (name, kind)
     try:
-        with _gen_sem:
-            _run_generation(name, kind)
+        if kind == "map":
+            _run_map(name)
+        else:
+            with _gen_sem:
+                _run_generation(name, kind)
         _jobs.pop(key, None)
         return
     except subprocess.TimeoutExpired:
         _jobs[key] = {"status": "error", "error": "시간 초과 (40분) - 논문이 너무 긴 듯"}
     except Exception as e:
         _jobs[key] = {"status": "error", "error": str(e)[:300]}
+
+
+def _run_map(name):
+    import mapper
+    with _lock:
+        tags = load_json(TAGS_PATH, {})
+    title = tags.get(name, {}).get("title") or parse_name(name)["title"]
+    archive_titles = {}
+    for f, t in tags.items():
+        archive_titles[mapper.norm_title(t.get("title") or parse_name(f)["title"])] = f
+    data = mapper.build_map(title, archive_titles)
+    os.makedirs(MAPS_DIR, exist_ok=True)
+    save_json(gen_path(name, "map"), data)
 
 
 def _run_generation(name, kind):
@@ -304,7 +325,8 @@ class Handler(BaseHTTPRequestHandler):
                              "suggested": t.get("suggested", []),
                              "rejected": t.get("rejected", []),
                              "has_summary": os.path.exists(gen_path(f, "summary")),
-                             "has_translation": os.path.exists(gen_path(f, "translation"))})
+                             "has_translation": os.path.exists(gen_path(f, "translation")),
+                             "has_map": os.path.exists(gen_path(f, "map"))})
                 papers.append(meta)
             self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {})})
         elif url.path == "/view":
@@ -327,6 +349,18 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), "application/pdf")
             else:
                 self._send(404, {"error": "not found"})
+        elif url.path == "/mapview":
+            with open(os.path.join(BASE, "mapview.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/api/mapdata":
+            q = parse_qs(url.query)
+            name = os.path.basename(q.get("file", [""])[0])
+            p = gen_path(name, "map")
+            if os.path.isfile(p):
+                with open(p, "rb") as f:
+                    self._send(200, f.read(), "application/json; charset=utf-8")
+            else:
+                self._send(404, {"error": "not generated"})
         elif url.path == "/api/gentext":
             q = parse_qs(url.query)
             name = os.path.basename(q.get("file", [""])[0])
@@ -367,7 +401,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/generate":
             name = os.path.basename(body.get("file", ""))
             kind = body.get("kind", "summary")
-            if kind not in ("summary", "translation") or not os.path.isfile(os.path.join(ARCHIVE, name)):
+            if kind not in ("summary", "translation", "map") or not os.path.isfile(os.path.join(ARCHIVE, name)):
                 self._send(400, {"error": "bad request"})
                 return
             if os.path.isfile(gen_path(name, kind)):

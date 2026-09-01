@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>관련 논문 맵</title>
+<style>
+  body { margin: 0; font-family: "Malgun Gothic", sans-serif; overflow: hidden; background: #fbfaf7; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; background: #fff; border-bottom: 1px solid #ddd;
+         padding: 8px 16px; font-size: 13px; color: #666; z-index: 5; }
+  #bar b { color: #c0392b; }
+  #bar a { color: #3b5bd6; text-decoration: none; }
+  canvas { display: block; }
+  #tip { position: fixed; display: none; background: #222; color: #fff; padding: 8px 12px;
+         border-radius: 8px; font-size: 12px; max-width: 380px; z-index: 10; pointer-events: none; line-height: 1.5; }
+  #legend { position: fixed; bottom: 14px; left: 16px; font-size: 12px; color: #666;
+            background: #ffffffcc; padding: 8px 12px; border-radius: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div id="bar"><b>● 시드 논문</b> 주변의 관련 논문 지도 · 원 크기 = 피인용 수 · 색 진할수록 최신 ·
+<span style="color:#2456d6">파란 테두리 = 내가 보유한 논문</span> · 클릭하면 논문 열기 · <a href="javascript:history.back()">← 목록으로</a></div>
+<canvas id="cv"></canvas>
+<div id="tip"></div>
+<div id="legend">불러오는 중...</div>
+<script>
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const tip = document.getElementById("tip");
+let nodes = [], edges = [], drag = null, hovered = null, W = 1200, H = 760;
+const file = new URLSearchParams(location.search).get("file");
+
+function resize() {
+  W = Math.max(innerWidth, document.documentElement.clientWidth || 0);
+  H = Math.max(innerHeight, document.documentElement.clientHeight || 0);
+  if (W < 100 || H < 100) { W = 1200; H = 760; }  // 크기를 못 읽는 환경 대비
+  cv.width = W; cv.height = H;
+}
+resize(); addEventListener("resize", () => { resize(); draw(); });
+
+fetch("/api/mapdata?file=" + encodeURIComponent(file)).then(r => r.json()).then(d => {
+  resize();
+  nodes = d.nodes; edges = d.edges;
+  const years = nodes.map(n => n.year).filter(y => y > 0);
+  window.yMin = Math.min(...years); window.yMax = Math.max(...years);
+  const cx = W / 2, cy = H / 2;
+  nodes.forEach((n, i) => {
+    const a = i / nodes.length * Math.PI * 2;
+    n.x = cx + (n.seed ? 0 : Math.cos(a) * 250 + Math.random() * 60);
+    n.y = cy + (n.seed ? 0 : Math.sin(a) * 250 + Math.random() * 60);
+    n.vx = 0; n.vy = 0;
+    n.r = Math.min(26, 7 + Math.sqrt(n.cit || 1) * 1.1);
+    if (n.seed) n.r = Math.max(n.r, 14);
+  });
+  document.getElementById("legend").innerHTML =
+    "논문 " + (nodes.length - 1) + "편 · 참고문헌 " + d.refs + " · 피인용 " + d.citers +
+    " · <span class='dot' style='background:" + yearColor(yMin) + "'></span> " + yMin +
+    " ~ <span class='dot' style='background:" + yearColor(yMax) + "'></span> " + yMax;
+  simulate();
+});
+
+function yearColor(y) {
+  if (!y) return "#bbb";
+  const t = (yMax === yMin) ? 1 : (y - yMin) / (yMax - yMin);
+  const c1 = [190, 226, 214], c2 = [8, 80, 65];
+  const c = c1.map((v, i) => Math.round(v + (c2[i] - v) * t));
+  return "rgb(" + c.join(",") + ")";
+}
+
+function simulate() {
+  const cx = W / 2, cy = H / 2 + 20;
+  for (let step = 0; step < 400; step++) {
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        let dx = a.x - b.x, dy = a.y - b.y;
+        let d2 = dx * dx + dy * dy + 0.01, d = Math.sqrt(d2);
+        const f = 5200 / d2;
+        dx /= d; dy /= d;
+        a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
+      }
+      a.vx += (cx - a.x) * 0.004; a.vy += (cy - a.y) * 0.004;
+    }
+    for (const [i, j, w] of edges) {
+      const a = nodes[i], b = nodes[j];
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) + 0.01;
+      const ideal = Math.max(90, 230 - Math.min(w, 12) * 12);
+      const f = (d - ideal) * 0.004;
+      a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f;
+    }
+    for (const n of nodes) {
+      if (n.seed) { n.x = cx; n.y = cy; n.vx = n.vy = 0; continue; }
+      n.x += n.vx * 0.5; n.y += n.vy * 0.5; n.vx *= 0.6; n.vy *= 0.6;
+    }
+  }
+  draw();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.lineWidth = 1;
+  for (const [i, j, w] of edges) {
+    ctx.strokeStyle = "rgba(120,120,120," + Math.min(0.5, 0.08 + w * 0.03) + ")";
+    ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+  }
+  const bySize = nodes.slice().sort((a, b) => b.r - a.r).slice(0, 14);
+  for (const n of nodes) {
+    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 7);
+    ctx.fillStyle = yearColor(n.year); ctx.fill();
+    if (n.seed) { ctx.lineWidth = 3.5; ctx.strokeStyle = "#c0392b"; ctx.stroke(); }
+    else if (n.owned) { ctx.lineWidth = 3; ctx.strokeStyle = "#2456d6"; ctx.stroke(); }
+    else { ctx.lineWidth = 1; ctx.strokeStyle = "#ffffff"; ctx.stroke(); }
+  }
+  ctx.font = "11px 'Malgun Gothic'"; ctx.fillStyle = "#444"; ctx.textAlign = "center";
+  for (const n of nodes) {
+    if (n.seed || n === hovered || bySize.includes(n)) {
+      const label = (n.author || "") + (n.year ? " " + n.year : "");
+      ctx.fillText(label, n.x, n.y + n.r + 12);
+    }
+  }
+}
+
+function nodeAt(x, y) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i], dx = x - n.x, dy = y - n.y;
+    if (dx * dx + dy * dy <= (n.r + 4) * (n.r + 4)) return n;
+  }
+  return null;
+}
+
+cv.addEventListener("mousemove", (e) => {
+  if (drag) { drag.x = e.clientX; drag.y = e.clientY; draw(); return; }
+  const n = nodeAt(e.clientX, e.clientY);
+  hovered = n;
+  if (n) {
+    tip.style.display = "block";
+    tip.style.left = Math.max(0, Math.min(e.clientX + 14, W - 400)) + "px";
+    tip.style.top = (e.clientY + 14) + "px";
+    tip.innerHTML = "<b>" + n.title + "</b><br>" + (n.author || "") + " · " + (n.year || "?") +
+      " · 피인용 " + n.cit + (n.venue ? "<br>" + n.venue : "") +
+      (n.owned ? "<br><span style='color:#9db8f5'>✓ 보유 중 - 클릭하면 PDF 열림</span>" : "<br>클릭하면 논문 페이지 열림");
+    cv.style.cursor = "pointer";
+  } else { tip.style.display = "none"; cv.style.cursor = "default"; }
+  draw();
+});
+cv.addEventListener("mousedown", (e) => { drag = nodeAt(e.clientX, e.clientY); if (drag) drag._moved = false; });
+cv.addEventListener("mouseup", (e) => {
+  if (drag && !drag._moved) {
+    if (drag.owned) fetch("/api/open", { method: "POST", body: JSON.stringify({ file: drag.owned }) });
+    else if (drag.doi) window.open(drag.doi);
+  }
+  drag = null;
+});
+cv.addEventListener("mousemove", (e) => { if (drag) drag._moved = true; });
+</script>
+</body>
+</html>

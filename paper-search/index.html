@@ -181,6 +181,7 @@ function render() {
     btn.className = "editbtn"; btn.textContent = "라벨 편집";
     btn.onclick = (e) => { e.stopPropagation(); openDrawer(p.file); };
     row.appendChild(btn);
+    row.appendChild(genButton(p, "map", "관련맵", p.has_map));
     row.appendChild(genButton(p, "translation", "번역", p.has_translation));
     row.appendChild(genButton(p, "summary", "요약", p.has_summary));
     const meta = document.createElement("div"); meta.className = "meta";
@@ -200,6 +201,11 @@ function render() {
 
 const polling = {};
 
+function viewUrl(p, kind) {
+  if (kind === "map") return "/mapview?file=" + encodeURIComponent(p.file);
+  return "/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind;
+}
+
 function genButton(p, kind, label, ready) {
   const b = document.createElement("button");
   b.className = "editbtn";
@@ -209,16 +215,21 @@ function genButton(p, kind, label, ready) {
   if (ready) b.style.color = "#1d7a4f";
   b.onclick = async (e) => {
     e.stopPropagation();
-    if (ready) { window.open("/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind); return; }
-    if (!confirm((kind === "summary" ? "요약" : "전문 번역") + "을 생성할까요?\n(Claude 구독 사용량을 씁니다. 요약 ~1분, 번역 3~10분)")) return;
+    if (ready) { window.open(viewUrl(p, kind)); return; }
+    const msg = kind === "map"
+      ? "관련 논문 맵을 생성할까요?\n(무료 학술 DB 사용, 1~2분. 구독 사용량 안 씀)"
+      : (kind === "summary" ? "요약" : "전문 번역") + "을 생성할까요?\n(Claude 구독 사용량을 씁니다. 요약 ~1분, 번역 3~10분)";
+    if (!confirm(msg)) return;
     await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file: p.file, kind }) });
     polling[key] = setInterval(async () => {
       const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(p.file) + "&kind=" + kind)).json();
       if (s.status === "done") {
         clearInterval(polling[key]); delete polling[key];
-        if (kind === "summary") p.has_summary = true; else p.has_translation = true;
+        if (kind === "summary") p.has_summary = true;
+        else if (kind === "translation") p.has_translation = true;
+        else p.has_map = true;
         render();
-        window.open("/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind);
+        window.open(viewUrl(p, kind));
       } else if (s.status === "error") {
         clearInterval(polling[key]); delete polling[key];
         alert("생성 실패: " + (s.error || "원인 불명"));
