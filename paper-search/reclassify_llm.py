@@ -31,7 +31,7 @@ def work(chunk):
     for p in chunk:
         text = texts.get(p["file"], "")
         picked = sv.classify_with_claude(
-            p["title"], rules.keyword_section(text), text[:3000], groups)
+            p["title"], rules.keyword_section(text), text[:6000], groups)
         with lock:
             done[0] += 1
             if done[0] % 10 == 0:

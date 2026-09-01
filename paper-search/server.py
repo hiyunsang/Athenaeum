@@ -101,20 +101,42 @@ def find_claude():
     return None
 
 
+# 오해하기 쉬운 라벨의 정의·금지 조건 (분류 정확도의 핵심)
+LABEL_NOTES = {
+    "Ductile-brittle transition": "취성 재료(Si, 세라믹, ZnSe 등)가 연성 모드로 가공되는 전이를 실제로 다룰 때만. 연성 금속의 유동 모드 전이(laminar→sinuous 등)는 절대 아님",
+    "Sinuous flow": "연성 금속 절삭에서 sinuous/folding 유동을 다룰 때",
+    "Difficult-to-cut": "난삭성 자체가 논문의 주제일 때만",
+    "In-situ": "가공 중 실시간 관찰을 실제로 수행했을 때만",
+    "Thermal effect": "온도·열이 핵심 변수/측정 대상일 때만, 단순 언급 제외",
+    "Silicon": "실리콘을 실제 가공/해석했을 때만, 비교 언급 제외",
+    "FEM": "유한요소해석을 실제 수행했을 때만",
+    "Molecular dynamics": "MD 시뮬레이션을 실제 수행했을 때만",
+    "Analytical model": "수식 기반 해석 모델을 실제 제시/사용했을 때만",
+    "Single crystal": "실험/해석 시편이 단결정일 때",
+    "Polycrystal": "다결정 시편의 결정립 효과를 다룰 때",
+}
+
+
 def classify_with_claude(title, kw, front, groups):
     """Claude에게 논문의 '실제 연구 주제' 라벨만 고르게 한다. 실패하면 None."""
     exe = find_claude()
     if not exe:
         return None
-    catalog = "\n".join("[{}] {}".format(g, ", ".join(ls)) for g, ls in groups.items())
+    lines = []
+    for g, ls in groups.items():
+        anno = [l + (" (주의: " + LABEL_NOTES[l] + ")" if l in LABEL_NOTES else "") for l in ls]
+        lines.append("[" + g + "] " + ", ".join(anno))
+    catalog = "\n".join(lines)
     prompt = (
         "당신은 기계가공(machining) 분야 논문 분류 전문가다. 아래 논문에 붙일 라벨을 "
         "카탈로그에서 고르라.\n\n규칙:\n"
         "- 카탈로그에 있는 라벨만, 논문이 '실제로 연구·사용한 것'만 고른다.\n"
+        "- 각 라벨마다 본문에서 근거가 되는 구절을 짧게 인용해야 한다. "
+        "근거 구절을 본문에서 직접 찾을 수 없으면 그 라벨은 붙이지 마라.\n"
         "- 서론에서 언급만 한 주제, 비교 대상으로 스친 재료·방법은 절대 넣지 않는다.\n"
-        "- 재료는 실제 가공/해석 대상만, 방법은 실제 사용한 관찰·해석 방법만.\n"
-        "- 보통 논문당 4~8개가 적당하다.\n"
-        "- 답은 JSON 한 줄만: {\"labels\": [\"...\"]}\n\n"
+        "- 재료 라벨은 논문이 실제로 가공/해석한 재료만. 여러 재료를 모두 실험했다면 모두 포함.\n"
+        "- 각 라벨의 (주의: ...) 조건을 반드시 지켜라.\n"
+        "- 답은 JSON 한 줄만: {\"labels\": [{\"label\": \"...\", \"evidence\": \"본문 근거 구절\"}]}\n\n"
         "[라벨 카탈로그]\n" + catalog + "\n\n"
         "[논문 제목] " + title + "\n"
         "[저자 키워드] " + (kw or "(없음)") + "\n"
@@ -125,9 +147,13 @@ def classify_with_claude(title, kw, front, groups):
                            input=prompt.encode("utf-8"),
                            capture_output=True, timeout=240)
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
-        labels = json.loads(m.group(0))["labels"]
+        items = json.loads(m.group(0))["labels"]
         valid = set(sum(groups.values(), []))
-        picked = [l for l in labels if l in valid]
+        picked = []
+        for it in items:
+            name = it.get("label") if isinstance(it, dict) else it
+            if name in valid and name not in picked:
+                picked.append(name)
         return picked if picked else None
     except Exception:
         return None
@@ -317,7 +343,7 @@ def _refresh_new_papers():
             title = new_titles.get(f) or parse_name(f)["title"]
             text = texts.get(f, "")
             # 1순위: Claude가 실제 주제를 판정 / 실패 시 규칙 기반으로 폴백
-            picked = classify_with_claude(title, rules.keyword_section(text), text[:3000], groups)
+            picked = classify_with_claude(title, rules.keyword_section(text), text[:6000], groups)
             if picked is not None:
                 entry = {"labels": picked, "suggested": [], "rejected": []}
             else:
