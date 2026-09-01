@@ -19,3 +19,4 @@ text_index.json
 # 파이썬 캐시
 __pycache__/
 *.pyc
+맵생성기록.txt
