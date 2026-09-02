@@ -933,6 +933,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/explore":
             with open(os.path.join(BASE, "explore.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/ui.css":
+            with open(os.path.join(BASE, "ui.css"), "rb") as f:
+                self._send(200, f.read(), "text/css; charset=utf-8")
         elif url.path == "/api/explore":
             # 주제 키워드로 OpenAlex 전체 검색 (탐색)
             import mapper

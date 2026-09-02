@@ -3,106 +3,101 @@
 <head>
 <meta charset="utf-8">
 <title>논문 읽기</title>
+<link rel="stylesheet" href="/ui.css">
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Malgun Gothic", sans-serif; color: #222; background: #f7f6f3; overflow: hidden; }
-  #bar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: #fff; border-bottom: 1px solid #ddd; font-size: 13px; }
-  #bar .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #444; }
-  #bar a { color: #3b5bd6; text-decoration: none; }
-  .tab { padding: 5px 12px; border: 1px solid #ccc; border-radius: 14px; background: #fff; cursor: pointer; font-size: 13px; white-space: nowrap; }
-  .tab.on { background: #3b5bd6; color: #fff; border-color: #3b5bd6; }
-  .tog { cursor: pointer; user-select: none; color: #555; white-space: nowrap; }
-  #layout { display: flex; height: calc(100vh - 44px); }
-  /* 왼쪽: Claude 패널 */
-  #side { width: 360px; min-width: 360px; border-right: 1px solid #ddd; background: #fbfaf7; overflow-y: auto; padding: 12px; display: none; font-size: 13px; }
+  body { overflow: hidden; }
+  #bar { height: 40px; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s3); background: var(--surface); border-bottom: 1px solid var(--line-2); font-size: 12px; }
+  #bar .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+  .tab { padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); cursor: pointer; font-size: 12px; white-space: nowrap; color: var(--text-2); }
+  .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab:hover:not(.on) { color: var(--accent); border-color: var(--accent); }
+  .tog { cursor: pointer; user-select: none; color: var(--text-2); white-space: nowrap; }
+  #layout { display: flex; height: calc(100vh - 40px); }
+  #side { width: 340px; min-width: 340px; border-right: 1px solid var(--line-2); background: var(--panel); overflow-y: auto; padding: var(--s2) var(--s3); display: none; font-size: 12px; }
   #side.on { display: block; }
-  #side h3 { font-size: 13px; color: #8a6d1d; margin: 14px 0 6px; }
-  textarea { width: 100%; min-height: 48px; border: 1px solid #ccc; border-radius: 6px; padding: 6px; font-family: inherit; font-size: 13px; }
-  .btn { padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
-  .btn.pri { background: #3b5bd6; color: #fff; border-color: #3b5bd6; }
-  .item { background: #fff; border: 1px solid #e2e0da; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; position: relative; }
-  .item.hl { border-color: #3b5bd6; box-shadow: 0 0 0 2px #3b5bd633; }
-  .item .t { font-size: 11px; color: #999; }
-  .item .qt { font-size: 12px; color: #666; border-left: 3px solid #ddd; padding-left: 8px; margin: 4px 0; white-space: pre-wrap; max-height: 3.2em; overflow: hidden; }
-  .item .q { font-weight: bold; margin: 4px 0; }
-  .item .a { line-height: 1.6; }
+  #side h3 { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); margin: var(--s3) 0 var(--s1); }
+  textarea { width: 100%; min-height: 44px; font-size: 12px; }
+  .btn { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .btn.pri { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .item { padding: var(--s2) 0; border-bottom: 1px solid var(--line); position: relative; }
+  .item.hl { background: var(--accent-bg); }
+  .item .t { font-size: 11px; color: var(--text-3); }
+  .item .qt { font-size: 12px; color: var(--text-2); border-left: 2px solid var(--line-2); padding-left: var(--s2); margin: var(--s1) 0; white-space: pre-wrap; max-height: 3.2em; overflow: hidden; }
+  .item .q { font-weight: 600; margin: var(--s1) 0; }
+  .item .a { line-height: 1.55; }
   .item .a.clip { max-height: 6.4em; overflow: hidden; position: relative; }
-  .item .a.clip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2em; background: linear-gradient(#fff0, #fff); }
-  .item .more { color: #3b5bd6; cursor: pointer; font-size: 12px; }
-  .item .del { position: absolute; top: 6px; right: 8px; color: #bbb; cursor: pointer; font-size: 12px; }
-  .item .del:hover { color: #a33; }
-  .item .loc { position: absolute; top: 6px; right: 28px; color: #3b5bd6; cursor: pointer; font-size: 11px; }
-  .a p { margin: 4px 0; } .a li { margin-left: 16px; }
-  /* 가운데: 본문 */
-  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: 14px 30px 80px; line-height: 1.8; background: #fff; position: relative; }
-  #read h2 { border-bottom: 2px solid #3b5bd6; padding-bottom: 4px; margin-top: 30px; font-size: 18px; }
-  #read h3 { margin-top: 20px; font-size: 15px; color: #333; }
-  #read .flash { background: #fff3a8; transition: background 1.5s; }
-  #read .figref { color: #2456d6; text-decoration: underline dotted; cursor: pointer; }
+  .item .a.clip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2em; background: linear-gradient(rgba(249,249,247,0), var(--panel)); }
+  .item .more { color: var(--accent); cursor: pointer; font-size: 12px; }
+  .item .del { position: absolute; top: var(--s2); right: 0; color: var(--text-3); cursor: pointer; font-size: 12px; }
+  .item .del:hover { color: var(--red); }
+  .item .loc { position: absolute; top: var(--s2); right: 22px; color: var(--accent); cursor: pointer; font-size: 11px; }
+  .a p { margin: 3px 0; } .a li { margin-left: 16px; }
+  .item .a h1, .item .a h2, .item .a h3, .item .a h4 { font-size: 12px; font-weight: 600; margin: var(--s1) 0 2px; border: 0; padding: 0; }
+  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: var(--s3) var(--s6) 80px; line-height: 1.75; font-size: 14px; background: var(--surface); position: relative; }
+  #read h2 { border-bottom: 1px solid var(--line-2); padding-bottom: 3px; margin-top: var(--s6); font-size: 16px; font-weight: 600; }
+  #read h3 { margin-top: var(--s4); font-size: 14px; font-weight: 600; color: var(--text); }
+  #read .flash { background: var(--amber-bg); transition: background 1.2s; }
+  #read .figref { color: var(--accent); text-decoration: underline dotted; cursor: pointer; }
   #read li { margin-left: 18px; }
-  mark.anc { background: #fff3a8; border-radius: 2px; }
-  mark.anc.qa { background: #dfe8ff; }
-  sup.badge { cursor: pointer; font-size: 11px; margin-left: 2px; }
-  .toc { columns: 2; column-gap: 28px; font-size: 13px; background: #fbfaf7; border: 1px solid #e2e0da; border-radius: 8px; padding: 10px 14px; line-height: 1.7; }
-  .toc a { display: block; color: #2456d6; text-decoration: none; cursor: pointer; break-inside: avoid; }
-  .toc a:hover { text-decoration: underline; }
-  .toc a.d1 { font-weight: bold; margin-top: 4px; } .toc a.d2 { padding-left: 14px; } .toc a.d3 { padding-left: 28px; font-size: 12px; color: #4a5db8; }
-  table.abbr { border-collapse: collapse; font-size: 13px; width: 100%; margin: 6px 0 12px; }
-  table.abbr td { border-bottom: 1px solid #eee; padding: 4px 8px; vertical-align: top; }
-  table.abbr td.k { white-space: nowrap; font-weight: bold; color: #444; width: 1%; }
-  /* 오른쪽: PDF */
-  #pdfcol { flex: 1; min-width: 360px; overflow-y: auto; background: #6b6a63; display: none; position: relative; }
+  mark.anc { background: var(--amber-bg); border-bottom: 1px solid var(--amber); }
+  mark.anc.qa { background: var(--accent-bg); border-bottom: 1px solid var(--accent); }
+  sup.badge { cursor: pointer; font-size: 10px; margin-left: 2px; color: var(--accent); font-weight: 600; }
+  .toc { columns: 2; column-gap: var(--s6); font-size: 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: var(--s2) 0; line-height: 1.65; }
+  .toc a { display: block; color: var(--text); cursor: pointer; break-inside: avoid; }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+  .toc a.d1 { font-weight: 600; margin-top: 3px; } .toc a.d2 { padding-left: 14px; } .toc a.d3 { padding-left: 28px; color: var(--text-2); }
+  table.abbr { border-collapse: collapse; font-size: 12px; width: 100%; margin: var(--s1) 0 var(--s3); }
+  table.abbr td { border-bottom: 1px solid var(--line); padding: 3px var(--s2); vertical-align: top; }
+  table.abbr td.k { white-space: nowrap; font-weight: 600; color: var(--text); width: 1%; }
+  #pdfcol { flex: 1; min-width: 360px; overflow-y: auto; background: #56554f; display: none; position: relative; }
   #pdfcol.on { display: block; }
-  #pdftools { position: sticky; top: 0; z-index: 3; background: #4d4c47; color: #eee; font-size: 12px; padding: 5px 10px; display: flex; gap: 8px; align-items: center; }
-  #pdftools button { background: #666; color: #fff; border: 0; border-radius: 5px; padding: 3px 9px; cursor: pointer; font-size: 12px; }
-  #pdftools button.on { background: #3b5bd6; }
-  #pdfpages { padding: 10px; }
-  .pg { position: relative; margin: 0 auto 10px; background: #fff; box-shadow: 0 1px 4px #0006; }
+  #pdftools { position: sticky; top: 0; z-index: 3; background: #3a3936; color: #ddd; font-size: 12px; padding: 4px var(--s2); display: flex; gap: var(--s2); align-items: center; }
+  #pdftools button { background: #55544f; color: #fff; border: 0; border-radius: var(--r); padding: 2px 8px; cursor: pointer; font-size: 12px; }
+  #pdftools button.on { background: var(--accent); }
+  #pdfpages { padding: var(--s2); }
+  .pg { position: relative; margin: 0 auto var(--s2); background: #fff; box-shadow: 0 1px 3px #0005; }
   .pg canvas { display: block; }
-  .hl { position: absolute; background: rgba(255, 200, 0, .45); border-radius: 2px; pointer-events: none; }
-  .hl.cap { background: rgba(80, 140, 255, .35); }
-  .capbox { position: absolute; background: rgba(255, 248, 200, .96); border: 1px solid #e0c96a; border-radius: 4px; padding: 3px 7px; font-size: 12px; line-height: 1.45; color: #333; z-index: 2; pointer-events: none; }
-  .rsel { position: absolute; border: 2px dashed #3b5bd6; background: rgba(59, 91, 214, .12); pointer-events: none; }
+  .hl { position: absolute; background: rgba(255, 200, 0, .4); pointer-events: none; }
+  .hl.cap { background: rgba(31, 79, 209, .28); }
+  .capbox { position: absolute; background: rgba(251, 243, 220, .97); border-left: 2px solid var(--amber); padding: 2px 6px; font-size: 12px; line-height: 1.4; color: var(--text); z-index: 2; pointer-events: none; }
+  .rsel { position: absolute; border: 1px dashed var(--accent); background: rgba(31, 79, 209, .1); pointer-events: none; }
   body.regionmode .pg { cursor: crosshair; }
-  /* 확대 결과: 화면을 덮지 않는 떠 있는 창 (옮길 수 있음) */
-  #lightbox { position: fixed; right: 24px; bottom: 24px; width: 44vw; max-width: 900px; background: #fff; border-radius: 10px;
-              box-shadow: 0 8px 32px #0007; display: none; z-index: 50; overflow: hidden; border: 1px solid #bbb; }
+  #lightbox { position: fixed; right: var(--s6); bottom: var(--s6); width: 44vw; max-width: 900px; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 6px 24px #0005; display: none; z-index: 50; overflow: hidden; }
   #lightbox.on { display: block; }
   #lightbox.big { width: 70vw; }
-  #lbhead { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: #333; color: #eee; font-size: 12px; cursor: move; user-select: none; }
+  #lbhead { display: flex; align-items: center; gap: var(--s2); padding: 4px var(--s2); background: #3a3936; color: #ddd; font-size: 12px; cursor: move; user-select: none; }
   #lbhead span { flex: 1; }
-  #lbhead button { background: #555; color: #fff; border: 0; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
-  #lbbody { max-height: 70vh; overflow: auto; background: #f4f4f4; }
+  #lbhead button { background: #55544f; color: #fff; border: 0; border-radius: var(--r); padding: 1px 8px; cursor: pointer; font-size: 12px; }
+  #lbbody { max-height: 70vh; overflow: auto; background: #eeeeec; }
   #lightbox canvas { display: block; width: 100%; height: auto; background: #fff; }
-  /* 선택 툴바 */
-  #seltool { position: fixed; display: none; background: #222; border-radius: 8px; padding: 4px; z-index: 20; gap: 2px; }
-  #seltool button { background: transparent; color: #fff; border: 0; padding: 5px 9px; cursor: pointer; font-size: 12px; border-radius: 6px; }
-  #seltool button:hover { background: #444; }
-  #askmenu { position: fixed; display: none; background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 6px; z-index: 21; box-shadow: 0 4px 16px #0003; min-width: 220px; }
-  #askmenu div { padding: 6px 10px; cursor: pointer; border-radius: 6px; font-size: 13px; }
-  #askmenu div:hover { background: #eef2fd; }
-  #status { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 7px 14px; border-radius: 16px; font-size: 12px; display: none; z-index: 30; }
-  .hint { color: #999; font-size: 12px; }
+  #seltool { position: fixed; display: none; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); padding: 2px; z-index: 20; gap: 0; box-shadow: 0 2px 8px #0002; }
+  #seltool button { background: transparent; color: var(--text); border: 0; padding: 4px 9px; cursor: pointer; font-size: 12px; border-radius: var(--r); }
+  #seltool button:hover { background: var(--accent-bg); color: var(--accent); }
+  #askmenu { position: fixed; display: none; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); padding: 2px; z-index: 21; box-shadow: 0 2px 8px #0002; min-width: 200px; }
+  #askmenu div { padding: 5px 10px; cursor: pointer; border-radius: var(--r); font-size: 12px; }
+  #askmenu div:hover { background: var(--accent-bg); color: var(--accent); }
+  #status { position: fixed; bottom: var(--s3); left: 50%; transform: translateX(-50%); background: #1c1c1a; color: #fff; padding: 5px 12px; border-radius: var(--r); font-size: 12px; display: none; z-index: 30; }
+  .hint { color: var(--text-3); font-size: 12px; }
 </style>
 </head>
 <body>
 <div id="bar">
   <a href="/">← 목록</a>
-  <label class="tog"><input type="checkbox" id="sideTog" checked> 🤖 Claude</label>
+  <label class="tog"><input type="checkbox" id="sideTog" checked> Claude</label>
   <span class="tab on" data-kind="summary">요약</span>
   <span class="tab" data-kind="translation">전문번역</span>
   <span class="tab" id="regen" title="현재 탭(요약/번역)을 지우고 다시 생성">↻ 다시 생성</span>
-  <label class="tog"><input type="checkbox" id="pdfTog" checked> 📄 PDF</label>
+  <label class="tog"><input type="checkbox" id="pdfTog" checked> PDF</label>
   <span class="ttl" id="ttl">불러오는 중…</span>
-  <span class="hint">문장 드래그 → 📍PDF 찾기 · 🔁대조 · 📝메모 · 🤖질문</span>
+  <span class="hint">문장 드래그 → PDF 찾기 · 대조 · 메모 · 질문</span>
 </div>
 <div id="layout">
   <div id="side" class="on">
-    <h3>🤖 Claude에게 질문</h3>
+    <h3>Claude에게 질문</h3>
     <textarea id="askIn" placeholder="짧게 물어보세요… (Ctrl+Enter)"></textarea>
     <div style="text-align:right;margin-top:4px"><button class="btn pri" id="askBtn">질문</button></div>
     <div id="qa"></div>
-    <h3>📝 메모</h3>
+    <h3>메모</h3>
     <textarea id="noteIn" placeholder="메모… (Ctrl+Enter 저장)"></textarea>
     <div style="text-align:right;margin-top:4px"><button class="btn pri" id="noteSave">저장</button></div>
     <div id="notes"></div>
@@ -111,7 +106,7 @@
   <div id="pdfcol" class="on">
     <div id="pdftools">
       <button id="zoomOut" title="축소">−</button><span id="zoomLbl">100%</span><button id="zoomIn" title="확대">+</button>
-      <button id="regionBtn" title="켜고 그림 위를 드래그하면 그 부분이 크게 뜹니다">🔍 영역 확대</button>
+      <button id="regionBtn" title="켜고 그림 위를 드래그하면 그 부분이 크게 뜹니다">영역 확대</button>
       <label style="cursor:pointer"><input type="checkbox" id="capTog" checked> 캡션 번역 표시</label>
       <span id="pdfinfo" style="margin-left:auto;color:#bbb"></span>
     </div>
@@ -119,20 +114,20 @@
   </div>
 </div>
 <div id="seltool">
-  <button data-act="locate">📍 PDF에서 찾기</button>
-  <button data-act="cross">🔁 대조</button>
-  <button data-act="note">📝 메모</button>
-  <button data-act="ask">🤖 질문 ▾</button>
+  <button data-act="locate">PDF에서 찾기</button>
+  <button data-act="cross">대조</button>
+  <button data-act="note">메모</button>
+  <button data-act="ask">질문 ▾</button>
 </div>
 <div id="askmenu">
-  <div data-q="이 부분을 쉬운 말로 설명해줘">💬 쉽게 설명</div>
-  <div data-q="이게 왜 중요한지, 이 논문에서 어떤 역할인지 알려줘">❓ 왜 중요?</div>
-  <div data-q="여기 나오는 용어·수식의 뜻을 간단히 풀어줘">📖 용어·수식 뜻</div>
-  <div data-q="이 주장의 근거가 논문 어디에 있는지 알려줘">🔎 근거는?</div>
-  <div data-q="">✏️ 직접 입력…</div>
+  <div data-q="이 부분을 쉬운 말로 설명해줘">쉽게 설명</div>
+  <div data-q="이게 왜 중요한지, 이 논문에서 어떤 역할인지 알려줘">왜 중요?</div>
+  <div data-q="여기 나오는 용어·수식의 뜻을 간단히 풀어줘">용어·수식 뜻</div>
+  <div data-q="이 주장의 근거가 논문 어디에 있는지 알려줘">근거는?</div>
+  <div data-q="">직접 입력…</div>
 </div>
 <div id="lightbox">
-  <div id="lbhead"><span>🔍 확대 보기 — 제목줄을 잡아 옮기기</span><button id="lbSize">크게</button><button id="lbClose">✕</button></div>
+  <div id="lbhead"><span>확대 보기 — 제목줄을 잡아 옮기기</span><button id="lbSize">크게</button><button id="lbClose">✕</button></div>
   <div id="lbbody"><canvas id="lbcv"></canvas></div>
 </div>
 <div id="status"></div>
@@ -273,9 +268,9 @@ function liveView(k) {
     if (s.status === "done" || s.status === "none") { clearInterval(liveTimer); liveTimer = null; delete texts[k]; showKind(k); return; }
     if (s.status === "error") { clearInterval(liveTimer); liveTimer = null; read.innerHTML = "<p class='hint'>⚠ 실패: " + esc(s.error || "") + "</p>"; return; }
     const total = s.total || 0, parts = s.parts || {}, doneN = Object.keys(parts).length;
-    let html = "<p class='hint'>⏳ " + label + " 생성 중 — " + doneN + "/" + total + " 구간 완료 (" + fmtSec(s.elapsed) + ") · 완성된 부분부터 표시됩니다</p>";
+    let html = "<p class='hint'>" + label + " 생성 중 — " + doneN + "/" + total + " 구간 완료 (" + fmtSec(s.elapsed) + ") · 완성된 부분부터 표시됩니다</p>";
     for (let i = 0; i < total; i++)
-      html += parts[i] ? mdToHtml(parts[i]) : "<p class='hint' style='border:1px dashed #ddd;border-radius:8px;padding:10px'>⏳ " + (i + 1) + "/" + total + " 구간 생성 중…</p>";
+      html += parts[i] ? mdToHtml(parts[i]) : "<p class='hint' style='border:1px dashed var(--line-2);border-radius:var(--r);padding:8px'>" + (i + 1) + "/" + total + " 구간 생성 중…</p>";
     const keep = read.scrollTop; read.innerHTML = html; read.scrollTop = keep; bindFigrefs(read);
   };
   tick(); liveTimer = setInterval(tick, 5000);
@@ -489,7 +484,7 @@ askmenu.querySelectorAll("div").forEach(d => d.onclick = async () => {
 async function doAction(act) {
   const text = sel.text;
   if (act === "locate") {
-    status("📍 원문 위치를 찾는 중… (Claude, 10~30초)", 0);
+    status("원문 위치를 찾는 중… (Claude, 10~30초)", 0);
     document.getElementById("pdfTog").checked = true; pdfcol.classList.add("on");
     const r = await (await fetch("/api/locate", { method: "POST", body: JSON.stringify({ file, passage: text }) })).json();
     if (r.error || !r.quote) { status("⚠ " + (r.error || "찾지 못했습니다")); return; }
@@ -521,7 +516,7 @@ async function doAction(act) {
 async function ask(q, quote) {
   document.getElementById("sideTog").checked = true; document.getElementById("side").classList.add("on");
   const qa = document.getElementById("qa");
-  qa.insertAdjacentHTML("afterbegin", "<div class='item' id='pending'><div class='q'>" + esc(q) + "</div><div class='a hint'>🤖 답변 작성 중… (20~40초)</div></div>");
+  qa.insertAdjacentHTML("afterbegin", "<div class='item' id='pending'><div class='q'>" + esc(q) + "</div><div class='a hint'>답변 작성 중… (20~40초)</div></div>");
   const r = await (await fetch("/api/ask", { method: "POST", body: JSON.stringify({ file, question: q, quote, kind }) })).json();
   if (r.error) { const p = document.getElementById("pending"); if (p) p.querySelector(".a").textContent = "⚠ " + r.error; return; }
   notesData.qa = r.qa; renderSide(); markAnchors();
@@ -558,7 +553,7 @@ function highlightText(it) {
   }
 }
 function markAnchorsBadge(mark, it) {
-  const badge = document.createElement("sup"); badge.className = "badge"; badge.textContent = it.type === "qa" ? "🤖" : "📝";
+  const badge = document.createElement("sup"); badge.className = "badge"; badge.textContent = it.type === "qa" ? "Q" : "메모";
   badge.title = "패널에서 보기";
   badge.onclick = (e) => { e.stopPropagation(); focusItem(it.type, it.i); };
   mark.insertAdjacentElement("afterend", badge);
@@ -591,7 +586,7 @@ function renderSide() {
       "<div class='t'>" + x.t + "</div>" + (x.quote ? "<div class='qt'>" + esc(x.quote) + "</div>" : "") +
       "<div class='q'>Q. " + esc(x.q) + "</div><div class='a" + (long ? " clip" : "") + "'>" + mdToHtml(x.a || "") + "</div>" +
       (long ? "<span class='more'>더보기 ▾</span>" : "") + "</div>";
-  }).join("") || "<div class='hint'>질문 기록 없음 — 본문 문장을 드래그해 🤖 질문, 또는 위에 직접 입력</div>";
+  }).join("") || "<div class='hint'>질문 기록 없음 — 본문 문장을 드래그해 질문, 또는 위에 직접 입력</div>";
   document.querySelectorAll(".del").forEach(d => d.onclick = async () => {
     if (!confirm("삭제할까요?")) return;
     notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify({ file, op: d.dataset.k === "note" ? "del_note" : "del_qa", idx: parseInt(d.dataset.i) }) })).json();

@@ -1,0 +1,59 @@
+/* MAENG paper tools — 공통 디자인 토큰 & 컴포넌트
+   원칙: 정보 밀도 유지, 시각 밀도 축소. 카드 대신 구분선, 알약 대신 텍스트, 장식 대신 타이포그래피. */
+:root {
+  --bg: #f4f4f2;          /* 페이지 바탕 */
+  --panel: #f9f9f7;       /* 사이드 패널 */
+  --surface: #ffffff;     /* 본문 영역 */
+  --text: #1c1c1a;
+  --text-2: #5c5c58;      /* 메타데이터 */
+  --text-3: #8c8c87;      /* 힌트, 0건 */
+  --line: #e4e3df;        /* 행 구분선 */
+  --line-2: #c8c7c1;      /* 패널 구분선 */
+  --accent: #1f4fd1;      /* 유일한 상호작용 색 */
+  --accent-bg: #e9eefb;
+  --amber: #8a5a00;       /* 불확실/제안/주의 */
+  --amber-bg: #fbf3dc;
+  --green: #1f6f45;       /* 정상 상태 */
+  --red: #a33a3a;         /* 오류 */
+  --r: 4px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
+  --font: "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: var(--font); font-size: 13px; line-height: 1.45; color: var(--text); background: var(--bg);
+       font-variant-numeric: tabular-nums; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+input[type=text], input[type=search], textarea, select {
+  font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); padding: 5px 8px; }
+input[type=text]:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+button { font: inherit; }
+/* 고스트 액션: 텍스트처럼 보이는 동작 */
+.act { background: none; border: 0; color: var(--text-2); padding: 2px 6px; cursor: pointer; border-radius: var(--r); font-size: 12px; }
+.act:hover { color: var(--accent); background: var(--accent-bg); }
+.act.ready { color: var(--accent); }
+.act.warn { color: var(--red); }
+.act:disabled { color: var(--text-3); cursor: default; background: none; }
+/* 주요 동작 버튼 (검색 등) */
+.primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); border-radius: var(--r); padding: 5px 12px; cursor: pointer; }
+.primary:hover { filter: brightness(.95); }
+.ghostbtn { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); padding: 4px 10px; cursor: pointer; font-size: 12px; }
+.ghostbtn:hover { border-color: var(--accent); color: var(--accent); }
+/* 활성 필터 칩 (제거 가능한 선택 = 칩을 쓰는 유일한 경우) */
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-bg); color: var(--accent); border-radius: var(--r);
+        padding: 2px 8px; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
+.chip:hover { border-color: var(--accent); }
+.chip span { font-weight: 600; }
+.chip.ft { background: var(--amber-bg); color: var(--amber); }
+.chip.jn { background: #edf0ee; color: var(--green); }
+/* 섹션 제목 */
+.sec { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; margin: var(--s4) 0 var(--s1); }
+/* 목록 행 */
+.list-row { padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); }
+.list-row:hover { background: #f2f2ef; }
+.hint { color: var(--text-3); font-size: 12px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d4d3ce; border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }

@@ -3,33 +3,27 @@
 <head>
 <meta charset="utf-8">
 <title>관련 논문 맵</title>
+<link rel="stylesheet" href="/ui.css">
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Malgun Gothic", sans-serif; overflow: hidden; background: #fbfaf7; }
-  #bar { height: 38px; background: #fff; border-bottom: 1px solid #ddd;
-         padding: 9px 16px; font-size: 13px; color: #666; }
-  #bar b { color: #c0392b; }
-  #bar a { color: #3b5bd6; text-decoration: none; }
-  #layout { display: flex; height: calc(100vh - 38px); }
-  #panel { width: 380px; min-width: 380px; overflow-y: auto; background: #fff;
-           border-right: 1px solid #ddd; }
-  .prow { padding: 9px 12px; border-bottom: 1px solid #f0efe9; cursor: pointer; font-size: 12px; }
-  .prow:hover, .prow.hl { background: #eef2fd; }
-  .prow.owned { border-left: 4px solid #2456d6; }
-  .prow.seedrow { background: #fdf1ef; border-left: 4px solid #c0392b; }
-  .pt { font-size: 13px; color: #222; line-height: 1.4; margin-bottom: 3px; }
-  .pm { color: #888; }
-  .pm b { color: #555; }
-  .kws { margin-top: 3px; }
-  .kw { display: inline-block; background: #f0efe9; color: #6b6a63; border-radius: 8px;
-        padding: 1px 7px; font-size: 11px; margin: 1px 3px 1px 0; }
-  #cvwrap { flex: 1; position: relative; }
+  body { overflow: hidden; }
+  #bar { height: 36px; background: var(--surface); border-bottom: 1px solid var(--line-2); padding: 0 var(--s3); font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: var(--s2); white-space: nowrap; overflow: hidden; }
+  #bar b { color: var(--red); }
+  #layout { display: flex; height: calc(100vh - 36px); }
+  #panel { width: 360px; min-width: 360px; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line-2); }
+  .prow { padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 12px; }
+  .prow:hover, .prow.hl { background: var(--accent-bg); }
+  .prow.owned { border-left: 3px solid var(--accent); padding-left: 9px; }
+  .prow.seedrow { background: var(--amber-bg); border-left: 3px solid var(--red); padding-left: 9px; }
+  .pt { font-size: 13px; color: var(--text); line-height: 1.35; margin-bottom: 2px; font-weight: 500; }
+  .pm { color: var(--text-2); }
+  .pm b { color: var(--text); }
+  .kws { margin-top: 2px; color: var(--text-3); }
+  .kw { display: inline; font-size: 11px; color: var(--text-3); }
+  .kw + .kw::before { content: " · "; }
+  #cvwrap { flex: 1; position: relative; background: var(--bg); }
   canvas { display: block; }
-  #tip { position: fixed; display: none; background: #222; color: #fff; padding: 8px 12px;
-         border-radius: 8px; font-size: 12px; max-width: 380px; z-index: 10;
-         pointer-events: none; line-height: 1.5; }
-  #legend { position: absolute; bottom: 12px; right: 14px; font-size: 12px; color: #666;
-            background: #ffffffcc; padding: 7px 11px; border-radius: 8px; }
+  #tip { position: fixed; display: none; background: #1c1c1a; color: #fff; padding: var(--s2) var(--s3); border-radius: var(--r); font-size: 12px; max-width: 380px; z-index: 10; pointer-events: none; line-height: 1.5; }
+  #legend { position: absolute; bottom: var(--s3); right: var(--s3); font-size: 12px; color: var(--text-2); background: rgba(255,255,255,.9); padding: 4px 8px; border: 1px solid var(--line); }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 5px; vertical-align: -1px; }
 </style>
 </head>
@@ -112,11 +106,11 @@ function buildExtraSections(prior, derived) {
     panel.appendChild(h);
   };
   if (prior.length) {
-    mk("📜 Prior works - 이 분야의 뿌리 논문", "이 맵의 논문들이 공통으로 인용하는 조상 논문");
+    mk("Prior works - 이 분야의 뿌리 논문", "이 맵의 논문들이 공통으로 인용하는 조상 논문");
     for (const n of prior) panel.appendChild(extraRow(n, "맵 논문 " + n.inter + "편이 인용"));
   }
   if (derived.length) {
-    mk("🌱 Derivative works - 후속·종합 연구", "이 맵의 논문 여러 편을 인용하는 후속 논문 (리뷰 후보)");
+    mk("Derivative works - 후속·종합 연구", "이 맵의 논문 여러 편을 인용하는 후속 논문 (리뷰 후보)");
     for (const n of derived) panel.appendChild(extraRow(n, "맵 논문 " + n.inter + "편을 인용"));
   }
 }
@@ -262,7 +256,7 @@ cv.addEventListener("mousemove", (e) => {
     tip.style.top = (e.clientY + 14) + "px";
     tip.innerHTML = "<b>" + n.title + "</b><br>" + (n.author || "") + " · " + (n.year || "?") +
       " · 피인용 " + n.cit + (n.venue ? "<br>" + n.venue : "") +
-      (n.kw && n.kw.length ? "<br>🔑 " + n.kw.join(", ") : "") +
+      (n.kw && n.kw.length ? "<br>키워드: " + n.kw.join(", ") : "") +
       (n.owned ? "<br><span style='color:#9db8f5'>✓ 보유 중 - 클릭하면 PDF 열림</span>" : "<br>클릭하면 논문 페이지 열림");
     cv.style.cursor = "pointer";
   } else { tip.style.display = "none"; cv.style.cursor = "default"; }
