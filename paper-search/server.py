@@ -723,7 +723,10 @@ def generate_document(name, kind, text):
         t.join()
     if errors:
         raise errors[0]
+    # 구간 결과 정리: 구간이 만든 # 제목은 ##로 내림(문서 제목은 하나만), 참고문헌 구간마다 반복된 '(참고문헌 생략)'은 하나로
+    results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
+    body = re.sub(r"(?:\(참고문헌 생략\)\s*){2,}", "(참고문헌 생략)\n\n", body)
     if is_sum:
         _set_stage(key, "한줄 요약·핵심 정리 작성 중")
         wrap = ask_claude_json(
