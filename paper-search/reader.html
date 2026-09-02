@@ -64,10 +64,16 @@
   .capbox { position: absolute; background: rgba(255, 248, 200, .96); border: 1px solid #e0c96a; border-radius: 4px; padding: 3px 7px; font-size: 12px; line-height: 1.45; color: #333; z-index: 2; pointer-events: none; }
   .rsel { position: absolute; border: 2px dashed #3b5bd6; background: rgba(59, 91, 214, .12); pointer-events: none; }
   body.regionmode .pg { cursor: crosshair; }
-  #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.78); display: none; z-index: 50; align-items: center; justify-content: center; flex-direction: column; cursor: zoom-out; }
-  #lightbox.on { display: flex; }
-  #lightbox canvas { max-width: 96vw; max-height: 90vh; background: #fff; box-shadow: 0 4px 30px #000; }
-  #lightbox .lbhint { color: #ddd; font-size: 12px; margin-top: 8px; }
+  /* 확대 결과: 화면을 덮지 않는 떠 있는 창 (옮길 수 있음) */
+  #lightbox { position: fixed; right: 24px; bottom: 24px; width: 44vw; max-width: 900px; background: #fff; border-radius: 10px;
+              box-shadow: 0 8px 32px #0007; display: none; z-index: 50; overflow: hidden; border: 1px solid #bbb; }
+  #lightbox.on { display: block; }
+  #lightbox.big { width: 70vw; }
+  #lbhead { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: #333; color: #eee; font-size: 12px; cursor: move; user-select: none; }
+  #lbhead span { flex: 1; }
+  #lbhead button { background: #555; color: #fff; border: 0; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+  #lbbody { max-height: 70vh; overflow: auto; background: #f4f4f4; }
+  #lightbox canvas { display: block; width: 100%; height: auto; background: #fff; }
   /* 선택 툴바 */
   #seltool { position: fixed; display: none; background: #222; border-radius: 8px; padding: 4px; z-index: 20; gap: 2px; }
   #seltool button { background: transparent; color: #fff; border: 0; padding: 5px 9px; cursor: pointer; font-size: 12px; border-radius: 6px; }
@@ -125,7 +131,10 @@
   <div data-q="이 주장의 근거가 논문 어디에 있는지 알려줘">🔎 근거는?</div>
   <div data-q="">✏️ 직접 입력…</div>
 </div>
-<div id="lightbox"><canvas id="lbcv"></canvas><div class="lbhint">클릭하면 닫힘 · 그림 위를 드래그해서 더 확대</div></div>
+<div id="lightbox">
+  <div id="lbhead"><span>🔍 확대 보기 — 제목줄을 잡아 옮기기</span><button id="lbSize">크게</button><button id="lbClose">✕</button></div>
+  <div id="lbbody"><canvas id="lbcv"></canvas></div>
+</div>
 <div id="status"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -432,7 +441,22 @@ window.addEventListener("mouseup", async () => {
   const lb = document.getElementById("lbcv"); lb.width = off.width; lb.height = off.height; lb.getContext("2d").drawImage(off, 0, 0);
   document.getElementById("lightbox").classList.add("on"); status("");
 });
-document.getElementById("lightbox").onclick = () => document.getElementById("lightbox").classList.remove("on");
+const lbox = document.getElementById("lightbox");
+document.getElementById("lbClose").onclick = () => lbox.classList.remove("on");
+document.getElementById("lbSize").onclick = (e) => { lbox.classList.toggle("big"); e.target.textContent = lbox.classList.contains("big") ? "작게" : "크게"; };
+// 제목줄 드래그로 위치 이동
+let lbDrag = null;
+document.getElementById("lbhead").addEventListener("mousedown", (e) => {
+  if (e.target.tagName === "BUTTON") return;
+  const r = lbox.getBoundingClientRect();
+  lbDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; e.preventDefault();
+});
+window.addEventListener("mousemove", (e) => {
+  if (!lbDrag) return;
+  lbox.style.left = Math.max(0, e.clientX - lbDrag.dx) + "px"; lbox.style.top = Math.max(0, e.clientY - lbDrag.dy) + "px";
+  lbox.style.right = "auto"; lbox.style.bottom = "auto";
+});
+window.addEventListener("mouseup", () => { lbDrag = null; });
 
 // ---------- 선택 툴바 ----------
 const seltool = document.getElementById("seltool"), askmenu = document.getElementById("askmenu");
