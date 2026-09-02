@@ -169,7 +169,8 @@ async function renderPage(pg) {
   pg.rendered = true;
   const cv = document.createElement("canvas"); cv.width = pg.vp.width; cv.height = pg.vp.height;
   try {
-    await pg.page.render({ canvasContext: cv.getContext("2d"), viewport: pg.vp }).promise;
+    // intent:"print" = 화면 갱신 타이밍에 의존하지 않고 바로 그림 (탭이 뒤에 있어도 멈추지 않음)
+    await pg.page.render({ canvasContext: cv.getContext("2d"), viewport: pg.vp, intent: "print" }).promise;
     pg.div.querySelectorAll("div:not(.hl)").forEach(d => d.remove());
     pg.div.insertBefore(cv, pg.div.firstChild);
   } catch (e) { pg.rendered = false; }
