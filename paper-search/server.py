@@ -295,17 +295,84 @@ def locate_in_pdf(name, passage):
 
 
 def answer_question(name, quote, question):
-    """선택 구절 + 논문 원문 맥락으로 Claude에게 질문."""
+    """선택 구절 + 논문 원문 맥락으로 Claude에게 질문. 짧고 쉬운 답."""
     title = paper_header(name)
     pages = pdf_pages_text(name, per_page=2500)
     context = " ".join(pages)[:28000]
     return claude_text(
         "당신은 기계가공 분야 논문을 함께 읽어주는 연구 조교다. 아래 논문 원문을 근거로 질문에 한국어로 답하라.\n"
-        "- 전문용어는 영어 병기, 논문에 근거가 있으면 '(p.N)'처럼 페이지를 표시, 논문에 없는 내용은 일반 지식임을 밝혀라.\n"
-        "- 핵심부터, 불필요한 서론 없이. 필요하면 수식·수치 인용.\n\n"
+        "답변 스타일 (중요):\n"
+        "- 3~6문장, 쉬운 말로, 핵심만. 현학적 표현·불필요한 배경 설명 금지. 필요하면 bullet 최대 3개.\n"
+        "- 전문용어는 영어 병기. 논문에 근거가 있으면 '(p.N)' 표시, 논문에 없는 일반 지식이면 그렇다고 한 마디.\n"
+        "- 마지막에 '더 자세히: …' 한 줄로 파고들 수 있는 방향 하나만 제시.\n\n"
         "[논문] " + title + "\n"
         + ("[선택한 구절] " + quote[:800] + "\n" if quote else "")
         + "[질문] " + question + "\n\n[논문 원문(일부)]\n" + context, timeout=240)
+
+
+def pdf_pages_text_raw(name):
+    """줄바꿈을 유지한 페이지별 원문 (캡션 추출용)."""
+    from pypdf import PdfReader
+    reader = PdfReader(os.path.join(ARCHIVE, name))
+    if reader.is_encrypted:
+        reader.decrypt("")
+    return [(p.extract_text() or "") for p in reader.pages]
+
+
+CAP_START = re.compile(r"^\s*(Fig\.?|Figure|Table)\s*(\d+)\s*[.:|]?\s*(.*)$", re.I)
+
+
+def extract_captions(name):
+    """줄 첫머리가 Fig. N / Table N 인 줄을 캡션으로 보고, 이어지는 줄을 붙인다."""
+    caps = {}
+    for pi, page in enumerate(pdf_pages_text_raw(name)):
+        lines = page.splitlines()
+        i = 0
+        while i < len(lines):
+            m = CAP_START.match(lines[i])
+            if m and len(m.group(3)) > 8:
+                kind = "table" if m.group(1).lower().startswith("t") else "fig"
+                n = int(m.group(2))
+                text = m.group(3).strip()
+                j = i + 1
+                while j < len(lines) and len(text) < 450 and lines[j].strip() and not CAP_START.match(lines[j]):
+                    text += " " + lines[j].strip()
+                    j += 1
+                key = (kind, n)
+                if key not in caps or len(text) > len(caps[key]["en"]):
+                    caps[key] = {"kind": kind, "n": n, "page": pi + 1, "en": text[:500]}
+                i = j
+            else:
+                i += 1
+    return [caps[k] for k in sorted(caps)]
+
+
+def captions_path(name):
+    return os.path.join(GEN_DIR, os.path.splitext(name)[0] + ".캡션.json")
+
+
+def get_captions(name):
+    """캡션 한국어 번역 (캐시). 없으면 Claude로 한 번에 번역."""
+    p = captions_path(name)
+    cached = load_json(p, None)
+    if cached is not None:
+        return cached
+    caps = extract_captions(name)
+    if not caps:
+        data = {"captions": []}
+    else:
+        listing = "\n".join("[{}] {} {}: {}".format(i, "Table" if c["kind"] == "table" else "Fig.", c["n"], c["en"])
+                            for i, c in enumerate(caps))
+        res = ask_claude_json(
+            "아래 논문 그림/표 캡션들을 한국어로 번역하라. " + GLOSSARY_RULE +
+            " 각 항목을 번호 그대로 매핑해 JSON 한 줄만: {\"ko\": {\"0\": \"...\", \"1\": \"...\"}}\n\n" + listing, timeout=240)
+        ko = (res or {}).get("ko", {}) if isinstance(res, dict) else {}
+        for i, c in enumerate(caps):
+            c["ko"] = ko.get(str(i), "")
+        data = {"captions": caps}
+    os.makedirs(GEN_DIR, exist_ok=True)
+    save_json(p, data)
+    return data
 
 
 def job_view(job):
@@ -514,7 +581,8 @@ def chunk_prompt(header, kind, i, n, ch, prev_src):
             "고정된 틀(배경/방법/결과)로 재편하지 마라 - 리뷰 논문이면 각 소단원을 그 순서대로 상세히.\n"
             "- 모든 문장을 옮기지는 말되, 핵심 주장·방법·수치·논리 전개·저자의 결론은 빠짐없이 담아라. "
             "길이 제한 없음. 원문 분량에 비례해 상세하게.\n"
-            "- 그림/표 캡션이 있으면 '**Fig. N** - 번역' 형태로 포함.\n"
+            "- 그림/표 캡션은 요약에 넣지 마라 (PDF 옆에 따로 표시됨). 본문이 그림을 참조하면 'Fig. N' 표기만 유지.\n"
+            "- 목차(Contents)·약어(Abbreviations)·기호표(Nomenclature) 구간은 항목마다 한 줄씩 '- 항목 : 설명' 목록으로.\n"
             "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
             "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
             + ("\n[직전 구간의 원문 끝부분 - 문맥 파악용, 요약하지 말 것]\n" + prev_src + "\n" if prev_src else "")
@@ -781,6 +849,15 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/api/notes":
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
             self._send(200, load_notes(name))
+        elif url.path == "/api/captions":
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            if not os.path.isfile(os.path.join(ARCHIVE, name)):
+                self._send(404, {"error": "no file"})
+            else:
+                try:
+                    self._send(200, get_captions(name))
+                except Exception as e:
+                    self._send(200, {"captions": [], "error": str(e)[:200]})
         elif url.path == "/api/paperinfo":
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
             with _lock:
