@@ -501,47 +501,70 @@ GLOSSARY_RULE = ("표준 한국어 기술 용어를 쓰고(feed rate → 이송 
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
+_chunk_sem = threading.BoundedSemaphore(4)  # 전체 동시 Claude 호출 4개 (구간 병렬 처리)
+
+
+def chunk_prompt(header, kind, i, n, ch, prev_src):
+    is_sum = kind == "summary"
+    if is_sum:
+        return (
+            "당신은 기계가공·재료 분야 논문을 한국어로 '압축 번역'하는 전문가다. 아래는 논문 [" + header + "]의 "
+            "{}/{} 구간이다.\n".format(i + 1, n) +
+            "규칙:\n- 원문의 소제목 구조를 그대로 따라라 (소제목은 ## 또는 ### 로, 원문 번호 유지). "
+            "고정된 틀(배경/방법/결과)로 재편하지 마라 - 리뷰 논문이면 각 소단원을 그 순서대로 상세히.\n"
+            "- 모든 문장을 옮기지는 말되, 핵심 주장·방법·수치·논리 전개·저자의 결론은 빠짐없이 담아라. "
+            "길이 제한 없음. 원문 분량에 비례해 상세하게.\n"
+            "- 그림/표 캡션이 있으면 '**Fig. N** - 번역' 형태로 포함.\n"
+            "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
+            "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
+            + ("\n[직전 구간의 원문 끝부분 - 문맥 파악용, 요약하지 말 것]\n" + prev_src + "\n" if prev_src else "")
+            + "\n[원문 구간]\n" + ch)
+    return (
+        "당신은 기계가공·재료 분야 논문 전문 번역가다. 아래는 논문 [" + header + "]의 "
+        "{}/{} 구간이다. 한국어로 번역하라.\n".format(i + 1, n) +
+        "규칙:\n- 단 한 문장도 누락·요약하지 말고 전부 순서대로 번역. 소제목은 ## 또는 ### (원문 번호 유지).\n"
+        "- 수식·그림/표 번호는 원문 그대로, 그림/표 캡션도 번역 ('**Fig. N** - 번역').\n"
+        "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
+        "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
+        + "\n[원문 구간]\n" + ch)
+
+
 def generate_document(name, kind, text):
-    """구간 단위로 Claude를 불러 요약(압축 번역) 또는 전문번역을 만든다."""
+    """구간 단위로 Claude를 불러 요약(압축 번역) 또는 전문번역을 만든다. 구간은 4개씩 병렬."""
     header = paper_header(name)
     key = (name, kind)
     is_sum = kind == "summary"
     chunks = split_chunks(text, 9000 if is_sum else 6000)
-    parts, prev_tail = [], ""
-    for i, ch in enumerate(chunks):
-        _set_stage(key, "Claude {} 중 ({}/{} 구간)".format("요약" if is_sum else "번역", i + 1, len(chunks)))
-        if is_sum:
-            prompt = (
-                "당신은 기계가공·재료 분야 논문을 한국어로 '압축 번역'하는 전문가다. 아래는 논문 [" + header + "]의 "
-                "{}/{} 구간이다.\n".format(i + 1, len(chunks)) +
-                "규칙:\n- 원문의 소제목 구조를 그대로 따라라 (소제목은 ## 또는 ### 로, 원문 번호 유지). "
-                "고정된 틀(배경/방법/결과)로 재편하지 마라 - 리뷰 논문이면 각 소단원을 그 순서대로 상세히.\n"
-                "- 모든 문장을 옮기지는 말되, 핵심 주장·방법·수치·논리 전개·저자의 결론은 빠짐없이 담아라. "
-                "길이 제한 없음. 원문 분량에 비례해 상세하게.\n"
-                "- 그림/표 캡션이 있으면 '**Fig. N** - 번역' 형태로 포함.\n"
-                "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
-                "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
-                + ("\n[직전 구간 끝부분 - 맥락용, 다시 쓰지 말 것]\n" + prev_tail + "\n" if prev_tail else "")
-                + "\n[원문 구간]\n" + ch)
-        else:
-            prompt = (
-                "당신은 기계가공·재료 분야 논문 전문 번역가다. 아래는 논문 [" + header + "]의 "
-                "{}/{} 구간이다. 한국어로 번역하라.\n".format(i + 1, len(chunks)) +
-                "규칙:\n- 단 한 문장도 누락·요약하지 말고 전부 순서대로 번역. 소제목은 ## 또는 ### (원문 번호 유지).\n"
-                "- 수식·그림/표 번호는 원문 그대로, 그림/표 캡션도 번역 ('**Fig. N** - 번역').\n"
-                "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
-                "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
-                + "\n[원문 구간]\n" + ch)
-        out = _claude(prompt)
-        too_short = len(out) < len(ch) * (0.06 if is_sum else 0.35) and "참고문헌 생략" not in out
-        if too_short:  # 뒤쪽을 건너뛴 듯하면 한 번 더
-            _set_stage(key, "구간 {} 결과가 짧아 재시도".format(i + 1))
-            out2 = _claude(prompt)
-            if len(out2) > len(out):
-                out = out2
-        parts.append(out)
-        prev_tail = out[-600:]
-    body = "\n\n".join(parts)
+    n = len(chunks)
+    results, errors, done = [None] * n, [], [0]
+    label = "요약" if is_sum else "번역"
+    _set_stage(key, "Claude {} 중 (0/{} 구간, 4개 동시)".format(label, n))
+
+    def work(i):
+        ch = chunks[i]
+        prompt = chunk_prompt(header, kind, i, n, ch, chunks[i - 1][-500:] if i else "")
+        try:
+            with _chunk_sem:
+                out = _claude(prompt)
+                too_short = len(out) < len(ch) * (0.06 if is_sum else 0.35) and "참고문헌 생략" not in out
+                if too_short:  # 뒤쪽을 건너뛴 듯하면 한 번 더
+                    out2 = _claude(prompt)
+                    if len(out2) > len(out):
+                        out = out2
+            results[i] = out
+        except Exception as e:
+            errors.append(e)
+        done[0] += 1
+        _set_stage(key, "Claude {} 중 ({}/{} 구간 완료, 4개 동시)".format(label, done[0], n))
+
+    threads = [threading.Thread(target=work, args=(i,), daemon=True) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if errors:
+        raise errors[0]
+    body = "\n\n".join(results)
     if is_sum:
         _set_stage(key, "한줄 요약·핵심 정리 작성 중")
         wrap = ask_claude_json(
