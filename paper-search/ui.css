@@ -29,6 +29,8 @@
   --r: 4px;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
   --font: "Pretendard Variable", Pretendard, Inter, "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+  /* 제목용 세리프: 논문 제목·절 제목에만. 한글 글리프는 없으므로 한글은 Pretendard로 떨어짐 (라틴 세리프 + 한글 산세리프 조합) */
+  --font-serif: Georgia, "Times New Roman", "Pretendard Variable", Pretendard, serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
