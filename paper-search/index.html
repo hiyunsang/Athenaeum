@@ -2,11 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>MAENG 논문 검색</title>
+<title>Paperdesk</title>
 <link rel="stylesheet" href="/ui.css">
 <style>
   header { display: flex; align-items: center; gap: var(--s3); min-height: 44px; padding: 0 var(--s4); background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
-  header h1 { font-size: 13px; font-weight: 600; letter-spacing: -.01em; margin-right: var(--s1); }
+  /* 워드마크: 세리프 이탤릭 */
+  header h1 { font-family: var(--font-serif); font-style: italic; font-size: 18px; font-weight: 400; letter-spacing: .005em; margin-right: var(--s2); color: var(--text); }
   header input[type=text] { width: 280px; background: var(--bg); border-color: transparent; padding: 5px 10px; }
   header input[type=text]:focus { background: var(--surface); border-color: var(--accent); }
   header select { border-color: transparent; background: transparent; color: var(--text-2); padding: 4px 2px; }
@@ -80,7 +81,7 @@
 </head>
 <body>
 <header>
-  <h1>MAENG 논문</h1>
+  <h1>Paperdesk</h1>
   <a href="#" id="exploreToggle" class="toggle act" title="주제 키워드로 세상의 논문 찾기 - 화면이 좌우로 갈라집니다">논문 탐색</a>
   <a href="/explore" target="maeng_explore" class="toggle act" title="탐색을 새 탭으로 열기">↗</a>
   <input type="text" id="ft" placeholder="본문 검색 (Enter) - PDF 안 단어 검색">

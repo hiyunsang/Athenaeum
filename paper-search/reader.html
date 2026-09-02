@@ -633,7 +633,7 @@ document.getElementById("sideTog").onchange = e => { document.getElementById("si
   const info = await (await fetch("/api/paperinfo?file=" + encodeURIComponent(file))).json();
   { const ttl = document.getElementById("ttl"); ttl.textContent = (info.year || "") + " · " + (info.journal || "") + " · " + (info.author || "");
     const tb = document.createElement("b"); tb.textContent = info.title || ""; ttl.appendChild(tb); }
-  document.title = (info.author || "") + " " + (info.year || "") + " 읽기";
+  document.title = (info.author || "") + " " + (info.year || "") + " · Paperdesk";
   notesData = await (await fetch("/api/notes?file=" + encodeURIComponent(file))).json();
   renderSide();
   await showKind(kind);
