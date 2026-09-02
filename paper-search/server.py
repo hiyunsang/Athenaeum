@@ -161,12 +161,12 @@ def classify_with_claude(title, kw, front, groups):
         return None
 
 
-def run_generation(name, kind):
+def run_generation(name, kind, ext=None):
     key = (name, kind)
     try:
         if kind == "map":
             with _map_sem:
-                _run_map(name)
+                _run_map(name, ext)
         else:
             with _gen_sem:
                 _run_generation(name, kind)
@@ -178,7 +178,16 @@ def run_generation(name, kind):
         _jobs[key] = {"status": "error", "error": str(e)[:300]}
 
 
-def _run_map(name):
+def archive_title_index(tags):
+    import mapper
+    out = {}
+    for f, t in tags.items():
+        out[mapper.norm_title(t.get("title") or parse_name(f)["title"])] = f
+    return out
+
+
+def _run_map(name, ext=None):
+    """ext가 있으면 보관소에 없는 외부 논문({id,title,doi})을 시드로 맵 생성."""
     import mapper
     key = (name, "map")
 
@@ -189,22 +198,25 @@ def _run_map(name):
 
     with _lock:
         tags = load_json(TAGS_PATH, {})
-    title = tags.get(name, {}).get("title") or parse_name(name)["title"]
-    archive_titles = {}
-    for f, t in tags.items():
-        archive_titles[mapper.norm_title(t.get("title") or parse_name(f)["title"])] = f
-    # PDF에서 DOI를 뽑아 검색 대신 직접 조회 (검색 API 속도 제한 회피)
+    archive_titles = archive_title_index(tags)
     dois = []
-    try:
-        sys.path.insert(0, os.path.join(os.path.dirname(BASE), "paper-organizer"))
-        import paper_organizer as po
-        cands, _ = po.extract_doi_candidates(os.path.join(ARCHIVE, name))
-        for c in cands[:2]:
-            for v in po.doi_variants(c):
-                if v not in dois:
-                    dois.append(v)
-    except Exception:
-        pass
+    if ext:
+        title = ext.get("title", "")
+        if ext.get("doi"):
+            dois = [ext["doi"].replace("https://doi.org/", "")]
+    else:
+        title = tags.get(name, {}).get("title") or parse_name(name)["title"]
+        # PDF에서 DOI를 뽑아 검색 대신 직접 조회 (검색 API 속도 제한 회피)
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(BASE), "paper-organizer"))
+            import paper_organizer as po
+            cands, _ = po.extract_doi_candidates(os.path.join(ARCHIVE, name))
+            for c in cands[:2]:
+                for v in po.doi_variants(c):
+                    if v not in dois:
+                        dois.append(v)
+        except Exception:
+            pass
     data = mapper.build_map(title, archive_titles, progress=prog, dois=dois[:5])
     os.makedirs(MAPS_DIR, exist_ok=True)
     save_json(gen_path(name, "map"), data)
@@ -478,6 +490,53 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, job)
                 else:
                     self._send(200, {"status": "running", "stage": job.get("stage", "")})
+        elif url.path == "/explore":
+            with open(os.path.join(BASE, "explore.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/api/explore":
+            # 주제 키워드로 OpenAlex 전체 검색 (탐색)
+            import mapper
+            q = parse_qs(url.query)
+            query = q.get("q", [""])[0].strip()
+            year = q.get("year", [""])[0]
+            sort = q.get("sort", ["relevance"])[0]
+            if not query:
+                self._send(400, {"error": "검색어가 없습니다"})
+                return
+            # 제목+초록에 모든 단어가 들어간 논문만 (본문 어딘가 스치는 논문 제외).
+            # 사용자가 AND/OR/NOT/따옴표를 쓰면 그대로, 아니면 단어들을 AND로 묶음
+            q_clean = query.replace(",", " ")
+            if re.search(r"\b(AND|OR|NOT)\b|\"", q_clean):
+                q_filter = q_clean
+            else:
+                q_filter = " AND ".join(q_clean.split())
+            filters = ["title_and_abstract.search:" + q_filter]
+            if year.isdigit():
+                filters.append("publication_year:>" + str(int(year) - 1))
+            params = {"search": query, "filter": ",".join(filters), "per-page": "50",
+                      "select": mapper.SELECT + ",abstract_inverted_index"}
+            if sort == "cited":
+                params["sort"] = "cited_by_count:desc"
+            elif sort == "recent":
+                params["sort"] = "publication_year:desc"
+            try:
+                d = mapper._get(mapper.API + "/works", params)
+            except Exception as e:
+                self._send(200, {"error": str(e)[:200], "results": []})
+                return
+            with _lock:
+                tags = load_json(TAGS_PATH, {})
+            owned_idx = archive_title_index(tags)
+            results = []
+            for it in d.get("results", []):
+                n = mapper._node(it, set(), 0,
+                                 owned_idx.get(mapper.norm_title(it.get("display_name"))))
+                n.pop("_refs", None)
+                inv = it.get("abstract_inverted_index") or {}
+                words = sorted((p, w) for w, ps in inv.items() for p in ps)
+                n["abstract"] = " ".join(w for _, w in words)[:500]
+                results.append(n)
+            self._send(200, {"results": results, "total": d.get("meta", {}).get("count", 0)})
         elif url.path == "/api/openalex_status":
             # 맵 서비스(OpenAlex) 상태 확인: 재시도 없이 가볍게 한 번씩만
             import requests as rq
@@ -513,7 +572,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/generate":
             name = os.path.basename(body.get("file", ""))
             kind = body.get("kind", "summary")
-            if kind not in ("summary", "translation", "map") or not os.path.isfile(os.path.join(ARCHIVE, name)):
+            ext = body.get("ext")  # 보관소에 없는 외부 논문 시드 {id, title, doi}
+            if ext and kind == "map" and ext.get("id"):
+                name = "ext_" + re.sub(r"[^A-Za-z0-9]", "", ext["id"])
+            elif kind not in ("summary", "translation", "map") or not os.path.isfile(os.path.join(ARCHIVE, name)):
                 self._send(400, {"error": "bad request"})
                 return
             if os.path.isfile(gen_path(name, kind)):
@@ -525,8 +587,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"status": "running"})
                 return
             _jobs[key] = {"status": "running"}
-            threading.Thread(target=run_generation, args=(name, kind), daemon=True).start()
-            self._send(200, {"status": "running"})
+            threading.Thread(target=run_generation, args=(name, kind, ext), daemon=True).start()
+            self._send(200, {"status": "running", "name": name})
         elif self.path == "/api/open":
             name = os.path.basename(body.get("file", ""))
             path = os.path.join(ARCHIVE, name)
