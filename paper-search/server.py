@@ -564,14 +564,97 @@ def split_chunks(text, size):
     return chunks
 
 
-GLOSSARY_RULE = ("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선), "
+# 목차 항목 줄: '2.1. Introduction . . . . 134' / 'References . . . . 160'
+_TOC_LINE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?\s+)?[A-Za-z(][^\n]*?(?:\s*\.){3,}\s*\d{1,4}\s*$")
+# 머리부에서 버릴 저널 잡정보 줄
+_FRONT_NOISE = [re.compile(p, re.I) for p in (
+    r"Contents lists available at", r"journal homepage", r"^\s*https?://", r"^\s*www\.", r"^\s*\d{4}-\d{3}[\dX]/",
+    r"E-mail address", r"Corresponding author", r"Crown Copyright", r"^\s*©", r"All rights reserved", r"^\s*Copyright ©",
+    r"^\s*Contents\s*$")]  # 원문의 'Contents' 제목 줄은 버리고 우리가 모은 목차 블록의 제목만 남김
+_NOMEN = re.compile(r"^\s*(Abbreviations?|Nomenclature|List of symbols|Notations?|Symbols)\b", re.I)
+
+
+def remove_running_heads(text):
+    """페이지마다 반복되는 머리말/꼬리말 줄(저널명·저자 러닝헤드)을 지운다."""
+    lines = text.split("\n")
+    cnt = {}
+    for l in lines:
+        k = " ".join(l.split())
+        if len(k) >= 20:
+            cnt[k] = cnt.get(k, 0) + 1
+    rep = {k for k, c in cnt.items() if c >= 3}
+    return "\n".join(l for l in lines if " ".join(l.split()) not in rep)
+
+
+def _toc_title(line):
+    t = re.sub(r"(?:\s*\.){3,}\s*\d{1,4}\s*$", "", line).strip()
+    t = re.sub(r"^\d+(?:\.\d+)*\.?\s+", "", t)
+    return " ".join(t.split()).lower()
+
+
+def prepare_chunks(text, size):
+    """머리부(제목·저자·초록·목차·약어)를 한 구간으로 묶고, 본문은 size 단위로 나눈다.
+    목차·약어표가 구간 경계에 걸려 '목차 (계속)'처럼 쪼개지는 것을 막는다.
+    PDF에서 목차가 두 페이지에 걸쳐 약어 각주와 섞여 나와도 목차 줄만 모아 한 블록으로 정리한다.
+    반환: (chunks, has_front)"""
+    text = remove_running_heads(text)
+    lines = text.split("\n")
+    head = lines[:400]  # 머리부는 앞 400줄 안에 있음
+    toc_idx = [i for i, l in enumerate(head) if _TOC_LINE.match(l)]
+    nomen_idx = [i for i, l in enumerate(head) if _NOMEN.match(l)]
+    start = (toc_idx[-1] + 1) if toc_idx else 0
+    body_start = None
+    if toc_idx:  # 목차 첫 항목의 제목이 본문 소제목으로 다시 나오는 줄 = 본문 시작
+        key = " ".join(_toc_title(lines[toc_idx[0]]).split()[:3])
+        for i in range(start, min(len(lines), start + 250)):
+            l = " ".join(lines[i].split()).lower()
+            if key and re.match(r"^1\.?\s", l) and key in l and not _TOC_LINE.match(lines[i]):
+                body_start = i
+                break
+    if body_start is None:  # '1. Introduction' / 'Introduction' 줄
+        for i in range(start, min(len(lines), start + 250)):
+            l = lines[i].strip()
+            if len(l) < 100 and not _TOC_LINE.match(l) and re.match(r"^(1\.?\s+[A-Z]|Introduction\b)", l):
+                body_start = i
+                break
+    has_nomen = any(i < (body_start or 0) for i in nomen_idx)
+    if body_start is None or body_start < 5 or (len(toc_idx) < 3 and not has_nomen):
+        return split_chunks(text, size), False
+    tocset = set(toc_idx)
+    toc = [re.sub(r"(?:\s*\.){3,}\s*(\d{1,4})\s*$", r" … \1", " ".join(lines[i].split())) for i in toc_idx]
+    out, inserted = [], False
+    for i in range(body_start):
+        if i in tocset:
+            if not inserted:
+                out.append("\nContents\n" + "\n".join(toc) + "\n")
+                inserted = True
+            continue
+        if any(p.search(lines[i]) for p in _FRONT_NOISE):
+            continue
+        out.append(lines[i])
+    front = "\n".join(out).strip()
+    body = "\n".join(lines[body_start:])
+    front_chunks = split_chunks(front, size) if len(front) > size * 1.6 else [front]
+    return front_chunks + split_chunks(body, size), True
+
+
+GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선), "
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
 _chunk_sem = threading.BoundedSemaphore(4)  # 전체 동시 Claude 호출 4개 (구간 병렬 처리)
 
 
-def chunk_prompt(header, kind, i, n, ch, prev_src):
+# 머리부 구간(제목·저자·초록·키워드·목차·약어) 전용 규칙
+FRONT_RULE = ("- 이 구간은 논문 머리부다: 제목·저자(소속)·초록·키워드·목차·약어. 저널 정보·DOI·저작권·이메일 같은 서지 잡정보는 생략.\n"
+              "- 논문 제목은 '**제목**: 한국어 번역 (원제)' 한 줄로만 쓰고 # 제목 줄은 만들지 마라 (문서 머리말은 따로 붙는다).\n"
+              "- 목차는 '## 목차 (Contents)' 아래에 원문 순서대로 **전부 한 목록**으로 (원문 번호 유지, 페이지 번호 생략). "
+              "약어·기호표는 '## 약어 (Abbreviations)' 아래 '- 항목 : 설명' 으로 빠짐없이.\n")
+# 모든 구간 공통: 잘린 자리에 표시를 남기지 말 것
+CUT_RULE = "- 구간 경계에서 잘린 문장·목록은 있는 부분만 자연스럽게 옮기고, '(계속)', '(이하 구간 이어짐)' 같은 표시는 절대 쓰지 마라.\n"
+
+
+def chunk_prompt(header, kind, i, n, ch, prev_src, front=False):
     is_sum = kind == "summary"
     if is_sum:
         return (
@@ -582,7 +665,9 @@ def chunk_prompt(header, kind, i, n, ch, prev_src):
             "- 모든 문장을 옮기지는 말되, 핵심 주장·방법·수치·논리 전개·저자의 결론은 빠짐없이 담아라. "
             "길이 제한 없음. 원문 분량에 비례해 상세하게.\n"
             "- 그림/표 캡션은 요약에 넣지 마라 (PDF 옆에 따로 표시됨). 본문이 그림을 참조하면 'Fig. N' 표기만 유지.\n"
-            "- 목차(Contents)·약어(Abbreviations)·기호표(Nomenclature) 구간은 항목마다 한 줄씩 '- 항목 : 설명' 목록으로.\n"
+            + (FRONT_RULE if front else
+               "- 목차(Contents)·약어(Abbreviations)·기호표(Nomenclature) 구간은 항목마다 한 줄씩 '- 항목 : 설명' 목록으로.\n")
+            + CUT_RULE +
             "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
             "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
             + ("\n[직전 구간의 원문 끝부분 - 문맥 파악용, 요약하지 말 것]\n" + prev_src + "\n" if prev_src else "")
@@ -592,6 +677,7 @@ def chunk_prompt(header, kind, i, n, ch, prev_src):
         "{}/{} 구간이다. 한국어로 번역하라.\n".format(i + 1, n) +
         "규칙:\n- 단 한 문장도 누락·요약하지 말고 전부 순서대로 번역. 소제목은 ## 또는 ### (원문 번호 유지).\n"
         "- 수식·그림/표 번호는 원문 그대로, 그림/표 캡션도 번역 ('**Fig. N** - 번역').\n"
+        + (FRONT_RULE if front else "") + CUT_RULE +
         "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
         "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
         + "\n[원문 구간]\n" + ch)
@@ -602,7 +688,7 @@ def generate_document(name, kind, text):
     header = paper_header(name)
     key = (name, kind)
     is_sum = kind == "summary"
-    chunks = split_chunks(text, 9000 if is_sum else 6000)
+    chunks, has_front = prepare_chunks(text, 9000 if is_sum else 6000)  # 머리부(목차·약어)는 통째로 1구간
     n = len(chunks)
     results, errors, done = [None] * n, [], [0]
     label = "요약" if is_sum else "번역"
@@ -614,7 +700,8 @@ def generate_document(name, kind, text):
 
     def work(i):
         ch = chunks[i]
-        prompt = chunk_prompt(header, kind, i, n, ch, chunks[i - 1][-500:] if i else "")
+        prev_src = chunks[i - 1][-500:] if i and not (has_front and i == 1) else ""  # 본문 1구간엔 목차 꼬리를 문맥으로 주지 않음
+        prompt = chunk_prompt(header, kind, i, n, ch, prev_src, front=(has_front and i == 0))
         try:
             with _chunk_sem:
                 out = _claude(prompt)
