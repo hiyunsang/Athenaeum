@@ -350,10 +350,18 @@ def process_pdf(pdf_path, cfg):
         return None
 
     os.makedirs(cfg.target_dir, exist_ok=True)
-    new_path = unique_path(cfg.target_dir, build_filename(meta, cfg))
-    shutil.move(pdf_path, new_path)
-    log("정리 완료: {}  ->  {}".format(name, os.path.basename(new_path)))
-    return new_path
+    canonical = os.path.join(cfg.target_dir, build_filename(meta, cfg))
+    if os.path.exists(canonical):
+        # 같은 논문이 이미 보관소에 있음 = 재다운로드. (2)를 만들지 않고 중복사본으로.
+        dup_dir = os.path.join(cfg.target_dir, "_중복사본")
+        os.makedirs(dup_dir, exist_ok=True)
+        dup_path = unique_path(dup_dir, os.path.basename(canonical))
+        shutil.move(pdf_path, dup_path)
+        log("재다운로드 (이미 보관 중) -> 중복사본: {}".format(os.path.basename(canonical)))
+        return canonical
+    shutil.move(pdf_path, canonical)
+    log("정리 완료: {}  ->  {}".format(name, os.path.basename(canonical)))
+    return canonical
 
 
 def sha1_of(path):
