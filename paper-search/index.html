@@ -234,6 +234,7 @@ function render() {
     meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-") + addedTxt;
     row.appendChild(meta);
     const t = document.createElement("div"); t.className = "title"; t.textContent = p.title;
+    if (p.has_notes) { const nb = document.createElement("span"); nb.textContent = " 📝"; nb.title = "메모/질문 기록 있음"; nb.style.fontSize = "12px"; t.appendChild(nb); }
     row.appendChild(t);
     const tags = document.createElement("div"); tags.className = "tags";
     for (const lb of p.labels) { const s = document.createElement("span"); s.className = "tag"; s.textContent = lb; tags.appendChild(s); }

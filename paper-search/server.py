@@ -240,6 +240,74 @@ def _run_smart(q, year, key):
         "groups": groups, "excluded": excluded, "candidates": len(items)}}
 
 
+NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
+
+
+def notes_path(name):
+    return os.path.join(NOTES_DIR, os.path.splitext(name)[0] + ".json")
+
+
+def load_notes(name):
+    return load_json(notes_path(name), {"notes": [], "qa": []})
+
+
+def save_notes(name, data):
+    os.makedirs(NOTES_DIR, exist_ok=True)
+    save_json(notes_path(name), data)
+
+
+def pdf_pages_text(name, per_page=3500):
+    """페이지별 원문 텍스트 (위치 찾기·질문 답변용)."""
+    from pypdf import PdfReader
+    reader = PdfReader(os.path.join(ARCHIVE, name))
+    if reader.is_encrypted:
+        reader.decrypt("")
+    pages = []
+    for i, p in enumerate(reader.pages):
+        t = " ".join((p.extract_text() or "").split())
+        pages.append(t[:per_page])
+    return pages
+
+
+def claude_text(prompt, timeout=240):
+    exe = find_claude()
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "-p", "--output-format", "text"],
+                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
+        return r.stdout.decode("utf-8", "replace").strip() or None
+    except Exception:
+        return None
+
+
+def locate_in_pdf(name, passage):
+    """한국어 요약 구절 -> 근거가 되는 원문 영어 문장과 페이지."""
+    pages = pdf_pages_text(name)
+    listing = "\n".join("[p{}] {}".format(i + 1, t) for i, t in enumerate(pages))[:60000]
+    res = ask_claude_json(
+        "아래는 논문의 페이지별 원문이다. 주어진 한국어 요약 구절이 근거하는 원문 문장을 찾아라.\n"
+        "- 원문 문장은 해당 페이지 텍스트에서 '글자 그대로' 복사해라 (검색에 쓰이므로 바꾸면 안 됨). 200자 이내, 한 문장 또는 연속 두 문장.\n"
+        "- 정확히 대응하는 문장이 없으면 가장 가까운 문장을 택하고 confidence를 낮게.\n"
+        "- JSON 한 줄만: {\"page\": 페이지번호, \"quote\": \"원문 문장\", \"confidence\": \"high|low\"}\n\n"
+        "[요약 구절] " + passage[:600] + "\n\n[페이지별 원문]\n" + listing, timeout=180)
+    return res
+
+
+def answer_question(name, quote, question):
+    """선택 구절 + 논문 원문 맥락으로 Claude에게 질문."""
+    title = paper_header(name)
+    pages = pdf_pages_text(name, per_page=2500)
+    context = " ".join(pages)[:28000]
+    return claude_text(
+        "당신은 기계가공 분야 논문을 함께 읽어주는 연구 조교다. 아래 논문 원문을 근거로 질문에 한국어로 답하라.\n"
+        "- 전문용어는 영어 병기, 논문에 근거가 있으면 '(p.N)'처럼 페이지를 표시, 논문에 없는 내용은 일반 지식임을 밝혀라.\n"
+        "- 핵심부터, 불필요한 서론 없이. 필요하면 수식·수치 인용.\n\n"
+        "[논문] " + title + "\n"
+        + ("[선택한 구절] " + quote[:800] + "\n" if quote else "")
+        + "[질문] " + question + "\n\n[논문 원문(일부)]\n" + context, timeout=240)
+
+
 def job_view(job):
     """화면에 보낼 작업 상태: 상태·단계·경과 시간(초)·오류."""
     v = {"status": job.get("status", "running"), "stage": job.get("stage", "")}
@@ -586,7 +654,8 @@ class Handler(BaseHTTPRequestHandler):
                              "rejected": t.get("rejected", []),
                              "has_summary": os.path.exists(gen_path(f, "summary")),
                              "has_translation": os.path.exists(gen_path(f, "translation")),
-                             "has_map": os.path.exists(gen_path(f, "map"))})
+                             "has_map": os.path.exists(gen_path(f, "map")),
+                             "has_notes": os.path.exists(notes_path(f))})
                 jobs = {}
                 for kind in ("summary", "translation", "map"):
                     j = _jobs.get((f, kind))
@@ -597,16 +666,21 @@ class Handler(BaseHTTPRequestHandler):
                 papers.append(meta)
             self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {})})
         elif url.path == "/view":
-            q = parse_qs(url.query)
-            name = os.path.basename(q.get("file", [""])[0])
-            kind = q.get("kind", ["summary"])[0]
-            from urllib.parse import quote
-            page = (VIEW_PAGE
-                    .replace("__TITLE__", html_mod.escape(os.path.splitext(name)[0][:60]))
-                    .replace("__KIND_LABEL__", "요약" if kind == "summary" else "전문번역")
-                    .replace("__FILE_Q__", quote(name))
-                    .replace("__KIND__", kind))
-            self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
+            with open(os.path.join(BASE, "reader.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/api/notes":
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            self._send(200, load_notes(name))
+        elif url.path == "/api/paperinfo":
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            with _lock:
+                tags = load_json(TAGS_PATH, {})
+            meta = parse_name(name)
+            meta["title"] = tags.get(name, {}).get("title") or meta["title"]
+            meta["file"] = name
+            meta["has_summary"] = os.path.exists(gen_path(name, "summary"))
+            meta["has_translation"] = os.path.exists(gen_path(name, "translation"))
+            self._send(200, meta)
         elif url.path == "/pdf":
             q = parse_qs(url.query)
             name = os.path.basename(q.get("file", [""])[0])
@@ -765,7 +839,48 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._send(400, {"error": "bad json"})
             return
-        if self.path == "/api/smart":
+        if self.path == "/api/notes":
+            name = os.path.basename(body.get("file", ""))
+            data = load_notes(name)
+            op = body.get("op")
+            if op == "add_note":
+                data["notes"].insert(0, {"t": time.strftime("%Y-%m-%d %H:%M"), "quote": body.get("quote", "")[:1000],
+                                         "text": body.get("text", "")[:5000], "kind": body.get("kind", "")})
+            elif op == "del_note":
+                idx = body.get("idx")
+                if isinstance(idx, int) and 0 <= idx < len(data["notes"]):
+                    data["notes"].pop(idx)
+            elif op == "del_qa":
+                idx = body.get("idx")
+                if isinstance(idx, int) and 0 <= idx < len(data["qa"]):
+                    data["qa"].pop(idx)
+            save_notes(name, data)
+            self._send(200, data)
+        elif self.path == "/api/ask":
+            name = os.path.basename(body.get("file", ""))
+            question = (body.get("question") or "").strip()
+            quote_txt = (body.get("quote") or "").strip()
+            if not question or not os.path.isfile(os.path.join(ARCHIVE, name)):
+                self._send(400, {"error": "질문이 없습니다"})
+                return
+            answer = answer_question(name, quote_txt, question)
+            if not answer:
+                self._send(200, {"error": "Claude 응답 실패 (로그인/사용량 확인)"})
+                return
+            data = load_notes(name)
+            data["qa"].insert(0, {"t": time.strftime("%Y-%m-%d %H:%M"), "quote": quote_txt[:1000],
+                                  "q": question[:2000], "a": answer[:20000], "kind": body.get("kind", "")})
+            save_notes(name, data)
+            self._send(200, {"answer": answer, "qa": data["qa"]})
+        elif self.path == "/api/locate":
+            name = os.path.basename(body.get("file", ""))
+            passage = (body.get("passage") or "").strip()
+            if not passage or not os.path.isfile(os.path.join(ARCHIVE, name)):
+                self._send(400, {"error": "구절이 없습니다"})
+                return
+            res = locate_in_pdf(name, passage)
+            self._send(200, res or {"error": "원문 위치를 찾지 못했습니다"})
+        elif self.path == "/api/smart":
             q = (body.get("q") or "").strip()
             year = str(body.get("year") or "")
             if not q:

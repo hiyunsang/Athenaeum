@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>논문 읽기</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Malgun Gothic", sans-serif; color: #222; background: #f7f6f3; overflow: hidden; }
+  #bar { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: #fff; border-bottom: 1px solid #ddd; font-size: 13px; }
+  #bar .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #444; }
+  #bar a { color: #3b5bd6; text-decoration: none; }
+  .tab { padding: 5px 12px; border: 1px solid #ccc; border-radius: 14px; background: #fff; cursor: pointer; font-size: 13px; }
+  .tab.on { background: #3b5bd6; color: #fff; border-color: #3b5bd6; }
+  .tog { cursor: pointer; user-select: none; color: #555; }
+  #layout { display: flex; height: calc(100vh - 44px); }
+  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: 14px 30px 80px; line-height: 1.8; background: #fff; position: relative; }
+  #read h2 { border-bottom: 2px solid #3b5bd6; padding-bottom: 4px; margin-top: 30px; font-size: 18px; }
+  #read h3 { margin-top: 20px; font-size: 15px; color: #333; }
+  #read .flash { background: #fff3a8; transition: background 1.5s; }
+  #read .figref { color: #2456d6; text-decoration: underline dotted; cursor: pointer; }
+  #pdfcol { flex: 1; min-width: 360px; overflow-y: auto; background: #6b6a63; padding: 10px; display: none; }
+  #pdfcol.on { display: block; }
+  .pg { position: relative; margin: 0 auto 10px; background: #fff; box-shadow: 0 1px 4px #0006; }
+  .pg canvas { display: block; }
+  .hl { position: absolute; background: rgba(255, 200, 0, .45); border-radius: 2px; pointer-events: none; }
+  .hl.cap { background: rgba(80, 140, 255, .35); }
+  #side { width: 370px; min-width: 370px; border-left: 1px solid #ddd; background: #fbfaf7; overflow-y: auto; padding: 12px; display: none; font-size: 13px; }
+  #side.on { display: block; }
+  #side h3 { font-size: 13px; color: #8a6d1d; margin: 14px 0 6px; }
+  textarea { width: 100%; min-height: 54px; border: 1px solid #ccc; border-radius: 6px; padding: 6px; font-family: inherit; font-size: 13px; }
+  .btn { padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
+  .btn.pri { background: #3b5bd6; color: #fff; border-color: #3b5bd6; }
+  .item { background: #fff; border: 1px solid #e2e0da; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; position: relative; }
+  .item .t { font-size: 11px; color: #999; }
+  .item .qt { font-size: 12px; color: #666; border-left: 3px solid #ddd; padding-left: 8px; margin: 4px 0; white-space: pre-wrap; }
+  .item .q { font-weight: bold; margin: 4px 0; }
+  .item .a { white-space: pre-wrap; line-height: 1.6; }
+  .item .del { position: absolute; top: 6px; right: 8px; color: #bbb; cursor: pointer; font-size: 12px; }
+  .item .del:hover { color: #a33; }
+  #seltool { position: fixed; display: none; background: #222; border-radius: 8px; padding: 4px; z-index: 20; gap: 2px; }
+  #seltool button { background: transparent; color: #fff; border: 0; padding: 5px 9px; cursor: pointer; font-size: 12px; border-radius: 6px; }
+  #seltool button:hover { background: #444; }
+  #status { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 7px 14px; border-radius: 16px; font-size: 12px; display: none; z-index: 30; }
+  .hint { color: #999; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <a href="/">← 목록</a>
+  <span class="tab on" data-kind="summary">요약</span>
+  <span class="tab" data-kind="translation">전문번역</span>
+  <label class="tog"><input type="checkbox" id="pdfTog" checked> 📄 PDF</label>
+  <label class="tog"><input type="checkbox" id="sideTog" checked> 📝 메모·질문</label>
+  <span class="ttl" id="ttl">불러오는 중…</span>
+  <span class="hint">문장을 드래그하면 📍PDF 찾기 · 🔁 번역/요약 대조 · 📝 메모 · 🤖 질문</span>
+</div>
+<div id="layout">
+  <div id="read">불러오는 중…</div>
+  <div id="pdfcol" class="on"><div id="pdfpages" style="text-align:center;color:#eee;padding:20px">PDF 불러오는 중…</div></div>
+  <div id="side" class="on">
+    <h3>📝 메모</h3>
+    <textarea id="noteIn" placeholder="이 논문에 대한 메모… (Ctrl+Enter 저장)"></textarea>
+    <div style="text-align:right;margin-top:4px"><button class="btn pri" id="noteSave">메모 저장</button></div>
+    <div id="notes"></div>
+    <h3>🤖 질문</h3>
+    <textarea id="askIn" placeholder="논문에 대해 궁금한 것… (Ctrl+Enter 질문)"></textarea>
+    <div style="text-align:right;margin-top:4px"><button class="btn pri" id="askBtn">질문하기</button></div>
+    <div id="qa"></div>
+  </div>
+</div>
+<div id="seltool">
+  <button data-act="locate">📍 PDF에서 찾기</button>
+  <button data-act="cross">🔁 대조</button>
+  <button data-act="note">📝 메모</button>
+  <button data-act="ask">🤖 질문</button>
+</div>
+<div id="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const file = params.get("file");
+let kind = params.get("kind") || "summary";
+const texts = {};
+let notesData = { notes: [], qa: [] };
+let sel = { text: "", kind: "" };
+const read = document.getElementById("read"), pdfpages = document.getElementById("pdfpages");
+const pages = [];  // {div, items:[{str,x,y,w,h}], vp}
+
+function status(msg, ms = 2500) {
+  const s = document.getElementById("status"); s.textContent = msg; s.style.display = "block";
+  clearTimeout(s._t); if (ms) s._t = setTimeout(() => s.style.display = "none", ms);
+}
+function esc(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+// ---------- 본문(요약/번역) ----------
+function mdToHtml(md) {
+  let h = esc(md);
+  h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
+       .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/^- (.*)$/gm, "<li>$1</li>").replace(/\n\n/g, "</p><p>");
+  // Fig. 3 / Figure 3 / 그림 3 / Table 2 / 표 2 -> PDF 점프 링크
+  h = h.replace(/(Fig\.?\s?|Figure\s|그림\s?)(\d+)/g, "<a class='figref' data-k='fig' data-n='$2'>$1$2</a>")
+       .replace(/(Table\s|표\s?)(\d+)/g, "<a class='figref' data-k='table' data-n='$2'>$1$2</a>");
+  return "<p>" + h + "</p>";
+}
+
+async function loadText(k) {
+  if (texts[k] !== undefined) return texts[k];
+  const r = await fetch("/api/gentext?file=" + encodeURIComponent(file) + "&kind=" + k);
+  texts[k] = r.ok ? await r.text() : null;
+  return texts[k];
+}
+
+async function showKind(k) {
+  kind = k;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.kind === k));
+  const md = await loadText(k);
+  if (md === null) {
+    const label = k === "summary" ? "요약" : "전문번역";
+    read.innerHTML = "<p class='hint'>" + label + "이 아직 생성되지 않았습니다.</p><button class='btn pri' id='genBtn'>" + label + " 생성하기</button>";
+    document.getElementById("genBtn").onclick = async () => {
+      await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file, kind: k }) });
+      read.innerHTML = "<p class='hint'>⏳ " + label + " 생성 중… (요약 1~3분, 번역 3~10분) 이 화면에 자동으로 표시됩니다.</p>";
+      const t = setInterval(async () => {
+        const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(file) + "&kind=" + k)).json();
+        if (s.status === "done") { clearInterval(t); delete texts[k]; showKind(k); }
+        else if (s.status === "error") { clearInterval(t); read.innerHTML = "<p class='hint'>⚠ 실패: " + esc(s.error || "") + "</p>"; }
+        else if (s.stage) read.innerHTML = "<p class='hint'>⏳ " + esc(s.stage) + " (" + (s.elapsed || 0) + "초)</p>";
+      }, 5000);
+    };
+    return;
+  }
+  read.innerHTML = mdToHtml(md);
+  read.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n));
+}
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => showKind(t.dataset.kind));
+
+// ---------- PDF.js 뷰어 ----------
+async function loadPdf() {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const doc = await pdfjsLib.getDocument("/pdf?file=" + encodeURIComponent(file)).promise;
+  pdfpages.innerHTML = "";
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const vp = page.getViewport({ scale: 1.25 });
+    const div = document.createElement("div"); div.className = "pg"; div.style.width = vp.width + "px"; div.style.height = vp.height + "px";
+    const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; div.appendChild(cv);
+    pdfpages.appendChild(div);
+    await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(it => it.str && it.str.trim()).map(it => {
+      const tx = pdfjsLib.Util.transform(vp.transform, it.transform);
+      const fh = Math.hypot(tx[2], tx[3]);
+      return { str: it.str, x: tx[4], y: tx[5] - fh, w: it.width * vp.scale, h: fh * 1.15 };
+    });
+    pages.push({ div, items, vp });
+  }
+  status("PDF " + doc.numPages + "쪽 준비됨");
+}
+
+function clearHl() { document.querySelectorAll(".hl").forEach(e => e.remove()); }
+function highlightItems(pi, idxs, cls = "") {
+  const pg = pages[pi];
+  for (const i of idxs) {
+    const it = pg.items[i]; const d = document.createElement("div");
+    d.className = "hl " + cls; d.style.left = it.x + "px"; d.style.top = it.y + "px"; d.style.width = Math.max(4, it.w) + "px"; d.style.height = it.h + "px";
+    pg.div.appendChild(d);
+  }
+  if (idxs.length) { const first = pg.items[idxs[0]]; pg.div.scrollIntoView(); document.getElementById("pdfcol").scrollTop += Math.max(0, first.y - 160); }
+}
+const norm = s => s.toLowerCase().replace(/[‐-―]/g, "-").replace(/\s+/g, " ").trim();
+
+// 인용 문장을 PDF 텍스트에서 찾기 (점점 짧게 재시도)
+function findInPdf(quote, preferPage) {
+  const tries = [quote, quote.slice(0, 80), quote.slice(0, 50), quote.slice(0, 30)].map(norm).filter(q => q.length >= 12);
+  const order = pages.map((_, i) => i); if (preferPage != null && pages[preferPage]) order.unshift(preferPage);
+  for (const q of tries) for (const pi of order) {
+    const pg = pages[pi]; let s = "", map = [];
+    pg.items.forEach((it, idx) => { const t = norm(it.str) + " "; for (let c = 0; c < t.length; c++) map.push(idx); s += t; });
+    const pos = s.indexOf(q);
+    if (pos >= 0) { const idxs = [...new Set(map.slice(pos, pos + q.length))]; return { page: pi, idxs }; }
+  }
+  return null;
+}
+
+function jumpToCaption(k, n) {
+  const re = k === "table" ? new RegExp("^(table|표)\\s*" + n + "\\b", "i") : new RegExp("^(fig\\.?|figure|그림)\\s*" + n + "\\b", "i");
+  const cands = [];
+  pages.forEach((pg, pi) => pg.items.forEach((it, idx) => { if (re.test(it.str.trim())) cands.push({ pi, idx, len: it.str.length }); }));
+  if (!cands.length) { status("PDF에서 " + (k === "table" ? "Table" : "Fig.") + " " + n + " 캡션을 찾지 못했습니다"); return; }
+  cands.sort((a, b) => b.len - a.len);  // 캡션 문장이 본문 참조보다 길다
+  const c = cands[0];
+  clearHl(); document.getElementById("pdfTog").checked = true; document.getElementById("pdfcol").classList.add("on");
+  highlightItems(c.pi, [c.idx], "cap");
+  status((k === "table" ? "Table" : "Fig.") + " " + n + " → " + (c.pi + 1) + "쪽");
+}
+
+// ---------- 선택 툴바 ----------
+const seltool = document.getElementById("seltool");
+read.addEventListener("mouseup", () => {
+  setTimeout(() => {
+    const s = window.getSelection(); const t = s ? s.toString().trim() : "";
+    if (t.length < 4) { seltool.style.display = "none"; return; }
+    sel = { text: t, kind };
+    const r = s.getRangeAt(0).getBoundingClientRect();
+    seltool.style.display = "flex"; seltool.style.left = Math.max(8, Math.min(r.left, innerWidth - 380)) + "px";
+    seltool.style.top = Math.max(50, r.top - 40) + "px";
+  }, 10);
+});
+document.addEventListener("mousedown", (e) => { if (!seltool.contains(e.target)) seltool.style.display = "none"; });
+seltool.querySelectorAll("button").forEach(b => b.onclick = () => { seltool.style.display = "none"; doAction(b.dataset.act); });
+
+async function doAction(act) {
+  const text = sel.text;
+  if (act === "locate") {
+    status("📍 원문 위치를 찾는 중… (Claude, 10~30초)", 0);
+    document.getElementById("pdfTog").checked = true; document.getElementById("pdfcol").classList.add("on");
+    const r = await (await fetch("/api/locate", { method: "POST", body: JSON.stringify({ file, passage: text }) })).json();
+    if (r.error || !r.quote) { status("⚠ " + (r.error || "찾지 못했습니다")); return; }
+    const hit = findInPdf(r.quote, (r.page || 1) - 1);
+    clearHl();
+    if (hit) { highlightItems(hit.page, hit.idxs); status((hit.page + 1) + "쪽에서 찾았습니다" + (r.confidence === "low" ? " (근거 확신도 낮음)" : "")); }
+    else if (r.page) { pages[r.page - 1] && pages[r.page - 1].div.scrollIntoView(); status(r.page + "쪽으로 이동 (정확한 문장은 강조 못 함)"); }
+  } else if (act === "cross") {
+    const other = kind === "summary" ? "translation" : "summary";
+    await showKind(other);
+    if (texts[other] === null) return;
+    const toks = text.match(/[A-Za-z가-힣0-9]{2,}/g) || [];
+    let best = null, bestScore = 0;
+    read.querySelectorAll("p, li, h2, h3").forEach(el => {
+      const et = el.textContent; let sc = 0;
+      for (const w of toks) if (et.includes(w)) sc++;
+      sc = sc / Math.sqrt(30 + et.length);
+      if (sc > bestScore) { bestScore = sc; best = el; }
+    });
+    if (best) { best.scrollIntoView({ block: "center" }); best.classList.add("flash"); setTimeout(() => best.classList.remove("flash"), 2500); status((other === "summary" ? "요약" : "번역본") + "에서 가장 비슷한 부분으로 이동"); }
+  } else if (act === "note") {
+    const t = prompt("메모 내용 (선택 구절이 함께 저장됩니다):", "");
+    if (t === null) return;
+    notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify({ file, op: "add_note", quote: text, text: t, kind }) })).json();
+    renderSide(); status("메모 저장됨");
+  } else if (act === "ask") {
+    const q = prompt("선택한 구절에 대해 질문:", "이 부분을 쉽게 설명해줘");
+    if (!q) return;
+    await ask(q, text);
+  }
+}
+
+async function ask(q, quote) {
+  document.getElementById("sideTog").checked = true; document.getElementById("side").classList.add("on");
+  const qa = document.getElementById("qa");
+  qa.insertAdjacentHTML("afterbegin", "<div class='item' id='pending'><div class='q'>" + esc(q) + "</div><div class='a hint'>🤖 Claude가 논문을 읽고 답하는 중… (20~60초)</div></div>");
+  const r = await (await fetch("/api/ask", { method: "POST", body: JSON.stringify({ file, question: q, quote, kind }) })).json();
+  if (r.error) { document.getElementById("pending").querySelector(".a").textContent = "⚠ " + r.error; return; }
+  notesData.qa = r.qa; renderSide();
+}
+
+// ---------- 메모/질문 패널 ----------
+function renderSide() {
+  const n = document.getElementById("notes"), qa = document.getElementById("qa");
+  n.innerHTML = notesData.notes.map((x, i) => "<div class='item'><span class='del' data-i='" + i + "' data-k='note'>✕</span><div class='t'>" + x.t + (x.kind ? " · " + (x.kind === "summary" ? "요약" : "번역") : "") + "</div>" +
+    (x.quote ? "<div class='qt'>" + esc(x.quote) + "</div>" : "") + "<div class='a'>" + esc(x.text) + "</div></div>").join("") || "<div class='hint'>메모 없음</div>";
+  qa.innerHTML = notesData.qa.map((x, i) => "<div class='item'><span class='del' data-i='" + i + "' data-k='qa'>✕</span><div class='t'>" + x.t + "</div>" +
+    (x.quote ? "<div class='qt'>" + esc(x.quote) + "</div>" : "") + "<div class='q'>Q. " + esc(x.q) + "</div><div class='a'>" + esc(x.a) + "</div></div>").join("") || "<div class='hint'>질문 기록 없음</div>";
+  document.querySelectorAll(".del").forEach(d => d.onclick = async () => {
+    if (!confirm("삭제할까요?")) return;
+    notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify({ file, op: d.dataset.k === "note" ? "del_note" : "del_qa", idx: parseInt(d.dataset.i) }) })).json();
+    renderSide();
+  });
+}
+document.getElementById("noteSave").onclick = async () => {
+  const t = document.getElementById("noteIn").value.trim(); if (!t) return;
+  notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify({ file, op: "add_note", text: t, quote: "", kind: "" }) })).json();
+  document.getElementById("noteIn").value = ""; renderSide(); status("메모 저장됨");
+};
+document.getElementById("askBtn").onclick = async () => {
+  const q = document.getElementById("askIn").value.trim(); if (!q) return;
+  document.getElementById("askIn").value = ""; await ask(q, "");
+};
+document.getElementById("noteIn").addEventListener("keydown", e => { if (e.ctrlKey && e.key === "Enter") document.getElementById("noteSave").click(); });
+document.getElementById("askIn").addEventListener("keydown", e => { if (e.ctrlKey && e.key === "Enter") document.getElementById("askBtn").click(); });
+document.getElementById("pdfTog").onchange = e => { document.getElementById("pdfcol").classList.toggle("on", e.target.checked); localStorage.setItem("reader_pdf", e.target.checked ? "1" : "0"); };
+document.getElementById("sideTog").onchange = e => { document.getElementById("side").classList.toggle("on", e.target.checked); localStorage.setItem("reader_side", e.target.checked ? "1" : "0"); };
+
+// ---------- 시작 ----------
+(async () => {
+  if (localStorage.getItem("reader_pdf") === "0") { document.getElementById("pdfTog").checked = false; document.getElementById("pdfcol").classList.remove("on"); }
+  if (localStorage.getItem("reader_side") === "0") { document.getElementById("sideTog").checked = false; document.getElementById("side").classList.remove("on"); }
+  const info = await (await fetch("/api/paperinfo?file=" + encodeURIComponent(file))).json();
+  document.getElementById("ttl").textContent = (info.year || "") + " · " + (info.journal || "") + " · " + (info.author || "") + " — " + info.title;
+  document.title = (info.author || "") + " " + (info.year || "") + " 읽기";
+  notesData = await (await fetch("/api/notes?file=" + encodeURIComponent(file))).json();
+  renderSide();
+  showKind(kind);
+  loadPdf().catch(e => { pdfpages.innerHTML = "<div style='color:#fff;padding:20px'>PDF 표시 실패: " + esc(String(e)) + "</div>"; });
+})();
+</script>
+</body>
+</html>
