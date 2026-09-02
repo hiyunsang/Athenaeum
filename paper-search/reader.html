@@ -321,7 +321,8 @@ function clearHl() { document.querySelectorAll(".hl").forEach(e => e.remove()); 
 function scrollPdfTo(pi, y, align) {
   const pg = pages[pi]; renderPage(pg); if (pages[pi + 1]) renderPage(pages[pi + 1]); if (pages[pi - 1]) renderPage(pages[pi - 1]);
   const top = pg.div.offsetTop + y * zoomF;
-  pdfcol.scrollTop = align === "bottom" ? top - pdfcol.clientHeight + 120 : top - 140;
+  // bottom: 캡션이 화면 높이의 80% 지점(아래쪽)에 오게 -> 위의 그림이 보임
+  pdfcol.scrollTop = align === "bottom" ? top - pdfcol.clientHeight * 0.8 : top - pdfcol.clientHeight * 0.15;
 }
 function highlightItems(pi, idxs, cls = "", align = "top") {
   const pg = pages[pi];
@@ -380,7 +381,8 @@ function placeCaptions() {
     const box = document.createElement("div"); box.className = "capbox";
     box.style.left = Math.max(6, it.x - 4) + "px"; box.style.top = (it.y + it.h + 3) + "px";
     box.style.width = Math.min(pg.vp.width - it.x - 6, Math.max(320, pg.vp.width * 0.8)) + "px";
-    box.textContent = (c.kind === "table" ? "표 " : "그림 ") + c.n + " · " + c.ko;
+    const ko = c.ko.replace(/^\s*(그림|표|Fig\.?|Figure|Table)\s*\d+\s*[.:·\-–—]?\s*/i, "");  // 번역문 앞의 중복 번호 제거
+    box.textContent = (c.kind === "table" ? "표 " : "그림 ") + c.n + " · " + ko;
     pg.div.appendChild(box);
   }
 }
