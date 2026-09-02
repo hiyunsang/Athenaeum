@@ -514,7 +514,7 @@ class Handler(BaseHTTPRequestHandler):
             if year.isdigit():
                 filters.append("publication_year:>" + str(int(year) - 1))
             params = {"search": query, "filter": ",".join(filters), "per-page": "50",
-                      "select": mapper.SELECT + ",abstract_inverted_index"}
+                      "select": mapper.SELECT + ",abstract_inverted_index,relevance_score"}
             if sort == "cited":
                 params["sort"] = "cited_by_count:desc"
             elif sort == "recent":
@@ -527,16 +527,39 @@ class Handler(BaseHTTPRequestHandler):
             with _lock:
                 tags = load_json(TAGS_PATH, {})
             owned_idx = archive_title_index(tags)
+            # OpenAlex는 어간 처리 때문에 machining≈machine 으로 매칭함.
+            # 입력한 단어가 그 형태 그대로(복수/과거형 정도만 허용) 제목·초록에 있는 결과를 위로 올린다.
+            words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", q_filter)
+                     if w.upper() not in ("AND", "OR", "NOT")]
+            def strict_hits(text):
+                hits = 0
+                for w in words:
+                    forms = {w, w + "s", w + "es"}
+                    if w.endswith("ing"):
+                        forms |= {w[:-3] + "ed", w[:-3] + "e"}  # machining -> machined, (machine 제외는 아래서)
+                        forms.discard(w[:-3] + "e")
+                    if any(re.search(r"\b" + re.escape(f) + r"\b", text) for f in forms):
+                        hits += 1
+                return hits
             results = []
             for it in d.get("results", []):
                 n = mapper._node(it, set(), 0,
                                  owned_idx.get(mapper.norm_title(it.get("display_name"))))
                 n.pop("_refs", None)
                 inv = it.get("abstract_inverted_index") or {}
-                words = sorted((p, w) for w, ps in inv.items() for p in ps)
-                n["abstract"] = " ".join(w for _, w in words)[:500]
+                ws = sorted((p, w) for w, ps in inv.items() for p in ps)
+                abstract = " ".join(w for _, w in ws)
+                n["abstract"] = abstract[:500]
+                n["strict"] = strict_hits((n["title"] + " " + abstract).lower())
+                n["rel"] = it.get("relevance_score") or 0
                 results.append(n)
-            self._send(200, {"results": results, "total": d.get("meta", {}).get("count", 0)})
+            # 정확 일치 단어 수 우선, 그 안에서 선택한 정렬 기준
+            keyf = {"cited": lambda x: (x["strict"], x["cit"]),
+                    "recent": lambda x: (x["strict"], x["year"]),
+                    }.get(sort, lambda x: (x["strict"], x["rel"]))
+            results.sort(key=keyf, reverse=True)
+            self._send(200, {"results": results, "total": d.get("meta", {}).get("count", 0),
+                             "words": words})
         elif url.path == "/api/openalex_status":
             # 맵 서비스(OpenAlex) 상태 확인: 재시도 없이 가볍게 한 번씩만
             import requests as rq
