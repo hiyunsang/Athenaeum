@@ -8,8 +8,11 @@
   body { overflow: hidden; }
   #bar { height: 40px; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s3); background: var(--surface); border-bottom: 1px solid var(--line-2); font-size: 12px; }
   #bar .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+  #bar .ttl b { color: var(--text); font-weight: 500; margin-left: 6px; }
+  #bar > a { padding: 4px 8px; margin: 0 -4px; border-radius: var(--r); }
+  #bar > a:hover { background: var(--hover); text-decoration: none; }
   .tab { padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); cursor: pointer; font-size: 12px; white-space: nowrap; color: var(--text-2); }
-  .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab.on { background: var(--sel-bg); color: var(--accent); border-color: var(--accent); font-weight: 600; }
   .tab:hover:not(.on) { color: var(--accent); border-color: var(--accent); }
   .tog { cursor: pointer; user-select: none; color: var(--text-2); white-space: nowrap; }
   #layout { display: flex; height: calc(100vh - 40px); }
@@ -18,19 +21,23 @@
   #side h3 { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); margin: var(--s3) 0 var(--s1); }
   textarea { width: 100%; min-height: 44px; font-size: 12px; }
   .btn { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
   .btn.pri { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .item { padding: var(--s2) 0; border-bottom: 1px solid var(--line); position: relative; }
-  .item.hl { background: var(--accent-bg); }
+  .btn.pri:hover { filter: brightness(.95); color: #fff; }
+  .item { padding: 10px 12px 11px; margin: 0 -12px; border-bottom: 1px solid var(--line); position: relative; }
+  .item:hover { background: var(--hover); }
+  .item.sel { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel-bg); }
   .item .t { font-size: 11px; color: var(--text-3); }
   .item .qt { font-size: 12px; color: var(--text-2); border-left: 2px solid var(--line-2); padding-left: var(--s2); margin: var(--s1) 0; white-space: pre-wrap; max-height: 3.2em; overflow: hidden; }
   .item .q { font-weight: 600; margin: var(--s1) 0; }
   .item .a { line-height: 1.55; }
   .item .a.clip { max-height: 6.4em; overflow: hidden; position: relative; }
   .item .a.clip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2em; background: linear-gradient(rgba(249,249,247,0), var(--panel)); }
-  .item .more { color: var(--accent); cursor: pointer; font-size: 12px; }
-  .item .del { position: absolute; top: var(--s2); right: 0; color: var(--text-3); cursor: pointer; font-size: 12px; }
+  .item .more { display: inline-block; color: var(--accent); cursor: pointer; font-size: 12px; padding: 3px 8px; margin-left: -8px; border-radius: var(--r); }
+  .item .more:hover { background: var(--accent-bg); }
+  .item .del { position: absolute; top: var(--s2); right: 8px; color: var(--text-3); cursor: pointer; font-size: 12px; padding: 2px 4px; }
   .item .del:hover { color: var(--red); }
-  .item .loc { position: absolute; top: var(--s2); right: 22px; color: var(--accent); cursor: pointer; font-size: 11px; }
+  .item .loc { position: absolute; top: var(--s2); right: 34px; color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 4px; }
   .a p { margin: 3px 0; } .a li { margin-left: 16px; }
   .item .a h1, .item .a h2, .item .a h3, .item .a h4 { font-size: 12px; font-weight: 600; margin: var(--s1) 0 2px; border: 0; padding: 0; }
   #read { flex: 1; min-width: 360px; overflow-y: auto; padding: var(--s3) var(--s6) 80px; line-height: 1.75; font-size: 14px; background: var(--surface); position: relative; }
@@ -57,8 +64,8 @@
   #pdfpages { padding: var(--s2); }
   .pg { position: relative; margin: 0 auto var(--s2); background: #fff; box-shadow: 0 1px 3px #0005; }
   .pg canvas { display: block; }
-  .hl { position: absolute; background: rgba(255, 200, 0, .4); pointer-events: none; }
-  .hl.cap { background: rgba(31, 79, 209, .28); }
+  .pg .hl { position: absolute; background: rgba(255, 200, 0, .4); pointer-events: none; }
+  .pg .hl.cap { background: rgba(31, 79, 209, .28); }
   .capbox { position: absolute; background: rgba(251, 243, 220, .97); border-left: 2px solid var(--amber); padding: 2px 6px; font-size: 12px; line-height: 1.4; color: var(--text); z-index: 2; pointer-events: none; }
   .rsel { position: absolute; border: 1px dashed var(--accent); background: rgba(31, 79, 209, .1); pointer-events: none; }
   body.regionmode .pg { cursor: crosshair; }
@@ -320,7 +327,7 @@ async function renderPage(pg) {
     pg.div.insertBefore(cv, pg.div.firstChild);
   } catch (e) { pg.rendered = false; }
 }
-function clearHl() { document.querySelectorAll(".hl").forEach(e => e.remove()); }
+function clearHl() { document.querySelectorAll(".pg .hl").forEach(e => e.remove()); }
 // 목표 위치가 화면 아래쪽(bottom) 또는 위쪽(top)에 오도록 스크롤
 function scrollPdfTo(pi, y, align) {
   const pg = pages[pi]; renderPage(pg); if (pages[pi + 1]) renderPage(pages[pi + 1]); if (pages[pi - 1]) renderPage(pages[pi - 1]);
@@ -562,7 +569,7 @@ function markAnchorsBadge(mark, it) {
 function focusItem(type, i) {
   document.getElementById("sideTog").checked = true; document.getElementById("side").classList.add("on");
   const el = document.getElementById("item-" + type + "-" + i); if (!el) return;
-  el.scrollIntoView({ block: "center" }); el.classList.add("hl"); setTimeout(() => el.classList.remove("hl"), 2000);
+  el.scrollIntoView({ block: "center" }); el.classList.add("sel"); setTimeout(() => el.classList.remove("sel"), 2000);
   const a = el.querySelector(".a.clip"); if (a) { a.classList.remove("clip"); const mb = el.querySelector(".more"); if (mb) mb.remove(); }
 }
 function locateAnchor(type, i) {
@@ -616,7 +623,8 @@ document.getElementById("sideTog").onchange = e => { document.getElementById("si
   if (localStorage.getItem("reader_pdf") === "0") { document.getElementById("pdfTog").checked = false; pdfcol.classList.remove("on"); }
   if (localStorage.getItem("reader_side") === "0") { document.getElementById("sideTog").checked = false; document.getElementById("side").classList.remove("on"); }
   const info = await (await fetch("/api/paperinfo?file=" + encodeURIComponent(file))).json();
-  document.getElementById("ttl").textContent = (info.year || "") + " · " + (info.journal || "") + " · " + (info.author || "") + " — " + info.title;
+  { const ttl = document.getElementById("ttl"); ttl.textContent = (info.year || "") + " · " + (info.journal || "") + " · " + (info.author || "");
+    const tb = document.createElement("b"); tb.textContent = info.title || ""; ttl.appendChild(tb); }
   document.title = (info.author || "") + " " + (info.year || "") + " 읽기";
   notesData = await (await fetch("/api/notes?file=" + encodeURIComponent(file))).json();
   renderSide();
