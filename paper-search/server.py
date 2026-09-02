@@ -538,6 +538,10 @@ def generate_document(name, kind, text):
     n = len(chunks)
     results, errors, done = [None] * n, [], [0]
     label = "요약" if is_sum else "번역"
+    job = _jobs.get(key)
+    if job:  # 완성된 구간을 읽기 화면에서 미리 볼 수 있게 공유
+        job["partial"] = results
+        job["total"] = n
     _set_stage(key, "Claude {} 중 (0/{} 구간, 4개 동시)".format(label, n))
 
     def work(i):
@@ -830,6 +834,21 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, {"status": "none"})
                 else:
                     self._send(200, job_view(job))
+        elif url.path == "/api/genpartial":
+            # 생성 중인 요약/번역의 완성된 구간들 (읽기 화면 실시간 표시용)
+            q = parse_qs(url.query)
+            name = os.path.basename(q.get("file", [""])[0])
+            kind = q.get("kind", ["summary"])[0]
+            job = _jobs.get((name, kind))
+            if os.path.isfile(gen_path(name, kind)):
+                self._send(200, {"status": "done"})
+            elif not job:
+                self._send(200, {"status": "none"})
+            else:
+                v = job_view(job)
+                v["total"] = job.get("total", 0)
+                v["parts"] = {str(i): t for i, t in enumerate(job.get("partial") or []) if t}
+                self._send(200, v)
         elif url.path == "/api/jobs":
             # 진행 중/실패한 모든 작업 (재시작 전 확인용)
             out = [{"file": k[0], "kind": k[1], **job_view(j)} for k, j in list(_jobs.items())]

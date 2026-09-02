@@ -118,35 +118,57 @@ async function showKind(k) {
   const md = await loadText(k);
   if (md === null) {
     const label = k === "summary" ? "요약" : "전문번역";
-    read.innerHTML = "<p class='hint'>" + label + "이 아직 생성되지 않았습니다.</p><button class='btn pri' id='genBtn'>" + label + " 생성하기</button>";
+    // 생성 중이면 완성된 구간부터 실시간으로 보여준다
+    const st = await (await fetch("/api/genstatus?file=" + encodeURIComponent(file) + "&kind=" + k)).json();
+    if (st.status === "running") { liveView(k); return; }
+    read.innerHTML = "<p class='hint'>" + label + "이 아직 생성되지 않았습니다." + (st.status === "error" ? " (이전 시도 실패: " + esc(st.error || "") + ")" : "") +
+      "</p><button class='btn pri' id='genBtn'>" + label + " 생성하기</button>";
     document.getElementById("genBtn").onclick = async () => {
       await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file, kind: k }) });
-      read.innerHTML = "<p class='hint'>⏳ " + label + " 생성 중… (요약 1~3분, 번역 3~10분) 이 화면에 자동으로 표시됩니다.</p>";
-      const t = setInterval(async () => {
-        const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(file) + "&kind=" + k)).json();
-        if (s.status === "done") { clearInterval(t); delete texts[k]; showKind(k); }
-        else if (s.status === "error") { clearInterval(t); read.innerHTML = "<p class='hint'>⚠ 실패: " + esc(s.error || "") + "</p>"; }
-        else if (s.stage) read.innerHTML = "<p class='hint'>⏳ " + esc(s.stage) + " (" + (s.elapsed || 0) + "초)</p>";
-      }, 5000);
+      liveView(k);
     };
     return;
   }
+  renderMd(md);
+}
+
+function renderMd(md) {
   read.innerHTML = mdToHtml(md);
   read.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n));
 }
+
+let liveTimer = null;
+function liveView(k) {
+  if (liveTimer) clearInterval(liveTimer);
+  const label = k === "summary" ? "요약" : "전문번역";
+  const tick = async () => {
+    if (kind !== k) { clearInterval(liveTimer); liveTimer = null; return; }
+    const s = await (await fetch("/api/genpartial?file=" + encodeURIComponent(file) + "&kind=" + k)).json();
+    if (s.status === "done") { clearInterval(liveTimer); liveTimer = null; delete texts[k]; showKind(k); return; }
+    if (s.status === "error") { clearInterval(liveTimer); liveTimer = null; read.innerHTML = "<p class='hint'>⚠ 실패: " + esc(s.error || "") + "</p>"; return; }
+    if (s.status === "none") { clearInterval(liveTimer); liveTimer = null; delete texts[k]; showKind(k); return; }
+    const total = s.total || 0, parts = s.parts || {}, doneN = Object.keys(parts).length;
+    let html = "<p class='hint'>⏳ " + label + " 생성 중 — " + doneN + "/" + total + " 구간 완료 (" + fmtSec(s.elapsed) + ") · 완성된 부분부터 표시됩니다" +
+      (k === "summary" ? " · 한줄 요약·핵심 정리는 완료 후 맨 위/아래에 추가" : "") + "</p>";
+    for (let i = 0; i < total; i++) {
+      html += parts[i] ? mdToHtml(parts[i]) : "<p class='hint' style='border:1px dashed #ddd;border-radius:8px;padding:10px'>⏳ " + (i + 1) + "/" + total + " 구간 생성 중…</p>";
+    }
+    const keep = read.scrollTop;
+    read.innerHTML = html;
+    read.scrollTop = keep;
+    read.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n));
+  };
+  tick();
+  liveTimer = setInterval(tick, 5000);
+}
+const fmtSec = s => s == null ? "" : (s < 90 ? s + "초" : Math.round(s / 60) + "분");
 document.querySelectorAll(".tab[data-kind]").forEach(t => t.onclick = () => showKind(t.dataset.kind));
 document.getElementById("regen").onclick = async () => {
   const label = kind === "summary" ? "요약" : "전문번역";
   if (!confirm(label + "을 지우고 다시 생성할까요?\n(구간별로 나눠 생성하는 새 방식. 요약 3~8분, 번역 5~20분, 구독 사용량 사용)")) return;
   await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file, kind, force: true }) });
   delete texts[kind];
-  read.innerHTML = "<p class='hint'>⏳ " + label + " 다시 생성 중…</p>";
-  const t = setInterval(async () => {
-    const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(file) + "&kind=" + kind)).json();
-    if (s.status === "done") { clearInterval(t); delete texts[kind]; showKind(kind); }
-    else if (s.status === "error") { clearInterval(t); read.innerHTML = "<p class='hint'>⚠ 실패: " + esc(s.error || "") + "</p>"; }
-    else if (s.stage) read.innerHTML = "<p class='hint'>⏳ " + esc(s.stage) + " (" + (s.elapsed || 0) + "초)</p>";
-  }, 5000);
+  liveView(kind);
 };
 
 // ---------- PDF.js 뷰어 ----------
