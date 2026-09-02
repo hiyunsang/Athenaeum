@@ -56,60 +56,86 @@
   <label style="font-size:13px;color:#555;cursor:pointer"><input type="checkbox" id="smart" checked> 🧠 스마트 탐색</label>
   <div id="info"></div>
 </header>
-<div id="main"><div class="hint">OpenAlex 전체 학술 DB(2억 5천만 편)에서 주제로 논문을 찾습니다.<br>
-파란 줄 = 이미 보유한 논문 · 제목 클릭 = 논문 페이지(보유 시 PDF) · [관련맵] = 그 논문 주변 지도</div></div>
+<div id="main">
+  <div id="smartbox"></div>
+  <div id="plainbox"><div class="hint">OpenAlex 전체 학술 DB(2억 5천만 편)에서 주제로 논문을 찾습니다.<br>
+  파란 줄 = 이미 보유한 논문 · 제목 클릭 = 논문 페이지(보유 시 PDF) · [관련맵] = 그 논문 주변 지도</div></div>
+</div>
 <script>
 const main = document.getElementById("main"), info = document.getElementById("info");
+const smartbox = document.getElementById("smartbox"), plainbox = document.getElementById("plainbox");
 const polling = {}, stages = {};
 
 async function search() {
   const q = document.getElementById("q").value.trim();
   if (!q) return;
-  if (document.getElementById("smart").checked) return smartSearch(q);
+  const smart = document.getElementById("smart").checked;
+  smartbox.innerHTML = "";
+  plainbox.style.display = "";      // 이전 검색에서 접혀 있었으면 다시 펼침
+  if (smartTimer) { clearInterval(smartTimer); smartTimer = null; }
+  if (smart) smartSearch(q);        // 백그라운드로 시작 (기다리지 않음)
+  await plainSearch(q, smart);      // 기본 검색은 즉시 표시
+}
+
+async function plainSearch(q, withSmart) {
   info.textContent = "검색 중…";
-  main.innerHTML = "";
+  plainbox.innerHTML = "";
   const params = new URLSearchParams({ q, year: document.getElementById("year").value, sort: document.getElementById("sort").value });
   const d = await (await fetch("/api/explore?" + params)).json();
-  if (d.error) { info.textContent = ""; main.innerHTML = "<div class='hint'>⚠ " + d.error + "</div>"; return; }
+  if (d.error) { plainbox.innerHTML = "<div class='hint'>⚠ " + d.error + "</div>"; return; }
   const owned = d.results.filter(r => r.owned).length;
-  info.textContent = "전체 " + (d.total || 0).toLocaleString() + "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편";
-  if (!d.results.length) main.innerHTML = "<div class='hint'>결과가 없습니다. 다른 키워드로 시도해보세요.</div>";
-  for (const r of d.results) main.appendChild(renderRow(r));
+  if (!withSmart) info.textContent = "전체 " + (d.total || 0).toLocaleString() + "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편";
+  const h = document.createElement("div"); h.className = "ghead";
+  h.innerHTML = "<b>⚡ 기본 검색 결과</b> <span>입력한 단어 그대로 · 전체 " + (d.total || 0).toLocaleString() +
+    "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편</span>";
+  plainbox.appendChild(h);
+  if (!d.results.length) plainbox.innerHTML += "<div class='hint'>결과가 없습니다. 다른 키워드로 시도해보세요.</div>";
+  for (const r of d.results) plainbox.appendChild(renderRow(r));
 }
 
 let smartTimer = null;
 async function smartSearch(q) {
   if (smartTimer) { clearInterval(smartTimer); smartTimer = null; }
   const year = document.getElementById("year").value;
-  main.innerHTML = "<div class='hint'>🧠 Claude가 검색어를 확장하고 결과를 선별하는 중입니다…<br>(30초~1분)</div>";
-  info.textContent = "시작…";
+  const prog = document.createElement("div"); prog.className = "plan";
+  prog.innerHTML = "🧠 <b>스마트 탐색 진행 중</b> — <span id='sstage'>시작…</span> <span style='color:#999'>(아래 기본 결과는 바로 보실 수 있습니다)</span>";
+  smartbox.appendChild(prog);
   const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify({ q, year }) })).json();
-  if (!start.key) { info.textContent = ""; main.innerHTML = "<div class='hint'>⚠ " + (start.error || "시작 실패") + "</div>"; return; }
+  if (!start.key) { prog.innerHTML = "⚠ 스마트 탐색 시작 실패: " + (start.error || ""); return; }
   smartTimer = setInterval(async () => {
     const s = await (await fetch("/api/smart_status?key=" + encodeURIComponent(start.key))).json();
-    if (s.status === "running") { info.textContent = s.stage || "진행 중…"; return; }
+    const st = document.getElementById("sstage");
+    if (s.status === "running") { if (st) st.textContent = s.stage || "진행 중…"; return; }
     clearInterval(smartTimer); smartTimer = null;
-    if (s.status !== "done") { info.textContent = ""; main.innerHTML = "<div class='hint'>⚠ 실패: " + (s.error || "원인 불명") + "</div>"; return; }
+    if (s.status !== "done") { prog.innerHTML = "⚠ 스마트 탐색 실패: " + (s.error || "원인 불명"); return; }
     renderSmart(s.result);
   }, 3000);
 }
 
 function renderSmart(r) {
-  main.innerHTML = "";
+  smartbox.innerHTML = "";
   const total = r.groups.reduce((a, g) => a + g.items.length, 0);
   const owned = r.groups.reduce((a, g) => a + g.items.filter(x => x.owned).length, 0);
-  info.textContent = "관련 논문 " + total + "편 (후보 " + r.candidates + "편 중 " + r.excluded + "편 제외) · 보유 " + owned + "편";
+  info.textContent = "🧠 관련 논문 " + total + "편 (후보 " + r.candidates + "편 중 " + r.excluded + "편 제외) · 보유 " + owned + "편";
   const plan = document.createElement("div"); plan.className = "plan";
-  plan.innerHTML = "<b>조사 의도:</b> " + r.intent + (r.exclude ? " <span style='color:#999'>(제외: " + r.exclude + ")</span>" : "") +
+  plan.innerHTML = "🧠 <b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + r.intent +
+    (r.exclude ? " <span style='color:#999'>(제외: " + r.exclude + ")</span>" : "") +
     "<div class='qs'><b>검색어 " + r.queries.length + "개:</b> " +
     r.queries.map(x => "<span title='OpenAlex 전체 " + x.total + "편'>" + x.q + " · " + x.total + "</span>").join("") + "</div>";
-  main.appendChild(plan);
+  smartbox.appendChild(plan);
   for (const g of r.groups) {
     const h = document.createElement("div"); h.className = "ghead";
     h.innerHTML = "<b>" + g.name + "</b> <span>" + g.items.length + "편 · " + g.why + "</span>";
-    main.appendChild(h);
-    for (const it of g.items) main.appendChild(renderRow(it));
+    smartbox.appendChild(h);
+    for (const it of g.items) smartbox.appendChild(renderRow(it));
   }
+  // 기본 결과는 아래에 접어두기 (클릭하면 펼침)
+  const tog = document.createElement("div"); tog.className = "ghead"; tog.style.cursor = "pointer";
+  tog.innerHTML = "<b>▸ 기본 검색 결과 보기</b> <span>입력 단어 그대로 검색한 원본 목록</span>";
+  const savedPlain = plainbox; savedPlain.style.display = "none";
+  tog.onclick = () => { const open = savedPlain.style.display === "none"; savedPlain.style.display = open ? "" : "none";
+    tog.querySelector("b").textContent = (open ? "▾" : "▸") + " 기본 검색 결과 보기"; };
+  smartbox.appendChild(tog);
 }
 
 function openPaper(r) {
