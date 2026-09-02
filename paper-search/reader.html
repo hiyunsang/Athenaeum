@@ -46,6 +46,8 @@
   #read .flash { background: var(--amber-bg); transition: background 1.2s; }
   #read .figref { color: var(--accent); text-decoration: underline dotted; cursor: pointer; }
   #read li { margin-left: 18px; }
+  #read li.d2 { margin-left: 36px; } #read li.d3 { margin-left: 54px; }
+  #read li.num { list-style: none; margin-left: 0; }
   mark.anc { background: var(--amber-bg); border-bottom: 1px solid var(--amber); }
   mark.anc.qa { background: var(--accent-bg); border-bottom: 1px solid var(--accent); }
   sup.badge { cursor: pointer; font-size: 10px; margin-left: 2px; color: var(--accent); font-weight: 600; }
@@ -163,7 +165,11 @@ const fmtSec = s => s == null ? "" : (s < 90 ? s + "초" : Math.round(s / 60) + 
 function mdToHtml(md) {
   let h = esc(md);
   h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
-       .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/^- (.*)$/gm, "<li>$1</li>").replace(/\n\n/g, "</p><p>");
+       .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+       // 글머리표: 들여쓴 깊이(공백 2칸 = 한 단계)를 d1~d3 클래스로. 줄 첫머리 '1. ' 번호 항목도 한 줄씩
+       .replace(/^(\s*)[-*] (.*)$/gm, (m, sp, t) => "<li class='d" + Math.min(3, 1 + Math.floor(sp.length / 2)) + "'>" + t + "</li>")
+       .replace(/^(\d+(?:\.\d+)*)\. (.*)$/gm, "<li class='num'>$1. $2</li>")
+       .replace(/\n\n/g, "</p><p>");
   h = h.replace(/(Fig\.?\s?|Figure\s|그림\s?)(\d+)/g, "<a class='figref' data-k='fig' data-n='$2'>$1$2</a>")
        .replace(/(Table\s|표\s?)(\d+)/g, "<a class='figref' data-k='table' data-n='$2'>$1$2</a>");
   return "<p>" + h + "</p>";
@@ -217,7 +223,8 @@ function textLines(nodes) {
     if (lis.length) lis.forEach(li => lines.push(li.textContent));
     else n.textContent.split(/\n+/).forEach(s => lines.push(s));
   }
-  return lines.map(s => s.replace(/^[-•·]\s*/, "").trim()).filter(s => s.length > 1);
+  // 들여쓴 하위 항목("   - 2.1. …")도 잡히게: 먼저 trim, 그다음 글머리표 제거
+  return lines.map(s => s.trim().replace(/^[-•·*]\s*/, "").trim()).filter(s => s.length > 1);
 }
 function postProcess() {
   [...read.querySelectorAll("h2, h3")].forEach(h => {
