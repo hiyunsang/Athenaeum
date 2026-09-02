@@ -66,6 +66,15 @@ const main = document.getElementById("main"), info = document.getElementById("in
 const smartbox = document.getElementById("smartbox"), plainbox = document.getElementById("plainbox");
 const polling = {}, stages = {};
 
+// 탐색 상태 저장/복원: 홈으로 갔다가 돌아와도 결과가 그대로 남도록
+const STATE_KEY = "explore_state_v1";
+function loadState() { try { return JSON.parse(localStorage.getItem(STATE_KEY) || "null"); } catch (e) { return null; } }
+function saveState(patch) {
+  const s = loadState() || {};
+  Object.assign(s, patch);
+  try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); } catch (e) {}
+}
+
 async function search() {
   const q = document.getElementById("q").value.trim();
   if (!q) return;
@@ -73,6 +82,8 @@ async function search() {
   smartbox.innerHTML = "";
   plainbox.style.display = "";      // 이전 검색에서 접혀 있었으면 다시 펼침
   if (smartTimer) { clearInterval(smartTimer); smartTimer = null; }
+  saveState({ q, year: document.getElementById("year").value, sort: document.getElementById("sort").value,
+              smart, plain: null, smartKey: null, smartResult: null });
   if (smart) smartSearch(q);        // 백그라운드로 시작 (기다리지 않음)
   await plainSearch(q, smart);      // 기본 검색은 즉시 표시
 }
@@ -83,6 +94,12 @@ async function plainSearch(q, withSmart) {
   const params = new URLSearchParams({ q, year: document.getElementById("year").value, sort: document.getElementById("sort").value });
   const d = await (await fetch("/api/explore?" + params)).json();
   if (d.error) { plainbox.innerHTML = "<div class='hint'>⚠ " + d.error + "</div>"; return; }
+  saveState({ plain: d });
+  renderPlain(d, withSmart);
+}
+
+function renderPlain(d, withSmart) {
+  plainbox.innerHTML = "";
   const owned = d.results.filter(r => r.owned).length;
   info.textContent = "⚡ 기본 " + d.results.length + "편 (전체 " + (d.total || 0).toLocaleString() + "편) · 보유 " + owned + "편" +
     (withSmart ? " · 🧠 스마트 결과 준비 중…" : "");
@@ -95,23 +112,48 @@ async function plainSearch(q, withSmart) {
 }
 
 let smartTimer = null;
-async function smartSearch(q) {
-  if (smartTimer) { clearInterval(smartTimer); smartTimer = null; }
-  const year = document.getElementById("year").value;
+function smartProgressBox() {
   const prog = document.createElement("div"); prog.className = "plan";
   prog.innerHTML = "🧠 <b>스마트 탐색 진행 중</b> — <span id='sstage'>시작…</span> <span style='color:#999'>(아래 기본 결과는 바로 보실 수 있습니다)</span>";
   smartbox.appendChild(prog);
-  const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify({ q, year }) })).json();
-  if (!start.key) { prog.innerHTML = "⚠ 스마트 탐색 시작 실패: " + (start.error || ""); return; }
+  return prog;
+}
+
+function pollSmart(key, prog) {
+  if (smartTimer) clearInterval(smartTimer);
   smartTimer = setInterval(async () => {
-    const s = await (await fetch("/api/smart_status?key=" + encodeURIComponent(start.key))).json();
+    const s = await (await fetch("/api/smart_status?key=" + encodeURIComponent(key))).json();
     const st = document.getElementById("sstage");
     if (s.status === "running") { if (st) st.textContent = s.stage || "진행 중…"; return; }
     clearInterval(smartTimer); smartTimer = null;
+    if (s.status === "none") { prog.innerHTML = "⚠ 스마트 탐색 결과가 사라졌습니다 (서버 재시작?) — 다시 검색해 주세요"; return; }
     if (s.status !== "done") { prog.innerHTML = "⚠ 스마트 탐색 실패: " + (s.error || "원인 불명"); return; }
+    saveState({ smartResult: s.result });
     renderSmart(s.result);
   }, 3000);
 }
+
+async function smartSearch(q) {
+  const year = document.getElementById("year").value;
+  const prog = smartProgressBox();
+  const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify({ q, year }) })).json();
+  if (!start.key) { prog.innerHTML = "⚠ 스마트 탐색 시작 실패: " + (start.error || ""); return; }
+  saveState({ smartKey: start.key });
+  pollSmart(start.key, prog);
+}
+
+// 페이지를 다시 열었을 때 이전 탐색 복원
+(function restore() {
+  const s = loadState();
+  if (!s || !s.q) return;
+  document.getElementById("q").value = s.q;
+  if (s.year !== undefined) document.getElementById("year").value = s.year;
+  if (s.sort) document.getElementById("sort").value = s.sort;
+  document.getElementById("smart").checked = !!s.smart;
+  if (s.plain) renderPlain(s.plain, s.smart);
+  if (s.smartResult) renderSmart(s.smartResult);
+  else if (s.smart && s.smartKey) pollSmart(s.smartKey, smartProgressBox());  // 아직 돌던 중이면 이어받기
+})();
 
 function renderSmart(r) {
   smartbox.innerHTML = "";

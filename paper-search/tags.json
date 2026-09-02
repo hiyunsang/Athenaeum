@@ -3410,5 +3410,75 @@
   "suggested": [],
   "rejected": [],
   "title": "Feasibility investigation on ductile machining of single-crystal silicon for deep micro-structures by ultra-precision fly cutting"
+ },
+ "2015_IJMTM_Goel_Diamond machining of silicon A review of advances in molecular dynamics simulation.pdf": {
+  "labels": [
+   "Review",
+   "Silicon",
+   "Ultra-precision machining",
+   "Turning",
+   "Nano-cutting",
+   "Ductile-brittle transition",
+   "Phase transformation",
+   "Tool wear",
+   "Molecular dynamics",
+   "Anisotropic"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Diamond machining of silicon: A review of advances in molecular dynamics simulation"
+ },
+ "2015_IJMTM_Goel_Diamond machining of silicon A review of advances in molecular dynamics simulation (2).pdf": {
+  "labels": [
+   "Review",
+   "Silicon",
+   "Single crystal",
+   "Anisotropic",
+   "Turning",
+   "Nano-cutting",
+   "Ultra-precision machining",
+   "Ductile-brittle transition",
+   "Tool wear",
+   "Molecular dynamics",
+   "Analytical model",
+   "Phase transformation"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Diamond machining of silicon: A review of advances in molecular dynamics simulation"
+ },
+ "2018_FME_Antwi_A review on ductile mode cutting of brittle materials (2).pdf": {
+  "labels": [
+   "Review",
+   "Ductile-brittle transition",
+   "Subsurface damage",
+   "Molecular dynamics",
+   "Ultra-precision machining",
+   "Plastic flow",
+   "Fracture"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "A review on ductile mode cutting of brittle materials"
+ },
+ "2024_PE_Alao_Review of ductile machining and ductile-brittle transition characterization mechanisms in precision ultraprecision turning, milling and.pdf": {
+  "labels": [
+   "Review",
+   "Ductile-brittle transition",
+   "Turning",
+   "Milling",
+   "Grinding",
+   "Ultra-precision machining",
+   "Subsurface damage",
+   "Ceramic",
+   "ZnSe",
+   "Glass",
+   "Fracture",
+   "Plastic flow",
+   "Phase transformation"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Review of ductile machining and ductile-brittle transition characterization mechanisms in precision/ultraprecision turning, milling and grinding of brittle materials"
  }
 }
