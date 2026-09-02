@@ -84,7 +84,8 @@ async function plainSearch(q, withSmart) {
   const d = await (await fetch("/api/explore?" + params)).json();
   if (d.error) { plainbox.innerHTML = "<div class='hint'>⚠ " + d.error + "</div>"; return; }
   const owned = d.results.filter(r => r.owned).length;
-  if (!withSmart) info.textContent = "전체 " + (d.total || 0).toLocaleString() + "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편";
+  info.textContent = "⚡ 기본 " + d.results.length + "편 (전체 " + (d.total || 0).toLocaleString() + "편) · 보유 " + owned + "편" +
+    (withSmart ? " · 🧠 스마트 결과 준비 중…" : "");
   const h = document.createElement("div"); h.className = "ghead";
   h.innerHTML = "<b>⚡ 기본 검색 결과</b> <span>입력한 단어 그대로 · 전체 " + (d.total || 0).toLocaleString() +
     "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편</span>";
