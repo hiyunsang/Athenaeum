@@ -1026,6 +1026,22 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/ui.css":
             with open(os.path.join(BASE, "ui.css"), "rb") as f:
                 self._send(200, f.read(), "text/css; charset=utf-8")
+        elif url.path.startswith("/fonts/"):
+            # 로컬 글꼴 파일 (Pretendard 등) — 인터넷 없이도 뜨게 paper-search\fonts\ 에서 제공
+            fname = os.path.basename(url.path)
+            fpath = os.path.join(BASE, "fonts", fname)
+            if fname.lower().endswith((".woff2", ".woff", ".ttf")) and os.path.isfile(fpath):
+                ctype = {"woff2": "font/woff2", "woff": "font/woff", "ttf": "font/ttf"}[fname.rsplit(".", 1)[1].lower()]
+                with open(fpath, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "public, max-age=31536000")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404); self.end_headers()
         elif url.path == "/api/explore":
             # 주제 키워드로 OpenAlex 전체 검색 (탐색)
             import mapper

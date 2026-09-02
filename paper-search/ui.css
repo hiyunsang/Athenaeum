@@ -1,5 +1,13 @@
 /* MAENG paper tools — 공통 디자인 토큰 & 컴포넌트
    원칙: 정보 밀도 유지, 시각 밀도 축소. 카드 대신 구분선, 알약 대신 텍스트, 장식 대신 타이포그래피. */
+/* 글꼴: Pretendard Variable (OFL, paper-search\fonts\ 에 동봉 — 오프라인에서도 로드) */
+@font-face {
+  font-family: "Pretendard Variable";
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/PretendardVariable.woff2") format("woff2-variations"), url("/fonts/PretendardVariable.woff2") format("woff2");
+}
 :root {
   --bg: #f4f4f2;          /* 페이지 바탕 */
   --panel: #f6f6f4;       /* 사이드 패널 (흰 본문과 구분되되 카드처럼 튀지 않게, Linear 사이드바 정도) */
