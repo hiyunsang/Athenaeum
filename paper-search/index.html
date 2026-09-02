@@ -5,11 +5,14 @@
 <title>MAENG 논문 검색</title>
 <link rel="stylesheet" href="/ui.css">
 <style>
-  header { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) var(--s4); background: var(--surface); border-bottom: 1px solid var(--line-2); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
-  header h1 { font-size: 14px; font-weight: 600; margin-right: var(--s1); }
-  header input[type=text] { width: 240px; }
-  .toggle { font-size: 12px; color: var(--text-2); user-select: none; cursor: pointer; }
-  #summary { margin-left: auto; font-size: 12px; color: var(--text-2); }
+  header { display: flex; align-items: center; gap: var(--s3); min-height: 44px; padding: 0 var(--s4); background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 13px; font-weight: 600; letter-spacing: -.01em; margin-right: var(--s1); }
+  header input[type=text] { width: 280px; background: var(--bg); border-color: transparent; padding: 5px 10px; }
+  header input[type=text]:focus { background: var(--surface); border-color: var(--accent); }
+  header select { border-color: transparent; background: transparent; color: var(--text-2); padding: 4px 2px; }
+  .toggle { font-size: 12px; color: var(--text-quiet); user-select: none; cursor: pointer; }
+  .toggle:hover { color: var(--text); }
+  #summary { margin-left: auto; font-size: 12px; color: var(--text-3); }
   #chips { padding: var(--s1) var(--s4) 0; display: flex; flex-wrap: wrap; gap: var(--s1); min-height: 6px; }
   #layout { display: flex; }
   #side { width: 232px; min-width: 232px; padding: var(--s2) var(--s2) var(--s8) var(--s3); height: calc(100vh - 84px); overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line-2); }
@@ -30,8 +33,8 @@
          padding: 10px 12px 11px; border-bottom: 1px solid var(--line); cursor: pointer; }
   .row:hover { background: var(--hover); }
   .row.sel { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel-bg); }
-  .row .acts { grid-column: 2; grid-row: 1; display: flex; gap: 2px; white-space: nowrap; margin: -3px -8px 0 0; }
-  .row .meta { grid-column: 1; grid-row: 1; }
+  .row .acts { grid-column: 2; grid-row: 1; display: flex; gap: var(--s2); white-space: nowrap; margin: -6px -8px 0 0; }
+  .row .meta { grid-column: 1; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }  /* 좁아도 동작 칸을 밀지 않고 말줄임 */
   .row .title { grid-column: 1 / -1; grid-row: 2; }
   .row .tags { grid-column: 1 / -1; grid-row: 3; }
   .meta { font-size: 12px; color: var(--text-2); line-height: 1.4; }
@@ -42,9 +45,14 @@
   .tag { display: inline; }
   .tag + .tag::before { content: " · "; color: var(--text-3); }
   .tag.sug { color: var(--amber); }
-  .editbtn { background: none; border: 0; color: var(--text-2); padding: 4px 8px; cursor: pointer; font-size: 12px; line-height: 1.3; border-radius: var(--r); }
-  .editbtn:hover { color: var(--accent); background: var(--accent-bg); }
-  .editbtn:disabled { color: var(--text-3); background: none; cursor: default; }
+  /* 동작 텍스트: 버튼 상자 없음. 기본은 흐린 회색(콘텐츠와 다른 층), 행 hover 시 진해지고, 실제 가리킨 동작만 파랑+밑줄.
+     칸 폭(min-width) 고정 → 요약/번역/관련맵/라벨 편집이 모든 행에서 같은 x 위치. 클릭 영역 높이 ~30px */
+  .editbtn { background: none; border: 0; color: var(--text-quiet); padding: 7px 8px; min-width: 76px; text-align: left; cursor: pointer; font-size: 12px; line-height: 1.3; border-radius: 0; }
+  .editbtn.ready { color: var(--text-2); }
+  .row:hover .editbtn { color: var(--text); }
+  .editbtn:hover, .row:hover .editbtn:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .editbtn.warn, .row:hover .editbtn.warn { color: var(--red); }
+  .editbtn:disabled, .row:hover .editbtn:disabled { color: var(--text-3); text-decoration: none; cursor: default; }
   #drawer { display: none; width: 300px; min-width: 300px; border-left: 1px solid var(--line-2); background: var(--panel); padding: var(--s3) var(--s3) var(--s8); height: calc(100vh - 84px); overflow-y: auto; }
   #drawer.open { display: block; }
   #drawer h2 { font-size: 14px; font-weight: 600; margin-bottom: var(--s2); line-height: 1.35; }
@@ -342,7 +350,7 @@ function genButton(p, kind, label, ready) {
   }
   if (job && job.status === "error") {
     b.textContent = label + " 실패 ⚠";
-    b.style.color = "var(--red)";
+    b.classList.add("warn");
     b.title = (job.error || "원인 불명") + "\n클릭하면 다시 시도";
     b.onclick = async (e) => {
       e.stopPropagation();
@@ -355,7 +363,7 @@ function genButton(p, kind, label, ready) {
     return b;
   }
   b.textContent = ready ? label + " 보기" : label;
-  if (ready) b.style.color = kind === "summary" ? "var(--accent)" : "var(--text)";
+  if (ready) b.classList.add("ready");
   b.onclick = async (e) => {
     e.stopPropagation();
     if (ready) { window.open(viewUrl(p, kind)); return; }

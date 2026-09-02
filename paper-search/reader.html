@@ -20,7 +20,7 @@
   #side.on { display: block; }
   #side h3 { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); margin: var(--s3) 0 var(--s1); }
   textarea { width: 100%; min-height: 44px; font-size: 12px; }
-  .btn { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .btn { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); padding: 4px 10px; cursor: pointer; font-size: 12px; }
   .btn:hover { border-color: var(--accent); color: var(--accent); }
   .btn.pri { background: var(--accent); color: #fff; border-color: var(--accent); }
   .btn.pri:hover { filter: brightness(.95); color: #fff; }
@@ -40,8 +40,9 @@
   .item .loc { position: absolute; top: var(--s2); right: 34px; color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 4px; }
   .a p { margin: 3px 0; } .a li { margin-left: 16px; }
   .item .a h1, .item .a h2, .item .a h3, .item .a h4 { font-size: 12px; font-weight: 600; margin: var(--s1) 0 2px; border: 0; padding: 0; }
-  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: var(--s3) var(--s6) 80px; line-height: 1.75; font-size: 14px; background: var(--surface); position: relative; }
-  #read h2 { border-bottom: 1px solid var(--line-2); padding-bottom: 3px; margin-top: var(--s6); font-size: 16px; font-weight: 600; }
+  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: var(--s4) var(--s8) 80px; line-height: 1.8; font-size: 15px; background: var(--surface); position: relative; }
+  #read > * { max-width: 760px; margin-left: auto; margin-right: auto; }  /* 읽기 폭 제한 (긴 줄 방지) */
+  #read h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: var(--s8); font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
   #read h3 { margin-top: var(--s4); font-size: 14px; font-weight: 600; color: var(--text); }
   #read .flash { background: var(--amber-bg); transition: background 1.2s; }
   #read .figref { color: var(--accent); text-decoration: underline dotted; cursor: pointer; }

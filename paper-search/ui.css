@@ -2,11 +2,12 @@
    원칙: 정보 밀도 유지, 시각 밀도 축소. 카드 대신 구분선, 알약 대신 텍스트, 장식 대신 타이포그래피. */
 :root {
   --bg: #f4f4f2;          /* 페이지 바탕 */
-  --panel: #f9f9f7;       /* 사이드 패널 */
+  --panel: #f6f6f4;       /* 사이드 패널 (흰 본문과 구분되되 카드처럼 튀지 않게, Linear 사이드바 정도) */
   --surface: #ffffff;     /* 본문 영역 */
   --text: #1c1c1a;
   --text-2: #5c5c58;      /* 메타데이터 */
   --text-3: #8c8c87;      /* 힌트, 0건 */
+  --text-quiet: #74746f;  /* 동작 텍스트 기본색 (행 hover 전). 콘텐츠와 다른 층으로 보이게 */
   --line: #e4e3df;        /* 행 구분선 */
   --line-2: #c8c7c1;      /* 패널 구분선 */
   --accent: #1f4fd1;      /* 유일한 상호작용 색 */
@@ -19,7 +20,7 @@
   --sel-bg: #f3f5fb;      /* 선택 행 배경 (좌측 강조선과 함께) */
   --r: 4px;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
-  --font: "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+  --font: "Pretendard Variable", Pretendard, Inter, "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -33,8 +34,8 @@ input[type=text], input[type=search], textarea, select {
 input[type=text]:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
 button { font: inherit; }
 /* 고스트 액션: 텍스트처럼 보이는 동작 */
-.act { background: none; border: 0; color: var(--text-2); padding: 4px 8px; cursor: pointer; border-radius: var(--r); font-size: 12px; line-height: 1.3; }
-.act:hover { color: var(--accent); background: var(--accent-bg); }
+.act { background: none; border: 0; color: var(--text-quiet); padding: 4px 8px; cursor: pointer; border-radius: var(--r); font-size: 12px; line-height: 1.3; }
+.act:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .act.ready { color: var(--accent); }
 .act.warn { color: var(--red); }
 .act:disabled { color: var(--text-3); cursor: default; background: none; }
