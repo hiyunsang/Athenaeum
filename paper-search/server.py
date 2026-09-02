@@ -452,14 +452,19 @@ def _run_generation(name, kind):
     text = "\n".join((p.extract_text() or "") for p in reader.pages)
     if len(text.strip()) < 500:
         raise RuntimeError("이 PDF는 글자를 추출할 수 없습니다 (스캔본인 듯)")
-    exe = find_claude()
-    if not exe:
+    if not find_claude():
         raise RuntimeError("claude 명령을 찾을 수 없습니다 (Claude Code 설치 확인)")
-    prompt = build_prompt(kind, paper_header(name)) + text
-    _set_stage((name, kind), "Claude 생성 중 (요약 1~3분, 번역 3~10분)")
+    out = generate_document(name, kind, text)
+    os.makedirs(GEN_DIR, exist_ok=True)
+    with open(gen_path(name, kind), "w", encoding="utf-8") as f:
+        f.write(out)
+
+
+def _claude(prompt, timeout=900):
+    """claude -p 실행. 실패 시 원인이 담긴 RuntimeError."""
+    exe = find_claude()
     r = subprocess.run([exe, "-p", "--output-format", "text"],
-                       input=prompt.encode("utf-8"),
-                       capture_output=True, timeout=2400)
+                       input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
     out = r.stdout.decode("utf-8", "replace").strip()
     errtxt = r.stderr.decode("utf-8", "replace").strip()
     if r.returncode != 0 or not out:
@@ -467,10 +472,88 @@ def _run_generation(name, kind):
         low = msg.lower()
         if "authenticate" in low or "login" in low or "oauth" in low:
             msg = "명령줄 로그인이 필요합니다: 터미널에서 claude 입력 → /login 입력 → 브라우저 로그인"
-        raise RuntimeError(msg or "생성 실패 (원인 불명)")
-    os.makedirs(GEN_DIR, exist_ok=True)
-    with open(gen_path(name, kind), "w", encoding="utf-8") as f:
-        f.write(out)
+        elif "limit" in low or "usage" in low:
+            msg = "Claude 구독 사용량 한도에 걸린 듯합니다 - 잠시 후 다시 시도"
+        raise RuntimeError(msg or "Claude 응답 없음")
+    return out
+
+
+def split_chunks(text, size):
+    """문단/문장 경계에서 size자 안팎으로 나눈다."""
+    paras = [p.strip() for p in re.split(r"\n\s*\n|\n(?=[A-Z0-9][^\n]{0,60}\n)", text) if p.strip()]
+    chunks, cur = [], ""
+    for p in paras:
+        if len(p) > size:  # 아주 긴 문단은 문장 단위로
+            for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", p):
+                if len(cur) + len(s) > size and cur:
+                    chunks.append(cur); cur = ""
+                cur += (" " if cur else "") + s
+            continue
+        if len(cur) + len(p) > size and cur:
+            chunks.append(cur); cur = ""
+        cur += ("\n\n" if cur else "") + p
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+GLOSSARY_RULE = ("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선), "
+                 "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
+
+
+def generate_document(name, kind, text):
+    """구간 단위로 Claude를 불러 요약(압축 번역) 또는 전문번역을 만든다."""
+    header = paper_header(name)
+    key = (name, kind)
+    is_sum = kind == "summary"
+    chunks = split_chunks(text, 9000 if is_sum else 6000)
+    parts, prev_tail = [], ""
+    for i, ch in enumerate(chunks):
+        _set_stage(key, "Claude {} 중 ({}/{} 구간)".format("요약" if is_sum else "번역", i + 1, len(chunks)))
+        if is_sum:
+            prompt = (
+                "당신은 기계가공·재료 분야 논문을 한국어로 '압축 번역'하는 전문가다. 아래는 논문 [" + header + "]의 "
+                "{}/{} 구간이다.\n".format(i + 1, len(chunks)) +
+                "규칙:\n- 원문의 소제목 구조를 그대로 따라라 (소제목은 ## 또는 ### 로, 원문 번호 유지). "
+                "고정된 틀(배경/방법/결과)로 재편하지 마라 - 리뷰 논문이면 각 소단원을 그 순서대로 상세히.\n"
+                "- 모든 문장을 옮기지는 말되, 핵심 주장·방법·수치·논리 전개·저자의 결론은 빠짐없이 담아라. "
+                "길이 제한 없음. 원문 분량에 비례해 상세하게.\n"
+                "- 그림/표 캡션이 있으면 '**Fig. N** - 번역' 형태로 포함.\n"
+                "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
+                "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
+                + ("\n[직전 구간 끝부분 - 맥락용, 다시 쓰지 말 것]\n" + prev_tail + "\n" if prev_tail else "")
+                + "\n[원문 구간]\n" + ch)
+        else:
+            prompt = (
+                "당신은 기계가공·재료 분야 논문 전문 번역가다. 아래는 논문 [" + header + "]의 "
+                "{}/{} 구간이다. 한국어로 번역하라.\n".format(i + 1, len(chunks)) +
+                "규칙:\n- 단 한 문장도 누락·요약하지 말고 전부 순서대로 번역. 소제목은 ## 또는 ### (원문 번호 유지).\n"
+                "- 수식·그림/표 번호는 원문 그대로, 그림/표 캡션도 번역 ('**Fig. N** - 번역').\n"
+                "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
+                "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
+                + "\n[원문 구간]\n" + ch)
+        out = _claude(prompt)
+        too_short = len(out) < len(ch) * (0.06 if is_sum else 0.35) and "참고문헌 생략" not in out
+        if too_short:  # 뒤쪽을 건너뛴 듯하면 한 번 더
+            _set_stage(key, "구간 {} 결과가 짧아 재시도".format(i + 1))
+            out2 = _claude(prompt)
+            if len(out2) > len(out):
+                out = out2
+        parts.append(out)
+        prev_tail = out[-600:]
+    body = "\n\n".join(parts)
+    if is_sum:
+        _set_stage(key, "한줄 요약·핵심 정리 작성 중")
+        wrap = ask_claude_json(
+            "아래는 논문 [" + header + "]의 구간별 압축 요약 전체다. 이 논문의 (1) 한줄 요약 2~3문장, "
+            "(2) 핵심 정리: 주요 발견·주장 5~8개 bullet과 한계·시사점을 한국어로 써라. " + GLOSSARY_RULE +
+            "\nJSON 한 줄만: {\"overview\": \"...\", \"closing\": \"- ...\\n- ...\"}\n\n" + body[:40000], timeout=400)
+        head = "# (요약) " + header + "\n\n"
+        if wrap and wrap.get("overview"):
+            head += "## 한줄 요약\n" + wrap["overview"].strip() + "\n\n"
+        tail = ("\n\n## 핵심 정리 및 시사점\n" + wrap["closing"].strip()) if wrap and wrap.get("closing") else ""
+        return head + body + tail
+    return "# (전문번역) " + header + "\n\n" + body
 
 
 VIEW_PAGE = """<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
@@ -901,6 +984,11 @@ class Handler(BaseHTTPRequestHandler):
             elif kind not in ("summary", "translation", "map") or not os.path.isfile(os.path.join(ARCHIVE, name)):
                 self._send(400, {"error": "bad request"})
                 return
+            if body.get("force") and os.path.isfile(gen_path(name, kind)):
+                try:
+                    os.remove(gen_path(name, kind))  # 다시 생성: 기존 결과 삭제 후 새로
+                except OSError:
+                    pass
             if os.path.isfile(gen_path(name, kind)):
                 self._send(200, {"status": "done"})
                 return
