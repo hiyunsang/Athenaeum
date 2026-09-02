@@ -43,6 +43,13 @@
   .tag.sug { background: #fff; border: 1px dashed #b78f24; color: #8a6d1d; }
   .editbtn { float: right; font-size: 12px; color: #888; border: 1px solid #ddd; border-radius: 6px; padding: 2px 8px; background: #fafafa; }
   .editbtn:hover { color: #3b5bd6; border-color: #3b5bd6; }
+  #explorePane { width: 0; min-width: 0; overflow: hidden; display: flex; flex: none; height: calc(100vh - 90px);
+                 border-left: 1px solid #ddd; background: #fff; transition: width .28s ease; }
+  #splitter { width: 6px; flex: none; cursor: col-resize; background: #e8e6df; }
+  #splitter:hover { background: #c9c6bb; }
+  #exploreFrame { flex: 1; border: 0; height: 100%; min-width: 0; }
+  body.dragging #exploreFrame { pointer-events: none; }
+  body.dragging #explorePane { transition: none; }
   #drawer { display: none; width: 320px; min-width: 320px; border-left: 1px solid #ddd; background: #fff; padding: 12px 14px 40px; height: calc(100vh - 90px); overflow-y: auto; }
   #drawer.open { display: block; }
   #drawer h2 { font-size: 14px; margin-bottom: 10px; }
@@ -59,7 +66,8 @@
 <body>
 <header>
   <h1>MAENG 논문 검색</h1>
-  <a href="/explore" target="maeng_explore" class="toggle" style="color:#3b5bd6;text-decoration:none" title="주제 키워드로 세상의 논문 찾기 (별도 탭, 결과 유지)">🔎 논문 탐색</a>
+  <a href="#" id="exploreToggle" class="toggle" style="color:#3b5bd6;text-decoration:none" title="주제 키워드로 세상의 논문 찾기 - 화면이 좌우로 갈라집니다">🔎 논문 탐색</a>
+  <a href="/explore" target="maeng_explore" class="toggle" style="color:#999;text-decoration:none;font-size:12px" title="탐색을 새 탭으로 열기">↗</a>
   <input type="text" id="ft" placeholder="본문 검색 (Enter) - PDF 안 단어 검색">
   <label class="toggle"><input type="checkbox" id="incSug" checked> 제안 라벨 포함</label>
   <label class="toggle"><input type="checkbox" id="onlyUntagged"> 미분류만</label>
@@ -75,6 +83,7 @@
   <div id="side"></div>
   <div id="main"></div>
   <div id="drawer"></div>
+  <div id="explorePane"><div id="splitter" title="드래그해서 크기 조절"></div><iframe id="exploreFrame" src="about:blank"></iframe></div>
 </div>
 <script>
 let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, editing = null;
@@ -400,6 +409,34 @@ async function checkOpenAlex() {
   } catch (e) { el.textContent = "🔴 맵 서비스 확인 실패"; el.style.color = "#a33"; }
 }
 document.getElementById("oastatus").onclick = checkOpenAlex;
+
+// 논문 탐색 분할 패널 (오른쪽 슬라이드, 드래그로 크기 조절, 상태 기억)
+const pane = document.getElementById("explorePane"), frame = document.getElementById("exploreFrame");
+const splitter = document.getElementById("splitter"), exploreToggle = document.getElementById("exploreToggle");
+function openExplore(open) {
+  if (open) {
+    if (!frame.getAttribute("src") || frame.getAttribute("src") === "about:blank") frame.src = "/explore";
+    const saved = parseInt(localStorage.getItem("explore_w") || "0");
+    pane.style.width = Math.max(380, saved || Math.round(window.innerWidth * 0.5)) + "px";
+  } else pane.style.width = "0px";
+  pane.classList.toggle("open", open);
+  exploreToggle.textContent = open ? "✕ 탐색 닫기" : "🔎 논문 탐색";
+  try { localStorage.setItem("explore_open", open ? "1" : "0"); } catch (e) {}
+}
+exploreToggle.onclick = (e) => { e.preventDefault(); openExplore(!pane.classList.contains("open")); };
+let dragging = false;
+splitter.onmousedown = (e) => { dragging = true; document.body.classList.add("dragging"); e.preventDefault(); };
+window.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  pane.style.width = Math.min(window.innerWidth - 500, Math.max(380, window.innerWidth - e.clientX)) + "px";
+});
+window.addEventListener("mouseup", () => {
+  if (!dragging) return;
+  dragging = false; document.body.classList.remove("dragging");
+  try { localStorage.setItem("explore_w", parseInt(pane.style.width)); } catch (e) {}
+});
+try { if (localStorage.getItem("explore_open") === "1") openExplore(true); } catch (e) {}
+
 loadData();
 checkOpenAlex();
 </script>

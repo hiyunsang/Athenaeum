@@ -243,6 +243,11 @@ function mapButton(r) {
   return b;
 }
 
+// 홈 화면 안의 분할 패널로 열렸으면 '내 논문 검색으로' 링크는 불필요
+if (window.self !== window.top) {
+  const back = document.querySelector("header a[href='/']");
+  if (back) back.style.display = "none";
+}
 document.getElementById("go").onclick = search;
 document.getElementById("q").addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
 </script>
