@@ -119,6 +119,133 @@ LABEL_NOTES = {
 }
 
 
+def ask_claude_json(prompt, timeout=240):
+    """claude -p 로 질문하고 JSON 객체 하나를 파싱해 돌려준다. 실패하면 None."""
+    exe = find_claude()
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "-p", "--output-format", "text"],
+                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
+        m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
+        return json.loads(m.group(0)) if m else None
+    except Exception:
+        return None
+
+
+def openalex_search(query, year="", per_page=30):
+    """제목+초록 AND 매칭 검색. 결과 노드 목록 반환."""
+    import mapper
+    q_clean = query.replace(",", " ")
+    q_filter = q_clean if re.search(r"\b(AND|OR|NOT)\b|\"", q_clean) else " AND ".join(q_clean.split())
+    filters = ["title_and_abstract.search:" + q_filter]
+    if str(year).isdigit():
+        filters.append("publication_year:>" + str(int(year) - 1))
+    d = mapper._get(mapper.API + "/works", {
+        "search": query, "filter": ",".join(filters), "per-page": str(per_page),
+        "select": mapper.SELECT + ",abstract_inverted_index,relevance_score"})
+    out = []
+    for it in d.get("results", []):
+        n = mapper._node(it, set(), 0, None)
+        n.pop("_refs", None)
+        inv = it.get("abstract_inverted_index") or {}
+        ws = sorted((p, w) for w, ps in inv.items() for p in ps)
+        n["abstract"] = " ".join(w for _, w in ws)[:500]
+        n["rel"] = it.get("relevance_score") or 0
+        out.append(n)
+    return out, d.get("meta", {}).get("count", 0)
+
+
+def _run_smart(q, year, key):
+    """스마트 탐색: Claude 검색어 확장 -> 다중 검색 -> Claude 선별·소주제 분류."""
+    import mapper
+
+    def stage(s):
+        job = _jobs.get(key)
+        if job and job.get("status") == "running":
+            job["stage"] = s
+
+    stage("1/3 검색어 확장 중")
+    plan = ask_claude_json(
+        "당신은 기계가공·재료 분야 문헌 조사 전문가다. 사용자가 조사하려는 주제를 보고, "
+        "학술 DB(OpenAlex, 영어) 검색어를 6~8개 만들어라.\n"
+        "- 동의어·인접 용어·하위 주제·관련 현상까지 폭넓게 (예: 재료명+공정명 조합, 약어, 관련 현상)\n"
+        "- 각 검색어는 2~4개 영어 단어. 제목·초록에 모두 들어가야 하는 단어 조합이다.\n"
+        "- 한국어 입력이면 영어로 바꿔라.\n"
+        "- 이 주제에서 제외해야 할 맥락도 적어라 (예: 임플란트, 커패시터).\n"
+        "- JSON 한 줄만: {\"intent\": \"사용자 의도 한 문장(한국어)\", \"queries\": [\"...\"], "
+        "\"exclude\": \"제외 맥락(한국어)\"}\n\n[사용자 입력] " + q, timeout=180)
+    if not plan or not plan.get("queries"):
+        plan = {"intent": q, "queries": [q], "exclude": ""}
+    queries = [str(x) for x in plan["queries"]][:8]
+    if q not in queries and re.search(r"[A-Za-z]", q):
+        queries.insert(0, q)
+
+    stage("2/3 검색 중 (0/{})".format(len(queries)))
+    merged, counts = {}, {}
+    for i, qq in enumerate(queries):
+        try:
+            res, total = openalex_search(qq, year, per_page=30)
+            counts[qq] = total
+            for n in res:
+                if n["id"] not in merged:
+                    n["from"] = qq
+                    merged[n["id"]] = n
+        except Exception as e:
+            counts[qq] = "실패"
+        stage("2/3 검색 중 ({}/{})".format(i + 1, len(queries)))
+    with _lock:
+        tags = load_json(TAGS_PATH, {})
+    owned_idx = archive_title_index(tags)
+    items = list(merged.values())
+    for n in items:
+        n["owned"] = owned_idx.get(mapper.norm_title(n["title"])) or ""
+    items.sort(key=lambda n: n["rel"], reverse=True)
+    items = items[:120]
+
+    stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
+    listing = "\n".join("[{}] ({}) {} :: {}".format(i, n["year"], n["title"][:120], (n["abstract"] or "")[:220])
+                        for i, n in enumerate(items))
+    verdict = ask_claude_json(
+        "당신은 기계가공·재료 분야 문헌 조사 전문가다. 사용자의 조사 의도에 맞는 논문만 골라 "
+        "소주제(연구 동네)별로 묶어라.\n"
+        "[조사 의도] " + plan.get("intent", q) + "\n"
+        "[제외할 맥락] " + (plan.get("exclude") or "없음") + "\n"
+        "규칙:\n- 의도와 무관한 논문(제외 맥락 포함)은 excluded에 번호로 넣어라.\n"
+        "- 관련 논문은 3~7개 소주제로 묶고, 소주제마다 한국어 이름과 한 줄 설명을 붙여라. "
+        "각 소주제 안에서는 중요도 순으로 번호를 나열하라.\n"
+        "- JSON 한 줄만: {\"groups\": [{\"name\": \"...\", \"why\": \"...\", \"items\": [번호...]}], "
+        "\"excluded\": [번호...]}\n\n[논문 목록: 번호 (연도) 제목 :: 초록]\n" + listing, timeout=300)
+    groups = []
+    if verdict and verdict.get("groups"):
+        used = set()
+        for g in verdict["groups"]:
+            idxs = [i for i in g.get("items", []) if isinstance(i, int) and 0 <= i < len(items) and i not in used]
+            used.update(idxs)
+            if idxs:
+                groups.append({"name": g.get("name", ""), "why": g.get("why", ""),
+                               "items": [items[i] for i in idxs]})
+        excluded = len([i for i in verdict.get("excluded", []) if isinstance(i, int)])
+        leftover = [items[i] for i in range(len(items))
+                    if i not in used and i not in set(verdict.get("excluded", []))]
+        if leftover:
+            groups.append({"name": "기타 관련", "why": "소주제로 묶이지 않은 관련 논문", "items": leftover})
+    else:
+        groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 관련도순으로 표시", "items": items}]
+        excluded = 0
+    _jobs[key] = {"status": "done", "result": {
+        "intent": plan.get("intent", q), "exclude": plan.get("exclude", ""),
+        "queries": [{"q": qq, "total": counts.get(qq, 0)} for qq in queries],
+        "groups": groups, "excluded": excluded, "candidates": len(items)}}
+
+
+def _run_smart_safe(q, year, key):
+    try:
+        _run_smart(q, year, key)
+    except Exception as e:
+        _jobs[key] = {"status": "error", "error": str(e)[:200]}
+
+
 def classify_with_claude(title, kw, front, groups):
     """Claude에게 논문의 '실제 연구 주제' 라벨만 고르게 한다. 실패하면 None."""
     exe = find_claude()
@@ -560,6 +687,15 @@ class Handler(BaseHTTPRequestHandler):
             results.sort(key=keyf, reverse=True)
             self._send(200, {"results": results, "total": d.get("meta", {}).get("count", 0),
                              "words": words})
+        elif url.path == "/api/smart_status":
+            k = parse_qs(url.query).get("key", [""])[0]
+            job = _jobs.get((k, "smart"))
+            if not job:
+                self._send(200, {"status": "none"})
+            elif job["status"] == "done":
+                self._send(200, {"status": "done", "result": job["result"]})
+            else:
+                self._send(200, {"status": job["status"], "stage": job.get("stage", ""), "error": job.get("error", "")})
         elif url.path == "/api/openalex_status":
             # 맵 서비스(OpenAlex) 상태 확인: 재시도 없이 가볍게 한 번씩만
             import requests as rq
@@ -592,7 +728,19 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._send(400, {"error": "bad json"})
             return
-        if self.path == "/api/generate":
+        if self.path == "/api/smart":
+            q = (body.get("q") or "").strip()
+            year = str(body.get("year") or "")
+            if not q:
+                self._send(400, {"error": "검색어가 없습니다"})
+                return
+            key = ("smart:" + q + "|" + year, "smart")
+            job = _jobs.get(key)
+            if not job or job.get("status") == "error":
+                _jobs[key] = {"status": "running", "stage": "시작"}
+                threading.Thread(target=_run_smart_safe, args=(q, year, key), daemon=True).start()
+            self._send(200, {"key": key[0]})
+        elif self.path == "/api/generate":
             name = os.path.basename(body.get("file", ""))
             kind = body.get("kind", "summary")
             ext = body.get("ext")  # 보관소에 없는 외부 논문 시드 {id, title, doi}

@@ -28,6 +28,11 @@
   .btns { margin-top: 6px; display: flex; gap: 6px; }
   .btns button { font-size: 12px; padding: 3px 9px; cursor: pointer; }
   .hint { color: #888; font-size: 13px; padding: 30px 10px; text-align: center; line-height: 1.8; }
+  .plan { background: #fff; border: 1px solid #e2e0da; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: #555; line-height: 1.7; }
+  .plan .qs span { display: inline-block; background: #eef2fd; color: #2b45a5; border-radius: 10px; padding: 1px 9px; margin: 2px 4px 2px 0; font-size: 12px; }
+  .ghead { margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #3b5bd6; }
+  .ghead b { font-size: 15px; color: #222; }
+  .ghead span { font-size: 12.5px; color: #777; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -48,6 +53,7 @@
     <option value="recent">최신순</option>
   </select>
   <button id="go">검색</button>
+  <label style="font-size:13px;color:#555;cursor:pointer"><input type="checkbox" id="smart" checked> 🧠 스마트 탐색</label>
   <div id="info"></div>
 </header>
 <div id="main"><div class="hint">OpenAlex 전체 학술 DB(2억 5천만 편)에서 주제로 논문을 찾습니다.<br>
@@ -59,6 +65,7 @@ const polling = {}, stages = {};
 async function search() {
   const q = document.getElementById("q").value.trim();
   if (!q) return;
+  if (document.getElementById("smart").checked) return smartSearch(q);
   info.textContent = "검색 중…";
   main.innerHTML = "";
   const params = new URLSearchParams({ q, year: document.getElementById("year").value, sort: document.getElementById("sort").value });
@@ -68,6 +75,41 @@ async function search() {
   info.textContent = "전체 " + (d.total || 0).toLocaleString() + "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편";
   if (!d.results.length) main.innerHTML = "<div class='hint'>결과가 없습니다. 다른 키워드로 시도해보세요.</div>";
   for (const r of d.results) main.appendChild(renderRow(r));
+}
+
+let smartTimer = null;
+async function smartSearch(q) {
+  if (smartTimer) { clearInterval(smartTimer); smartTimer = null; }
+  const year = document.getElementById("year").value;
+  main.innerHTML = "<div class='hint'>🧠 Claude가 검색어를 확장하고 결과를 선별하는 중입니다…<br>(30초~1분)</div>";
+  info.textContent = "시작…";
+  const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify({ q, year }) })).json();
+  if (!start.key) { info.textContent = ""; main.innerHTML = "<div class='hint'>⚠ " + (start.error || "시작 실패") + "</div>"; return; }
+  smartTimer = setInterval(async () => {
+    const s = await (await fetch("/api/smart_status?key=" + encodeURIComponent(start.key))).json();
+    if (s.status === "running") { info.textContent = s.stage || "진행 중…"; return; }
+    clearInterval(smartTimer); smartTimer = null;
+    if (s.status !== "done") { info.textContent = ""; main.innerHTML = "<div class='hint'>⚠ 실패: " + (s.error || "원인 불명") + "</div>"; return; }
+    renderSmart(s.result);
+  }, 3000);
+}
+
+function renderSmart(r) {
+  main.innerHTML = "";
+  const total = r.groups.reduce((a, g) => a + g.items.length, 0);
+  const owned = r.groups.reduce((a, g) => a + g.items.filter(x => x.owned).length, 0);
+  info.textContent = "관련 논문 " + total + "편 (후보 " + r.candidates + "편 중 " + r.excluded + "편 제외) · 보유 " + owned + "편";
+  const plan = document.createElement("div"); plan.className = "plan";
+  plan.innerHTML = "<b>조사 의도:</b> " + r.intent + (r.exclude ? " <span style='color:#999'>(제외: " + r.exclude + ")</span>" : "") +
+    "<div class='qs'><b>검색어 " + r.queries.length + "개:</b> " +
+    r.queries.map(x => "<span title='OpenAlex 전체 " + x.total + "편'>" + x.q + " · " + x.total + "</span>").join("") + "</div>";
+  main.appendChild(plan);
+  for (const g of r.groups) {
+    const h = document.createElement("div"); h.className = "ghead";
+    h.innerHTML = "<b>" + g.name + "</b> <span>" + g.items.length + "편 · " + g.why + "</span>";
+    main.appendChild(h);
+    for (const it of g.items) main.appendChild(renderRow(it));
+  }
 }
 
 function openPaper(r) {
