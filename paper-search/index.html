@@ -282,11 +282,65 @@ function viewUrl(p, kind) {
   return "/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind;
 }
 
+function fmtElapsed(sec) {
+  if (sec == null) return "";
+  return sec < 90 ? sec + "초" : Math.round(sec / 60) + "분";
+}
+
+function startPolling(p, kind, key) {
+  if (polling[key]) return;
+  polling[key] = setInterval(async () => {
+    const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(p.file) + "&kind=" + kind)).json();
+    if (s.status === "done") {
+      clearInterval(polling[key]); delete polling[key]; delete stages[key];
+      if (kind === "summary") p.has_summary = true;
+      else if (kind === "translation") p.has_translation = true;
+      else p.has_map = true;
+      delete (p.jobs || {})[kind];
+      render();
+      window.open(viewUrl(p, kind));
+    } else if (s.status === "error") {
+      clearInterval(polling[key]); delete polling[key]; delete stages[key];
+      p.jobs = p.jobs || {}; p.jobs[kind] = s;
+      render();
+    } else if (s.status === "running") {
+      p.jobs = p.jobs || {}; p.jobs[kind] = s;
+      const txt = (s.waiting ? "대기 " : "") + fmtElapsed(s.elapsed);
+      if (stages[key] !== txt) { stages[key] = txt; render(); }
+    } else {  // none: 서버가 재시작되어 작업이 사라짐
+      clearInterval(polling[key]); delete polling[key]; delete stages[key];
+      p.jobs = p.jobs || {}; p.jobs[kind] = { status: "error", error: "작업이 사라졌습니다 (서버 재시작?) - 다시 눌러 주세요" };
+      render();
+    }
+  }, 5000);
+}
+
 function genButton(p, kind, label, ready) {
   const b = document.createElement("button");
   b.className = "editbtn";
   const key = p.file + "|" + kind;
-  if (polling[key]) { b.textContent = stages[key] || (label + " 생성중"); b.disabled = true; return b; }
+  const job = (p.jobs || {})[kind];
+  if (job && job.status === "running") {  // 서버가 기억하는 진행 상태 (새로고침해도 유지)
+    b.textContent = label + (job.waiting ? " 대기중" : " 생성중") + " " + fmtElapsed(job.elapsed);
+    b.title = job.stage || "";
+    b.disabled = true;
+    startPolling(p, kind, key);
+    return b;
+  }
+  if (job && job.status === "error") {
+    b.textContent = label + " 실패 ⚠";
+    b.style.color = "#a33";
+    b.title = (job.error || "원인 불명") + "\n클릭하면 다시 시도";
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(label + " 생성에 실패했습니다:\n" + (job.error || "원인 불명") + "\n\n다시 시도할까요?")) return;
+      delete p.jobs[kind];
+      await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file: p.file, kind }) });
+      p.jobs[kind] = { status: "running", elapsed: 0 };
+      startPolling(p, kind, key); render();
+    };
+    return b;
+  }
   b.textContent = ready ? label + " 보기" : label;
   if (ready) b.style.color = "#1d7a4f";
   b.onclick = async (e) => {
@@ -297,24 +351,8 @@ function genButton(p, kind, label, ready) {
       : (kind === "summary" ? "요약" : "전문 번역") + "을 생성할까요?\n(Claude 구독 사용량을 씁니다. 요약 ~1분, 번역 3~10분)";
     if (!confirm(msg)) return;
     await fetch("/api/generate", { method: "POST", body: JSON.stringify({ file: p.file, kind }) });
-    polling[key] = setInterval(async () => {
-      const s = await (await fetch("/api/genstatus?file=" + encodeURIComponent(p.file) + "&kind=" + kind)).json();
-      if (s.status === "done") {
-        clearInterval(polling[key]); delete polling[key];
-        if (kind === "summary") p.has_summary = true;
-        else if (kind === "translation") p.has_translation = true;
-        else p.has_map = true;
-        render();
-        window.open(viewUrl(p, kind));
-      } else if (s.status === "error") {
-        clearInterval(polling[key]); delete polling[key]; delete stages[key];
-        alert("생성 실패: " + (s.error || "원인 불명"));
-        render();
-      } else if (s.stage && stages[key] !== s.stage) {
-        stages[key] = s.stage; render();
-      }
-    }, 7000);
-    render();
+    p.jobs = p.jobs || {}; p.jobs[kind] = { status: "running", elapsed: 0 };
+    startPolling(p, kind, key); render();
   };
   return b;
 }

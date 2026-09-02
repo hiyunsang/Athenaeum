@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -239,6 +240,18 @@ def _run_smart(q, year, key):
         "groups": groups, "excluded": excluded, "candidates": len(items)}}
 
 
+def job_view(job):
+    """화면에 보낼 작업 상태: 상태·단계·경과 시간(초)·오류."""
+    v = {"status": job.get("status", "running"), "stage": job.get("stage", "")}
+    if job.get("error"):
+        v["error"] = job["error"]
+    t = job.get("t_start") or job.get("t0")
+    if t and v["status"] == "running":
+        v["elapsed"] = int(time.time() - t)
+        v["waiting"] = "t_start" not in job
+    return v
+
+
 def _run_smart_safe(q, year, key):
     try:
         _run_smart(q, year, key)
@@ -288,14 +301,28 @@ def classify_with_claude(title, kw, front, groups):
         return None
 
 
+def _set_stage(key, stage, started=False):
+    job = _jobs.get(key)
+    if job and job.get("status") == "running":
+        job["stage"] = stage
+        if started:
+            job["t_start"] = time.time()
+
+
 def run_generation(name, kind, ext=None):
     key = (name, kind)
+    _jobs.setdefault(key, {"status": "running"})
+    _jobs[key]["t0"] = time.time()
     try:
         if kind == "map":
+            _set_stage(key, "대기 중 (맵은 한 번에 하나)")
             with _map_sem:
+                _set_stage(key, "시작", started=True)
                 _run_map(name, ext)
         else:
+            _set_stage(key, "대기 중 (요약·번역 동시 2개)")
             with _gen_sem:
+                _set_stage(key, "본문 추출 중", started=True)
                 _run_generation(name, kind)
         _jobs.pop(key, None)
         return
@@ -361,6 +388,7 @@ def _run_generation(name, kind):
     if not exe:
         raise RuntimeError("claude 명령을 찾을 수 없습니다 (Claude Code 설치 확인)")
     prompt = build_prompt(kind, paper_header(name)) + text
+    _set_stage((name, kind), "Claude 생성 중 (요약 1~3분, 번역 3~10분)")
     r = subprocess.run([exe, "-p", "--output-format", "text"],
                        input=prompt.encode("utf-8"),
                        capture_output=True, timeout=2400)
@@ -559,6 +587,13 @@ class Handler(BaseHTTPRequestHandler):
                              "has_summary": os.path.exists(gen_path(f, "summary")),
                              "has_translation": os.path.exists(gen_path(f, "translation")),
                              "has_map": os.path.exists(gen_path(f, "map"))})
+                jobs = {}
+                for kind in ("summary", "translation", "map"):
+                    j = _jobs.get((f, kind))
+                    if j:
+                        jobs[kind] = job_view(j)
+                if jobs:
+                    meta["jobs"] = jobs
                 papers.append(meta)
             self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {})})
         elif url.path == "/view":
@@ -613,10 +648,12 @@ class Handler(BaseHTTPRequestHandler):
                 job = _jobs.get((name, kind))
                 if job is None:
                     self._send(200, {"status": "none"})
-                elif job["status"] == "error":
-                    self._send(200, job)
                 else:
-                    self._send(200, {"status": "running", "stage": job.get("stage", "")})
+                    self._send(200, job_view(job))
+        elif url.path == "/api/jobs":
+            # 진행 중/실패한 모든 작업 (재시작 전 확인용)
+            out = [{"file": k[0], "kind": k[1], **job_view(j)} for k, j in list(_jobs.items())]
+            self._send(200, {"jobs": out, "running": sum(1 for j in out if j["status"] == "running")})
         elif url.path == "/explore":
             with open(os.path.join(BASE, "explore.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")

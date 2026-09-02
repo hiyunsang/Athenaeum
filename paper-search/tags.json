@@ -880,23 +880,6 @@
   "rejected": [],
   "title": "Effect of the local friction and contact nature on the Built-Up Edge formation process in machining ductile metals"
  },
- "2015_Trib_Atlati_Effect of the local friction and contact nature on the Built-Up Edge formation process in machining ductile metals (2).pdf": {
-  "labels": [
-   "Aluminum",
-   "Orthogonal cutting",
-   "BUE",
-   "Friction",
-   "FEM",
-   "Thermal effect"
-  ],
-  "suggested": [
-   "Chip formation",
-   "Adhesion",
-   "Plastic flow"
-  ],
-  "rejected": [],
-  "title": "Effect of the local friction and contact nature on the Built-Up Edge formation process in machining ductile metals"
- },
  "2016_IJMMM_Ahsan_Morphological investigation of Ti-6Al-4V chips produced by conventional turning.pdf": {
   "labels": [
    "Titanium",
@@ -1008,23 +991,6 @@
   "rejected": [],
   "title": "Predicting periodic evolution of BUE formation mechanisms during machining ductile material using damage mechanics"
  },
- "2016_PRSMPES_Sagapuram_Geometric flow control of shear bands by suppression of viscous sliding (3).pdf": {
-  "labels": [
-   "Shear localization",
-   "High-speed imaging",
-   "In-situ",
-   "Analytical model",
-   "Plastic flow"
-  ],
-  "suggested": [
-   "Orthogonal cutting",
-   "Chip formation",
-   "Optical microscopy",
-   "Copper"
-  ],
-  "rejected": [],
-  "title": "Geometric flow control of shear bands by suppression of viscous sliding"
- },
  "2016_PRSMPES_Sagapuram_Geometric flow control of shear bands by suppression of viscous sliding.pdf": {
   "labels": [
    "Orthogonal cutting",
@@ -1060,25 +1026,6 @@
   "title": "Study on ductile mode machining of single-crystal silicon by mechanical machining"
  },
  "2017_MATERIALS_Ahmed_Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of.pdf": {
-  "labels": [
-   "Stainless steel",
-   "SUS304",
-   "Turning",
-   "BUE",
-   "Tool wear",
-   "Adhesion",
-   "Chip formation",
-   "Surface defect",
-   "SEM",
-   "Optical microscopy"
-  ],
-  "suggested": [
-   "Difficult-to-cut"
-  ],
-  "rejected": [],
-  "title": "Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of the Machined Part"
- },
- "2017_MATERIALS_Ahmed_Effect of Built-Up Edge Formation during Stable State of Wear in AISI 304 Stainless Steel on Machining Performance and Surface Integrity of (2).pdf": {
   "labels": [
    "Stainless steel",
    "SUS304",
@@ -1190,7 +1137,8 @@
    "High-speed imaging",
    "Optical microscopy",
    "DIC",
-   "Thermal effect"
+   "Thermal effect",
+   "Analytical model"
   ],
   "suggested": [
    "Difficult-to-cut",
@@ -1257,7 +1205,9 @@
    "Thermal effect",
    "Analytical model",
    "SEM",
-   "Review"
+   "Review",
+   "Polycrystal",
+   "In-situ"
   ],
   "suggested": [
    "Material separation",
@@ -1709,7 +1659,8 @@
    "Recrystallization",
    "Plastic flow",
    "Subsurface damage",
-   "Chip formation"
+   "Chip formation",
+   "Micro-machining"
   ],
   "suggested": [
    "EBSD"
@@ -2036,22 +1987,6 @@
   "rejected": [],
   "title": "Nanometric cutting: Mechanisms, practices and future perspectives"
  },
- "2022_IJMTM_Fang_Nanometric cutting Mechanisms, practices and future perspectives.pdf": {
-  "labels": [
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Tool wear",
-   "Ductile-brittle transition",
-   "Difficult-to-cut"
-  ],
-  "suggested": [
-   "Chip formation",
-   "Molecular dynamics",
-   "Analytical model"
-  ],
-  "rejected": [],
-  "title": "Nanometric cutting: Mechanisms, practices and future perspectives"
- },
  "2022_IJMTM_Issahaq_Dual-scale folding in cutting of commercially pure aluminum alloys.pdf": {
   "labels": [
    "Aluminum",
@@ -2208,26 +2143,7 @@
    "Difficult-to-cut",
    "Cryogenic",
    "Tool wear",
-   "BUE"
-  ],
-  "suggested": [
-   "Turning",
-   "Friction",
-   "SEM",
-   "EDS",
-   "Thermal effect"
-  ],
-  "rejected": [],
-  "title": "Impacts of flank wear and cooling strategies on evolutions of built-up edges, diffusion wear and cutting forces in Ti6Al4V machining"
- },
- "2022_Trib_Liu_Impacts of flank wear and cooling strategies on evolutions of built-up edges, diffusion wear and cutting forces in Ti6Al4V machining (2).pdf": {
-  "labels": [
-   "Titanium",
-   "Ti6Al4V",
-   "Difficult-to-cut",
-   "Cryogenic",
    "BUE",
-   "Tool wear",
    "Thermal effect"
   ],
   "suggested": [
@@ -2235,7 +2151,7 @@
    "Friction",
    "SEM",
    "EDS",
-   "Adhesion"
+   "Thermal effect"
   ],
   "rejected": [],
   "title": "Impacts of flank wear and cooling strategies on evolutions of built-up edges, diffusion wear and cutting forces in Ti6Al4V machining"
@@ -2899,95 +2815,6 @@
   "rejected": [],
   "title": "Microcrack avalanche behavior during intermittent shear fracture for metallic alloy"
  },
- "2018_NM_Fang_Recent Advances in Micro Nano-cutting Effect of Tool Edge and Material Properties (2).pdf": {
-  "labels": [
-   "Micro-machining",
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Orthogonal cutting",
-   "Chip formation",
-   "Phase transformation",
-   "Analytical model",
-   "Thermal effect",
-   "Review"
-  ],
-  "suggested": [
-   "Material separation",
-   "Molecular dynamics",
-   "FEM"
-  ],
-  "rejected": [],
-  "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
- },
- "2018_NM_Fang_Recent Advances in Micro Nano-cutting Effect of Tool Edge and Material Properties (3).pdf": {
-  "labels": [
-   "Micro-machining",
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Orthogonal cutting",
-   "Chip formation",
-   "Phase transformation",
-   "Thermal effect",
-   "Analytical model",
-   "SEM",
-   "Polycrystal",
-   "Review"
-  ],
-  "suggested": [
-   "Ductile-brittle transition",
-   "Molecular dynamics",
-   "FEM",
-   "Material separation"
-  ],
-  "rejected": [],
-  "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
- },
- "2018_NM_Fang_Recent Advances in Micro Nano-cutting Effect of Tool Edge and Material Properties (4).pdf": {
-  "labels": [
-   "Micro-machining",
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Orthogonal cutting",
-   "Chip formation",
-   "Phase transformation",
-   "Thermal effect",
-   "Analytical model",
-   "SEM",
-   "Polycrystal",
-   "Review"
-  ],
-  "suggested": [
-   "Material separation",
-   "Molecular dynamics",
-   "FEM"
-  ],
-  "rejected": [],
-  "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
- },
- "2018_NM_Fang_Recent Advances in Micro Nano-cutting Effect of Tool Edge and Material Properties (5).pdf": {
-  "labels": [
-   "Micro-machining",
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Orthogonal cutting",
-   "Chip formation",
-   "Phase transformation",
-   "Thermal effect",
-   "SEM",
-   "In-situ",
-   "Analytical model",
-   "Polycrystal",
-   "Review"
-  ],
-  "suggested": [
-   "Material separation",
-   "Ductile-brittle transition",
-   "Molecular dynamics",
-   "FEM"
-  ],
-  "rejected": [],
-  "title": "Recent Advances in Micro/Nano-cutting: Effect of Tool Edge and Material Properties"
- },
  "2020_IJMTM_Liu_Temperature effect on the material removal mechanism of soft-brittle crystals at nano micron scale.pdf": {
   "labels": [
    "KDP",
@@ -3024,58 +2851,6 @@
   "suggested": [
    "Single crystal",
    "Analytical model"
-  ],
-  "rejected": [],
-  "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
- },
- "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper (3).pdf": {
-  "labels": [
-   "Copper",
-   "Polycrystal",
-   "Anisotropic",
-   "Orthogonal cutting",
-   "Ultra-precision machining",
-   "Surface defect",
-   "FEM",
-   "Plastic flow"
-  ],
-  "suggested": [
-   "Single crystal"
-  ],
-  "rejected": [],
-  "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
- },
- "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper (4).pdf": {
-  "labels": [
-   "Copper",
-   "Polycrystal",
-   "Anisotropic",
-   "Orthogonal cutting",
-   "Ultra-precision machining",
-   "FEM",
-   "Surface defect",
-   "Plastic flow"
-  ],
-  "suggested": [
-   "Turning",
-   "Analytical model"
-  ],
-  "rejected": [],
-  "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
- },
- "2020_JMPT_Wang_Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper.pdf": {
-  "labels": [
-   "Copper",
-   "Polycrystal",
-   "Anisotropic",
-   "Orthogonal cutting",
-   "Ultra-precision machining",
-   "Surface defect",
-   "FEM",
-   "Plastic flow"
-  ],
-  "suggested": [
-   "Single crystal"
   ],
   "rejected": [],
   "title": "Towards an understanding of grain boundary step in diamond cutting of polycrystalline copper"
@@ -3282,23 +3057,6 @@
   "rejected": [],
   "title": "Ultrasonic-assisted ultraprecision turning of zinc selenide spherical surfaces using straight-nosed diamond tools with cutting-edge-slipping"
  },
- "2018_IJMTM_Chaudhari_Rehbinder effect in ultraprecision machining of ductile materials (2).pdf": {
-  "labels": [
-   "Copper",
-   "Aluminum",
-   "Al6061",
-   "Annealed",
-   "Polycrystal",
-   "Ultra-precision machining",
-   "Micro-machining",
-   "Chip formation",
-   "FEM",
-   "Analytical model"
-  ],
-  "suggested": [],
-  "rejected": [],
-  "title": "Rehbinder effect in ultraprecision machining of ductile materials"
- },
  "2018_IJMTM_Chaudhari_Rehbinder effect in ultraprecision machining of ductile materials.pdf": {
   "labels": [
    "Copper",
@@ -3330,22 +3088,6 @@
   "suggested": [],
   "rejected": [],
   "title": "Effect of tool wear evolution on chip formation during dry machining of Ti-6Al-4V alloy"
- },
- "2024_JMP_Kumar_Multi-scale surface folding in metal cutting (2).pdf": {
-  "labels": [
-   "Copper",
-   "Polycrystal",
-   "Sinuous flow",
-   "Chip formation",
-   "Plastic flow",
-   "In-situ",
-   "High-speed imaging",
-   "SEM",
-   "EBSD"
-  ],
-  "suggested": [],
-  "rejected": [],
-  "title": "Multi-scale surface folding in metal cutting"
  },
  "2024_JMP_Kumar_Multi-scale surface folding in metal cutting.pdf": {
   "labels": [
@@ -3422,44 +3164,13 @@
    "Phase transformation",
    "Tool wear",
    "Molecular dynamics",
-   "Anisotropic"
-  ],
-  "suggested": [],
-  "rejected": [],
-  "title": "Diamond machining of silicon: A review of advances in molecular dynamics simulation"
- },
- "2015_IJMTM_Goel_Diamond machining of silicon A review of advances in molecular dynamics simulation (2).pdf": {
-  "labels": [
-   "Review",
-   "Silicon",
-   "Single crystal",
    "Anisotropic",
-   "Turning",
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Ductile-brittle transition",
-   "Tool wear",
-   "Molecular dynamics",
-   "Analytical model",
-   "Phase transformation"
+   "Single crystal",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
   "title": "Diamond machining of silicon: A review of advances in molecular dynamics simulation"
- },
- "2018_FME_Antwi_A review on ductile mode cutting of brittle materials (2).pdf": {
-  "labels": [
-   "Review",
-   "Ductile-brittle transition",
-   "Subsurface damage",
-   "Molecular dynamics",
-   "Ultra-precision machining",
-   "Plastic flow",
-   "Fracture"
-  ],
-  "suggested": [],
-  "rejected": [],
-  "title": "A review on ductile mode cutting of brittle materials"
  },
  "2024_PE_Alao_Review of ductile machining and ductile-brittle transition characterization mechanisms in precision ultraprecision turning, milling and.pdf": {
   "labels": [
@@ -3481,21 +3192,26 @@
   "rejected": [],
   "title": "Review of ductile machining and ductile-brittle transition characterization mechanisms in precision/ultraprecision turning, milling and grinding of brittle materials"
  },
- "2015_IJMTM_Goel_Diamond machining of silicon A review of advances in molecular dynamics simulation (3).pdf": {
+ "2019_WEAR_Halim_Tool wear and chip morphology in high-speed milling of hardened Inconel 718 under dry and cryogenic CO2 conditions.pdf": {
+  "labels": [],
+  "suggested": [],
+  "rejected": []
+ },
+ "2025_JMP_Li_Milling machinability of Ta-12W alloy based on supercritical CO2 + MQL hybrid cooling system.pdf": {
   "labels": [
-   "Review",
-   "Silicon",
-   "Single crystal",
-   "Anisotropic",
-   "Nano-cutting",
-   "Ultra-precision machining",
-   "Ductile-brittle transition",
+   "Tantalum",
+   "Milling",
+   "Difficult-to-cut",
    "Tool wear",
-   "Molecular dynamics",
-   "Phase transformation"
+   "Adhesion",
+   "Chip formation",
+   "Surface defect",
+   "Plastic flow",
+   "FEM",
+   "Analytical model"
   ],
   "suggested": [],
   "rejected": [],
-  "title": "Diamond machining of silicon: A review of advances in molecular dynamics simulation"
+  "title": "Milling machinability of Ta-12W alloy based on supercritical CO2 + MQL hybrid cooling system"
  }
 }
