@@ -66,6 +66,7 @@
     <option value="year">연도순</option>
     <option value="added">최신 추가순</option>
   </select></label>
+  <span id="oastatus" class="toggle" title="관련맵에 쓰는 OpenAlex 서비스 상태 (클릭하면 다시 확인)" style="cursor:pointer">🌐 맵 서비스 확인 중…</span>
   <div id="summary"></div>
 </header>
 <div id="chips"></div>
@@ -386,7 +387,20 @@ document.getElementById("ft").addEventListener("keydown", async (e) => {
 document.getElementById("incSug").addEventListener("change", render);
 document.getElementById("onlyUntagged").addEventListener("change", render);
 document.getElementById("sortSel").addEventListener("change", render);
+
+async function checkOpenAlex() {
+  const el = document.getElementById("oastatus");
+  el.textContent = "🌐 맵 서비스 확인 중…";
+  try {
+    const s = await (await fetch("/api/openalex_status")).json();
+    if (s.ok) { el.textContent = "🟢 맵 서비스 정상"; el.style.color = "#1d7a4f"; }
+    else if (s.lookup === 200) { el.textContent = "🟡 맵 서비스 일부 제한 (검색 " + s.search + ")"; el.style.color = "#8a6d1d"; }
+    else { el.textContent = "🔴 맵 서비스 제한 중 (" + (s.lookup || "연결 실패") + ")"; el.style.color = "#a33"; }
+  } catch (e) { el.textContent = "🔴 맵 서비스 확인 실패"; el.style.color = "#a33"; }
+}
+document.getElementById("oastatus").onclick = checkOpenAlex;
 loadData();
+checkOpenAlex();
 </script>
 </body>
 </html>

@@ -478,6 +478,23 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, job)
                 else:
                     self._send(200, {"status": "running", "stage": job.get("stage", "")})
+        elif url.path == "/api/openalex_status":
+            # 맵 서비스(OpenAlex) 상태 확인: 재시도 없이 가볍게 한 번씩만
+            import requests as rq
+            result = {}
+            probes = {
+                "lookup": ("https://api.openalex.org/works/W2741809807", {}),
+                "search": ("https://api.openalex.org/works", {"search": "tantalum cutting", "per-page": "1"}),
+            }
+            for name, (u, p) in probes.items():
+                try:
+                    p = dict(p, mailto="maenglaboratory@gmail.com")
+                    r = rq.get(u, params=p, timeout=12)
+                    result[name] = r.status_code
+                except Exception:
+                    result[name] = 0
+            result["ok"] = result.get("lookup") == 200 and result.get("search") == 200
+            self._send(200, result)
         elif url.path == "/api/fulltext":
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})
