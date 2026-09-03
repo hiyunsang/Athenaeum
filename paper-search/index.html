@@ -14,6 +14,19 @@
   .toggle { font-size: 12px; color: var(--text-quiet); user-select: none; cursor: pointer; }
   .toggle:hover { color: var(--text); }
   #summary { margin-left: auto; font-size: 12px; color: var(--text-3); }
+  #jobsBtn.busy { color: var(--accent); }
+  /* 진행 중 작업 패널: 헤더 아래 오른쪽에 떠 있는 목록 (카드 아님, 구분선 목록) */
+  #jobsPanel { position: absolute; right: var(--s4); top: 46px; width: 480px; max-height: 70vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 6px 20px #0002; z-index: 7; padding: var(--s2) var(--s3) var(--s3); font-size: 12px; }
+  #jobsPanel .sec { margin: var(--s2) 0 var(--s1); }
+  .jrow { padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .jrow .jt { color: var(--text); display: flex; gap: var(--s2); align-items: baseline; }
+  .jrow .jt b { font-weight: 600; white-space: nowrap; }
+  .jrow .jt span.ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+  .jrow .prog { margin-top: 3px; }
+  .jrow .jm { color: var(--text-3); font-size: 11px; margin-top: 2px; }
+  .jrow.fail .jt { color: var(--red); }
+  .jpend { color: var(--text-2); line-height: 1.6; }
+  .jpend b { color: var(--text); font-weight: 600; }
   #chips { padding: var(--s1) var(--s4) 0; display: flex; flex-wrap: wrap; gap: var(--s1); min-height: 6px; }
   #layout { display: flex; }
   #side { width: 232px; min-width: 232px; padding: var(--s2) var(--s2) var(--s8) var(--s3); height: calc(100vh - 84px); overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line-2); }
@@ -107,9 +120,11 @@
     <option value="notes">메모 많은 순</option>
   </select></label>
   <span id="oastatus" class="toggle act" title="관련맵에 쓰는 OpenAlex 서비스 상태 (클릭하면 다시 확인)">맵 서비스 확인 중…</span>
+  <span id="jobsBtn" class="toggle act" title="지금 만들고 있는 요약·번역·관련맵과 남은 대기열">작업 없음</span>
   <div id="summary"></div>
 </header>
 <div id="chips"></div>
+<div id="jobsPanel" hidden></div>
 <div id="layout">
   <div id="side"></div>
   <div id="main"></div>
@@ -372,6 +387,67 @@ function renderRecent() {
   frag.appendChild(g);
   return frag;
 }
+
+// ---------- 진행 중 작업 표시 (헤더 '진행 중 N · 대기 M' + 패널) ----------
+const jobsBtn = document.getElementById("jobsBtn"), jobsPanel = document.getElementById("jobsPanel");
+let jobsCache = { jobs: [], queue: null };
+const KIND_KO = { summary: "요약", translation: "번역", map: "관련맵" };
+function shortName(file) {  // '2019_JMP_Sun_Title.pdf' -> 'Sun 2019'
+  const m = /^(\d{4})_[^_]+_([^_]+)_/.exec(file || "");
+  return m ? m[2] + " " + m[1] : (file || "").slice(0, 20);
+}
+function titleOf(file) { const p = papers.find(x => x.file === file); return p ? p.title : file.replace(/\.pdf$/, ""); }
+async function pollJobs() {
+  try {
+    const [j, q] = await Promise.all([fetch("/api/jobs").then(r => r.json()), fetch("/api/queue_status").then(r => r.json())]);
+    jobsCache = { jobs: j.jobs || [], queue: q };
+  } catch (e) { return; }
+  const running = jobsCache.jobs.filter(x => x.status === "running");
+  const failed = jobsCache.jobs.filter(x => x.status === "error");
+  let pending = 0;
+  if (jobsCache.queue && jobsCache.queue.active) for (const k of Object.values(jobsCache.queue.kinds || {})) pending += k.pending.length;
+  pending = Math.max(0, pending - running.length);
+  const parts = [];
+  if (running.length) parts.push("진행 중 " + running.length);
+  if (pending) parts.push("대기 " + pending);
+  if (failed.length) parts.push("실패 " + failed.length);
+  jobsBtn.textContent = parts.length ? parts.join(" · ") : "작업 없음";
+  jobsBtn.classList.toggle("busy", running.length > 0);
+  if (!jobsPanel.hidden) renderJobsPanel();
+}
+function renderJobsPanel() {
+  const running = jobsCache.jobs.filter(x => x.status === "running"), failed = jobsCache.jobs.filter(x => x.status === "error");
+  let html = "";
+  html += "<div class='sec'>지금 만드는 중</div>";
+  if (!running.length) html += "<div class='hint'>없음</div>";
+  for (const x of running) {
+    const key = "panel|" + x.file + "|" + x.kind, pi = progressInfo(x, x.kind === "map" ? 45 : 150);
+    html += "<div class='jrow'><div class='jt'><b>" + KIND_KO[x.kind] + "</b><span class='ttl' title='" + escH(titleOf(x.file)) + "'>" + escH(shortName(x.file)) + " · " + escH(titleOf(x.file)) + "</span></div>" +
+      "<div class='prog'>" + pbarHtml(pi.frac, barState[key], "wide") + "<span class='eta'>" + pi.text + "</span></div>" +
+      "<div class='jm'>" + escH(x.stage || "") + (x.elapsed != null ? " · " + fmtElapsed(x.elapsed) + " 경과" : "") + "</div></div>";
+    barState[key] = pi.frac;
+  }
+  const q = jobsCache.queue;
+  if (q && q.kinds && Object.keys(q.kinds).length) {
+    html += "<div class='sec'>대기열 · " + escH((q.queue || "").replace(/\.json$/, "").replace(/^(야간작업_)?대기열_?/, "") || "배치") + (q.active ? "" : " (끝남)") + "</div>";
+    for (const [k, v] of Object.entries(q.kinds)) {
+      const runningNames = new Set(running.filter(x => x.kind === k).map(x => x.file));
+      const pend = v.pending.filter(f => !runningNames.has(f));
+      html += "<div class='jpend'><b>" + KIND_KO[k] + "</b> " + v.done + "/" + v.total + " 완료" + (v.failed.length ? " · <span style='color:var(--red)'>실패 " + v.failed.length + "</span>" : "") +
+        (pend.length ? " · 다음: " + pend.slice(0, 4).map(shortName).map(escH).join(", ") + (pend.length > 4 ? " 외 " + (pend.length - 4) + "편" : "") : "") + "</div>";
+    }
+  }
+  if (failed.length) {
+    html += "<div class='sec'>실패 (홈 목록의 해당 버튼을 누르면 다시 시도)</div>";
+    for (const x of failed) html += "<div class='jrow fail'><div class='jt'><b>" + KIND_KO[x.kind] + "</b><span class='ttl'>" + escH(shortName(x.file)) + " · " + escH(titleOf(x.file)) + "</span></div><div class='jm'>" + escH(x.error || "") + "</div></div>";
+  }
+  jobsPanel.innerHTML = html;
+  animateBars(jobsPanel);
+}
+jobsBtn.onclick = () => { jobsPanel.hidden = !jobsPanel.hidden; if (!jobsPanel.hidden) renderJobsPanel(); };
+document.addEventListener("mousedown", e => { if (!jobsPanel.hidden && !jobsPanel.contains(e.target) && e.target !== jobsBtn) jobsPanel.hidden = true; });
+setInterval(pollJobs, 5000);
+setTimeout(pollJobs, 1500);
 
 function fmtElapsed(sec) {
   if (sec == null) return "";

@@ -1155,6 +1155,48 @@ class Handler(BaseHTTPRequestHandler):
                 v["total"] = job.get("total", 0)
                 v["parts"] = {str(i): t for i, t in enumerate(job.get("partial") or []) if t}
                 self._send(200, v)
+        elif url.path == "/api/queue_status":
+            # 배치(batch_generate.py) 진행 상황: 가장 최근 대기열 파일 + 야간작업_기록.txt 의 마지막 회차 기록으로 완료/실패/남은 것 계산
+            import glob as _glob
+            qfiles = sorted(_glob.glob(os.path.join(GEN_DIR, "*대기열*.json")), key=os.path.getmtime)
+            out = {"active": False}
+            if qfiles:
+                qp = qfiles[-1]
+                q = load_json(qp, {})
+                logp = os.path.join(GEN_DIR, "야간작업_기록.txt")
+                lines = []
+                if os.path.isfile(logp):
+                    with open(logp, encoding="utf-8") as f:
+                        lines = f.read().split("\n")
+                starts = [i for i, l in enumerate(lines) if "야간 일괄 생성 시작" in l]
+                idx = starts[-1] if starts else 0
+                seg = lines[idx:]
+                finished = any("야간 일괄 생성 끝" in l for l in seg)
+                labels = {"summary": "요약", "translation": "번역", "map": "관련맵"}
+                kinds = {}
+                for k, lab in labels.items():
+                    items = q.get(k, [])
+                    if not items:
+                        continue
+                    done, failed = [], []
+                    for name in items:
+                        key = name[:60]
+                        st = None
+                        for l in seg:
+                            if ("[" + lab + "] ") in l and key in l:
+                                if "완료" in l or "이미 있음" in l:
+                                    st = "done"
+                                elif "실패" in l or "포기" in l or "초과" in l:
+                                    st = "failed"
+                        if st == "done":
+                            done.append(name)
+                        elif st == "failed":
+                            failed.append(name)
+                    kinds[k] = {"total": len(items), "done": len(done), "failed": failed,
+                                "pending": [n for n in items if n not in done and n not in failed]}
+                out = {"active": not finished, "queue": os.path.basename(qp), "started": lines[idx][:14] if idx < len(lines) else "",
+                       "kinds": kinds, "force": q.get("force", [])}
+            self._send(200, out)
         elif url.path == "/api/jobs":
             # 진행 중/실패한 모든 작업 (재시작 전 확인용)
             out = [{"file": k[0], "kind": k[1], **job_view(j)} for k, j in list(_jobs.items())]
