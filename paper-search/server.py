@@ -480,9 +480,14 @@ def pdf_body_and_asides(name):
         return "", ""
     body_size = max(cnt.items(), key=lambda kv: kv[1])[0]
     body, aside = [], []
+    in_nomen = False   # 기호표(Nomenclature)는 페이지 맨 위 상자로 들어가 본문 문장을 끊는다 → 곁텍스트로
     for blocks in pages:
         for b in blocks:
             t = b["t"]
+            if _NOMEN.match(t):
+                in_nomen = True
+            elif in_nomen and len(t) > 150 and len(re.findall(r"\.\s", t)) >= 2:
+                in_nomen = False   # 다시 보통 산문이 나오면 기호표 끝
             toks = t.split()
             alpha = sum(1 for c in t if c.isalpha())
             tiny = sum(1 for w in toks if len(w) <= 2)
@@ -490,7 +495,7 @@ def pdf_body_and_asides(name):
                                        (len(toks) >= 3 and tiny >= len(toks) * 0.6))  # 한두 글자 토막만 늘어선 줄
             # 글꼴이 작아도 긴 산문(초록·키워드 등 머리부)은 본문에 남긴다. 캡션·표 칸·러닝헤드는 짧아서 걸러진다
             small = b["size"] < body_size * 0.95 and len(t) < 200
-            if b["in_fig"] or small or debris or CAP_LINE.match(t):
+            if b["in_fig"] or small or debris or in_nomen or CAP_LINE.match(t):
                 aside.append(t)
             else:
                 body.append(t)
@@ -830,7 +835,7 @@ _FRONT_NOISE = [re.compile(p, re.I) for p in (
     r"Contents lists available at", r"journal homepage", r"^\s*https?://", r"^\s*www\.", r"^\s*\d{4}-\d{3}[\dX]/",
     r"E-mail address", r"Corresponding author", r"Crown Copyright", r"^\s*©", r"All rights reserved", r"^\s*Copyright ©",
     r"^\s*Contents\s*$")]  # 원문의 'Contents' 제목 줄은 버리고 우리가 모은 목차 블록의 제목만 남김
-_NOMEN = re.compile(r"^\s*(Abbreviations?|Nomenclature|List of symbols|Notations?|Symbols)\b", re.I)
+_NOMEN = re.compile(r"^\s*(Abbreviations?|Nomenclatures?|List of symbols?|Notations?|Symbols)\b", re.I)
 
 
 def remove_running_heads(text):
@@ -1001,6 +1006,7 @@ _chunk_sem = threading.BoundedSemaphore(4)  # 전체 동시 Claude 호출 4개 (
 # 머리부 구간(제목·저자·초록·키워드·목차·약어) 전용 규칙
 FRONT_RULE = ("- 이 구간은 논문 머리부다: 제목·저자(소속)·초록·키워드·목차·약어. 저널 정보·DOI·저작권·이메일 같은 서지 잡정보는 생략.\n"
               "- 논문 제목은 '**제목**: 한국어 번역 (원제)' 한 줄로만 쓰고 # 제목 줄은 만들지 마라 (문서 머리말은 따로 붙는다).\n"
+              "- **초록(Abstract)은 반드시 '## 초록 (Abstract)' 제목 아래 한 문장도 빼지 말고 번역하라.** 빠뜨리면 안 된다.\n"
               "- 목차는 '## 목차 (Contents)' 아래에 원문 순서대로 **전부 한 목록**으로 (원문 번호 유지, 페이지 번호 생략). "
               "약어·기호표는 '## 약어 (Abbreviations)' 아래 '- 항목 : 설명' 으로 빠짐없이.\n")
 # 모든 구간 공통: 잘린 자리에 표시를 남기지 말 것
