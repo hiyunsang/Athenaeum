@@ -2,7 +2,7 @@
 """야간 일괄 생성기: 대기열 파일(JSON)에 적힌 논문들의 요약/관련맵을 서버 API로 차례로 만든다.
 
 사용: pythonw batch_generate.py <대기열.json>
-대기열 형식: {"summary": ["파일명.pdf", ...], "map": ["파일명.pdf", ...]}
+대기열 형식: {"summary": [...], "translation": [...], "map": [...], "force": ["summary"]}  (force 에 든 종류는 있어도 다시 생성)
 
 - 요약 1개씩, 관련맵 1개씩 두 줄기로 동시에 진행 (요약은 서버 안에서 구간 4개 병렬)
 - Claude 사용 한도에 걸리면 30분 쉬고 다시, OpenAlex가 거절하면 15분 쉬고 다시
@@ -38,13 +38,14 @@ def is_limit(err):
     return any(k in e for k in ("한도", "limit", "usage", "rate", "거절", "429", "too many"))
 
 
-def run_one(name, kind, label):
-    """한 논문의 kind(summary/map)를 끝까지. 성공 True / 포기 False"""
+def run_one(name, kind, label, force=False):
+    """한 논문의 kind(summary/translation/map)를 끝까지. force=True 면 있어도 다시 생성. 성공 True / 포기 False"""
     q = urllib.parse.quote(name)
     retries = 0
     while True:
         try:
-            r = post("/api/generate", {"file": name, "kind": kind})
+            r = post("/api/generate", {"file": name, "kind": kind, "force": bool(force)})
+            force = False  # 재시도 때는 이어서(다시 지우지 않음)
         except Exception as e:
             log("[%s] 요청 실패 (%s) - 서버 확인 중, 2분 후 재시도: %s" % (label, e, name[:60]))
             time.sleep(120); retries += 1
@@ -78,19 +79,28 @@ def run_one(name, kind, label):
                 log("[%s] 3시간 초과, 건너뜀: %s" % (label, name[:60])); return False
 
 
-def worker(kind, names, label):
+def worker(kind, names, label, force=False):
     ok = 0
     for n in names:
-        if run_one(n, kind, label):
+        if run_one(n, kind, label, force):
             ok += 1
         time.sleep(10)
     log("[%s] 줄기 종료: %d/%d 성공" % (label, ok, len(names)))
 
 
+def claude_worker(queue):
+    """Claude 작업은 한 줄기로: 요약 전부 → 번역 전부 (동시에 돌리면 사용 한도를 더 빨리 소진)"""
+    force = set(queue.get("force", []))
+    worker("summary", queue.get("summary", []), "요약", "summary" in force)
+    worker("translation", queue.get("translation", []), "번역", "translation" in force)
+
+
 def main():
     queue = json.load(io.open(sys.argv[1], encoding="utf-8"))
-    log("===== 야간 일괄 생성 시작: 요약 %d편, 관련맵 %d편 =====" % (len(queue.get("summary", [])), len(queue.get("map", []))))
-    ts = [threading.Thread(target=worker, args=("summary", queue.get("summary", []), "요약")),
+    log("===== 야간 일괄 생성 시작: 요약 %d편, 번역 %d편, 관련맵 %d편%s =====" % (
+        len(queue.get("summary", [])), len(queue.get("translation", [])), len(queue.get("map", [])),
+        (" (다시 생성: " + ",".join(queue.get("force", [])) + ")") if queue.get("force") else ""))
+    ts = [threading.Thread(target=claude_worker, args=(queue,)),
           threading.Thread(target=worker, args=("map", queue.get("map", []), "관련맵"))]
     for t in ts:
         t.start(); time.sleep(5)

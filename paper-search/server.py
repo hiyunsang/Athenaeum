@@ -806,19 +806,21 @@ def generate_document(name, kind, text):
             "(4) worth: 누가 언제 읽으면 좋은지 1~2문장 (예: 'X를 실험하려는 사람에게 필수, Y만 궁금하면 결론만').\n"
             + GLOSSARY_RULE +
             "\nJSON 한 줄만: {\"overview\": \"...\", \"novelty\": \"- ...\\n- ...\", \"limits\": \"- ...\", \"worth\": \"...\"}\n\n" + body[:40000], timeout=400)
+        # 판단에 필요한 것(한줄 요약 → 노벨티·기여 → 읽을 가치 → 한계)을 맨 위에, 본문(초록·서론·절별 bullet)은 그 아래
         head = "# (요약) " + header + "\n\n"
-        if wrap and wrap.get("overview"):
-            head += "## 한줄 요약\n" + wrap["overview"].strip() + "\n\n"
         tail = ""
         if wrap:
+            if wrap.get("overview"):
+                head += "## 한줄 요약\n" + wrap["overview"].strip() + "\n\n"
             if wrap.get("novelty"):
-                tail += "\n\n## 노벨티와 기여\n" + wrap["novelty"].strip()
-            if wrap.get("limits"):
-                tail += "\n\n## 한계\n" + wrap["limits"].strip()
+                head += "## 노벨티와 기여\n" + wrap["novelty"].strip() + "\n\n"
             if wrap.get("worth"):
-                tail += "\n\n## 읽을 가치\n" + wrap["worth"].strip()
-            if not tail and wrap.get("closing"):  # 예전 형식 호환
+                head += "## 읽을 가치\n" + wrap["worth"].strip() + "\n\n"
+            if wrap.get("limits"):
+                head += "## 한계\n" + wrap["limits"].strip() + "\n\n"
+            if not wrap.get("novelty") and wrap.get("closing"):  # 예전 형식 호환
                 tail = "\n\n## 핵심 정리 및 시사점\n" + wrap["closing"].strip()
+        head += "---\n\n"
         return head + body + tail
     return "# (전문번역) " + header + "\n\n" + body
 

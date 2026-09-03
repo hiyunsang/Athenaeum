@@ -558,6 +558,8 @@ function tokensOf(text) {
 function pdfAbs(pi, y) { return pages[pi].div.offsetTop + y * zoomF; }
 let anchorKey = "";
 function followPdf(force) {
+  // 전문번역에서만 따라감 (요약은 문장이 원문과 1:1 대응하지 않아 어긋남). 요약 탭이면 표시선도 지움
+  if (kind !== "translation") { document.querySelectorAll(".pdfmark").forEach(m => m.remove()); return; }
   if (!followOn || !pages.length || !pdfcol.classList.contains("on")) return;
   if (!force && Date.now() < pdfPauseUntil) return;
   const ko = koNumSet(), key = [...ko].join(",");
