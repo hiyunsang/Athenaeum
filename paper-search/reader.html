@@ -201,6 +201,7 @@ async function showKind(k) {
     return;
   }
   renderMd(md);
+  restoreReadPos(k);
 }
 
 function bindFigrefs(root) { root.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n)); }
@@ -629,6 +630,34 @@ document.getElementById("noteIn").addEventListener("keydown", e => { if (e.ctrlK
 document.getElementById("askIn").addEventListener("keydown", e => { if (e.ctrlKey && e.key === "Enter") document.getElementById("askBtn").click(); });
 document.getElementById("pdfTog").onchange = e => { pdfcol.classList.toggle("on", e.target.checked); localStorage.setItem("reader_pdf", e.target.checked ? "1" : "0"); };
 document.getElementById("sideTog").onchange = e => { document.getElementById("side").classList.toggle("on", e.target.checked); localStorage.setItem("reader_side", e.target.checked ? "1" : "0"); };
+
+// ---------- 읽기 기록 (홈 '최근 읽음'·자기관리 앱 연동) ----------
+// 화면이 보이고 최근 60초 안에 움직임(마우스·키·스크롤)이 있었으면 30초마다 서버에 "30초 읽음 + 스크롤 위치"를 보냄
+let lastActivity = Date.now();
+["mousemove", "keydown", "wheel", "scroll", "click", "touchstart"].forEach(ev => document.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true, capture: true }));
+function readPos() { const h = read.scrollHeight - read.clientHeight; return h > 0 ? Math.min(1, read.scrollTop / h) : 1; }
+function sendPing(sec, beacon) {
+  const body = JSON.stringify({ file, kind, pos: readPos(), sec });
+  if (beacon && navigator.sendBeacon) { navigator.sendBeacon("/api/read_ping", new Blob([body], { type: "application/json" })); return; }
+  fetch("/api/read_ping", { method: "POST", body, keepalive: true }).catch(() => {});
+}
+setInterval(() => { if (document.visibilityState === "visible" && Date.now() - lastActivity < 60000) sendPing(30, false); }, 30000);
+window.addEventListener("pagehide", () => sendPing(0, true));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") sendPing(0, true); });
+// 이전에 읽던 위치로 복원 (처음 표시할 때 한 번만)
+let readInfo = null, restored = false;
+async function restoreReadPos(k) {
+  if (restored) return;
+  if (readInfo === null) { try { readInfo = await (await fetch("/api/readlog?file=" + encodeURIComponent(file))).json(); } catch (e) { readInfo = {}; } }
+  const pos = readInfo && readInfo.pos && readInfo.pos[k];
+  restored = true;
+  if (pos > 0.03 && pos < 0.97) {
+    requestAnimationFrame(() => {
+      read.scrollTop = pos * (read.scrollHeight - read.clientHeight);
+      status("읽던 곳(" + Math.round(pos * 100) + "%)으로 이동했습니다 · 처음부터 보려면 위로 올리세요", 4000);
+    });
+  }
+}
 
 // ---------- 시작 ----------
 (async () => {

@@ -20,3 +20,5 @@ text_index.json
 __pycache__/
 *.pyc
 맵생성기록.txt
+
+읽기기록.json

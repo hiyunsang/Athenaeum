@@ -27,6 +27,13 @@
   .mparent { display: flex; justify-content: space-between; padding: 2px 6px; cursor: pointer; font-weight: 600; color: var(--text); line-height: 1.6; }
   .mparent:hover { background: var(--hover); }
   .mparent .n { color: var(--text-3); font-size: 12px; min-width: 3ch; text-align: right; font-weight: 400; }
+  /* 최근 읽음 (사이드바 맨 위, 5편): 한 줄 제목 + 작은 회색 시각·읽은 시간·위치 */
+  .recent { padding: 3px 6px 4px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .recent:hover { background: var(--hover); }
+  .recent .rt { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .recent .rt b { font-weight: 600; }
+  .recent .rm { font-size: 11px; color: var(--text-3); }
+  .meta .rd { color: var(--text-3); }
   .jlist { max-height: 138px; overflow-y: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   #main { flex: 1; padding: 0 0 var(--s8); height: calc(100vh - 84px); overflow-y: auto; background: var(--surface); }
   /* 논문 행: 카드 아님. 10~11px 상하 여백 + 1px 구분선으로 '한 단위'가 보이게 */
@@ -96,6 +103,8 @@
   <label class="toggle">정렬 <select id="sortSel">
     <option value="year">연도순</option>
     <option value="added">최신 추가순</option>
+    <option value="read">최근 읽은 순</option>
+    <option value="notes">메모 많은 순</option>
   </select></label>
   <span id="oastatus" class="toggle act" title="관련맵에 쓰는 OpenAlex 서비스 상태 (클릭하면 다시 확인)">맵 서비스 확인 중…</span>
   <div id="summary"></div>
@@ -181,6 +190,7 @@ function render() {
 
   const side = document.getElementById("side");
   side.innerHTML = "";
+  side.appendChild(renderRecent());
 
   const jcounts = {};
   for (const p of base) { const j = p.journal || "?"; jcounts[j] = (jcounts[j] || 0) + 1; }
@@ -245,9 +255,13 @@ function render() {
   const main = document.getElementById("main");
   main.innerHTML = "";
   const mode = document.getElementById("sortSel").value;
+  const byYear = (a, b) => (b.year || "0").localeCompare(a.year || "0");
+  const lastRead = p => (p.read && p.read.last) || 0;
   const sorted = cur.slice().sort((a, b) =>
     mode === "added" ? (b.added || 0) - (a.added || 0)
-                     : (b.year || "0").localeCompare(a.year || "0"));
+    : mode === "read" ? (lastRead(b) - lastRead(a)) || byYear(a, b)
+    : mode === "notes" ? ((b.notes_n || 0) - (a.notes_n || 0)) || byYear(a, b)
+    : byYear(a, b));
   for (const p of sorted) {
     const row = document.createElement("div"); row.className = "row" + (editing === p.file ? " sel" : "");
     row.dataset.file = p.file;
@@ -267,10 +281,15 @@ function render() {
       const dt = new Date(p.added * 1000);
       addedTxt = " · 추가 " + (dt.getMonth() + 1) + "/" + dt.getDate();
     }
-    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-") + addedTxt;
+    let readTxt = "";
+    if (p.read && p.read.last) {  // 판단 없이 사실만: 언제 · 얼마나 · 어디까지
+      const pos = p.read.pos && p.read.pos[p.read.kind || "summary"];
+      readTxt = " · <span class='rd'>읽음 " + fmtWhen(p.read.last) + " · " + fmtDur(p.read.sec) + (pos > 0.02 ? " · " + Math.round(pos * 100) + "%" : "") + "</span>";
+    }
+    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-") + addedTxt + readTxt;
     row.appendChild(meta);
     const t = document.createElement("div"); t.className = "title"; t.textContent = p.title;
-    if (p.has_notes) { const nb = document.createElement("span"); nb.textContent = " · 메모"; nb.title = "메모/질문 기록 있음"; nb.style.fontSize = "12px"; t.appendChild(nb); }
+    if (p.has_notes) { const nb = document.createElement("span"); nb.textContent = " · 메모" + (p.notes_n > 1 ? " " + p.notes_n : ""); nb.title = "메모/질문 기록 있음"; nb.style.fontSize = "12px"; t.appendChild(nb); }
     row.appendChild(t);
     const tags = document.createElement("div"); tags.className = "tags";
     for (const lb of p.labels) { const s = document.createElement("span"); s.className = "tag"; s.textContent = lb; tags.appendChild(s); }
@@ -318,6 +337,40 @@ function labelRow(lb, cnt) {
 function viewUrl(p, kind) {
   if (kind === "map") return "/mapview?file=" + encodeURIComponent(p.file);
   return "/view?file=" + encodeURIComponent(p.file) + "&kind=" + kind;
+}
+
+function fmtWhen(ts) {
+  const d = new Date(ts * 1000), now = new Date(), min = (now - d) / 60000;
+  if (min < 60) return Math.max(1, Math.round(min)) + "분 전";
+  if (d.toDateString() === now.toDateString()) return "오늘 " + d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0");
+  const y = new Date(now); y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "어제";
+  return (d.getMonth() + 1) + "/" + d.getDate();
+}
+function fmtDur(sec) {
+  sec = sec || 0;
+  if (sec < 60) return sec + "초";
+  if (sec < 3600) return Math.round(sec / 60) + "분";
+  return Math.floor(sec / 3600) + "시간 " + Math.round(sec % 3600 / 60) + "분";
+}
+const escH = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+// 사이드바 '최근 읽음' 5편: 클릭하면 마지막에 보던 종류(요약/번역)로 읽기 화면
+function renderRecent() {
+  const frag = document.createDocumentFragment();
+  const rec = papers.filter(p => p.read && p.read.last).sort((a, b) => b.read.last - a.read.last).slice(0, 5);
+  if (!rec.length) return frag;
+  const g = document.createElement("div"); g.className = "group";
+  const h = document.createElement("h3"); h.textContent = "최근 읽음"; g.appendChild(h);
+  for (const p of rec) {
+    const k = p.read.kind || "summary", pos = p.read.pos && p.read.pos[k];
+    const el = document.createElement("div"); el.className = "recent"; el.title = p.title;
+    el.innerHTML = "<div class='rt'><b>" + escH(p.author) + " " + escH(p.year) + "</b> · " + escH(p.title) + "</div>" +
+      "<div class='rm'>" + fmtWhen(p.read.last) + " · " + fmtDur(p.read.sec) + (pos > 0.02 ? " · " + Math.round(pos * 100) + "%" : "") + "</div>";
+    el.onclick = () => window.open(viewUrl(p, k));
+    g.appendChild(el);
+  }
+  frag.appendChild(g);
+  return frag;
 }
 
 function fmtElapsed(sec) {

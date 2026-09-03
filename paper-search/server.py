@@ -241,6 +241,37 @@ def _run_smart(q, year, key):
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
+# 읽기 기록: 읽기 화면이 30초마다 보내는 신호를 논문별(마지막 시각·누적 초·스크롤 위치)과 날짜별(초·논문별 초)로 쌓는다.
+# 홈의 '최근 읽음'·'읽음 9/3 · 12분 · 62%' 표시와 자기관리 앱(MAENG_worklog) 연동용. 하루 경계는 새벽 4시(worklog와 동일)
+READLOG_PATH = os.path.join(os.path.dirname(ARCHIVE), "읽기기록.json")
+
+
+def load_readlog():
+    return load_json(READLOG_PATH, {"papers": {}, "days": {}})
+
+
+def record_reading(name, kind, pos, sec):
+    sec = max(0, min(int(sec or 0), 120))
+    now = time.time()
+    with _lock:
+        rl = load_readlog()
+        p = rl["papers"].setdefault(name, {"first": now, "sec": 0, "pos": {}, "n": 0})
+        if now - (p.get("last") or 0) > 1800:  # 30분 넘게 비었다가 다시 열면 새 회차
+            p["n"] = p.get("n", 0) + 1
+        p["last"] = now
+        p["sec"] = int(p.get("sec", 0)) + sec
+        p["kind"] = kind
+        if pos is not None:
+            try:
+                p.setdefault("pos", {})[kind] = round(float(pos), 3)
+            except (TypeError, ValueError):
+                pass
+        if sec:
+            day = time.strftime("%Y-%m-%d", time.localtime(now - 4 * 3600))
+            d = rl["days"].setdefault(day, {"sec": 0, "papers": {}})
+            d["sec"] = int(d.get("sec", 0)) + sec
+            d["papers"][name] = int(d["papers"].get(name, 0)) + sec
+        save_json(READLOG_PATH, rl)
 
 
 def notes_path(name):
@@ -955,6 +986,7 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=refresh_new_papers, daemon=True).start()
                 classifying = True
             papers = []
+            readlog = load_readlog()["papers"]
             for f in archive_pdfs():
                 meta = parse_name(f)
                 try:
@@ -971,6 +1003,12 @@ class Handler(BaseHTTPRequestHandler):
                              "has_translation": os.path.exists(gen_path(f, "translation")),
                              "has_map": os.path.exists(gen_path(f, "map")),
                              "has_notes": os.path.exists(notes_path(f))})
+                r = readlog.get(f)
+                if r and r.get("last"):
+                    meta["read"] = {"last": r["last"], "sec": r.get("sec", 0), "pos": r.get("pos", {}), "kind": r.get("kind", "summary")}
+                if meta["has_notes"]:
+                    nd = load_notes(f)
+                    meta["notes_n"] = len(nd.get("notes", [])) + len(nd.get("qa", []))
                 jobs = {}
                 for kind in ("summary", "translation", "map"):
                     j = _jobs.get((f, kind))
@@ -996,6 +1034,21 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, get_captions(name))
                 except Exception as e:
                     self._send(200, {"captions": [], "error": str(e)[:200]})
+        elif url.path == "/api/readlog":
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            self._send(200, load_readlog()["papers"].get(name, {}))
+        elif url.path == "/api/reading_stats":
+            # 날짜별 읽은 시간과 논문 목록 (MAENG_worklog 등 다른 앱이 가져다 쓰는 용도). ?days=7
+            days = int(parse_qs(url.query).get("days", ["7"])[0])
+            rl = load_readlog()
+            with _lock:
+                tags = load_json(TAGS_PATH, {})
+            out = {}
+            for d, v in sorted(rl.get("days", {}).items())[-days:]:
+                items = sorted(v.get("papers", {}).items(), key=lambda kv: -kv[1])
+                out[d] = {"sec": v.get("sec", 0),
+                          "papers": [{"file": f, "sec": sc, "title": tags.get(f, {}).get("title") or parse_name(f)["title"]} for f, sc in items]}
+            self._send(200, {"days": out, "total_papers_read": len(rl.get("papers", {}))})
         elif url.path == "/api/paperinfo":
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
             with _lock:
@@ -1201,6 +1254,13 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
         except ValueError:
             self._send(400, {"error": "bad json"})
+            return
+        if self.path == "/api/read_ping":
+            # 읽기 화면의 30초 신호 {file, kind, pos(0~1), sec}
+            name = os.path.basename(body.get("file", ""))
+            if name and os.path.isfile(os.path.join(ARCHIVE, name)):
+                record_reading(name, body.get("kind") or "summary", body.get("pos"), body.get("sec") or 0)
+            self._send(200, {"ok": True})
             return
         if self.path == "/api/notes":
             name = os.path.basename(body.get("file", ""))
