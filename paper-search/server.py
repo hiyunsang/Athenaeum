@@ -481,7 +481,9 @@ def pdf_body_and_asides(name):
             tiny = sum(1 for w in toks if len(w) <= 2)
             debris = len(t) < 120 and (alpha < len(t) * 0.5 or                        # 기호·숫자가 절반 넘는 짧은 줄
                                        (len(toks) >= 3 and tiny >= len(toks) * 0.6))  # 한두 글자 토막만 늘어선 줄
-            if b["in_fig"] or b["size"] < body_size * 0.95 or debris or CAP_LINE.match(t):
+            # 글꼴이 작아도 긴 산문(초록·키워드 등 머리부)은 본문에 남긴다. 캡션·표 칸·러닝헤드는 짧아서 걸러진다
+            small = b["size"] < body_size * 0.95 and len(t) < 200
+            if b["in_fig"] or small or debris or CAP_LINE.match(t):
                 aside.append(t)
             else:
                 body.append(t)
