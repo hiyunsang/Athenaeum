@@ -65,6 +65,8 @@
   .toc a.d1 { font-weight: 600; margin-top: 3px; } .toc a.d2 { padding-left: 14px; } .toc a.d3 { padding-left: 28px; color: var(--text-2); }
   table.abbr { border-collapse: collapse; font-size: 12px; width: 100%; margin: var(--s1) 0 var(--s3); }
   table.abbr td { border-bottom: 1px solid var(--line); padding: 3px var(--s2); vertical-align: top; }
+  table.abbr th { border-bottom: 1px solid var(--line-2); padding: 3px var(--s2); text-align: left; font-weight: 600; color: var(--text); font-size: 12px; }
+  table.abbr.md { margin: var(--s2) 0 var(--s3); }
   table.abbr td.k { white-space: nowrap; font-weight: 600; color: var(--text); width: 1%; }
   #pdfcol { flex: 1; min-width: 360px; overflow-y: auto; background: #56554f; display: none; position: relative; }
   #pdfcol.on { display: block; }
@@ -174,8 +176,22 @@ const norm = s => s.toLowerCase().replace(/[‐-―]/g, "-").replace(/\s+/g, " "
 const fmtSec = s => s == null ? "" : (s < 90 ? s + "초" : Math.round(s / 60) + "분");
 
 // ---------- 마크다운 ----------
+function mdTables(md) {
+  // 마크다운 표(| a | b | 줄 묶음) → <table class="abbr">. 구분선 행(|---|)은 건너뜀. 번역문의 표가 파이프 글자로 보이지 않게
+  const lines = md.split("\n"), out = []; let rows = null;
+  const flush = () => { if (rows && rows.length) out.push("<table class='abbr md'>" + rows.map((r, i) => "<tr>" + r.map(c => "<t" + (i === 0 ? "h" : "d") + ">" + c + "</t" + (i === 0 ? "h" : "d") + ">").join("") + "</tr>").join("") + "</table>"); rows = null; };
+  for (const ln of lines) {
+    if (/^\s*\|.*\|\s*$/.test(ln)) {
+      const cells = ln.trim().slice(1, -1).split("|").map(c => c.trim());
+      if (cells.every(c => /^:?-{2,}:?$/.test(c))) continue;
+      (rows = rows || []).push(cells);
+    } else { flush(); out.push(ln); }
+  }
+  flush();
+  return out.join("\n");
+}
 function mdToHtml(md) {
-  let h = esc(md);
+  let h = mdTables(esc(md));
   h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
        .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
        // 글머리표: 들여쓴 깊이(공백 2칸 = 한 단계)를 d1~d3 클래스로. 줄 첫머리 '1. ' 번호 항목도 한 줄씩

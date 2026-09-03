@@ -630,13 +630,15 @@ _NOMEN = re.compile(r"^\s*(Abbreviations?|Nomenclature|List of symbols|Notations
 def remove_running_heads(text):
     """페이지마다 반복되는 머리말/꼬리말 줄(저널명·저자 러닝헤드)을 지운다."""
     lines = text.split("\n")
+    def key(l):  # 페이지 번호만 다른 러닝헤드('... 88 (2015) 131–164 161')도 같은 줄로 보기 위해 숫자를 지움
+        return re.sub(r"\d+", "#", " ".join(l.split()))
     cnt = {}
     for l in lines:
-        k = " ".join(l.split())
+        k = key(l)
         if len(k) >= 20:
             cnt[k] = cnt.get(k, 0) + 1
     rep = {k for k, c in cnt.items() if c >= 3}
-    return "\n".join(l for l in lines if " ".join(l.split()) not in rep)
+    return "\n".join(l for l in lines if key(l) not in rep)
 
 
 def _toc_title(line):
@@ -704,7 +706,8 @@ FRONT_RULE = ("- 이 구간은 논문 머리부다: 제목·저자(소속)·초�
               "- 목차는 '## 목차 (Contents)' 아래에 원문 순서대로 **전부 한 목록**으로 (원문 번호 유지, 페이지 번호 생략). "
               "약어·기호표는 '## 약어 (Abbreviations)' 아래 '- 항목 : 설명' 으로 빠짐없이.\n")
 # 모든 구간 공통: 잘린 자리에 표시를 남기지 말 것
-CUT_RULE = "- 구간 경계에서 잘린 문장·목록은 있는 부분만 자연스럽게 옮기고, '(계속)', '(이하 구간 이어짐)' 같은 표시는 절대 쓰지 마라.\n"
+CUT_RULE = ("- 구간 경계에서 잘린 문장·목록은 있는 부분만 자연스럽게 옮기고, '(계속)', '(연속)', '(이하 구간 이어짐)' 같은 표시는 절대 쓰지 마라. "
+            "앞 구간에서 시작된 절이 이어지면 소제목을 다시 쓰지 말고 내용만 이어서 쓰라.\n")
 
 
 def chunk_prompt(header, kind, i, n, ch, prev_src, front=False):
@@ -716,11 +719,11 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False):
             "{}/{} 구간이다.\n".format(i + 1, n) +
             "목적: 독자가 이 요약만 보고 정독할지 결정할 수 있어야 한다. 내용은 과감히 줄이되, "
             "무엇을 어떤 방법으로 했고 무엇이 나왔는지는 정확하게.\n"
-            "규칙:\n- 원문 소제목 구조 유지 (## 또는 ###, 원문 번호 유지). 고정 틀로 재편하지 마라.\n"
+            "규칙:\n- 원문 소제목 구조 유지 (## 또는 ###, 원문 번호 유지). 소제목은 한국어로 옮기고 괄호에 원문을 병기: '## 2.3. 취성-연성 천이의 이론 모델 (Theoretical models of brittle-ductile transition)'. 고정 틀로 재편하지 마라.\n"
             + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히 번역하라.\n" if front else
-               "- 서론(Introduction)이 이 구간에 있으면 서론만은 문단을 따라 충실히 옮겨라 (핵심 문장 위주, 원문의 60~70%). "
-               "연구 배경·동기·이 논문이 하려는 것이 드러나야 한다.\n"
-               "- 서론 이후의 절(방법·결과·고찰·결론)은 절마다 bullet 2~5개로 초압축: "
+               "- 논문의 첫 절(번호 1, 보통 Introduction)만은 문단을 따라 충실히 옮겨라 (핵심 문장 위주, 원문의 60~70%). "
+               "연구 배경·동기·이 논문이 하려는 것이 드러나야 한다. 그 외의 절은 이름이 'Introduction'이어도 아래 bullet 규칙을 따른다.\n"
+               "- 첫 절 이후의 모든 절(방법·결과·고찰·결론, 리뷰의 각 주제 절)은 절마다 bullet 2~5개로 초압축, bullet 하나는 두 줄 이내: "
                "'- 방법/분석: 무슨 장비·재료·조건·해석으로', '- 한 것: 무엇을 했는지', '- 결과: 핵심 수치와 함께'. "
                "문장형 서술·배경 설명·선행연구 나열 금지. 분량은 원문의 15% 이내.\n"
                "- 결론(Conclusions) 절은 저자가 주장하는 결론을 bullet로 정확히.\n"
@@ -789,6 +792,16 @@ def generate_document(name, kind, text):
     # 구간 결과 정리: 구간이 만든 # 제목은 ##로 내림(문서 제목은 하나만), 참고문헌 구간마다 반복된 '(참고문헌 생략)'은 하나로
     results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
+    if is_sum:  # 구간 경계에서 같은 절 소제목이 반복되면('## 5. … (연속)') 두 번째부터는 소제목 줄만 지움
+        seen, kept = set(), []
+        for line in body.split("\n"):
+            m = re.match(r"^(#{2,3})\s+(\d+(?:\.\d+)*)\.?\s", line)
+            if m:
+                if m.group(2) in seen:
+                    continue
+                seen.add(m.group(2))
+            kept.append(line)
+        body = "\n".join(kept)
     body = re.sub(r"(?:\(참고문헌 생략\)\s*){2,}", "(참고문헌 생략)\n\n", body)
     # 참고문헌 표시는 문서 끝의 것 하나만 남김 (중간 구간에서 수식 덩어리를 참고문헌으로 오인해 찍는 경우 제거)
     last = body.rfind("(참고문헌 생략)")
@@ -804,6 +817,7 @@ def generate_document(name, kind, text):
             "(2) novelty: 이 논문의 노벨티와 기여 bullet 3~5개 (기존 연구와 무엇이 다른지, 무엇을 새로 보였는지).\n"
             "(3) limits: 한계·주의점 bullet 1~3개.\n"
             "(4) worth: 누가 언제 읽으면 좋은지 1~2문장 (예: 'X를 실험하려는 사람에게 필수, Y만 궁금하면 결론만').\n"
+            "네 키(overview, novelty, limits, worth)는 모두 비우지 말고 채워라.\n"
             + GLOSSARY_RULE +
             "\nJSON 한 줄만: {\"overview\": \"...\", \"novelty\": \"- ...\\n- ...\", \"limits\": \"- ...\", \"worth\": \"...\"}\n\n" + body[:40000], timeout=400)
         # 판단에 필요한 것(한줄 요약 → 노벨티·기여 → 읽을 가치 → 한계)을 맨 위에, 본문(초록·서론·절별 bullet)은 그 아래
