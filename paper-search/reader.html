@@ -191,7 +191,9 @@ function mdTables(md) {
   return out.join("\n");
 }
 function mdToHtml(md) {
-  md = md.replace(/^(\[s\d+\](?:\[s\d+\])*)\s*(#{1,6}\s)/gm, "$2$1 ");   // 번호가 소제목 기호 앞에 온 줄 교정
+  // 문장 번호가 소제목(#)·글머리표(-) 기호 앞에 오면 마크다운이 깨지므로 기호를 앞으로 되돌린다
+  md = md.replace(/^(\[s\d+\](?:\[s\d+\])*)\s*(#{1,6}\s)/gm, "$2$1 ")
+         .replace(/^(\[s\d+\](?:\[s\d+\])*)\s*([-*]\s)/gm, "$2$1 ");
   let h = mdTables(esc(md));
   h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
        .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
