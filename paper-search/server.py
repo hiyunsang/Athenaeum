@@ -279,7 +279,12 @@ def notes_path(name):
 
 
 def load_notes(name):
-    return load_json(notes_path(name), {"notes": [], "qa": []})
+    data = load_json(notes_path(name), {"notes": [], "qa": []})
+    # 질문 항목마다 고유 id (답글 스레드·삭제용). 예전 항목에는 시각+순번으로 부여
+    for i, x in enumerate(data.get("qa", [])):
+        if not x.get("id"):
+            x["id"] = "q" + re.sub(r"[^0-9]", "", x.get("t", "")) + "_" + str(i)
+    return data
 
 
 def save_notes(name, data):
@@ -325,11 +330,16 @@ def locate_in_pdf(name, passage):
     return res
 
 
-def answer_question(name, quote, question):
-    """선택 구절 + 논문 원문 맥락으로 Claude에게 질문. 짧고 쉬운 답."""
+def answer_question(name, quote, question, history=None):
+    """선택 구절 + 논문 원문 맥락으로 Claude에게 질문. 짧고 쉬운 답.
+    history: 이어지는 질문(답글)일 때 앞선 문답 [(q, a), ...] (오래된 것부터)"""
     title = paper_header(name)
     pages = pdf_pages_text(name, per_page=2500)
     context = " ".join(pages)[:28000]
+    hist = ""
+    if history:
+        hist = ("[이전 대화 - 이 질문은 여기에 이어지는 후속 질문이다. 앞 내용을 반복하지 말고 이어서 답하라]\n"
+                + "\n".join("Q: " + q[:600] + "\nA: " + a[:1200] for q, a in history[-4:]) + "\n\n")
     return claude_text(
         "당신은 기계가공 분야 논문을 함께 읽어주는 연구 조교다. 아래 논문 원문을 근거로 질문에 한국어로 답하라.\n"
         "답변 스타일 (중요):\n"
@@ -338,7 +348,7 @@ def answer_question(name, quote, question):
         "- 마지막에 '더 자세히: …' 한 줄로 파고들 수 있는 방향 하나만 제시.\n\n"
         "[논문] " + title + "\n"
         + ("[선택한 구절] " + quote[:800] + "\n" if quote else "")
-        + "[질문] " + question + "\n\n[논문 원문(일부)]\n" + context, timeout=240)
+        + hist + "[질문] " + question + "\n\n[논문 원문(일부)]\n" + context, timeout=240)
 
 
 def pdf_pages_text_raw(name):
@@ -1274,9 +1284,20 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(idx, int) and 0 <= idx < len(data["notes"]):
                     data["notes"].pop(idx)
             elif op == "del_qa":
-                idx = body.get("idx")
-                if isinstance(idx, int) and 0 <= idx < len(data["qa"]):
-                    data["qa"].pop(idx)
+                qid = body.get("id")
+                if qid:  # 해당 질문과 그 아래 답글 전부
+                    doomed = {qid}
+                    changed = True
+                    while changed:
+                        changed = False
+                        for x in data["qa"]:
+                            if x.get("parent") in doomed and x["id"] not in doomed:
+                                doomed.add(x["id"]); changed = True
+                    data["qa"] = [x for x in data["qa"] if x["id"] not in doomed]
+                else:
+                    idx = body.get("idx")
+                    if isinstance(idx, int) and 0 <= idx < len(data["qa"]):
+                        data["qa"].pop(idx)
             save_notes(name, data)
             self._send(200, data)
         elif self.path == "/api/ask":
@@ -1286,13 +1307,29 @@ class Handler(BaseHTTPRequestHandler):
             if not question or not os.path.isfile(os.path.join(ARCHIVE, name)):
                 self._send(400, {"error": "질문이 없습니다"})
                 return
-            answer = answer_question(name, quote_txt, question)
+            data = load_notes(name)
+            parent = (body.get("parent") or "").strip()
+            history = []
+            if parent:  # 답글: 부모와 그 조상들의 문답을 맥락으로
+                byid = {x["id"]: x for x in data["qa"]}
+                cur = byid.get(parent)
+                chain = []
+                while cur and len(chain) < 6:
+                    chain.append((cur.get("q", ""), cur.get("a", "")))
+                    cur = byid.get(cur.get("parent") or "")
+                history = chain[::-1]
+                if parent in byid and not quote_txt:
+                    quote_txt = byid[parent].get("quote", "")
+            answer = answer_question(name, quote_txt, question, history)
             if not answer:
                 self._send(200, {"error": "Claude 응답 실패 (로그인/사용량 확인)"})
                 return
             data = load_notes(name)
-            data["qa"].insert(0, {"t": time.strftime("%Y-%m-%d %H:%M"), "quote": quote_txt[:1000],
-                                  "q": question[:2000], "a": answer[:20000], "kind": body.get("kind", "")})
+            item = {"id": "q" + str(int(time.time() * 1000)), "t": time.strftime("%Y-%m-%d %H:%M"), "quote": quote_txt[:1000],
+                    "q": question[:2000], "a": answer[:20000], "kind": body.get("kind", "")}
+            if parent:
+                item["parent"] = parent
+            data["qa"].insert(0, item)
             save_notes(name, data)
             self._send(200, {"answer": answer, "qa": data["qa"]})
         elif self.path == "/api/locate":

@@ -35,6 +35,13 @@
   .item .a.clip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2em; background: linear-gradient(rgba(249,249,247,0), var(--panel)); }
   .item .more { display: inline-block; color: var(--accent); cursor: pointer; font-size: 12px; padding: 3px 8px; margin-left: -8px; border-radius: var(--r); }
   .item .more:hover { background: var(--accent-bg); }
+  .rep { display: inline-block; color: var(--text-quiet); cursor: pointer; font-size: 12px; padding: 3px 8px; margin-left: -8px; }
+  .rep:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .reply { margin: 6px 0 0 10px; padding: 4px 0 0 10px; border-left: 2px solid var(--line-2); position: relative; }
+  .reply .del { top: 2px; }
+  .repbox { margin: 6px 0 0 10px; }
+  .repbox textarea { min-height: 40px; }
+  .readmark { border-top: 1px dashed var(--accent); color: var(--accent); font-size: 11px; text-align: right; margin: 10px 0 12px; padding-top: 2px; }
   .item .del { position: absolute; top: var(--s2); right: 8px; color: var(--text-3); cursor: pointer; font-size: 12px; padding: 2px 4px; }
   .item .del:hover { color: var(--red); }
   .item .loc { position: absolute; top: var(--s2); right: 34px; color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 4px; }
@@ -482,7 +489,8 @@ read.addEventListener("mouseup", () => {
     sel = { text: t, kind };
     const r = s.getRangeAt(0).getBoundingClientRect();
     seltool.style.display = "flex"; seltool.style.left = Math.max(8, Math.min(r.left, innerWidth - 380)) + "px";
-    seltool.style.top = Math.max(50, r.top - 40) + "px";
+    const below = r.bottom + 8;  // 선택 아래에. 화면 아래로 벗어나면 위로
+    seltool.style.top = (below + 80 < innerHeight ? below : Math.max(50, r.top - 40)) + "px";
   }, 10);
 });
 document.addEventListener("mousedown", (e) => {
@@ -533,11 +541,13 @@ async function doAction(act) {
   }
 }
 
-async function ask(q, quote) {
+async function ask(q, quote, parent) {
   document.getElementById("sideTog").checked = true; document.getElementById("side").classList.add("on");
   const qa = document.getElementById("qa");
-  qa.insertAdjacentHTML("afterbegin", "<div class='item' id='pending'><div class='q'>" + esc(q) + "</div><div class='a hint'>답변 작성 중… (20~40초)</div></div>");
-  const r = await (await fetch("/api/ask", { method: "POST", body: JSON.stringify({ file, question: q, quote, kind }) })).json();
+  const pendingHtml = "<div class='" + (parent ? "reply" : "item") + "' id='pending'><div class='q'>" + esc(q) + "</div><div class='a hint'>답변 작성 중… (20~40초)</div></div>";
+  const host = parent ? document.querySelector(".item[data-id='" + parent + "'] .replies") : null;
+  if (host) host.insertAdjacentHTML("beforeend", pendingHtml); else qa.insertAdjacentHTML("afterbegin", pendingHtml);
+  const r = await (await fetch("/api/ask", { method: "POST", body: JSON.stringify({ file, question: q, quote, kind, parent: parent || "" }) })).json();
   if (r.error) { const p = document.getElementById("pending"); if (p) p.querySelector(".a").textContent = "⚠ " + r.error; return; }
   notesData.qa = r.qa; renderSide(); markAnchors();
 }
@@ -599,18 +609,36 @@ function renderSide() {
   n.innerHTML = notesData.notes.map((x, i) => "<div class='item' id='item-note-" + i + "'><span class='del' data-i='" + i + "' data-k='note'>✕</span>" +
     (x.quote ? "<span class='loc' data-i='" + i + "' data-k='note'>▸ 위치</span>" : "") +
     "<div class='t'>" + x.t + "</div>" + (x.quote ? "<div class='qt'>" + esc(x.quote) + "</div>" : "") + "<div class='a'>" + esc(x.text) + "</div></div>").join("") || "<div class='hint'>메모 없음</div>";
-  qa.innerHTML = notesData.qa.map((x, i) => {
-    const long = (x.a || "").length > 260;
-    return "<div class='item' id='item-qa-" + i + "'><span class='del' data-i='" + i + "' data-k='qa'>✕</span>" +
-      (x.quote ? "<span class='loc' data-i='" + i + "' data-k='qa'>▸ 위치</span>" : "") +
-      "<div class='t'>" + x.t + "</div>" + (x.quote ? "<div class='qt'>" + esc(x.quote) + "</div>" : "") +
+  // 질문은 스레드로: 부모 없는 질문이 항목, 그 답 아래에 답글(이어지는 질문)들이 오래된 순으로
+  const idx = new Map(notesData.qa.map((x, i) => [x.id, i]));
+  const kids = id => notesData.qa.filter(y => y.parent === id).slice().reverse();
+  const qaBlock = (x, isReply) => {
+    const i = idx.get(x.id), long = (x.a || "").length > 260;
+    return "<div class='" + (isReply ? "reply" : "item") + "' id='item-qa-" + i + "' data-id='" + x.id + "'><span class='del' data-id='" + x.id + "' data-k='qa'>✕</span>" +
+      (!isReply && x.quote ? "<span class='loc' data-i='" + i + "' data-k='qa'>▸ 위치</span>" : "") +
+      "<div class='t'>" + x.t + "</div>" + (!isReply && x.quote ? "<div class='qt'>" + esc(x.quote) + "</div>" : "") +
       "<div class='q'>Q. " + esc(x.q) + "</div><div class='a" + (long ? " clip" : "") + "'>" + mdToHtml(x.a || "") + "</div>" +
-      (long ? "<span class='more'>더보기 ▾</span>" : "") + "</div>";
-  }).join("") || "<div class='hint'>질문 기록 없음 — 본문 문장을 드래그해 질문, 또는 위에 직접 입력</div>";
+      (long ? "<span class='more'>더보기 ▾</span> " : "") + "<span class='rep' data-id='" + x.id + "'>답글</span>" +
+      "<div class='replies'>" + kids(x.id).map(k => qaBlock(k, true)).join("") + "</div></div>";
+  };
+  qa.innerHTML = notesData.qa.filter(x => !x.parent).map(x => qaBlock(x, false)).join("")
+    || "<div class='hint'>질문 기록 없음 — 본문 문장을 드래그해 질문, 또는 위에 직접 입력</div>";
   document.querySelectorAll(".del").forEach(d => d.onclick = async () => {
-    if (!confirm("삭제할까요?")) return;
-    notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify({ file, op: d.dataset.k === "note" ? "del_note" : "del_qa", idx: parseInt(d.dataset.i) }) })).json();
+    if (!confirm(d.dataset.k === "qa" ? "이 질문(과 그 아래 답글)을 삭제할까요?" : "삭제할까요?")) return;
+    const body = d.dataset.k === "note" ? { file, op: "del_note", idx: parseInt(d.dataset.i) } : { file, op: "del_qa", id: d.dataset.id };
+    notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify(body) })).json();
     renderSide(); markAnchors();
+  });
+  // 답글: 답 아래에 입력칸을 열고, 보내면 앞 문답을 맥락으로 이어서 질문
+  document.querySelectorAll(".rep").forEach(b => b.onclick = () => {
+    const holder = b.parentNode; if (holder.querySelector(":scope > .repbox")) return;
+    const box = document.createElement("div"); box.className = "repbox";
+    box.innerHTML = "<textarea placeholder='이어서 질문… (Ctrl+Enter)'></textarea><div style='text-align:right;margin-top:3px'><button class='btn pri'>질문</button></div>";
+    holder.insertBefore(box, holder.querySelector(":scope > .replies"));
+    const ta = box.querySelector("textarea"), send = () => { const q = ta.value.trim(); if (!q) return; box.remove(); ask(q, "", b.dataset.id); };
+    box.querySelector("button").onclick = send;
+    ta.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) send(); });
+    ta.focus();
   });
   document.querySelectorAll(".loc").forEach(d => d.onclick = () => locateAnchor(d.dataset.k, parseInt(d.dataset.i)));
   document.querySelectorAll(".more").forEach(m => m.onclick = () => { const a = m.parentNode.querySelector(".a"); a.classList.toggle("clip"); m.textContent = a.classList.contains("clip") ? "더보기 ▾" : "접기 ▴"; });
@@ -653,7 +681,17 @@ async function restoreReadPos(k) {
   restored = true;
   if (pos > 0.03 && pos < 0.97) {
     requestAnimationFrame(() => {
-      read.scrollTop = pos * (read.scrollHeight - read.clientHeight);
+      const target = pos * (read.scrollHeight - read.clientHeight);
+      const at = [...read.children].find(el => el.offsetTop >= target - 4) || null;
+      if (at) {
+        const mk = document.createElement("div"); mk.className = "readmark";
+        const when = readInfo.last ? new Date(readInfo.last * 1000) : null;
+        mk.textContent = "여기까지 읽음" + (when ? " · " + (when.getMonth() + 1) + "/" + when.getDate() + " " + when.getHours() + ":" + String(when.getMinutes()).padStart(2, "0") : "");
+        read.insertBefore(mk, at);
+        read.scrollTop = Math.max(0, mk.offsetTop - 60);
+      } else {
+        read.scrollTop = target;
+      }
       status("읽던 곳(" + Math.round(pos * 100) + "%)으로 이동했습니다 · 처음부터 보려면 위로 올리세요", 4000);
     });
   }
