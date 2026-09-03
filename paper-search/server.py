@@ -103,6 +103,22 @@ def find_claude():
     return None
 
 
+def _no_window():
+    """콘솔 창이 뜨지 않게 하는 subprocess 옵션 (Windows 전용).
+    이걸 주지 않으면 claude 를 부를 때마다 검은 cmd 창이 떠서 사용자의 타이핑을 가로챈다."""
+    kw = {}
+    if os.name == "nt":
+        kw["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        try:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            kw["startupinfo"] = si
+        except Exception:
+            pass
+    return kw
+
+
 # 오해하기 쉬운 라벨의 정의·금지 조건 (분류 정확도의 핵심)
 LABEL_NOTES = {
     "Review": "기존 연구를 종합·정리하는 리뷰/총설 논문일 때만. 일반 연구 논문에는 절대 붙이지 않음",
@@ -127,7 +143,7 @@ def ask_claude_json(prompt, timeout=240):
         return None
     try:
         r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
-                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
+                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
         return json.loads(m.group(0)) if m else None
     except Exception:
@@ -311,7 +327,7 @@ def claude_text(prompt, timeout=240):
         return None
     try:
         r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
-                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
+                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
         return r.stdout.decode("utf-8", "replace").strip() or None
     except Exception:
         return None
@@ -590,7 +606,7 @@ def classify_with_claude(title, kw, front, groups):
     try:
         r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                            input=prompt.encode("utf-8"),
-                           capture_output=True, timeout=240)
+                           capture_output=True, timeout=240, **_no_window())
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
         items = json.loads(m.group(0))["labels"]
         valid = set(sum(groups.values(), []))
@@ -699,7 +715,7 @@ def _claude(prompt, timeout=900):
     """claude -p 실행. 실패 시 원인이 담긴 RuntimeError."""
     exe = find_claude()
     r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
-                       input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
+                       input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
     out = r.stdout.decode("utf-8", "replace").strip()
     errtxt = r.stderr.decode("utf-8", "replace").strip()
     if r.returncode != 0 or not out:
