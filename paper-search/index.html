@@ -109,6 +109,8 @@ async function loadData() {
   const d = await r.json();
   papers = d.papers; groups = d.groups;
   render();
+  // 서버가 새 논문을 Claude로 분류하는 중이면 15초 뒤 다시 받아 라벨을 채움 (새로고침 없이)
+  if (d.classifying) setTimeout(loadData, 15000);
 }
 
 function paperLabels(p) {

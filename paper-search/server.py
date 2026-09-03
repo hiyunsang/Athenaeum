@@ -871,9 +871,9 @@ def _refresh_new_papers():
             picked = classify_with_claude(title, rules.keyword_section(text), text[:6000], groups)
             if picked is not None:
                 entry = {"labels": picked, "suggested": [], "rejected": []}
-            else:
+            else:  # Claude 실패(한도·시간초과 등): 규칙으로 임시 분류하고, 다음 /api/data 때 재시도하도록 표시
                 auto, sugg = rules.classify_labels(title, text)
-                entry = {"labels": auto, "suggested": sugg, "rejected": []}
+                entry = {"labels": auto, "suggested": sugg, "rejected": [], "claude_tries": 1}
             if f in new_titles:
                 entry["title"] = new_titles[f]
             with _lock:
@@ -881,6 +881,31 @@ def _refresh_new_papers():
                 if f not in tags:
                     tags[f] = entry
                     save_json(TAGS_PATH, tags)
+    # Claude 분류가 실패했던 논문 재시도 (한 번에 3편, 논문당 최대 3회). 사용자가 손댄 항목(rejected 있음)은 건드리지 않음
+    with _lock:
+        tags = load_json(TAGS_PATH, {})
+    have = set(archive_pdfs())
+    retry = [f for f, e in tags.items() if 0 < e.get("claude_tries", 0) < 3 and not e.get("rejected") and f in have][:3]
+    if retry:
+        groups = load_json(LABELS_PATH, {})
+        for f in retry:
+            e = tags[f]
+            title = e.get("title") or parse_name(f)["title"]
+            text = texts.get(f, "")
+            picked = classify_with_claude(title, rules.keyword_section(text), text[:6000], groups)
+            with _lock:
+                tags = load_json(TAGS_PATH, {})
+                cur = tags.get(f)
+                if not cur:
+                    continue
+                if picked is not None:
+                    merged = list(dict.fromkeys(cur.get("labels", []) + picked))
+                    cur["labels"] = merged
+                    cur["suggested"] = [s for s in cur.get("suggested", []) if s not in merged]
+                    cur.pop("claude_tries", None)
+                else:
+                    cur["claude_tries"] = cur.get("claude_tries", 0) + 1
+                save_json(TAGS_PATH, tags)
     with _lock:
         _texts_cache = texts
 
@@ -905,8 +930,11 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/api/data":
             with _lock:
                 tags = load_json(TAGS_PATH, {})
-            if any(f not in tags for f in archive_pdfs()):
+            # 새 파일이 있거나, Claude 분류에 실패해 재시도가 남은 논문이 있으면 백그라운드로 분류
+            classifying = _refreshing.is_set()
+            if any(f not in tags for f in archive_pdfs()) or any(0 < e.get("claude_tries", 0) < 3 and not e.get("rejected") for e in tags.values()):
                 threading.Thread(target=refresh_new_papers, daemon=True).start()
+                classifying = True
             papers = []
             for f in archive_pdfs():
                 meta = parse_name(f)
@@ -932,7 +960,8 @@ class Handler(BaseHTTPRequestHandler):
                 if jobs:
                     meta["jobs"] = jobs
                 papers.append(meta)
-            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {})})
+            # classifying: 백그라운드 Claude 분류 진행 중 → 화면이 잠시 뒤 다시 받아 라벨을 채움
+            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {}), "classifying": classifying})
         elif url.path == "/view":
             with open(os.path.join(BASE, "reader.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
