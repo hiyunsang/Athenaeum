@@ -25,6 +25,9 @@
   .jrow .prog { margin-top: 3px; }
   .jrow .jm { color: var(--text-3); font-size: 11px; margin-top: 2px; }
   .jrow.fail .jt { color: var(--red); }
+  .jrow.open { cursor: pointer; margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
+  .jrow.open:hover { background: var(--hover); }
+  .jrow .go { color: var(--accent); font-size: 12px; white-space: nowrap; }
   .jpend { color: var(--text-2); line-height: 1.6; }
   .jpend b { color: var(--text); font-weight: 600; }
   #chips { padding: var(--s1) var(--s4) 0; display: flex; flex-wrap: wrap; gap: var(--s1); min-height: 6px; }
@@ -422,7 +425,9 @@ function renderJobsPanel() {
   if (!running.length) html += "<div class='hint'>없음</div>";
   for (const x of running) {
     const key = "panel|" + x.file + "|" + x.kind, pi = progressInfo(x, x.kind === "map" ? 45 : 150);
-    html += "<div class='jrow'><div class='jt'><b>" + KIND_KO[x.kind] + "</b><span class='ttl' title='" + escH(titleOf(x.file)) + "'>" + escH(shortName(x.file)) + " · " + escH(titleOf(x.file)) + "</span></div>" +
+    const openable = x.kind !== "map";
+    html += "<div class='jrow" + (openable ? " open" : "") + "' data-file='" + escH(x.file) + "' data-kind='" + x.kind + "' title='" + (openable ? "클릭하면 읽기 화면에서 만들어지는 부분부터 볼 수 있습니다" : "관련맵은 완성되면 열 수 있습니다") + "'>" +
+      "<div class='jt'><b>" + KIND_KO[x.kind] + "</b><span class='ttl' title='" + escH(titleOf(x.file)) + "'>" + escH(shortName(x.file)) + " · " + escH(titleOf(x.file)) + "</span>" + (openable ? "<span class='go'>▸ 열기</span>" : "") + "</div>" +
       "<div class='prog'>" + pbarHtml(pi.frac, barState[key], "wide") + "<span class='eta'>" + pi.text + "</span></div>" +
       "<div class='jm'>" + escH(x.stage || "") + (x.elapsed != null ? " · " + fmtElapsed(x.elapsed) + " 경과" : "") + "</div></div>";
     barState[key] = pi.frac;
@@ -443,6 +448,7 @@ function renderJobsPanel() {
   }
   jobsPanel.innerHTML = html;
   animateBars(jobsPanel);
+  jobsPanel.querySelectorAll(".jrow.open").forEach(r => r.onclick = () => window.open(viewUrl({ file: r.dataset.file }, r.dataset.kind)));
 }
 jobsBtn.onclick = () => { jobsPanel.hidden = !jobsPanel.hidden; if (!jobsPanel.hidden) renderJobsPanel(); };
 document.addEventListener("mousedown", e => { if (!jobsPanel.hidden && !jobsPanel.contains(e.target) && e.target !== jobsBtn) jobsPanel.hidden = true; });
