@@ -113,7 +113,7 @@
   <h1>Paperdesk</h1>
   <a href="#" id="exploreToggle" class="toggle act" title="주제 키워드로 세상의 논문 찾기 - 화면이 좌우로 갈라집니다">논문 탐색</a>
   <a href="/explore" target="maeng_explore" class="toggle act" title="탐색을 새 탭으로 열기">↗</a>
-  <input type="text" id="ft" placeholder="본문 검색 (Enter) - PDF 안 단어 검색">
+  <input type="text" id="ft" placeholder="검색 - 제목·저자·연도·저널·라벨 (Enter 누르면 PDF 본문까지)">
   <label class="toggle"><input type="checkbox" id="incSug" checked> 제안 라벨 포함</label>
   <label class="toggle"><input type="checkbox" id="onlyUntagged"> 미분류만</label>
   <label class="toggle">정렬 <select id="sortSel">
@@ -136,6 +136,20 @@
 </div>
 <script>
 let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, editing = null;
+let searchQ = "";   // 제목·저자·연도·저널·라벨 검색어 (타자와 동시에 적용)
+
+// 논문 한 편이 검색어와 맞는지. 단어를 모두 만족해야 함(AND).
+// 4자리 숫자는 연도로도 보고(2019, 2015-2020 범위), 그 외에는 제목·저자·저널·라벨 어디든 포함되면 통과
+function metaMatch(p, words) {
+  const hay = [p.year, p.journal, p.author, p.title].concat(p.labels || [], p.suggested || []).join(" ").toLowerCase();
+  const yr = parseInt(p.year, 10);
+  return words.every(w => {
+    const range = /^(\d{4})\s*[-~]\s*(\d{4})$/.exec(w);
+    if (range) return yr >= +range[1] && yr <= +range[2];
+    if (/^\d{4}$/.test(w) && yr === +w) return true;
+    return hay.includes(w);
+  });
+}
 const barState = {};       // 작업별 마지막 진행 막대 비율 (다시 그릴 때 이어서 차오르게)
 let clsInfo = null;        // 서버가 새 논문을 분류 중이면 {n, start}
 
@@ -157,7 +171,11 @@ function baseFiltered() {
   const untag = document.getElementById("onlyUntagged").checked;
   return papers.filter(p => {
     if (untag && p.labels.length > 0) return false;
-    if (ftFiles && !ftFiles.has(p.file)) return false;
+    if (searchQ) {
+      const words = searchQ.toLowerCase().split(/\s+/).filter(Boolean);
+      // 본문 검색을 했다면 본문에 걸린 논문도 함께 보여준다
+      if (!metaMatch(p, words) && !(ftFiles && ftFiles.has(p.file))) return false;
+    }
     const ls = paperLabels(p);
     return selected.every(s => ls.includes(s));
   });
@@ -197,12 +215,13 @@ function render() {
     c.onclick = () => { selected = selected.filter(v => v !== s); render(); };
     chips.appendChild(c);
   }
-  if (ftFiles) {
+  if (searchQ) {
     const c = document.createElement("div");
-    c.className = "chip ft"; c.textContent = "본문: " + ftQuery;
+    c.className = "chip ft";
+    c.textContent = "검색: " + searchQ + (ftFiles ? " (본문 포함)" : "");
     const x = document.createElement("span"); x.textContent = "×";
     c.appendChild(x);
-    c.onclick = () => { ftFiles = null; ftQuery = ""; document.getElementById("ft").value = ""; render(); };
+    c.onclick = () => { searchQ = ""; ftFiles = null; ftQuery = ""; document.getElementById("ft").value = ""; render(); };
     chips.appendChild(c);
   }
 
@@ -604,11 +623,22 @@ function renderDrawer() {
   }
 }
 
+// 타자 치는 동안: 제목·저자·연도·저널·라벨을 즉시 걸러냄 (본문 검색은 Enter 를 눌러야 함 - 서버 조회)
+let searchTimer = null;
+document.getElementById("ft").addEventListener("input", (e) => {
+  const q = e.target.value.trim();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (q !== searchQ) { searchQ = q; if (!q) { ftFiles = null; ftQuery = ""; } render(); }
+  }, 150);
+});
 document.getElementById("ft").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
   const q = e.target.value.trim();
+  searchQ = q;
   if (!q) { ftFiles = null; ftQuery = ""; render(); return; }
-  const r = await fetch("/api/fulltext?q=" + encodeURIComponent(q));
+  render();
+  const r = await fetch("/api/fulltext?q=" + encodeURIComponent(q));   // PDF 본문까지 더해서 찾기
   const d = await r.json();
   ftQuery = q; ftFiles = new Set(d.files);
   render();

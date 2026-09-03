@@ -445,16 +445,47 @@ def pdf_body_and_asides(name):
     if not cnt:
         return "", ""
     body_size = cnt.most_common(1)[0][0]
+    def is_frag(t):
+        """그림 안 상자 글자처럼 '짧고 문장으로 끝나지 않는' 조각. 절 제목(2.1. Introduction)은 제외"""
+        if re.match(r"^\d+(\.\d+)*\.?\s+[A-Z]", t):
+            return False
+        return len(t) < 45 and len(t.split()) <= 6 and not re.search(r"[.?!:;,]$", t)
+
+    def figure_fragments(lines):
+        """조각이 3개 이상 잇달아 나오면 그림·도표 영역으로 보고 통째로 곁텍스트로 (절 제목은 사이에 껴도 끊지 않음)"""
+        out, buf = set(), []
+        for idx, L in enumerate(lines):
+            t = L["t"]
+            if is_frag(t):
+                buf.append(idx)
+            elif re.match(r"^\d+(\.\d+)*\.?\s+[A-Z]", t):
+                continue                      # 절 제목은 건너뛰되 묶음을 끊지 않음
+            else:
+                if len(buf) >= 3:
+                    out.update(buf)
+                buf = []
+        if len(buf) >= 3:
+            out.update(buf)
+        return out
+
     body, aside = [], []
     for pi, pg in enumerate(pages):
         in_cap = False
-        for L in pg["lines"]:
+        figs = figure_fragments(pg["lines"])
+        for li, L in enumerate(pg["lines"]):
             small = L["size"] < body_size * 0.95
             if CAP_LINE.match(L["t"]):
                 in_cap = True
             elif in_cap and not small:
                 in_cap = False
-            if small or in_cap:
+            # 수식·기호 부스러기(글자보다 기호·숫자가 많은 짧은 줄)도 본문에서 뺀다
+            t = L["t"]
+            alpha = sum(1 for c in t if c.isalpha())
+            toks = t.split()
+            tiny = sum(1 for w in toks if len(w) <= 2)
+            debris = len(t) < 120 and (alpha < len(t) * 0.5 or                       # 기호·숫자가 절반 넘음
+                                       (len(toks) >= 3 and tiny >= len(toks) * 0.6))  # 한두 글자 토막만 늘어선 줄
+            if small or in_cap or debris or li in figs:
                 aside.append(L["t"])
             else:
                 body.append(L["t"])
@@ -829,8 +860,19 @@ def prepare_chunks(text, size):
 _ABBR_END = re.compile(r"(?:\b(?:al|Fig|Figs|Eq|Eqs|Ref|Refs|vs|No|Dr|Prof|approx|ca|cf|i\.e|e\.g)|\b[A-Z])\.$")
 
 
+def split_paragraphs_en(text):
+    """문단 목록. 각 문단은 문장 목록 → [[문장, 문장], [문장], ...]"""
+    return _split_en(text, keep_paragraphs=True)
+
+
 def split_sentences_en(text):
-    """영문 구간을 문장 목록으로. 문단/제목 줄 경계는 항상 끊고, 문장 끝(. ! ?) 뒤 대문자·괄호·따옴표에서 끊음. 'et al.'·'Fig.' 같은 약어 뒤는 안 끊음."""
+    """영문 구간을 문장 목록으로 (문단 구분 없이 평평하게)."""
+    return [s for para in _split_en(text, keep_paragraphs=True) for s in para]
+
+
+def _split_en(text, keep_paragraphs=False):
+    """영문 구간을 문장으로 나눈다. 문단/제목 줄 경계는 항상 끊고, 문장 끝(. ! ?) 뒤 대문자·괄호·따옴표에서 끊음.
+    'et al.'·'Fig.' 같은 약어 뒤는 안 끊음. keep_paragraphs=True 면 문단별로 묶어서 돌려준다."""
     out = []
     # 줄 끝 하이픈으로 갈린 단어 이어붙이기, 그 외 줄바꿈은 공백. 빈 줄·짧은 제목 줄은 문단 경계
     paras, cur = [], []
@@ -860,15 +902,17 @@ def split_sentences_en(text):
         for t in lines:
             if joined.endswith("-") and re.match(r"^[a-z]", t): joined = joined[:-1] + t
             else: joined = (joined + " " + t) if joined else t
-        start = 0
+        start, sents = 0, []
         for m in re.finditer(r"[.!?](?=\s+[A-Z(\[\u201c\"]|\s*$)", joined):
             i = m.start()
             if _ABBR_END.search(joined[max(0, i - 8):i + 1]) or i - start < 15:
                 continue
-            out.append(joined[start:i + 1].strip()); start = i + 1
+            sents.append(joined[start:i + 1].strip()); start = i + 1
         rest = joined[start:].strip()
-        if rest: out.append(rest)
-    return [x for x in out if x]
+        if rest: sents.append(rest)
+        sents = [x for x in sents if x]
+        if sents: out.append(sents)
+    return out if keep_paragraphs else [s for para in out for s in para]
 
 
 def number_chunks(chunks, name):
@@ -887,12 +931,15 @@ def number_chunks(chunks, name):
         return None
     numbered, table, n = [], {}, 0
     for ch in chunks:
-        lines = []
-        for sent in split_sentences_en(ch):
-            n += 1
-            table[str(n)] = {"t": sent, "p": page_of(sent)}
-            lines.append("[s%d] %s" % (n, sent))
-        numbered.append("\n".join(lines) if lines else ch)
+        paras = []
+        for para in split_paragraphs_en(ch):
+            marked = []
+            for sent in para:
+                n += 1
+                table[str(n)] = {"t": sent, "p": page_of(sent)}
+                marked.append("[s%d] %s" % (n, sent))
+            paras.append(" ".join(marked))   # 같은 문단 문장은 한 줄에 이어서
+        numbered.append("\n\n".join(paras) if paras else ch)
     return numbered, table
 
 
@@ -966,6 +1013,8 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
         "- 원문 문장마다 [s번호]가 붙어 있다. 번역문에서도 각 문장 앞에 같은 번호를 그대로 붙여라 (예: '[s12] 번역문'). "
         "번호를 빠뜨리거나 바꾸지 마라. 두 문장을 한 문장으로 합쳐 옮기면 '[s12][s13] 번역문'처럼 둘 다 붙이고, 한 문장을 둘로 나누면 둘 다 같은 번호를 붙여라. "
         "소제목·캡션 줄도 번호를 유지하라.\n"
+        "- **원문의 문단 구조를 그대로 지켜라.** 같은 문단에 속한 문장들은 줄을 바꾸지 말고 이어 쓰고, 문단이 바뀔 때만 빈 줄을 넣어라. "
+        "문장마다 줄을 바꾸면 안 된다.\n"
         "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
         + "\n[원문 구간 - 문장마다 번호]\n" + ch)
 
