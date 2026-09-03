@@ -796,6 +796,7 @@ let lastActivity = Date.now();
 ["mousemove", "keydown", "wheel", "scroll", "click", "touchstart"].forEach(ev => document.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true, capture: true }));
 function readPos() { const h = read.scrollHeight - read.clientHeight; return h > 0 ? Math.min(1, read.scrollTop / h) : 1; }
 function sendPing(sec, beacon) {
+  if (params.get("nolog")) return;   // 개발·테스트용으로 열 때(&nolog=1) 읽기 기록을 남기지 않음
   const body = JSON.stringify({ file, kind, pos: readPos(), sec });
   if (beacon && navigator.sendBeacon) { navigator.sendBeacon("/api/read_ping", new Blob([body], { type: "application/json" })); return; }
   fetch("/api/read_ping", { method: "POST", body, keepalive: true }).catch(() => {});
