@@ -126,7 +126,7 @@ def ask_claude_json(prompt, timeout=240):
     if not exe:
         return None
     try:
-        r = subprocess.run([exe, "-p", "--output-format", "text"],
+        r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
         return json.loads(m.group(0)) if m else None
@@ -274,7 +274,7 @@ def claude_text(prompt, timeout=240):
     if not exe:
         return None
     try:
-        r = subprocess.run([exe, "-p", "--output-format", "text"],
+        r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
         return r.stdout.decode("utf-8", "replace").strip() or None
     except Exception:
@@ -420,7 +420,7 @@ def classify_with_claude(title, kw, front, groups):
         "[본문 앞부분]\n" + front
     )
     try:
-        r = subprocess.run([exe, "-p", "--output-format", "text"],
+        r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                            input=prompt.encode("utf-8"),
                            capture_output=True, timeout=240)
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
@@ -530,7 +530,7 @@ def _run_generation(name, kind):
 def _claude(prompt, timeout=900):
     """claude -p 실행. 실패 시 원인이 담긴 RuntimeError."""
     exe = find_claude()
-    r = subprocess.run([exe, "-p", "--output-format", "text"],
+    r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                        input=prompt.encode("utf-8"), capture_output=True, timeout=timeout)
     out = r.stdout.decode("utf-8", "replace").strip()
     errtxt = r.stderr.decode("utf-8", "replace").strip()
