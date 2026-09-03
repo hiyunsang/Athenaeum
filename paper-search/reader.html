@@ -261,6 +261,12 @@ function wrapSentences(root) {
     }
     marker.remove();
   });
+  // 목록처럼 번호가 문장 중간에 섞여 남은 경우: 화면에는 보이지 않게 지운다
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = w.nextNode())) {
+    if (n.nodeValue.indexOf("[s") >= 0) n.nodeValue = n.nodeValue.replace(/\[s\d+\]\s*/g, "");
+  }
 }
 function renderMd(md) {
   read.innerHTML = mdToHtml(md);
