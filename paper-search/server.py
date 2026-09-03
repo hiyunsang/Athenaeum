@@ -710,33 +710,43 @@ CUT_RULE = ("- 구간 경계에서 잘린 문장·목록은 있는 부분만 자
             "앞 구간에서 시작된 절이 이어지면 소제목을 다시 쓰지 말고 내용만 이어서 쓰라.\n")
 
 
-def chunk_prompt(header, kind, i, n, ch, prev_src, front=False):
+def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research"):
     is_sum = kind == "summary"
     if is_sum:
-        # 요약 = 저자가 아닌 사람(이 분야 석사 1년차)이 읽고 이해할 수 있는, 정독 여부를 판단하기 위한 짧은 문서.
-        # 초록은 충실히, 첫 절(서론)은 문단 따라 쉽게, 그 뒤 절은 '쉬운 설명 한 문단 + 핵심 bullet 1~3개'. 끝에 노벨티·기여(wrap)
-        return (
-            "당신은 기계가공·재료 분야 논문을, 저자가 아닌 사람도 읽고 이해할 수 있는 짧은 한국어 요약으로 만드는 전문가다. "
-            "아래는 논문 [" + header + "]의 {}/{} 구간이다.\n".format(i + 1, n) +
-            "독자: 이 분야 석사 1년차. 목적: 이 요약만 읽고 논문이 무슨 이야기를 하는지 이해하고, 정독할지 결정한다.\n"
-            "가장 중요한 규칙 - 정보를 우겨 넣지 마라. 수치·인용번호·장비 모델명·부차적 조건을 나열하면 실패다. "
-            "'무엇을, 왜, 어떻게 했고, 그래서 무엇을 알게 되었는지'를 쉬운 말로 풀어 쓰라.\n"
-            "규칙:\n"
-            "- 소제목은 원문의 ## 수준(1., 2., 3. …)만 쓰고 한국어로 옮겨 괄호에 원문 병기. ### 소절은 따로 제목을 달지 말고 상위 절 설명 안에 녹여 쓰라.\n"
-            + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히, 단 어려운 용어는 괄호로 짧게 풀어 번역하라.\n" if front else
-               "- 논문의 첫 절(번호 1, 보통 Introduction)은 문단을 따라 옮기되 쉬운 말로 (원문의 50~60%). 연구 배경·동기·이 논문이 하려는 것이 드러나야 한다.\n"
-               "- 첫 절 이후의 각 절은: (1) 이 절이 무엇을 다루고 무엇을 알게 되었는지 쉬운 말로 3~6문장 한 문단, "
-               "(2) 그 아래 '- ' bullet 1~3개로 꼭 기억할 핵심 주장·결과. 수치는 절에서 가장 중요한 1~2개만, 왜 중요한지와 함께.\n"
-               "- 리뷰 논문이면 '이 절은 어떤 연구들을 어떻게 정리했고 저자의 결론은 무엇인가'를 쓰고, 개별 연구 나열은 하지 마라.\n"
-               "- 결론(Conclusions) 절은 저자의 결론을 쉬운 말로 3~5문장.\n"
-               "- 목차·약어·기호표 구간이 있으면 '- 항목 : 설명' 목록으로.\n")
-            + "- 전문용어는 처음 나올 때 한 줄로 풀어 쓰고 영어를 병기하라. 이후엔 한국어 용어만.\n"
+        # 요약은 논문 종류에 따라 다르게: 리뷰 = '무슨 내용이 어디에 있나' 안내, 연구 = '무엇을 해서 무엇을 봤나'. 독자는 저자가 아닌 석사 1년차.
+        common = (
+            "- 전문용어는 처음 나올 때 한 줄로 풀어 쓰고 영어를 병기하라. 이후엔 한국어 용어만.\n"
             "- 그림/표 캡션은 넣지 마라 (PDF 옆에 따로 표시됨). 본문이 그림을 참조하면 'Fig. N' 표기만 유지.\n"
-            + CUT_RULE +
-            "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
-            "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
-            + ("\n[직전 구간의 원문 끝부분 - 문맥 파악용, 요약하지 말 것]\n" + prev_src + "\n" if prev_src else "")
-            + "\n[원문 구간]\n" + ch)
+            + CUT_RULE + "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
+            "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n")
+        ctx = (("\n[직전 구간의 원문 끝부분 - 문맥 파악용, 요약하지 말 것]\n" + prev_src + "\n") if prev_src else "") + "\n[원문 구간]\n" + ch
+        if mode == "review":
+            return (
+                "당신은 기계가공·재료 분야 리뷰 논문을 '이 리뷰에 무슨 내용이 어디에 있는지' 한눈에 보이게 안내하는 요약을 만드는 전문가다. "
+                "아래는 논문 [" + header + "]의 {}/{} 구간이다.\n".format(i + 1, n) +
+                "독자: 이 분야 석사 1년차. 목적: 이 리뷰가 어떤 주제들을 어떻게 다루는지 파악하고, 필요한 절만 골라 읽을 수 있게 한다. "
+                "정보를 우겨 넣지 마라 - 개별 논문의 수치 나열은 실패다.\n"
+                "규칙:\n- 원문의 대제목·소제목을 모두 유지 (## = 대제목, ### = 소제목, 원문 번호 유지). 소제목은 한국어로 옮기고 괄호에 원문 병기.\n"
+                + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히 번역하라.\n" if front else
+                   "- 첫 절(1. Introduction)은 이 리뷰의 범위·동기·구성을 쉬운 말로 한 문단(4~6문장).\n"
+                   "- 그 외 각 절·소절마다 2~4문장: 이 절이 다루는 주제가 무엇인지(어떤 재료·공정·방법·현상), 어떤 종류의 연구들을 어떻게 정리했는지, "
+                   "저자가 내리는 결론이나 쟁점이 무엇인지. 대표적인 결론 하나 정도만 수치와 함께. 필요하면 '- ' bullet 1~2개로 핵심 쟁점.\n"
+                   "- 결론·향후 과제 절은 저자가 꼽는 핵심 결론과 남은 과제를 bullet 3~6개.\n"
+                   "- 목차·약어·기호표 구간이 있으면 '- 항목 : 설명' 목록으로.\n")
+                + common + ctx)
+        return (
+            "당신은 기계가공·재료 분야 연구 논문을 '무엇을 해서 무엇을 봤는지' 저자가 아닌 사람도 이해할 수 있게 요약하는 전문가다. "
+            "아래는 논문 [" + header + "]의 {}/{} 구간이다.\n".format(i + 1, n) +
+            "독자: 이 분야 석사 1년차. 목적: 이 논문이 무엇을 왜 했고 무엇을 알게 됐는지 이해하고, 정독할지 결정한다. "
+            "정보를 우겨 넣지 마라 - 수치·인용번호·장비 모델명·부차적 조건을 나열하면 실패다.\n"
+            "규칙:\n- 소제목은 원문의 ## 수준(1., 2., 3. …)만 쓰고 한국어로 옮겨 괄호에 원문 병기. ### 소절은 따로 제목을 달지 말고 상위 절 설명 안에 녹여 쓰라.\n"
+            + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히 번역하라.\n" if front else
+               "- 서론(1.)은 문단을 따라 쉬운 말로 (원문의 50~60%): 배경, 기존 연구의 빈틈, 이 논문이 하려는 것.\n"
+               "- 방법(재료·시험편·장비·조건·해석) 절은 '무엇을 어떻게 했는지' bullet 3~6개. 재현에 필요한 핵심 조건만.\n"
+               "- 결과·고찰 절은 '무엇을 봤는지' 쉬운 말 한 문단(3~5문장) + 핵심 발견 bullet 2~4개 (가장 중요한 수치 1~2개를 왜 중요한지와 함께).\n"
+               "- 결론 절은 저자의 주장을 bullet 3~5개.\n"
+               "- 목차·약어·기호표 구간이 있으면 '- 항목 : 설명' 목록으로.\n")
+            + common + ctx)
     return (
         "당신은 기계가공·재료 분야 논문 전문 번역가다. 아래는 논문 [" + header + "]의 "
         "{}/{} 구간이다. 한국어로 번역하라.\n".format(i + 1, n) +
@@ -753,6 +763,12 @@ def generate_document(name, kind, text):
     header = paper_header(name)
     key = (name, kind)
     is_sum = kind == "summary"
+    # 논문 종류: 라벨 'Review' 또는 제목의 review/survey/advances/perspectives → 리뷰 요약, 아니면 연구 요약
+    with _lock:
+        _t = load_json(TAGS_PATH, {}).get(name, {})
+    _title = (_t.get("title") or parse_name(name)["title"] or "").lower()
+    mode = "review" if ("Review" in (_t.get("labels", []) + _t.get("suggested", [])) or
+                        re.search(r"\breview\b|\bsurvey\b|state of the art|state-of-the-art|advances in|perspectives|\boverview\b", _title)) else "research"
     chunks, has_front = prepare_chunks(text, 14000 if is_sum else 6000)  # 요약은 절 단위로 크게, 번역은 6k  # 머리부(목차·약어)는 통째로 1구간
     n = len(chunks)
     results, errors, done = [None] * n, [], [0]
@@ -768,7 +784,7 @@ def generate_document(name, kind, text):
     def work(i):
         ch = chunks[i]
         prev_src = chunks[i - 1][-500:] if i and not (has_front and i == 1) else ""  # 본문 1구간엔 목차 꼬리를 문맥으로 주지 않음
-        prompt = chunk_prompt(header, kind, i, n, ch, prev_src, front=(has_front and i == 0))
+        prompt = chunk_prompt(header, kind, i, n, ch, prev_src, front=(has_front and i == 0), mode=mode)
         try:
             with _chunk_sem:
                 out = _claude(prompt)
@@ -814,29 +830,41 @@ def generate_document(name, kind, text):
         _set_stage(key, "한줄 요약·핵심 정리 작성 중")
         if job:
             job["done"] = n; job["phase"] = "wrap"
-        wrap = ask_claude_json(
-            "아래는 논문 [" + header + "]의 구간별 요약 전체다. 이 분야 석사 1년차가 읽고 이해할 수 있는 쉬운 한국어로, 정독할지 결정하도록 써라. "
-            "전문용어는 풀어 쓰고 영어 병기, 수치는 꼭 필요한 것만.\n"
-            "(1) overview: 한줄 요약 2~3문장 - 이 논문이 무엇을 왜 했고 무엇을 알게 됐는지, 쉬운 말로.\n"
-            "(2) novelty: 이 논문의 노벨티와 기여 bullet 3~5개 - 기존 연구와 무엇이 다른지, 무엇을 새로 보였는지. 각 bullet 은 두 문장 이내, 쉬운 말로.\n"
-            "(3) limits: 한계·주의점 bullet 1~3개.\n"
-            "(4) worth: 누가 언제 읽으면 좋은지 1~2문장 (예: 'X를 실험하려는 사람에게 필수, Y만 궁금하면 결론만').\n"
-            "네 키(overview, novelty, limits, worth)는 모두 비우지 말고 채워라.\n"
-                        + GLOSSARY_RULE +
-            "\nJSON 한 줄만: {\"overview\": \"...\", \"novelty\": \"- ...\\n- ...\", \"limits\": \"- ...\", \"worth\": \"...\"}\n\n" + body[:40000], timeout=400)
-        # 판단에 필요한 것(한줄 요약 → 노벨티·기여 → 읽을 가치 → 한계)을 맨 위에, 본문(초록·서론·절별 bullet)은 그 아래
+        if mode == "review":
+            wrap = ask_claude_json(
+                "아래는 리뷰 논문 [" + header + "]의 구간별 요약 전체다. 이 분야 석사 1년차가 읽고 '이 리뷰에 무엇이 어디에 있는지' 알 수 있게 쉬운 한국어로 써라. "
+                "전문용어는 풀어 쓰고 영어 병기.\n"
+                "(1) overview: 이 리뷰가 무엇을 어떤 범위로 다루는지 2~3문장.\n"
+                "(2) contents: '이 리뷰에서 찾을 수 있는 것' bullet 4~8개 - 각 bullet 은 '주제 (절 번호)' 꼴로, 무엇을 알 수 있는지 한 줄.\n"
+                "(3) conclusions: 저자가 리뷰를 통해 내리는 핵심 결론·향후 과제 bullet 3~5개.\n"
+                "(4) worth: 누가 어느 절을 읽으면 좋은지 1~2문장.\n"
+                "(5) limits: 한계·주의점(발표 시점, 다루지 않는 범위 등) bullet 1~3개.\n"
+                "다섯 키(overview, contents, conclusions, worth, limits)는 모두 채워라.\n" + GLOSSARY_RULE +
+                "\nJSON 한 줄만: {\"overview\": \"...\", \"contents\": \"- ...\\n- ...\", \"conclusions\": \"- ...\", \"worth\": \"...\", \"limits\": \"- ...\"}\n\n" + body[:40000], timeout=400)
+        else:
+            wrap = ask_claude_json(
+                "아래는 연구 논문 [" + header + "]의 구간별 요약 전체다. 이 분야 석사 1년차가 읽고 이해할 수 있는 쉬운 한국어로, 정독할지 결정하도록 써라. "
+                "전문용어는 풀어 쓰고 영어 병기, 수치는 꼭 필요한 것만.\n"
+                "(1) overview: 한줄 요약 2~3문장 - 무엇을 왜 했고 무엇을 알게 됐는지.\n"
+                "(2) novelty: 노벨티와 기여 bullet 3~5개 - 기존 연구와 무엇이 다른지, 무엇을 새로 보였는지. 각 bullet 두 문장 이내.\n"
+                "(3) results: 핵심 결과 bullet 3~5개 - 무엇을 봤는지, 가장 중요한 수치 포함.\n"
+                "(4) worth: 누가 언제 읽으면 좋은지 1~2문장.\n"
+                "(5) limits: 한계·주의점 bullet 1~3개.\n"
+                "다섯 키(overview, novelty, results, worth, limits)는 모두 채워라.\n" + GLOSSARY_RULE +
+                "\nJSON 한 줄만: {\"overview\": \"...\", \"novelty\": \"- ...\\n- ...\", \"results\": \"- ...\", \"worth\": \"...\", \"limits\": \"- ...\"}\n\n" + body[:40000], timeout=400)
+        # 판단에 필요한 것을 맨 위에, 본문(초록·서론·절별 설명)은 구분선 아래
         head = "# (요약) " + header + "\n\n"
         tail = ""
         if wrap:
-            if wrap.get("overview"):
-                head += "## 한줄 요약\n" + wrap["overview"].strip() + "\n\n"
-            if wrap.get("novelty"):
-                head += "## 노벨티와 기여\n" + wrap["novelty"].strip() + "\n\n"
-            if wrap.get("worth"):
-                head += "## 읽을 가치\n" + wrap["worth"].strip() + "\n\n"
-            if wrap.get("limits"):
-                head += "## 한계\n" + wrap["limits"].strip() + "\n\n"
-            if not wrap.get("novelty") and wrap.get("closing"):  # 예전 형식 호환
+            def sec(title, key):
+                return ("## " + title + "\n" + wrap[key].strip() + "\n\n") if wrap.get(key) else ""
+            head += sec("한줄 요약", "overview")
+            if mode == "review":
+                head += sec("이 리뷰에서 찾을 수 있는 것", "contents") + sec("저자의 핵심 결론", "conclusions")
+            else:
+                head += sec("노벨티와 기여", "novelty") + sec("핵심 결과", "results")
+            head += sec("읽을 가치", "worth") + sec("한계", "limits")
+            if not (wrap.get("novelty") or wrap.get("contents")) and wrap.get("closing"):  # 예전 형식 호환
                 tail = "\n\n## 핵심 정리 및 시사점\n" + wrap["closing"].strip()
         head += "---\n\n"
         return head + body + tail
