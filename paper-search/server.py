@@ -481,7 +481,7 @@ def pdf_body_and_asides(name):
     body_size = max(cnt.items(), key=lambda kv: kv[1])[0]
     body, aside = [], []
     in_nomen = False   # 기호표(Nomenclature)는 페이지 맨 위 상자로 들어가 본문 문장을 끊는다 → 곁텍스트로
-    for blocks in pages:
+    for pi, blocks in enumerate(pages):
         for b in blocks:
             t = b["t"]
             if _NOMEN.match(t):
@@ -493,8 +493,9 @@ def pdf_body_and_asides(name):
             tiny = sum(1 for w in toks if len(w) <= 2)
             debris = len(t) < 120 and (alpha < len(t) * 0.5 or                        # 기호·숫자가 절반 넘는 짧은 줄
                                        (len(toks) >= 3 and tiny >= len(toks) * 0.6))  # 한두 글자 토막만 늘어선 줄
-            # 글꼴이 작아도 긴 산문(초록·키워드 등 머리부)은 본문에 남긴다. 캡션·표 칸·러닝헤드는 짧아서 걸러진다
-            small = b["size"] < body_size * 0.95 and len(t) < 200
+            # 작은 글꼴은 곁텍스트(캡션·표·각주). 단 1~2쪽의 긴 산문은 초록·키워드이므로 본문에 남긴다
+            # (표 칸도 길 수 있으므로 길이만으로 판단하면 안 된다 - 실제로 6.5pt 1754자 표가 본문에 섞였던 적 있음)
+            small = b["size"] < body_size * 0.95 and not (pi <= 1 and len(t) >= 200)
             if b["in_fig"] or small or debris or in_nomen or CAP_LINE.match(t):
                 aside.append(t)
             else:
@@ -933,7 +934,8 @@ def _split_en(text, keep_paragraphs=False):
         # 제목 줄: '2.3. Theoretical models …' (번호 뒤 대문자 단어). '90 nm to 200 nm' 같은 수치 줄은 제목이 아님
         is_head = (bool(re.match(r"^\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z]", t)) and len(t) < 110
                    and not re.search(r"[.,;:]$", t) and not re.match(r"^\d+(?:\.\d+)?\s*(nm|µm|um|mm|cm|GPa|MPa|kHz|Hz|rpm|K|N|%)\b", t))
-        if is_head:
+        # 목록 항목(- 로 시작)은 한 줄이 한 항목이므로 따로 문단으로 둔다 (그러지 않으면 목차가 한 줄로 뭉친다)
+        if is_head or re.match(r"^[-•]\s", t):
             if cur: paras.append(cur); cur = []
             paras.append([t]); continue
         cur.append(t)
