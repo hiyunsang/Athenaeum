@@ -708,7 +708,9 @@ def split_sentences_en(text):
         if not t:
             if cur: paras.append(cur); cur = []
             continue
-        is_head = bool(re.match(r"^\d+(?:\.\d+)*\.?\s+\S", t)) and len(t) < 110 and not t.endswith((".", ",", ";"))
+        # 제목 줄: '2.3. Theoretical models …' (번호 뒤 대문자 단어). '90 nm to 200 nm' 같은 수치 줄은 제목이 아님
+        is_head = (bool(re.match(r"^\d+(?:\.\d+)*\.?\s+[A-Z][A-Za-z]", t)) and len(t) < 110
+                   and not re.search(r"[.,;:]$", t) and not re.match(r"^\d+(?:\.\d+)?\s*(nm|µm|um|mm|cm|GPa|MPa|kHz|Hz|rpm|K|N|%)\b", t))
         if is_head:
             if cur: paras.append(cur); cur = []
             paras.append([t]); continue
@@ -888,6 +890,8 @@ def generate_document(name, kind, text):
             save_json(align_path(name), align_table)
         except Exception:
             pass
+        # '[s10] ## 1. 서론' 처럼 번호가 소제목 기호 앞에 오면 마크다운 제목이 깨지므로 '## [s10] 1. 서론' 으로
+        results = [re.sub(r"(?m)^(\[s\d+\](?:\[s\d+\])*)\s*(#{1,6}\s)", r"\2\1 ", r) for r in results]
     # 구간 결과 정리: 구간이 만든 # 제목은 ##로 내림(문서 제목은 하나만), 참고문헌 구간마다 반복된 '(참고문헌 생략)'은 하나로
     results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
