@@ -89,6 +89,7 @@
   #status { position: fixed; bottom: var(--s3); left: 50%; transform: translateX(-50%); background: #1c1c1a; color: #fff; padding: 5px 12px; border-radius: var(--r); font-size: 12px; display: none; z-index: 30; }
   .hint { color: var(--text-3); font-size: 12px; }
 </style>
+<script src="/ui.js"></script>
 </head>
 <body>
 <div id="bar">
@@ -273,7 +274,7 @@ function buildTable(h) {
 }
 
 // ---------- 생성 중 실시간 표시 ----------
-let liveTimer = null;
+let liveTimer = null, livePrev = null;
 function liveView(k) {
   if (liveTimer) clearInterval(liveTimer);
   const label = k === "summary" ? "요약" : "전문번역";
@@ -283,10 +284,13 @@ function liveView(k) {
     if (s.status === "done" || s.status === "none") { clearInterval(liveTimer); liveTimer = null; delete texts[k]; showKind(k); return; }
     if (s.status === "error") { clearInterval(liveTimer); liveTimer = null; read.innerHTML = "<p class='hint'>⚠ 실패: " + esc(s.error || "") + "</p>"; return; }
     const total = s.total || 0, parts = s.parts || {}, doneN = Object.keys(parts).length;
-    let html = "<p class='hint'>" + label + " 생성 중 — " + doneN + "/" + total + " 구간 완료 (" + fmtSec(s.elapsed) + ") · 완성된 부분부터 표시됩니다</p>";
+    const pi = progressInfo(Object.assign({}, s, { done: doneN }), 150);
+    let html = "<div class='prog' style='margin:4px 0 14px'><span>" + label + " 생성 중 · " + doneN + "/" + total + " 구간</span>" +
+      pbarHtml(pi.frac, livePrev, "wide") + "<span class='eta'>" + pi.text + "</span></div>";
+    livePrev = pi.frac;
     for (let i = 0; i < total; i++)
       html += parts[i] ? mdToHtml(parts[i]) : "<p class='hint' style='border:1px dashed var(--line-2);border-radius:var(--r);padding:8px'>" + (i + 1) + "/" + total + " 구간 생성 중…</p>";
-    const keep = read.scrollTop; read.innerHTML = html; read.scrollTop = keep; bindFigrefs(read);
+    const keep = read.scrollTop; read.innerHTML = html; read.scrollTop = keep; bindFigrefs(read); animateBars(read);
   };
   tick(); liveTimer = setInterval(tick, 5000);
 }

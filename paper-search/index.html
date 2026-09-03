@@ -55,6 +55,11 @@
   .editbtn:hover, .row:hover .editbtn:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
   .editbtn.warn, .row:hover .editbtn.warn { color: var(--red); }
   .editbtn:disabled, .row:hover .editbtn:disabled { color: var(--text-3); text-decoration: none; cursor: default; }
+  .editbtn .pbar { margin: 0 4px; }
+  .eta { color: var(--text-3); white-space: nowrap; }
+  #summary .prog { display: inline-flex; margin-left: var(--s2); }
+  #summary .prog .pbar { width: 80px; flex: none; }
+  .pbar.slow > i { transition-duration: 14s; }
   #drawer { display: none; width: 300px; min-width: 300px; border-left: 1px solid var(--line-2); background: var(--panel); padding: var(--s3) var(--s3) var(--s8); height: calc(100vh - 84px); overflow-y: auto; }
   #drawer.open { display: block; }
   #drawer h2 { font-family: var(--font-serif); font-size: 15px; font-weight: 400; margin-bottom: var(--s2); line-height: 1.35; }
@@ -78,6 +83,7 @@
   body.dragging #exploreFrame { pointer-events: none; }
   body.dragging #explorePane { transition: none; }
 </style>
+<script src="/ui.js"></script>
 </head>
 <body>
 <header>
@@ -103,11 +109,14 @@
 </div>
 <script>
 let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, editing = null;
+const barState = {};       // 작업별 마지막 진행 막대 비율 (다시 그릴 때 이어서 차오르게)
+let clsInfo = null;        // 서버가 새 논문을 분류 중이면 {n, start}
 
 async function loadData() {
   const r = await fetch("/api/data");
   const d = await r.json();
   papers = d.papers; groups = d.groups;
+  clsInfo = d.classifying ? { n: d.classifying_n || 1, start: clsInfo ? clsInfo.start : Date.now() } : null;
   render();
   // 서버가 새 논문을 Claude로 분류하는 중이면 15초 뒤 다시 받아 라벨을 채움 (새로고침 없이)
   if (d.classifying) setTimeout(loadData, 15000);
@@ -135,8 +144,13 @@ function filtered() {
 function render() {
   const base = baseFiltered();
   const cur = filtered();
-  document.getElementById("summary").textContent =
-    "검색 결과 " + cur.length + "편 / 전체 " + papers.length + "편";
+  let summaryHtml = "검색 결과 " + cur.length + "편 / 전체 " + papers.length + "편";
+  if (clsInfo) {  // 새 논문 라벨 분류 진행 막대 (논문당 ~45초 가정)
+    const el = (Date.now() - clsInfo.start) / 1000, T = 45 * clsInfo.n;
+    const frac = Math.min(0.92, (el + 14) / T), prev = Math.min(0.92, el / T);
+    summaryHtml += "<span class='prog'>새 논문 " + clsInfo.n + "편 라벨 분류 중 " + pbarHtml(frac, prev, "slow") + "<span class='eta'>" + fmtEta(Math.max(5, T - el)) + "</span></span>";
+  }
+  document.getElementById("summary").innerHTML = summaryHtml;
 
   const chips = document.getElementById("chips");
   chips.innerHTML = "";
@@ -266,6 +280,7 @@ function render() {
     main.appendChild(row);
   }
   if (editing) renderDrawer();
+  animateBars(document);
 }
 
 const polling = {};
@@ -345,7 +360,10 @@ function genButton(p, kind, label, ready) {
   const job = (p.jobs || {})[kind];
   if (job && job.status === "running") {  // 서버가 기억하는 진행 상태 (새로고침해도 유지)
     const openable = kind !== "map";
-    b.textContent = label + (job.waiting ? " 대기중" : " 생성중") + " " + fmtElapsed(job.elapsed) + (openable ? " ▸열기" : "");
+    // 진행 막대 + 남은 시간 (요약·번역은 구간 완료 수, 관련맵은 단계 k/5 기준)
+    const pi = progressInfo(job, kind === "map" ? 45 : 150);
+    b.innerHTML = label + " " + pbarHtml(pi.frac, barState[key]) + "<span class='eta'>" + pi.text + "</span>" + (openable ? " ▸열기" : "");
+    barState[key] = pi.frac;
     b.title = (job.stage || "") + (openable ? "\n클릭하면 완성된 부분부터 볼 수 있습니다" : "");
     b.disabled = !openable;
     if (openable) b.onclick = (e) => { e.stopPropagation(); window.open(viewUrl(p, kind)); };

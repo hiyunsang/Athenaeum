@@ -3193,7 +3193,18 @@
   "title": "Review of ductile machining and ductile-brittle transition characterization mechanisms in precision/ultraprecision turning, milling and grinding of brittle materials"
  },
  "2019_WEAR_Halim_Tool wear and chip morphology in high-speed milling of hardened Inconel 718 under dry and cryogenic CO2 conditions.pdf": {
-  "labels": [],
+  "labels": [
+   "Nickel-based alloy",
+   "Inconel 718",
+   "Difficult-to-cut",
+   "Milling",
+   "Cryogenic",
+   "Tool wear",
+   "BUE",
+   "Adhesion",
+   "Chip formation",
+   "Thermal effect"
+  ],
   "suggested": [],
   "rejected": []
  },
@@ -3213,5 +3224,22 @@
   "suggested": [],
   "rejected": [],
   "title": "Milling machinability of Ta-12W alloy based on supercritical CO2 + MQL hybrid cooling system"
+ },
+ "2025_JMPT_Li_Influence of grain morphology on the chip formation mechanisms of wrought and laser powder bed fusion (LPBF) fabricated alloy 718.pdf": {
+  "labels": [
+   "Nickel-based alloy",
+   "Inconel 718",
+   "Additive manufactured",
+   "Polycrystal",
+   "Anisotropic",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "Quick-stop",
+   "Plastic flow"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Influence of grain morphology on the chip formation mechanisms of wrought and laser powder bed fusion (LPBF) fabricated alloy 718"
  }
 }

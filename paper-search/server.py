@@ -384,6 +384,18 @@ def job_view(job):
     if t and v["status"] == "running":
         v["elapsed"] = int(time.time() - t)
         v["waiting"] = "t_start" not in job
+    # 진행률: 구간 완료 수(done/total) 또는 단계 문구의 'k/n'. 남은 시간(eta)은 지금까지의 속도로 추정 (화면 진행 막대용)
+    done, total = job.get("done"), job.get("total")
+    if not total:
+        m = re.search(r"(\d+)\s*/\s*(\d+)", v["stage"] or "")
+        if m:
+            done, total = int(m.group(1)), int(m.group(2))
+    if total:
+        v["done"], v["total"] = int(done or 0), int(total)
+        if v.get("elapsed") and done:
+            v["eta"] = int(v["elapsed"] / done * (total - done)) + int(job.get("eta_extra", 0))
+    if job.get("phase"):
+        v["phase"] = job["phase"]
     return v
 
 
@@ -697,6 +709,8 @@ def generate_document(name, kind, text):
         job["partial"] = results
         job["total"] = n
     _set_stage(key, "Claude {} 중 (0/{} 구간, 4개 동시)".format(label, n))
+    if job:
+        job["done"] = 0; job["phase"] = "chunks"; job["eta_extra"] = 25 if is_sum else 0  # 요약은 마지막 한줄요약 단계 ~25초
 
     def work(i):
         ch = chunks[i]
@@ -715,6 +729,8 @@ def generate_document(name, kind, text):
             errors.append(e)
         done[0] += 1
         _set_stage(key, "Claude {} 중 ({}/{} 구간 완료, 4개 동시)".format(label, done[0], n))
+        if job:
+            job["done"] = done[0]
 
     threads = [threading.Thread(target=work, args=(i,), daemon=True) for i in range(n)]
     for t in threads:
@@ -729,6 +745,8 @@ def generate_document(name, kind, text):
     body = re.sub(r"(?:\(참고문헌 생략\)\s*){2,}", "(참고문헌 생략)\n\n", body)
     if is_sum:
         _set_stage(key, "한줄 요약·핵심 정리 작성 중")
+        if job:
+            job["done"] = n; job["phase"] = "wrap"
         wrap = ask_claude_json(
             "아래는 논문 [" + header + "]의 구간별 압축 요약 전체다. 이 논문의 (1) 한줄 요약 2~3문장, "
             "(2) 핵심 정리: 주요 발견·주장 5~8개 bullet과 한계·시사점을 한국어로 써라. " + GLOSSARY_RULE +
@@ -932,7 +950,8 @@ class Handler(BaseHTTPRequestHandler):
                 tags = load_json(TAGS_PATH, {})
             # 새 파일이 있거나, Claude 분류에 실패해 재시도가 남은 논문이 있으면 백그라운드로 분류
             classifying = _refreshing.is_set()
-            if any(f not in tags for f in archive_pdfs()) or any(0 < e.get("claude_tries", 0) < 3 and not e.get("rejected") for e in tags.values()):
+            classifying_n = sum(1 for f in archive_pdfs() if f not in tags) +                 sum(1 for e in tags.values() if 0 < e.get("claude_tries", 0) < 3 and not e.get("rejected"))
+            if classifying_n:
                 threading.Thread(target=refresh_new_papers, daemon=True).start()
                 classifying = True
             papers = []
@@ -961,7 +980,7 @@ class Handler(BaseHTTPRequestHandler):
                     meta["jobs"] = jobs
                 papers.append(meta)
             # classifying: 백그라운드 Claude 분류 진행 중 → 화면이 잠시 뒤 다시 받아 라벨을 채움
-            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {}), "classifying": classifying})
+            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {}), "classifying": classifying, "classifying_n": classifying_n})
         elif url.path == "/view":
             with open(os.path.join(BASE, "reader.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -1055,6 +1074,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/ui.css":
             with open(os.path.join(BASE, "ui.css"), "rb") as f:
                 self._send(200, f.read(), "text/css; charset=utf-8")
+        elif url.path == "/ui.js":
+            with open(os.path.join(BASE, "ui.js"), "rb") as f:
+                self._send(200, f.read(), "application/javascript; charset=utf-8")
         elif url.path.startswith("/fonts/"):
             # 로컬 글꼴 파일 (Pretendard 등) — 인터넷 없이도 뜨게 paper-search\fonts\ 에서 제공
             fname = os.path.basename(url.path)
@@ -1146,7 +1168,8 @@ class Handler(BaseHTTPRequestHandler):
             elif job["status"] == "done":
                 self._send(200, {"status": "done", "result": job["result"]})
             else:
-                self._send(200, {"status": job["status"], "stage": job.get("stage", ""), "error": job.get("error", "")})
+                v = job_view(job); v["error"] = job.get("error", "")
+                self._send(200, v)
         elif url.path == "/api/openalex_status":
             # 맵 서비스(OpenAlex) 상태 확인: 재시도 없이 가볍게 한 번씩만
             import requests as rq
@@ -1229,7 +1252,7 @@ class Handler(BaseHTTPRequestHandler):
             key = ("smart:" + q + "|" + year, "smart")
             job = _jobs.get(key)
             if not job or job.get("status") == "error":
-                _jobs[key] = {"status": "running", "stage": "시작"}
+                _jobs[key] = {"status": "running", "stage": "시작", "t0": time.time()}
                 threading.Thread(target=_run_smart_safe, args=(q, year, key), daemon=True).start()
             self._send(200, {"key": key[0]})
         elif self.path == "/api/generate":
