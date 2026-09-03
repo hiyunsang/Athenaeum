@@ -710,16 +710,22 @@ CUT_RULE = "- 구간 경계에서 잘린 문장·목록은 있는 부분만 자�
 def chunk_prompt(header, kind, i, n, ch, prev_src, front=False):
     is_sum = kind == "summary"
     if is_sum:
+        # 요약 = 이 논문을 정독할지 결정하기 위한 짧은 문서. 초록·서론은 충실히, 그 뒤는 절마다 bullet 초압축, 끝에 노벨티·기여(wrap)
         return (
-            "당신은 기계가공·재료 분야 논문을 한국어로 '압축 번역'하는 전문가다. 아래는 논문 [" + header + "]의 "
+            "당신은 기계가공·재료 분야 논문을 '읽을지 말지 판단하기 위한 짧은 요약'으로 만드는 전문가다. 아래는 논문 [" + header + "]의 "
             "{}/{} 구간이다.\n".format(i + 1, n) +
-            "규칙:\n- 원문의 소제목 구조를 그대로 따라라 (소제목은 ## 또는 ### 로, 원문 번호 유지). "
-            "고정된 틀(배경/방법/결과)로 재편하지 마라 - 리뷰 논문이면 각 소단원을 그 순서대로 상세히.\n"
-            "- 모든 문장을 옮기지는 말되, 핵심 주장·방법·수치·논리 전개·저자의 결론은 빠짐없이 담아라. "
-            "길이 제한 없음. 원문 분량에 비례해 상세하게.\n"
-            "- 그림/표 캡션은 요약에 넣지 마라 (PDF 옆에 따로 표시됨). 본문이 그림을 참조하면 'Fig. N' 표기만 유지.\n"
-            + (FRONT_RULE if front else
-               "- 목차(Contents)·약어(Abbreviations)·기호표(Nomenclature) 구간은 항목마다 한 줄씩 '- 항목 : 설명' 목록으로.\n")
+            "목적: 독자가 이 요약만 보고 정독할지 결정할 수 있어야 한다. 내용은 과감히 줄이되, "
+            "무엇을 어떤 방법으로 했고 무엇이 나왔는지는 정확하게.\n"
+            "규칙:\n- 원문 소제목 구조 유지 (## 또는 ###, 원문 번호 유지). 고정 틀로 재편하지 마라.\n"
+            + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히 번역하라.\n" if front else
+               "- 서론(Introduction)이 이 구간에 있으면 서론만은 문단을 따라 충실히 옮겨라 (핵심 문장 위주, 원문의 60~70%). "
+               "연구 배경·동기·이 논문이 하려는 것이 드러나야 한다.\n"
+               "- 서론 이후의 절(방법·결과·고찰·결론)은 절마다 bullet 2~5개로 초압축: "
+               "'- 방법/분석: 무슨 장비·재료·조건·해석으로', '- 한 것: 무엇을 했는지', '- 결과: 핵심 수치와 함께'. "
+               "문장형 서술·배경 설명·선행연구 나열 금지. 분량은 원문의 15% 이내.\n"
+               "- 결론(Conclusions) 절은 저자가 주장하는 결론을 bullet로 정확히.\n"
+               "- 목차·약어·기호표 구간이 있으면 '- 항목 : 설명' 목록으로.\n")
+            + "- 그림/표 캡션은 넣지 마라 (PDF 옆에 따로 표시됨). 본문이 그림을 참조하면 'Fig. N' 표기만 유지.\n"
             + CUT_RULE +
             "- 참고문헌 목록은 '(참고문헌 생략)'으로만 표시.\n- " + GLOSSARY_RULE + "\n"
             "- 요약 외 다른 말(인사, 안내)은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
@@ -741,7 +747,7 @@ def generate_document(name, kind, text):
     header = paper_header(name)
     key = (name, kind)
     is_sum = kind == "summary"
-    chunks, has_front = prepare_chunks(text, 9000 if is_sum else 6000)  # 머리부(목차·약어)는 통째로 1구간
+    chunks, has_front = prepare_chunks(text, 14000 if is_sum else 6000)  # 요약은 절 단위로 크게, 번역은 6k  # 머리부(목차·약어)는 통째로 1구간
     n = len(chunks)
     results, errors, done = [None] * n, [], [0]
     label = "요약" if is_sum else "번역"
@@ -760,7 +766,7 @@ def generate_document(name, kind, text):
         try:
             with _chunk_sem:
                 out = _claude(prompt)
-                too_short = len(out) < len(ch) * (0.06 if is_sum else 0.35) and "참고문헌 생략" not in out
+                too_short = len(out) < len(ch) * (0.02 if is_sum else 0.35) and "참고문헌 생략" not in out
                 if too_short:  # 뒤쪽을 건너뛴 듯하면 한 번 더
                     out2 = _claude(prompt)
                     if len(out2) > len(out):
@@ -784,18 +790,35 @@ def generate_document(name, kind, text):
     results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
     body = re.sub(r"(?:\(참고문헌 생략\)\s*){2,}", "(참고문헌 생략)\n\n", body)
+    # 참고문헌 표시는 문서 끝의 것 하나만 남김 (중간 구간에서 수식 덩어리를 참고문헌으로 오인해 찍는 경우 제거)
+    last = body.rfind("(참고문헌 생략)")
+    if last > 0:
+        body = re.sub(r"\(참고문헌 생략\)\s*", "", body[:last]) + body[last:]
     if is_sum:
         _set_stage(key, "한줄 요약·핵심 정리 작성 중")
         if job:
             job["done"] = n; job["phase"] = "wrap"
         wrap = ask_claude_json(
-            "아래는 논문 [" + header + "]의 구간별 압축 요약 전체다. 이 논문의 (1) 한줄 요약 2~3문장, "
-            "(2) 핵심 정리: 주요 발견·주장 5~8개 bullet과 한계·시사점을 한국어로 써라. " + GLOSSARY_RULE +
-            "\nJSON 한 줄만: {\"overview\": \"...\", \"closing\": \"- ...\\n- ...\"}\n\n" + body[:40000], timeout=400)
+            "아래는 논문 [" + header + "]의 구간별 요약 전체다. 독자가 이 논문을 정독할지 결정하도록 한국어로 써라.\n"
+            "(1) overview: 한줄 요약 2~3문장 - 무엇을 어떻게 해서 무엇을 밝혔는지.\n"
+            "(2) novelty: 이 논문의 노벨티와 기여 bullet 3~5개 (기존 연구와 무엇이 다른지, 무엇을 새로 보였는지).\n"
+            "(3) limits: 한계·주의점 bullet 1~3개.\n"
+            "(4) worth: 누가 언제 읽으면 좋은지 1~2문장 (예: 'X를 실험하려는 사람에게 필수, Y만 궁금하면 결론만').\n"
+            + GLOSSARY_RULE +
+            "\nJSON 한 줄만: {\"overview\": \"...\", \"novelty\": \"- ...\\n- ...\", \"limits\": \"- ...\", \"worth\": \"...\"}\n\n" + body[:40000], timeout=400)
         head = "# (요약) " + header + "\n\n"
         if wrap and wrap.get("overview"):
             head += "## 한줄 요약\n" + wrap["overview"].strip() + "\n\n"
-        tail = ("\n\n## 핵심 정리 및 시사점\n" + wrap["closing"].strip()) if wrap and wrap.get("closing") else ""
+        tail = ""
+        if wrap:
+            if wrap.get("novelty"):
+                tail += "\n\n## 노벨티와 기여\n" + wrap["novelty"].strip()
+            if wrap.get("limits"):
+                tail += "\n\n## 한계\n" + wrap["limits"].strip()
+            if wrap.get("worth"):
+                tail += "\n\n## 읽을 가치\n" + wrap["worth"].strip()
+            if not tail and wrap.get("closing"):  # 예전 형식 호환
+                tail = "\n\n## 핵심 정리 및 시사점\n" + wrap["closing"].strip()
         return head + body + tail
     return "# (전문번역) " + header + "\n\n" + body
 
@@ -975,6 +998,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        # 화면 코드(HTML/JS/CSS)는 캐시 금지 — 새로고침하면 항상 최신 기능이 뜨도록 (글꼴은 별도 경로에서 캐시함)
+        if ctype.startswith("text/html") or "javascript" in ctype or ctype.startswith("text/css"):
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 

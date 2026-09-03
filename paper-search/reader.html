@@ -74,6 +74,8 @@
   #pdfpages { padding: var(--s2); }
   .pg { position: relative; margin: 0 auto var(--s2); background: #fff; box-shadow: 0 1px 3px #0005; }
   .pg canvas { display: block; }
+  .pg .pdfmark { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--accent); opacity: .55; pointer-events: none; z-index: 2; }
+  .pg .pdfmark::after { content: "여기"; position: absolute; right: 4px; top: -16px; font-size: 10px; color: #fff; background: var(--accent); padding: 1px 5px; border-radius: 2px; }
   .pg .hl { position: absolute; background: rgba(255, 200, 0, .4); pointer-events: none; }
   .pg .hl.cap { background: rgba(31, 79, 209, .28); }
   .capbox { position: absolute; background: rgba(251, 243, 220, .97); border-left: 2px solid var(--amber); padding: 2px 6px; font-size: 12px; line-height: 1.4; color: var(--text); z-index: 2; pointer-events: none; }
@@ -125,6 +127,7 @@
     <div id="pdftools">
       <button id="zoomOut" title="축소">−</button><span id="zoomLbl">100%</span><button id="zoomIn" title="확대">+</button>
       <button id="regionBtn" title="켜고 그림 위를 드래그하면 그 부분이 크게 뜹니다">영역 확대</button>
+      <button id="followBtn" class="on" title="한국어 본문을 스크롤하면 PDF가 원문의 해당 위치로 따라갑니다 (절 번호로 맞추고, 문단의 영문 용어·숫자로 보정). PDF를 직접 스크롤하면 잠시 멈춥니다">원문 따라가기</button>
       <label style="cursor:pointer"><input type="checkbox" id="capTog" checked> 캡션 번역 표시</label>
       <span id="pdfinfo" style="margin-left:auto;color:#bbb"></span>
     </div>
@@ -336,6 +339,7 @@ async function loadPdf() {
   }
   document.getElementById("pdfinfo").textContent = doc.numPages + "쪽";
   loadCaptions();
+  followPdf(true);
 }
 async function renderPage(pg) {
   if (!pg || pg.rendered) return;
@@ -362,7 +366,7 @@ function highlightItems(pi, idxs, cls = "", align = "top") {
     d.className = "hl " + cls; d.style.left = it.x + "px"; d.style.top = it.y + "px"; d.style.width = Math.max(4, it.w) + "px"; d.style.height = it.h + "px";
     pg.div.appendChild(d);
   }
-  if (idxs.length) scrollPdfTo(pi, pg.items[idxs[0]].y, align);
+  if (idxs.length) { pauseFollow(10000); scrollPdfTo(pi, pg.items[idxs[0]].y, align); }
 }
 function findInPdf(quote, preferPage) {
   const tries = [quote, quote.slice(0, 80), quote.slice(0, 50), quote.slice(0, 30)].map(norm).filter(q => q.length >= 12);
@@ -479,6 +483,130 @@ window.addEventListener("mousemove", (e) => {
   lbox.style.right = "auto"; lbox.style.bottom = "auto";
 });
 window.addEventListener("mouseup", () => { lbDrag = null; });
+
+// ---------- 원문 따라가기 (한국어 본문 스크롤 ↔ PDF 위치) ----------
+// 1) 뼈대: 한국어 소제목 "## 2.3. …" 과 PDF의 "2.3. Theoretical …" 줄을 절 번호로 짝지어 좌표를 대응
+// 2) 보정: 화면 맨 위 문단에 남아 있는 영문 용어·숫자·Fig 번호로 그 절 안의 PDF 줄을 찾아 정밀하게 맞춤
+let followOn = localStorage.getItem("reader_follow") !== "0", pdfPauseUntil = 0, pdfAnchors = null, followTimer = null, pdfLinesCache = {};
+const NUMRE = /^\s*(\d+(?:\.\d+)*)\.?\s+(\S.*)$/;
+function pauseFollow(ms) { pdfPauseUntil = Date.now() + ms; }
+function numKey(str) { const m = NUMRE.exec(str || ""); return m ? m[1].replace(/\.$/, "") : null; }
+function colOf(pi, it) { return it.x > pages[pi].vp.width * 0.5 - 20 ? 1 : 0; }   // 2단 편집: 오른쪽 단이면 1
+function readingOrder(pi) {
+  // 읽기 순서: 왼쪽 단 전체(y 순) → 오른쟽 단. 단일 단 문서는 x 가 모두 왼쪽이라 그냥 y 순
+  return pages[pi].items.map(it => Object.assign({ col: colOf(pi, it) }, it)).sort((a, b) => a.col - b.col || a.y - b.y || a.x - b.x);
+}
+function pdfLines(pi) {
+  // 같은 단·같은 줄(y 비슷, x 가 바로 이어지는)의 조각들을 합쳐 줄 단위 텍스트로 (토큰 보정용, 페이지별 캐시). pos = 문서 순서 값
+  if (pdfLinesCache[pi]) return pdfLinesCache[pi];
+  const its = readingOrder(pi), lines = [];
+  for (const it of its) {
+    const L = lines[lines.length - 1];
+    if (L && L.col === it.col && Math.abs(L.y - it.y) < 4 && it.x - L.xEnd < 12 && it.x >= L.x) { L.text += (it.x - L.xEnd > 1.5 ? " " : "") + it.str; L.xEnd = Math.max(L.xEnd, it.x + it.w); }
+    else lines.push({ y: it.y, x: it.x, xEnd: it.x + it.w, col: it.col, pos: it.col * 500000 + it.y, text: it.str });
+  }
+  lines.forEach(l => l.low = l.text.toLowerCase());
+  return (pdfLinesCache[pi] = lines);
+}
+function cmpKey(a, b) { for (let i = 0; i < Math.max(a.length, b.length); i++) { const d = (a[i] || 0) - (b[i] || 0); if (d) return d; } return 0; }
+function koNumSet() { return new Set([...read.querySelectorAll("h2, h3")].map(h => numKey(h.textContent)).filter(Boolean)); }
+function buildPdfAnchors(koNums) {
+  // PDF 텍스트 조각 중 절 제목 찾기. PDF.js 는 "2.2." 와 "Diamond machining of brittle materials" 를 따로 주는 일이 많아
+  // '번호만 있는 조각 + 같은 줄 바로 오른쪽의 제목 조각'도 짝지어 본다. 한국어 본문에 있는 절 번호만 후보로 삼고,
+  // 같은 번호가 여러 번(목차·본문·표 안 숫자) 나오면 '번호 순서와 문서 순서(단 고려)가 함께 증가하는 가장 긴 조합'(LIS)을 택한다.
+  const cands = []; let stop = false;
+  pages.forEach((pg, pi) => {
+    if (stop) return;
+    const its = readingOrder(pi);
+    for (let k = 0; k < its.length; k++) {
+      const it = its[k];
+      if (/^\s*(references|bibliography|acknowledg)/i.test(it.str) && it.str.length < 30) { stop = true; break; }
+      let m = NUMRE.exec(it.str), num, title;
+      if (m) { num = m[1]; title = m[2]; }
+      else if (/^\s*\d+(\.\d+)*\.?\s*$/.test(it.str)) {
+        const nx = its[k + 1];
+        if (!nx || nx.col !== it.col || Math.abs(nx.y - it.y) > 4 || nx.x < it.x || nx.x - (it.x + it.w) > 60) continue;
+        num = it.str.trim(); title = nx.str;
+      } else continue;
+      num = num.replace(/\.$/, "");
+      if (!koNums.has(num)) continue;
+      if (!/^[A-Z(]/.test(title) || /^[A-Z]\.\s/.test(title) || /(\.\s*){3,}|\s\d{2,4}\s*$/.test(title) || title.length > 120) continue;
+      cands.push({ num, page: pi, y: it.y, col: it.col, pos: pi * 1000000 + it.col * 500000 + it.y, key: num.split(".").map(Number),
+                   w: title.trim().split(/\s+/).length >= 2 ? 1.2 : 1 });   // 두 단어 이상 제목을 조금 더 신뢰
+    }
+  });
+  cands.sort((a, b) => cmpKey(a.key, b.key) || a.pos - b.pos);
+  const n = cands.length, best = cands.map(c => c.w), prev = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) for (let j = 0; j < i; j++)
+    if (cands[j].pos < cands[i].pos && cands[j].num !== cands[i].num && best[j] + cands[i].w > best[i]) { best[i] = best[j] + cands[i].w; prev[i] = j; }
+  const out = {};
+  if (n) {
+    let bi = 0; for (let i = 1; i < n; i++) if (best[i] > best[bi]) bi = i;
+    for (let i = bi; i >= 0; i = prev[i]) if (!out[cands[i].num]) out[cands[i].num] = { page: cands[i].page, y: cands[i].y, col: cands[i].col, pos: cands[i].col * 500000 + cands[i].y };
+  }
+  return out;
+}
+function tokensOf(text) {
+  // 한국어 문단에 남아 있는 영문 단어(5자+), 숫자(단위 포함), Fig./Table 번호, 참고문헌 번호
+  const t = new Set();
+  (text.match(/[A-Za-z][A-Za-z-]{4,}/g) || []).forEach(w => t.add(w.toLowerCase()));
+  (text.match(/\d+(?:\.\d+)?\s?(?:%|µm|um|nm|mm|MPa|GPa|N|K|°C|m\/s|rpm)/g) || []).forEach(w => t.add(w.replace(/\s/g, "").toLowerCase()));
+  (text.match(/(?:Fig\.?|Table)\s?\d+/gi) || []).forEach(w => t.add(w.replace(/\s/g, "").toLowerCase()));
+  (text.match(/\[\d+(?:[,–-]\d+)*\]/g) || []).forEach(w => t.add(w));
+  return [...t].filter(w => !/^(which|there|these|those|their|about|between|however|other|using|based|under|where|while|would|could|should|because)$/.test(w));
+}
+function pdfAbs(pi, y) { return pages[pi].div.offsetTop + y * zoomF; }
+let anchorKey = "";
+function followPdf(force) {
+  if (!followOn || !pages.length || !pdfcol.classList.contains("on")) return;
+  if (!force && Date.now() < pdfPauseUntil) return;
+  const ko = koNumSet(), key = [...ko].join(",");
+  if (!pdfAnchors || key !== anchorKey) { pdfAnchors = buildPdfAnchors(ko); anchorKey = key; }
+  // 한국어 소제목 위치 (번호 있는 것만)
+  const hs = [...read.querySelectorAll("h2, h3")].map(h => ({ num: numKey(h.textContent), top: h.offsetTop })).filter(h => h.num && pdfAnchors[h.num]);
+  if (hs.length < 1) return;
+  const S = read.scrollTop + 60;  // 읽는 줄은 화면 위에서 60px 정도
+  let i = -1; for (let k = 0; k < hs.length; k++) if (hs[k].top <= S) i = k;
+  if (i < 0) return;  // 첫 절 위(초록·목차)는 따라가지 않음
+  const a = pdfAnchors[hs[i].num], A = pdfAbs(a.page, a.y);
+  let target = A, pageLo = a.page, pageHi = Math.min(pages.length - 1, a.page + 2);
+  if (hs[i + 1]) {
+    const b = pdfAnchors[hs[i + 1].num], B = pdfAbs(b.page, b.y);
+    const frac = Math.max(0, Math.min(1, (S - hs[i].top) / Math.max(1, hs[i + 1].top - hs[i].top)));
+    target = A + frac * (B - A); pageHi = b.page;
+  }
+  // 토큰 보정: 화면 맨 위 문단의 영문 용어·숫자로 이 절 범위 안의 PDF 줄을 찾는다
+  const topEl = [...read.children].find(el => el.offsetTop + el.offsetHeight > S && !/^H[23]$/.test(el.tagName));
+  let mark = null;
+  if (topEl) {
+    const toks = tokensOf(topEl.textContent);
+    if (toks.length >= 2) {
+      let best = null;
+      for (let pi = pageLo; pi <= pageHi; pi++) for (const L of pdfLines(pi)) {
+        if (pi === a.page && L.pos < a.pos - 5) continue;
+        if (hs[i + 1] && pi === pdfAnchors[hs[i + 1].num].page && L.pos > pdfAnchors[hs[i + 1].num].pos) break;
+        let sc = 0; for (const w of toks) if (L.low.includes(w)) sc++;
+        if (sc >= 2 && (!best || sc > best.sc)) best = { pi, y: L.y, sc };
+      }
+      if (best) { target = pdfAbs(best.pi, best.y); mark = best; }
+    }
+  }
+  // 표시선 + 스크롤 (부드럽게). 페이지는 필요하면 렌더
+  document.querySelectorAll(".pdfmark").forEach(m => m.remove());
+  const mp = mark ? mark.pi : a.page, my = mark ? mark.y : (target - pages[mp].div.offsetTop) / zoomF;
+  const mk = document.createElement("div"); mk.className = "pdfmark"; mk.style.top = Math.max(0, my) + "px"; pages[mp].div.appendChild(mk);
+  renderPage(pages[mp]); if (pages[mp + 1]) renderPage(pages[mp + 1]);
+  pdfcol.style.scrollBehavior = force ? "auto" : "smooth";
+  pdfcol.scrollTop = Math.max(0, target - pdfcol.clientHeight * 0.3);
+  setTimeout(() => { pdfcol.style.scrollBehavior = "auto"; }, 600);
+}
+read.addEventListener("scroll", () => { if (followTimer) return; followTimer = setTimeout(() => { followTimer = null; followPdf(false); }, 250); }, { passive: true });
+// 사용자가 PDF를 직접 움직이면 4초 멈춤 (밀당 방지)
+pdfcol.addEventListener("wheel", () => pauseFollow(4000), { passive: true });
+pdfcol.addEventListener("mousedown", () => pauseFollow(4000));
+const followBtn = document.getElementById("followBtn");
+followBtn.classList.toggle("on", followOn);
+followBtn.onclick = () => { followOn = !followOn; followBtn.classList.toggle("on", followOn); localStorage.setItem("reader_follow", followOn ? "1" : "0"); if (followOn) followPdf(true); else document.querySelectorAll(".pdfmark").forEach(m => m.remove()); };
 
 // ---------- 선택 툴바 ----------
 const seltool = document.getElementById("seltool"), askmenu = document.getElementById("askmenu");
@@ -660,7 +788,8 @@ document.getElementById("pdfTog").onchange = e => { pdfcol.classList.toggle("on"
 document.getElementById("sideTog").onchange = e => { document.getElementById("side").classList.toggle("on", e.target.checked); localStorage.setItem("reader_side", e.target.checked ? "1" : "0"); };
 
 // ---------- 읽기 기록 (홈 '최근 읽음'·자기관리 앱 연동) ----------
-// 화면이 보이고 최근 60초 안에 움직임(마우스·키·스크롤)이 있었으면 30초마다 서버에 "30초 읽음 + 스크롤 위치"를 보냄
+// 화면이 보이고 최근 3분 안에 움직임(마우스·키·스크롤)이 있었으면 30초마다 서버에 "30초 읽음 + 스크롤 위치"를 보냄
+// (읽는 동안은 입력이 뜸하므로 넉넉하게. 창을 켜두고 자리를 비우면 3분 뒤 자동으로 멈춤)
 let lastActivity = Date.now();
 ["mousemove", "keydown", "wheel", "scroll", "click", "touchstart"].forEach(ev => document.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true, capture: true }));
 function readPos() { const h = read.scrollHeight - read.clientHeight; return h > 0 ? Math.min(1, read.scrollTop / h) : 1; }
@@ -669,7 +798,7 @@ function sendPing(sec, beacon) {
   if (beacon && navigator.sendBeacon) { navigator.sendBeacon("/api/read_ping", new Blob([body], { type: "application/json" })); return; }
   fetch("/api/read_ping", { method: "POST", body, keepalive: true }).catch(() => {});
 }
-setInterval(() => { if (document.visibilityState === "visible" && Date.now() - lastActivity < 60000) sendPing(30, false); }, 30000);
+setInterval(() => { if (document.visibilityState === "visible" && Date.now() - lastActivity < 180000) sendPing(30, false); }, 30000);
 window.addEventListener("pagehide", () => sendPing(0, true));
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") sendPing(0, true); });
 // 이전에 읽던 위치로 복원 (처음 표시할 때 한 번만)
@@ -708,6 +837,7 @@ async function restoreReadPos(k) {
   notesData = await (await fetch("/api/notes?file=" + encodeURIComponent(file))).json();
   renderSide();
   await showKind(kind);
+  sendPing(0, false);   // 연 순간 바로 '최근 읽음'에 뜨도록 (시간은 0, 이후 30초마다 누적)
   loadPdf().catch(e => { pdfpages.innerHTML = "<div style='color:#fff;padding:20px'>PDF 표시 실패: " + esc(String(e)) + "</div>"; });
 })();
 </script>
