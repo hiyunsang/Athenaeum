@@ -370,134 +370,135 @@ def answer_question(name, quote, question, history=None):
 CAP_LINE = re.compile(r"^\s*(fig\.?|figure|table|scheme|그림|표)\s*\.?\s*\d", re.I)
 
 
-def pdf_layout_pages(name):
-    """페이지별 줄 목록. 각 줄 = {t, x, xe, y, size, col}. 좌표는 PDF 원점(왼쪽 아래) 기준."""
-    from pypdf import PdfReader
-    reader = PdfReader(os.path.join(ARCHIVE, name))
-    if reader.is_encrypted:
-        reader.decrypt("")
-    out = []
-    for page in reader.pages:
-        items = []
-
-        def visitor(text, cm, tm, font_dict, font_size, _items=items):
-            if not text or not text.strip():
-                return
-            try:
-                a, b, c, d, e, f = (float(v) for v in tm)
-                ca, cb, cc, cd, ce, cf = (float(v) for v in cm)
-                # 실제 위치 = 문자 행렬(tm) × 그래픽 행렬(cm). cm 을 빼면 좌표가 어긋나 줄 순서가 뒤섞인다
-                x = e * ca + f * cc + ce
-                y = e * cb + f * cd + cf
-                size = abs(float(font_size)) * (abs(c * cb + d * cd) or abs(a * ca + b * cc) or 1.0)
-            except (TypeError, ValueError, IndexError):
-                return
-            _items.append({"t": text, "x": x, "y": y, "size": size, "w": len(text) * size * 0.5})
-
-        try:
-            page.extract_text(visitor_text=visitor)
-        except Exception:
+def _join_lines(lines):
+    """블록 안의 줄들을 한 문단으로. 줄 끝 하이픈은 단어를 이어 붙이고, 나머지는 공백으로."""
+    out = ""
+    for t in lines:
+        t = t.strip()
+        if not t:
             continue
+        if out.endswith("-") and re.match(r"^[a-z]", t):
+            out = out[:-1] + t
+        else:
+            out = (out + " " + t) if out else t
+    return " ".join(out.split())
+
+
+def _merge_rects(rects, pad=6.0):
+    """겹치거나 맞닿은 사각형들을 하나로 합친다 (흩어진 벡터 조각 → 그림 한 덩어리)."""
+    boxes = [list(r) for r in rects]
+    changed = True
+    while changed and len(boxes) > 1:
+        changed = False
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                a, b = boxes[i], boxes[j]
+                if a[0] - pad < b[2] and b[0] - pad < a[2] and a[1] - pad < b[3] and b[1] - pad < a[3]:
+                    boxes[i] = [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])]
+                    boxes.pop(j)
+                    changed = True
+                    break
+            if changed:
+                break
+    return boxes
+
+
+def _inside(bb, box, frac=0.6):
+    """글자 상자가 그림 영역 안에 frac 이상 들어가 있나"""
+    ix = max(0.0, min(bb[2], box[2]) - max(bb[0], box[0]))
+    iy = max(0.0, min(bb[3], box[3]) - max(bb[1], box[1]))
+    area = max(1e-6, (bb[2] - bb[0]) * (bb[3] - bb[1]))
+    return (ix * iy) / area >= frac
+
+
+def pdf_blocks(name):
+    """페이지별 문단 목록. 각 문단 = {t, bbox, size, chars, in_fig, col} (읽기 순서로 정렬)"""
+    import fitz
+    doc = fitz.open(os.path.join(ARCHIVE, name))
+    pages = []
+    for page in doc:
+        width = float(page.rect.width) or 595.0
+        page_area = float(page.rect.width) * float(page.rect.height)
+        d = page.get_text("dict")
+        figs = [tuple(b["bbox"]) for b in d["blocks"] if b.get("type") == 1]   # 삽입된 그림
         try:
-            width = float(page.mediabox.width) or 595.0
+            for dr in page.get_drawings():                                      # 벡터 그림(상자·화살표·그래프)
+                r = dr.get("rect")
+                if r is not None and (r.x1 - r.x0) * (r.y1 - r.y0) > 900:
+                    figs.append((r.x0, r.y0, r.x1, r.y1))
         except Exception:
-            width = 595.0
-        # 단(column)을 먼저 정한다. 2단 편집에서 왼쪽 단 줄이 오른쪽 단 첫 글자와 붙는 것을 막아야 한다
-        half = width * 0.5
-        right = sum(1 for it in items if it["x"] > half)
-        two_col = right >= max(3, len(items) * 0.2)
-        for it in items:
-            it["col"] = 1 if (two_col and it["x"] > half) else 0
-        items.sort(key=lambda i: (i["col"], -i["y"], i["x"]))
-        lines = []
-        for it in items:
-            L = lines[-1] if lines else None
-            # 같은 줄로 잇는 조건: 같은 단, y 가 비슷하고, 가로로 바로 이어짐(간격 15pt 미만)
-            if L and L["col"] == it["col"] and abs(L["y"] - it["y"]) < 3 and -2 <= it["x"] - L["xe"] < 15:
-                L["t"] += ("" if L["t"].endswith(" ") or it["t"].startswith(" ") else " ") + it["t"]
-                L["xe"] = it["x"] + it["w"]
-                L["sizes"].append((it["size"], len(it["t"])))
-            else:
-                lines.append({"t": it["t"], "x": it["x"], "xe": it["x"] + it["w"], "y": it["y"],
-                              "col": it["col"], "sizes": [(it["size"], len(it["t"]))]})
-        for L in lines:  # 줄의 대표 크기 = 글자 수가 가장 많은 크기 (제목의 위첨자 등에 휘둘리지 않게)
-            agg = {}
-            for sz, ln in L["sizes"]:
-                agg[round(sz, 1)] = agg.get(round(sz, 1), 0) + ln
-            L["size"] = max(agg.items(), key=lambda kv: kv[1])[0]
-        for L in lines:
-            L["t"] = " ".join(L["t"].split())
-        lines.sort(key=lambda L: (L["col"], -L["y"], L["x"]))   # 읽기 순서: 왼쪽 단 전체 → 오른쪽 단
-        out.append({"lines": [L for L in lines if L["t"]], "width": width})
+            pass
+        figs = [f for f in _merge_rects(figs)
+                if 5000 < (f[2] - f[0]) * (f[3] - f[1]) < page_area * 0.6]      # 너무 작거나 페이지 전체인 건 제외
+        blocks = []
+        for b in d["blocks"]:
+            if b.get("type") != 0:
+                continue
+            lines, sizes = [], {}
+            for ln in b.get("lines", []):
+                lines.append("".join(sp.get("text", "") for sp in ln.get("spans", [])))
+                for sp in ln.get("spans", []):
+                    k = round(float(sp.get("size", 0)), 1)
+                    sizes[k] = sizes.get(k, 0) + len(sp.get("text", ""))
+            t = _join_lines(lines)
+            if not t:
+                continue
+            bb = tuple(b["bbox"])
+            blocks.append({"t": t, "bbox": bb, "chars": len(t),
+                           "size": max(sizes.items(), key=lambda kv: kv[1])[0] if sizes else 0.0,
+                           "in_fig": any(_inside(bb, f) for f in figs)})
+        pages.append({"blocks": blocks, "half": width * 0.5})
+    doc.close()
+    # 2단 편집 여부는 문서 전체로 판단한다. 한 페이지만 보면 그림 조각이 많은 쪽에서 잘못 판정된다
+    solid = [(b, pg["half"]) for pg in pages for b in pg["blocks"] if b["chars"] >= 80 and not b["in_fig"]]
+    right = sum(1 for b, half in solid if b["bbox"][0] > half)
+    two_col = len(solid) >= 4 and right >= len(solid) * 0.25
+    out = []
+    for pg in pages:
+        for b in pg["blocks"]:
+            b["col"] = 1 if (two_col and b["bbox"][0] > pg["half"]) else 0
+        out.append(sorted(pg["blocks"], key=lambda b: (b["col"], b["bbox"][1], b["bbox"][0])))
     return out
 
 
 def pdf_body_and_asides(name):
-    """(본문, 곁텍스트). 곁텍스트 = 그림 캡션·표 내용·각주 등 본문 흐름을 끊는 작은 글씨 블록."""
-    pages = pdf_layout_pages(name)
-    if not pages:
-        return "", ""
-    from collections import Counter
-    cnt = Counter()
-    for pg in pages:
-        for L in pg["lines"]:
-            cnt[round(L["size"], 1)] += len(L["t"])
+    """(본문, 곁텍스트). 곁텍스트 = 그림 안 글자·캡션·표·각주·러닝헤드 등 본문 흐름에 끼면 안 되는 것.
+    본문은 문단(블록) 단위로 빈 줄로 구분되므로, 이후 문장 분할이 문단 구조를 그대로 살린다."""
+    pages = pdf_blocks(name)
+    cnt = {}
+    for blocks in pages:
+        for b in blocks:
+            cnt[b["size"]] = cnt.get(b["size"], 0) + b["chars"]
     if not cnt:
         return "", ""
-    body_size = cnt.most_common(1)[0][0]
-    def is_frag(t):
-        """그림 안 상자 글자처럼 '짧고 문장으로 끝나지 않는' 조각. 절 제목(2.1. Introduction)은 제외"""
-        if re.match(r"^\d+(\.\d+)*\.?\s+[A-Z]", t):
-            return False
-        return len(t) < 45 and len(t.split()) <= 6 and not re.search(r"[.?!:;,]$", t)
-
-    def figure_fragments(lines):
-        """조각이 3개 이상 잇달아 나오면 그림·도표 영역으로 보고 통째로 곁텍스트로 (절 제목은 사이에 껴도 끊지 않음)"""
-        out, buf = set(), []
-        for idx, L in enumerate(lines):
-            t = L["t"]
-            if is_frag(t):
-                buf.append(idx)
-            elif re.match(r"^\d+(\.\d+)*\.?\s+[A-Z]", t):
-                continue                      # 절 제목은 건너뛰되 묶음을 끊지 않음
-            else:
-                if len(buf) >= 3:
-                    out.update(buf)
-                buf = []
-        if len(buf) >= 3:
-            out.update(buf)
-        return out
-
+    body_size = max(cnt.items(), key=lambda kv: kv[1])[0]
     body, aside = [], []
-    for pi, pg in enumerate(pages):
-        in_cap = False
-        figs = figure_fragments(pg["lines"])
-        for li, L in enumerate(pg["lines"]):
-            small = L["size"] < body_size * 0.95
-            if CAP_LINE.match(L["t"]):
-                in_cap = True
-            elif in_cap and not small:
-                in_cap = False
-            # 수식·기호 부스러기(글자보다 기호·숫자가 많은 짧은 줄)도 본문에서 뺀다
-            t = L["t"]
-            alpha = sum(1 for c in t if c.isalpha())
+    for blocks in pages:
+        for b in blocks:
+            t = b["t"]
             toks = t.split()
+            alpha = sum(1 for c in t if c.isalpha())
             tiny = sum(1 for w in toks if len(w) <= 2)
-            debris = len(t) < 120 and (alpha < len(t) * 0.5 or                       # 기호·숫자가 절반 넘음
+            debris = len(t) < 120 and (alpha < len(t) * 0.5 or                        # 기호·숫자가 절반 넘는 짧은 줄
                                        (len(toks) >= 3 and tiny >= len(toks) * 0.6))  # 한두 글자 토막만 늘어선 줄
-            if small or in_cap or debris or li in figs:
-                aside.append(L["t"])
+            if b["in_fig"] or b["size"] < body_size * 0.95 or debris or CAP_LINE.match(t):
+                aside.append(t)
             else:
-                body.append(L["t"])
-        # 페이지 경계: 문장이 끝난 자리에서만 빈 줄(문단 구분). 문장 중간이면 이어지게 둔다
-        if body and re.search(r"[.!?]\s*$", body[-1]):
-            body.append("")
-    return "\n".join(body), "\n".join(aside)
+                body.append(t)
+    # 단·페이지 경계에서 갈린 문단 잇기: 앞이 문장부호로 끝나지 않고 뒤가 소문자로 시작하면 한 문단
+    joined = []
+    for t in body:
+        prev = joined[-1].rstrip() if joined else ""
+        if prev and not re.search(r"[.!?:;]$", prev) and re.match(r"^[a-z(\[]", t):
+            joined[-1] = (prev[:-1] + t) if prev.endswith("-") else (prev + " " + t)
+        else:
+            joined.append(t)
+    return "\n\n".join(joined), "\n\n".join(aside)
 
 
 def paper_text(name):
-    """생성용 원문. 본문을 이어붙이고, 그림 캡션·표는 끝에 따로 모은다 (문장 중간에 끼어들지 않게).
-    좌표 추출이 실패하면 예전 방식(페이지별 extract_text)으로 되돌아간다."""
+    """생성용 원문. 본문(문단 구분 유지) 뒤에 그림 캡션·표를 따로 모은다.
+    PyMuPDF 가 없거나 실패하면 예전 방식(pypdf 페이지별 추출)으로 되돌아간다."""
     try:
         body, aside = pdf_body_and_asides(name)
     except Exception:
@@ -509,7 +510,7 @@ def paper_text(name):
             reader.decrypt("")
         return "\n".join((p.extract_text() or "") for p in reader.pages)
     if aside.strip():
-        body += "\n\nFigures and Tables\n" + aside
+        body += "\n\nFigures and Tables\n\n" + aside
     return body
 
 
