@@ -442,7 +442,9 @@ def pdf_body_and_asides(name):
                 aside.append(L["t"])
             else:
                 body.append(L["t"])
-        body.append("")   # 페이지 경계
+        # 페이지 경계: 문장이 끝난 자리에서만 빈 줄(문단 구분). 문장 중간이면 이어지게 둔다
+        if body and re.search(r"[.!?]\s*$", body[-1]):
+            body.append("")
     return "\n".join(body), "\n".join(aside)
 
 
@@ -829,6 +831,14 @@ def split_sentences_en(text):
             paras.append([t]); continue
         cur.append(t)
     if cur: paras.append(cur)
+    # 페이지·단 경계에서 문장이 잘리는 것 방지: 앞 문단이 문장부호로 끝나지 않고 다음 문단이 소문자로 시작하면 이어붙인다
+    merged = []
+    for para in paras:
+        if merged and para and not re.search(r"[.!?:;]\s*$", merged[-1][-1]) and re.match(r"^[a-z(\[]", para[0]):
+            merged[-1].extend(para)
+        else:
+            merged.append(list(para))
+    paras = merged
     for lines in paras:
         joined = ""
         for t in lines:
