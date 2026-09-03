@@ -232,8 +232,38 @@ async function showKind(k) {
 
 function bindFigrefs(root) { root.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n)); }
 
+let alignData = null, alignFor = null;   // 번역문 [s번호] → {t: 원문 문장, p: 페이지}
+async function loadAlign() {
+  if (alignFor === file) return alignData;
+  try { alignData = await (await fetch("/api/align?file=" + encodeURIComponent(file))).json(); } catch (e) { alignData = {}; }
+  alignFor = file; return alignData;
+}
+function wrapSentences(root) {
+  // 각 블록 안의 텍스트에서 "[s12]" 표식을 지우고, 그 뒤부터 다음 표식(또는 블록 끝)까지를 <span class="sent" data-s="12">로 감싼다
+  const MARK = /\[s(\d+)\](?:\[s(\d+)\])*/g;
+  root.querySelectorAll("p, li, h2, h3, td, th").forEach(block => {
+    if (!/\[s\d+\]/.test(block.textContent)) return;
+    const kids = [...block.childNodes]; let span = null;
+    const put = node => { if (span) span.appendChild(node); else block.insertBefore(node, marker); };
+    let marker = document.createTextNode(""); block.appendChild(marker);   // 자리 표시
+    for (const node of kids) {
+      if (node.nodeType !== 3) { put(node); continue; }
+      const text = node.nodeValue; let last = 0, m; MARK.lastIndex = 0;
+      const pieces = [];
+      while ((m = MARK.exec(text))) { pieces.push({ t: text.slice(last, m.index) }); pieces.push({ id: m[1] }); last = MARK.lastIndex; }
+      pieces.push({ t: text.slice(last) });
+      for (const pc of pieces) {
+        if (pc.id !== undefined) { span = document.createElement("span"); span.className = "sent"; span.dataset.s = pc.id; block.insertBefore(span, marker); }
+        else if (pc.t) put(document.createTextNode(pc.t));
+      }
+      node.remove();
+    }
+    marker.remove();
+  });
+}
 function renderMd(md) {
   read.innerHTML = mdToHtml(md);
+  if (kind === "translation") { wrapSentences(read); loadAlign(); }
   bindFigrefs(read);
   postProcess();
   markAnchors();
@@ -661,9 +691,21 @@ function mapKoToSrc(el, offset) {
   const r = src[best];
   return { page: r.page, y: r.y, items: r.items, approx: bestSc === 0, text: r.text };
 }
+function locateBySentId(id) {
+  // [s번호] → 번호표의 원문 문장을 PDF 에서 그대로 찾아 강조. 성공 True
+  const a = alignData && alignData[id]; if (!a || !a.t) return false;
+  const hit = findInPdf(a.t, a.p == null ? undefined : a.p);
+  if (!hit) return false;
+  document.getElementById("pdfTog").checked = true; pdfcol.classList.add("on");
+  clearHl(); highlightItems(hit.page, hit.idxs, "", "top");
+  status((hit.page + 1) + "쪽 · 원문 문장 표시", 2000);
+  return true;
+}
 function locateSelection(range) {
   // 드래그한 한국어 문장 → 원문 문장을 PDF에 노랗게 표시 (즉시)
   let node = range.startContainer; if (node.nodeType === 3) node = node.parentElement;
+  const sp = node.closest && node.closest(".sent");
+  if (sp && alignData && locateBySentId(sp.dataset.s)) return true;   // 번호표가 있으면 정확히 그 문장
   const block = node.closest("p, li, td, th, h2, h3, div"); if (!block || !read.contains(block)) return false;
   const pre = document.createRange(); pre.selectNodeContents(block); pre.setEnd(range.startContainer, range.startOffset);
   const r = mapKoToSrc(block, pre.toString().length);
@@ -699,7 +741,15 @@ function followPdf(force) {
   // 토큰 보정: 화면 맨 위 문단의 영문 용어·숫자로 이 절 범위 안의 PDF 줄을 찾는다
   const topEl = [...read.children].find(el => el.offsetTop + el.offsetHeight > S && !/^H[23]$/.test(el.tagName));
   let mark = null;
-  const sm = topEl ? mapKoToSrc(topEl, Math.max(0, Math.round((S - topEl.offsetTop) / Math.max(1, topEl.offsetHeight) * topEl.textContent.length))) : null;
+  let sm = null;
+  if (alignData && topEl) {   // 번호표: 화면 맨 위에 보이는 문장 span → 원문 문장 → PDF 위치
+    const rTop = read.getBoundingClientRect().top;
+    const sp = [...topEl.querySelectorAll(".sent")].find(x => x.getBoundingClientRect().bottom > rTop + 60);
+    const a = sp && alignData[sp.dataset.s];
+    const hit = a && a.t ? findInPdf(a.t, a.p == null ? undefined : a.p) : null;
+    if (hit) { const it = pages[hit.page].items[hit.idxs[0]]; sm = { page: hit.page, y: it.y }; }
+  }
+  if (!sm) sm = topEl ? mapKoToSrc(topEl, Math.max(0, Math.round((S - topEl.offsetTop) / Math.max(1, topEl.offsetHeight) * topEl.textContent.length))) : null;
   if (sm) { target = pdfAbs(sm.page, sm.y); mark = { pi: sm.page, y: sm.y }; }
   else if (topEl) {
     const toks = tokensOf(topEl.textContent);

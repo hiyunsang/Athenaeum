@@ -673,7 +673,9 @@ def prepare_chunks(text, size):
                 body_start = i
                 break
     has_nomen = any(i < (body_start or 0) for i in nomen_idx)
-    if body_start is None or body_start < 5 or (len(toc_idx) < 3 and not has_nomen):
+    has_abs = body_start is not None and any(re.match(r"^\s*a\s?b\s?s\s?t\s?r\s?a\s?c\s?t\b", l, re.I) for l in lines[:body_start])
+    # 머리부(제목·저자·초록·키워드·목차·약어)를 따로 한 구간으로: 목차/약어표/초록 중 하나라도 있으면
+    if body_start is None or body_start < 5 or (len(toc_idx) < 3 and not has_nomen and not has_abs):
         return split_chunks(text, size), False
     tocset = set(toc_idx)
     toc = [re.sub(r"(?:\s*\.){3,}\s*(\d{1,4})\s*$", r" … \1", " ".join(lines[i].split())) for i in toc_idx]
@@ -691,6 +693,70 @@ def prepare_chunks(text, size):
     body = "\n".join(lines[body_start:])
     front_chunks = split_chunks(front, size) if len(front) > size * 1.6 else [front]
     return front_chunks + split_chunks(body, size), True
+
+
+_ABBR_END = re.compile(r"(?:\b(?:al|Fig|Figs|Eq|Eqs|Ref|Refs|vs|No|Dr|Prof|approx|ca|cf|i\.e|e\.g)|\b[A-Z])\.$")
+
+
+def split_sentences_en(text):
+    """영문 구간을 문장 목록으로. 문단/제목 줄 경계는 항상 끊고, 문장 끝(. ! ?) 뒤 대문자·괄호·따옴표에서 끊음. 'et al.'·'Fig.' 같은 약어 뒤는 안 끊음."""
+    out = []
+    # 줄 끝 하이픈으로 갈린 단어 이어붙이기, 그 외 줄바꿈은 공백. 빈 줄·짧은 제목 줄은 문단 경계
+    paras, cur = [], []
+    for line in text.split("\n"):
+        t = line.strip()
+        if not t:
+            if cur: paras.append(cur); cur = []
+            continue
+        is_head = bool(re.match(r"^\d+(?:\.\d+)*\.?\s+\S", t)) and len(t) < 110 and not t.endswith((".", ",", ";"))
+        if is_head:
+            if cur: paras.append(cur); cur = []
+            paras.append([t]); continue
+        cur.append(t)
+    if cur: paras.append(cur)
+    for lines in paras:
+        joined = ""
+        for t in lines:
+            if joined.endswith("-") and re.match(r"^[a-z]", t): joined = joined[:-1] + t
+            else: joined = (joined + " " + t) if joined else t
+        start = 0
+        for m in re.finditer(r"[.!?](?=\s+[A-Z(\[\u201c\"]|\s*$)", joined):
+            i = m.start()
+            if _ABBR_END.search(joined[max(0, i - 8):i + 1]) or i - start < 15:
+                continue
+            out.append(joined[start:i + 1].strip()); start = i + 1
+        rest = joined[start:].strip()
+        if rest: out.append(rest)
+    return [x for x in out if x]
+
+
+def number_chunks(chunks, name):
+    """번역용: 구간마다 문장에 [sN] 번호를 붙인 텍스트와, N → {t: 원문 문장, p: 페이지(0부터)} 표를 만든다."""
+    try:
+        pages = [" ".join(p.lower().split()) for p in pdf_pages_text_raw(name)]
+    except Exception:
+        pages = []
+    def page_of(sent):
+        key = " ".join(sent.lower().split())
+        for L in (60, 35, 20):
+            k = key[:L]
+            if len(k) < 12: break
+            for pi, pg in enumerate(pages):
+                if k in pg: return pi
+        return None
+    numbered, table, n = [], {}, 0
+    for ch in chunks:
+        lines = []
+        for sent in split_sentences_en(ch):
+            n += 1
+            table[str(n)] = {"t": sent, "p": page_of(sent)}
+            lines.append("[s%d] %s" % (n, sent))
+        numbered.append("\n".join(lines) if lines else ch)
+    return numbered, table
+
+
+def align_path(name):
+    return os.path.join(GEN_DIR, os.path.splitext(name)[0] + ".번역.정렬.json")
 
 
 GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선), "
@@ -728,6 +794,7 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
                 "정보를 우겨 넣지 마라 - 개별 논문의 수치 나열은 실패다.\n"
                 "규칙:\n- 원문의 대제목·소제목을 모두 유지 (## = 대제목, ### = 소제목, 원문 번호 유지). 소제목은 한국어로 옮기고 괄호에 원문 병기.\n"
                 + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히 번역하라.\n" if front else
+                   "- 이 구간에 초록(Abstract)이 있으면 맨 앞에 '## 초록 (Abstract)' 아래 한 문장도 빼지 말고 충실히 번역하라.\n"
                    "- 첫 절(1. Introduction)은 이 리뷰의 범위·동기·구성을 쉬운 말로 한 문단(4~6문장).\n"
                    "- 그 외 각 절·소절마다 2~4문장: 이 절이 다루는 주제가 무엇인지(어떤 재료·공정·방법·현상), 어떤 종류의 연구들을 어떻게 정리했는지, "
                    "저자가 내리는 결론이나 쟁점이 무엇인지. 대표적인 결론 하나 정도만 수치와 함께. 필요하면 '- ' bullet 1~2개로 핵심 쟁점.\n"
@@ -741,6 +808,7 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
             "정보를 우겨 넣지 마라 - 수치·인용번호·장비 모델명·부차적 조건을 나열하면 실패다.\n"
             "규칙:\n- 소제목은 원문의 ## 수준(1., 2., 3. …)만 쓰고 한국어로 옮겨 괄호에 원문 병기. ### 소절은 따로 제목을 달지 말고 상위 절 설명 안에 녹여 쓰라.\n"
             + (FRONT_RULE + "- 초록(Abstract)은 한 문장도 빼지 말고 충실히 번역하라.\n" if front else
+               "- 이 구간에 초록(Abstract)이 있으면 맨 앞에 '## 초록 (Abstract)' 아래 한 문장도 빼지 말고 충실히 번역하라.\n"
                "- 서론(1.)은 문단을 따라 쉬운 말로 (원문의 50~60%): 배경, 기존 연구의 빈틈, 이 논문이 하려는 것.\n"
                "- 방법(재료·시험편·장비·조건·해석) 절은 '무엇을 어떻게 했는지' bullet 3~6개. 재현에 필요한 핵심 조건만.\n"
                "- 결과·고찰 절은 '무엇을 봤는지' 쉬운 말 한 문단(3~5문장) + 핵심 발견 bullet 2~4개 (가장 중요한 수치 1~2개를 왜 중요한지와 함께).\n"
@@ -754,8 +822,11 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
         "- 수식·그림/표 번호는 원문 그대로, 그림/표 캡션도 번역 ('**Fig. N** - 번역').\n"
         + (FRONT_RULE if front else "") + CUT_RULE +
         "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
+        "- 원문 문장마다 [s번호]가 붙어 있다. 번역문에서도 각 문장 앞에 같은 번호를 그대로 붙여라 (예: '[s12] 번역문'). "
+        "번호를 빠뜨리거나 바꾸지 마라. 두 문장을 한 문장으로 합쳐 옮기면 '[s12][s13] 번역문'처럼 둘 다 붙이고, 한 문장을 둘로 나누면 둘 다 같은 번호를 붙여라. "
+        "소제목·캡션 줄도 번호를 유지하라.\n"
         "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
-        + "\n[원문 구간]\n" + ch)
+        + "\n[원문 구간 - 문장마다 번호]\n" + ch)
 
 
 def generate_document(name, kind, text):
@@ -771,6 +842,9 @@ def generate_document(name, kind, text):
                         re.search(r"\breview\b|\bsurvey\b|state of the art|state-of-the-art|advances in|perspectives|\boverview\b", _title)) else "research"
     chunks, has_front = prepare_chunks(text, 14000 if is_sum else 6000)  # 요약은 절 단위로 크게, 번역은 6k  # 머리부(목차·약어)는 통째로 1구간
     n = len(chunks)
+    align_table = None
+    if not is_sum:  # 번역: 문장 번호를 붙여 보내고 번호표를 남긴다 (읽기 화면의 정확한 원문 위치 찍기용)
+        chunks, align_table = number_chunks(chunks, name)
     results, errors, done = [None] * n, [], [0]
     label = "요약" if is_sum else "번역"
     job = _jobs.get(key)
@@ -808,6 +882,12 @@ def generate_document(name, kind, text):
         t.join()
     if errors:
         raise errors[0]
+    if align_table is not None:
+        try:
+            os.makedirs(GEN_DIR, exist_ok=True)
+            save_json(align_path(name), align_table)
+        except Exception:
+            pass
     # 구간 결과 정리: 구간이 만든 # 제목은 ##로 내림(문서 제목은 하나만), 참고문헌 구간마다 반복된 '(참고문헌 생략)'은 하나로
     results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
@@ -1118,6 +1198,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, get_captions(name))
                 except Exception as e:
                     self._send(200, {"captions": [], "error": str(e)[:200]})
+        elif url.path == "/api/align":
+            # 번역문의 [s번호] → 원문 문장·페이지 표 (없으면 {})
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            self._send(200, load_json(align_path(name), {}))
         elif url.path == "/api/readlog":
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
             self._send(200, load_readlog()["papers"].get(name, {}))
