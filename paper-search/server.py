@@ -370,13 +370,20 @@ def answer_question(name, quote, question, history=None):
 CAP_LINE = re.compile(r"^\s*(fig\.?|figure|table|scheme|그림|표)\s*\.?\s*\d", re.I)
 
 
+_LIST_LINE = re.compile(r"^\s*\d+(\.\d+)*\.?\s+\S|(\.\s*){3,}\s*\d{1,4}\s*$|…\s*\d{1,4}\s*$")
+
+
 def _join_lines(lines):
-    """블록 안의 줄들을 한 문단으로. 줄 끝 하이픈은 단어를 이어 붙이고, 나머지는 공백으로."""
+    """블록 안의 줄들을 한 문단으로. 줄 끝 하이픈은 단어를 이어 붙이고, 나머지는 공백으로.
+    단, 목차·번호 목록처럼 줄마다 항목인 블록은 줄바꿈을 살린다 (한 문단으로 뭉개면 읽을 수 없다)."""
+    items = [t.strip() for t in lines if t.strip()]
+    if not items:
+        return ""
+    listish = len(items) >= 3 and sum(1 for t in items if _LIST_LINE.search(t)) >= len(items) * 0.6
+    if listish:
+        return "\n".join(re.sub(r"(\.\s*){3,}\s*(\d{1,4})\s*$", r" … \2", " ".join(t.split())) for t in items)
     out = ""
-    for t in lines:
-        t = t.strip()
-        if not t:
-            continue
+    for t in items:
         if out.endswith("-") and re.match(r"^[a-z]", t):
             out = out[:-1] + t
         else:
@@ -495,6 +502,40 @@ def pdf_body_and_asides(name):
             joined[-1] = (prev[:-1] + t) if prev.endswith("-") else (prev + " " + t)
         else:
             joined.append(t)
+    def toc_split(t):
+        """점선 목차가 한 덩어리로 뭉쳐 있으면 항목별 목록으로 쪼갠다. 목차가 아니면 None"""
+        parts = re.split(r"(?:\.\s*){3,}", t)
+        if len(parts) < 4:
+            return None
+        ents, title = [], parts[0].strip()
+        for nxt in parts[1:]:
+            m = re.match(r"\s*(\d{1,4})\s*(.*)$", nxt, re.S)
+            if not m or not title:
+                break
+            ents.append("- %s … %s" % (" ".join(title.split()), m.group(1)))
+            title = m.group(2).strip()
+        return "\n".join(ents) if len(ents) >= 3 else None
+
+    joined = [(toc_split(t) or t) for t in joined]
+    # 목차 항목이 한 줄씩 따로 문단이 되면 읽기 어렵다 → 잇달아 나오는 목차 줄은 하나의 목록으로 묶는다
+    toc_like = lambda x: len(x) < 220 and re.search(r"(\.\s*){3,}\s*\d{1,4}\s*$", x) is not None
+    out, run = [], []
+    def flush_run():
+        if not run:
+            return
+        if len(run) >= 3:
+            out.append("\n".join("- " + re.sub(r"(\.\s*){3,}\s*(\d{1,4})\s*$", r" … \2", x) for x in run))
+        else:
+            out.extend(run)
+        del run[:]
+    for t in joined:
+        if toc_like(t):
+            run.append(t)
+        else:
+            flush_run()
+            out.append(t)
+    flush_run()
+    joined = out
     return "\n\n".join(joined), "\n\n".join(aside)
 
 
