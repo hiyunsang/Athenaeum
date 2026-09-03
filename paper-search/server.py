@@ -351,6 +351,119 @@ def answer_question(name, quote, question, history=None):
         + hist + "[질문] " + question + "\n\n[논문 원문(일부)]\n" + context, timeout=240)
 
 
+CAP_LINE = re.compile(r"^\s*(fig\.?|figure|table|scheme|그림|표)\s*\.?\s*\d", re.I)
+
+
+def pdf_layout_pages(name):
+    """페이지별 줄 목록. 각 줄 = {t, x, xe, y, size, col}. 좌표는 PDF 원점(왼쪽 아래) 기준."""
+    from pypdf import PdfReader
+    reader = PdfReader(os.path.join(ARCHIVE, name))
+    if reader.is_encrypted:
+        reader.decrypt("")
+    out = []
+    for page in reader.pages:
+        items = []
+
+        def visitor(text, cm, tm, font_dict, font_size, _items=items):
+            if not text or not text.strip():
+                return
+            try:
+                a, b, c, d, e, f = (float(v) for v in tm)
+                ca, cb, cc, cd, ce, cf = (float(v) for v in cm)
+                # 실제 위치 = 문자 행렬(tm) × 그래픽 행렬(cm). cm 을 빼면 좌표가 어긋나 줄 순서가 뒤섞인다
+                x = e * ca + f * cc + ce
+                y = e * cb + f * cd + cf
+                size = abs(float(font_size)) * (abs(c * cb + d * cd) or abs(a * ca + b * cc) or 1.0)
+            except (TypeError, ValueError, IndexError):
+                return
+            _items.append({"t": text, "x": x, "y": y, "size": size, "w": len(text) * size * 0.5})
+
+        try:
+            page.extract_text(visitor_text=visitor)
+        except Exception:
+            continue
+        try:
+            width = float(page.mediabox.width) or 595.0
+        except Exception:
+            width = 595.0
+        # 단(column)을 먼저 정한다. 2단 편집에서 왼쪽 단 줄이 오른쪽 단 첫 글자와 붙는 것을 막아야 한다
+        half = width * 0.5
+        right = sum(1 for it in items if it["x"] > half)
+        two_col = right >= max(3, len(items) * 0.2)
+        for it in items:
+            it["col"] = 1 if (two_col and it["x"] > half) else 0
+        items.sort(key=lambda i: (i["col"], -i["y"], i["x"]))
+        lines = []
+        for it in items:
+            L = lines[-1] if lines else None
+            # 같은 줄로 잇는 조건: 같은 단, y 가 비슷하고, 가로로 바로 이어짐(간격 15pt 미만)
+            if L and L["col"] == it["col"] and abs(L["y"] - it["y"]) < 3 and -2 <= it["x"] - L["xe"] < 15:
+                L["t"] += ("" if L["t"].endswith(" ") or it["t"].startswith(" ") else " ") + it["t"]
+                L["xe"] = it["x"] + it["w"]
+                L["sizes"].append((it["size"], len(it["t"])))
+            else:
+                lines.append({"t": it["t"], "x": it["x"], "xe": it["x"] + it["w"], "y": it["y"],
+                              "col": it["col"], "sizes": [(it["size"], len(it["t"]))]})
+        for L in lines:  # 줄의 대표 크기 = 글자 수가 가장 많은 크기 (제목의 위첨자 등에 휘둘리지 않게)
+            agg = {}
+            for sz, ln in L["sizes"]:
+                agg[round(sz, 1)] = agg.get(round(sz, 1), 0) + ln
+            L["size"] = max(agg.items(), key=lambda kv: kv[1])[0]
+        for L in lines:
+            L["t"] = " ".join(L["t"].split())
+        lines.sort(key=lambda L: (L["col"], -L["y"], L["x"]))   # 읽기 순서: 왼쪽 단 전체 → 오른쪽 단
+        out.append({"lines": [L for L in lines if L["t"]], "width": width})
+    return out
+
+
+def pdf_body_and_asides(name):
+    """(본문, 곁텍스트). 곁텍스트 = 그림 캡션·표 내용·각주 등 본문 흐름을 끊는 작은 글씨 블록."""
+    pages = pdf_layout_pages(name)
+    if not pages:
+        return "", ""
+    from collections import Counter
+    cnt = Counter()
+    for pg in pages:
+        for L in pg["lines"]:
+            cnt[round(L["size"], 1)] += len(L["t"])
+    if not cnt:
+        return "", ""
+    body_size = cnt.most_common(1)[0][0]
+    body, aside = [], []
+    for pi, pg in enumerate(pages):
+        in_cap = False
+        for L in pg["lines"]:
+            small = L["size"] < body_size * 0.95
+            if CAP_LINE.match(L["t"]):
+                in_cap = True
+            elif in_cap and not small:
+                in_cap = False
+            if small or in_cap:
+                aside.append(L["t"])
+            else:
+                body.append(L["t"])
+        body.append("")   # 페이지 경계
+    return "\n".join(body), "\n".join(aside)
+
+
+def paper_text(name):
+    """생성용 원문. 본문을 이어붙이고, 그림 캡션·표는 끝에 따로 모은다 (문장 중간에 끼어들지 않게).
+    좌표 추출이 실패하면 예전 방식(페이지별 extract_text)으로 되돌아간다."""
+    try:
+        body, aside = pdf_body_and_asides(name)
+    except Exception:
+        body, aside = "", ""
+    if len(body.strip()) < 500:
+        from pypdf import PdfReader
+        reader = PdfReader(os.path.join(ARCHIVE, name))
+        if reader.is_encrypted:
+            reader.decrypt("")
+        return "\n".join((p.extract_text() or "") for p in reader.pages)
+    if aside.strip():
+        body += "\n\nFigures and Tables\n" + aside
+    return body
+
+
 def pdf_pages_text_raw(name):
     """줄바꿈을 유지한 페이지별 원문 (캡션 추출용)."""
     from pypdf import PdfReader
@@ -569,7 +682,7 @@ def _run_generation(name, kind):
     reader = PdfReader(os.path.join(ARCHIVE, name))
     if reader.is_encrypted:
         reader.decrypt("")
-    text = "\n".join((p.extract_text() or "") for p in reader.pages)
+    text = paper_text(name)
     if len(text.strip()) < 500:
         raise RuntimeError("이 PDF는 글자를 추출할 수 없습니다 (스캔본인 듯)")
     if not find_claude():
