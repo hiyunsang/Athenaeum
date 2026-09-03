@@ -137,7 +137,7 @@
   </div>
 </div>
 <div id="seltool">
-  <button data-act="locate">PDF에서 찾기</button>
+  <button data-act="locate" title="드래그하면 자동으로 원문 문장을 찍습니다. 어긋나면 이 버튼으로 Claude에게 정확한 위치를 묻습니다">Claude로 찾기</button>
   <button data-act="cross">대조</button>
   <button data-act="note">메모</button>
   <button data-act="ask">질문 ▾</button>
@@ -510,7 +510,7 @@ function numKey(str) { const m = NUMRE.exec(str || ""); return m ? m[1].replace(
 function colOf(pi, it) { return it.x > pages[pi].vp.width * 0.5 - 20 ? 1 : 0; }   // 2단 편집: 오른쪽 단이면 1
 function readingOrder(pi) {
   // 읽기 순서: 왼쪽 단 전체(y 순) → 오른쟽 단. 단일 단 문서는 x 가 모두 왼쪽이라 그냥 y 순
-  return pages[pi].items.map(it => Object.assign({ col: colOf(pi, it) }, it)).sort((a, b) => a.col - b.col || a.y - b.y || a.x - b.x);
+  return pages[pi].items.map((it, idx) => Object.assign({ col: colOf(pi, it), idx }, it)).sort((a, b) => a.col - b.col || a.y - b.y || a.x - b.x);
 }
 function pdfLines(pi) {
   // 같은 단·같은 줄(y 비슷, x 가 바로 이어지는)의 조각들을 합쳐 줄 단위 텍스트로 (토큰 보정용, 페이지별 캐시). pos = 문서 순서 값
@@ -518,8 +518,8 @@ function pdfLines(pi) {
   const its = readingOrder(pi), lines = [];
   for (const it of its) {
     const L = lines[lines.length - 1];
-    if (L && L.col === it.col && Math.abs(L.y - it.y) < 4 && it.x - L.xEnd < 12 && it.x >= L.x) { L.text += (it.x - L.xEnd > 1.5 ? " " : "") + it.str; L.xEnd = Math.max(L.xEnd, it.x + it.w); }
-    else lines.push({ y: it.y, x: it.x, xEnd: it.x + it.w, col: it.col, pos: it.col * 500000 + it.y, text: it.str });
+    if (L && L.col === it.col && Math.abs(L.y - it.y) < 4 && it.x - L.xEnd < 12 && it.x >= L.x) { L.text += (it.x - L.xEnd > 1.5 ? " " : "") + it.str; L.xEnd = Math.max(L.xEnd, it.x + it.w); L.items.push(it.idx); }
+    else lines.push({ y: it.y, x: it.x, xEnd: it.x + it.w, col: it.col, pos: it.col * 500000 + it.y, text: it.str, items: [it.idx], pi });
   }
   lines.forEach(l => l.low = l.text.toLowerCase());
   return (pdfLinesCache[pi] = lines);
@@ -572,6 +572,109 @@ function tokensOf(text) {
   return [...t].filter(w => !/^(which|there|these|those|their|about|between|however|other|using|based|under|where|while|would|could|should|because)$/.test(w));
 }
 function pdfAbs(pi, y) { return pages[pi].div.offsetTop + y * zoomF; }
+// ---------- 문장 단위 대응 (번역 ↔ 원문) ----------
+// 절(번호 소제목) 단위로 원문 줄을 모아 문장으로 나누고, 한국어 쪽도 문장으로 나눠 '몇 번째 문장'을 맞춘다.
+let secCache = {}, secCacheKey = "";
+function koHeadsWithAnchors() {
+  return [...read.querySelectorAll("h2, h3")].map(h => ({ num: numKey(h.textContent), el: h, top: h.offsetTop })).filter(h => h.num && pdfAnchors && pdfAnchors[h.num]);
+}
+const ABBR_END = /(?:\b(?:al|Fig|Figs|Eq|Eqs|Ref|Refs|vs|No|Dr|Prof|approx|ca|cf|i\.e|e\.g)|\b[A-Z])\.$/;
+function splitSentences(text) {
+  // 영문 문장 끝: . ! ? 뒤에 공백 + 대문자/괄호/따옴표. 'et al.', 'Fig.' 같은 약어 뒤는 끊지 않음. [{from,to}] (문자 위치)
+  const out = []; let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c !== "." && c !== "!" && c !== "?") continue;
+    let j = i + 1; while (j < text.length && /\s/.test(text[j])) j++;
+    const nextOk = j >= text.length || /[A-Z(\[“"]/.test(text[j]);
+    if (!nextOk || j === i + 1 && j < text.length) continue;
+    if (c === "." && ABBR_END.test(text.slice(Math.max(0, i - 8), i + 1))) continue;
+    if (i - start < 15) continue;
+    out.push({ from: start, to: i + 1 }); start = j;
+  }
+  if (text.length - start > 3) out.push({ from: start, to: text.length });
+  return out;
+}
+function sourceSection(i, hs) {
+  // hs[i] 절의 원문: 앵커 줄부터 다음 앵커 직전까지의 PDF 줄 → 문장 목록 [{low, page, y, items}]
+  const key = hs.map(h => h.num).join(",");
+  if (secCacheKey !== key) { secCache = {}; secCacheKey = key; }
+  if (secCache[i]) return secCache[i];
+  const a = pdfAnchors[hs[i].num], b = hs[i + 1] ? pdfAnchors[hs[i + 1].num] : null;
+  const lines = [];
+  const lastPage = b ? b.page : Math.min(pages.length - 1, a.page + 3);
+  for (let pi = a.page; pi <= lastPage; pi++) for (const L of pdfLines(pi)) {
+    if (pi === a.page && L.pos < a.pos - 2) continue;
+    if (b && pi === b.page && L.pos >= b.pos) break;
+    if (L.text.trim().length < 2) continue;
+    lines.push(L);
+  }
+  // 줄을 이어 하나의 글로, 각 문자가 어느 줄인지 기억
+  let text = ""; const lineAt = [];
+  lines.forEach((L, li) => {
+    let t = L.text.trim();
+    if (text.endsWith("-") && /^[a-z]/.test(t)) { text = text.slice(0, -1); lineAt.pop(); }   // 줄 끝 하이픈 이어 붙이기
+    else if (text) { text += " "; lineAt.push(li); }
+    for (let c = 0; c < t.length; c++) lineAt.push(li);
+    text += t;
+  });
+  const sents = splitSentences(text).map(sp => {
+    const li0 = lineAt[sp.from] ?? 0, li1 = lineAt[Math.max(sp.from, sp.to - 1)] ?? li0;
+    const L0 = lines[li0]; const items = [];
+    for (let li = li0; li <= li1; li++) if (lines[li].pi === L0.pi) items.push(...lines[li].items);
+    return { text: text.slice(sp.from, sp.to), low: text.slice(sp.from, sp.to).toLowerCase(), page: L0.pi, y: L0.y, items };
+  });
+  return (secCache[i] = { sents, lines });
+}
+function koSentencesOf(i, hs) {
+  // hs[i] 절 안의 한국어 문장들 [{el, text}] (소제목 제외, 문서 순서)
+  const out = []; let el = hs[i].el.nextElementSibling; const stop = hs[i + 1] ? hs[i + 1].el : null;
+  while (el && el !== stop) {
+    if (!/^H[23]$/.test(el.tagName)) {
+      const parts = el.textContent.split(/(?<=[.!?。])\s+/).map(t => t.trim()).filter(t => t.length > 1);
+      parts.forEach(t => out.push({ el, text: t }));
+    }
+    el = el.nextElementSibling;
+  }
+  return out;
+}
+function mapKoToSrc(el, offset) {
+  // 한국어 블록 el 의 offset 위치 문장 → 원문 문장 {page, y, items, approx}. 실패 시 null
+  if (kind !== "translation" || !pdfAnchors) return null;
+  const hs = koHeadsWithAnchors(); if (!hs.length) return null;
+  let i = -1; for (let k = 0; k < hs.length; k++) if (hs[k].top <= el.offsetTop) i = k;
+  if (i < 0) return null;
+  const ko = koSentencesOf(i, hs), src = sourceSection(i, hs).sents;
+  if (!ko.length || !src.length) return null;
+  // el 안에서 offset 이 속한 문장 번호
+  let k = ko.findIndex(x => x.el === el); if (k < 0) return null;
+  const inEl = ko.filter(x => x.el === el); let acc = 0, sub = 0;
+  for (let q = 0; q < inEl.length; q++) { acc += inEl[q].text.length + 1; if (offset < acc) { sub = q; break; } sub = q; }
+  k += sub;
+  const m = Math.round(k / Math.max(1, ko.length - 1) * (src.length - 1));
+  const toks = tokensOf(ko[k].text);
+  let best = m, bestSc = 0;
+  for (let c = Math.max(0, m - 4); c <= Math.min(src.length - 1, m + 4); c++) {
+    let sc = 0; for (const w of toks) if (src[c].low.includes(w)) sc++;
+    if (sc > bestSc || (sc === bestSc && sc > 0 && Math.abs(c - m) < Math.abs(best - m))) { bestSc = sc; best = c; }
+  }
+  const r = src[best];
+  return { page: r.page, y: r.y, items: r.items, approx: bestSc === 0, text: r.text };
+}
+function locateSelection(range) {
+  // 드래그한 한국어 문장 → 원문 문장을 PDF에 노랗게 표시 (즉시)
+  let node = range.startContainer; if (node.nodeType === 3) node = node.parentElement;
+  const block = node.closest("p, li, td, th, h2, h3, div"); if (!block || !read.contains(block)) return false;
+  const pre = document.createRange(); pre.selectNodeContents(block); pre.setEnd(range.startContainer, range.startOffset);
+  const r = mapKoToSrc(block, pre.toString().length);
+  if (!r) return false;
+  document.getElementById("pdfTog").checked = true; pdfcol.classList.add("on");
+  clearHl();
+  highlightItems(r.page, [...new Set(r.items)], "", "top");
+  status((r.page + 1) + "쪽 · " + (r.approx ? "위치 어림 (겹치는 용어 없음)" : "원문 문장 표시"), 2500);
+  return true;
+}
+
 let anchorKey = "";
 function followPdf(force) {
   // 전문번역에서만 따라감 (요약은 문장이 원문과 1:1 대응하지 않아 어긋남). 요약 탭이면 표시선도 지움
@@ -596,7 +699,9 @@ function followPdf(force) {
   // 토큰 보정: 화면 맨 위 문단의 영문 용어·숫자로 이 절 범위 안의 PDF 줄을 찾는다
   const topEl = [...read.children].find(el => el.offsetTop + el.offsetHeight > S && !/^H[23]$/.test(el.tagName));
   let mark = null;
-  if (topEl) {
+  const sm = topEl ? mapKoToSrc(topEl, Math.max(0, Math.round((S - topEl.offsetTop) / Math.max(1, topEl.offsetHeight) * topEl.textContent.length))) : null;
+  if (sm) { target = pdfAbs(sm.page, sm.y); mark = { pi: sm.page, y: sm.y }; }
+  else if (topEl) {
     const toks = tokensOf(topEl.textContent);
     if (toks.length >= 2) {
       let best = null;
@@ -633,6 +738,7 @@ read.addEventListener("mouseup", () => {
     const s = window.getSelection(); const t = s ? s.toString().trim() : "";
     if (t.length < 4) { seltool.style.display = "none"; return; }
     sel = { text: t, kind };
+    if (kind === "translation") { try { locateSelection(s.getRangeAt(0)); } catch (e) { console.warn("locate", e); } }
     const r = s.getRangeAt(0).getBoundingClientRect();
     seltool.style.display = "flex"; seltool.style.left = Math.max(8, Math.min(r.left, innerWidth - 380)) + "px";
     const below = r.bottom + 8;  // 선택 아래에. 화면 아래로 벗어나면 위로
