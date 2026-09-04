@@ -1002,7 +1002,7 @@ GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 �
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
-_chunk_sem = threading.BoundedSemaphore(4)  # 전체 동시 Claude 호출 4개 (구간 병렬 처리)
+_chunk_sem = threading.BoundedSemaphore(8)  # 전체 동시 Claude 호출 8개 (구간 병렬 처리)
 
 
 # 머리부 구간(제목·저자·초록·키워드·목차·약어) 전용 규칙
@@ -1093,7 +1093,7 @@ def generate_document(name, kind, text):
     if job:  # 완성된 구간을 읽기 화면에서 미리 볼 수 있게 공유
         job["partial"] = results
         job["total"] = n
-    _set_stage(key, "Claude {} 중 (0/{} 구간, 4개 동시)".format(label, n))
+    _set_stage(key, "Claude {} 중 (0/{} 구간, 8개 동시)".format(label, n))
     if job:
         job["done"] = 0; job["phase"] = "chunks"; job["eta_extra"] = 25 if is_sum else 0  # 요약은 마지막 한줄요약 단계 ~25초
 
@@ -1113,7 +1113,7 @@ def generate_document(name, kind, text):
         except Exception as e:
             errors.append(e)
         done[0] += 1
-        _set_stage(key, "Claude {} 중 ({}/{} 구간 완료, 4개 동시)".format(label, done[0], n))
+        _set_stage(key, "Claude {} 중 ({}/{} 구간 완료, 8개 동시)".format(label, done[0], n))
         if job:
             job["done"] = done[0]
 
