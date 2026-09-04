@@ -89,10 +89,11 @@ def worker(kind, names, label, force=False):
 
 
 def claude_worker(queue):
-    """Claude 작업은 한 줄기로: 요약 전부 → 번역 전부 (동시에 돌리면 사용 한도를 더 빨리 소진)"""
+    """Claude 작업은 한 줄기로: 번역 전부 → 요약 전부 (동시에 돌리면 사용 한도를 더 빨리 소진).
+    번역을 먼저 하는 이유: 원문 추출 품질이 그대로 드러나는 쪽이라 결과를 빨리 확인할 수 있다."""
     force = set(queue.get("force", []))
-    worker("summary", queue.get("summary", []), "요약", "summary" in force)
     worker("translation", queue.get("translation", []), "번역", "translation" in force)
+    worker("summary", queue.get("summary", []), "요약", "summary" in force)
 
 
 def main():
