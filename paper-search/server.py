@@ -29,7 +29,7 @@ _refreshing = threading.Event()
 # 요약/전문번역 (claude 명령줄 = 구독 토큰 사용, API 키 불필요)
 GEN_DIR = os.path.join(os.path.dirname(ARCHIVE), "번역")
 _jobs = {}  # (파일명, 종류) -> {"status": "running"|"error", "error": str}
-_gen_sem = threading.BoundedSemaphore(2)  # 동시 생성 2개까지, 나머지는 자동 대기
+_gen_sem = threading.BoundedSemaphore(3)  # 동시 생성 3개까지, 나머지는 자동 대기
 _map_sem = threading.BoundedSemaphore(1)  # 맵은 한 번에 하나 (OpenAlex 속도 제한 보호)
 
 def paper_header(name):
@@ -720,7 +720,7 @@ def run_generation(name, kind, ext=None):
                 _set_stage(key, "시작", started=True)
                 _run_map(name, ext)
         else:
-            _set_stage(key, "대기 중 (요약·번역 동시 2개)")
+            _set_stage(key, "대기 중 (요약·번역 동시 3개)")
             with _gen_sem:
                 _set_stage(key, "본문 추출 중", started=True)
                 _run_generation(name, kind)

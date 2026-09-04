@@ -79,13 +79,30 @@ def run_one(name, kind, label, force=False):
                 log("[%s] 3시간 초과, 건너뜀: %s" % (label, name[:60])); return False
 
 
-def worker(kind, names, label, force=False):
-    ok = 0
-    for n in names:
-        if run_one(n, kind, label, force):
-            ok += 1
-        time.sleep(10)
-    log("[%s] 줄기 종료: %d/%d 성공" % (label, ok, len(names)))
+def worker(kind, names, label, force=False, workers=3):
+    """논문 여러 편을 동시에 처리(기본 3편). 구간 병렬은 서버가 8개로 묶어 두므로 총 동시 호출은 8개를 넘지 않는다."""
+    lock = threading.Lock()
+    state = {"i": 0, "ok": 0}
+
+    def run():
+        while True:
+            with lock:
+                if state["i"] >= len(names):
+                    return
+                n = names[state["i"]]
+                state["i"] += 1
+            if run_one(n, kind, label, force):
+                with lock:
+                    state["ok"] += 1
+            time.sleep(3)
+
+    ts = [threading.Thread(target=run, daemon=True) for _ in range(max(1, min(workers, len(names))))]
+    for t in ts:
+        t.start()
+        time.sleep(2)
+    for t in ts:
+        t.join()
+    log("[%s] 줄기 종료: %d/%d 성공" % (label, state["ok"], len(names)))
 
 
 def claude_worker(queue):
