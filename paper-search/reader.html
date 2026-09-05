@@ -194,6 +194,12 @@ function mdToHtml(md) {
   // 문장 번호가 소제목(#)·글머리표(-) 기호 앞에 오면 마크다운이 깨지므로 기호를 앞으로 되돌린다
   md = md.replace(/^(\[s\d+\](?:\[s\d+\])*)\s*(#{1,6}\s)/gm, "$2$1 ")
          .replace(/^(\[s\d+\](?:\[s\d+\])*)\s*([-*]\s)/gm, "$2$1 ");
+  // 번역이 '3.1. 잔류 스크래치 깊이'처럼 ## 없이 절 제목만 한 줄로 낸 경우 → 제목으로 승격
+  // (짧고, 글자로 시작하고, 마침표·등호가 없는 번호 줄만. 수식 조각 '2 1 2', '1 −cos' 는 제외)
+  md = md.replace(/^((?:\[s\d+\]\s*)*)(\d+(?:\.\d+){0,3})\.?[ \t]+([가-힣A-Za-z(][^\n=−¼\[]{1,60}?)[ \t]*$/gm, (m, mk, num, title) => {
+    if (/[.!?:,;]$/.test(title) || title.split(/\s+/).length > 10) return m;
+    return (num.includes(".") ? "### " : "## ") + mk + num + ". " + title;
+  });
   let h = mdTables(esc(md));
   h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
        .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
@@ -797,7 +803,8 @@ read.addEventListener("mouseup", () => {
     const s = window.getSelection(); const t = s ? s.toString().trim() : "";
     if (t.length < 4) { seltool.style.display = "none"; return; }
     sel = { text: t, kind };
-    if (kind === "translation") { try { locateSelection(s.getRangeAt(0)); } catch (e) { console.warn("locate", e); } }
+    // 실제로 드래그해서 범위가 잡혔을 때만 원문 위치를 찍는다. 단순 클릭(범위 0)이면 건너뛴다 - 안 그러면 Fig 링크 클릭이 그 문장으로 튀어 버린다
+    if (kind === "translation" && !s.isCollapsed) { try { locateSelection(s.getRangeAt(0)); } catch (e) { console.warn("locate", e); } }
     const r = s.getRangeAt(0).getBoundingClientRect();
     seltool.style.display = "flex"; seltool.style.left = Math.max(8, Math.min(r.left, innerWidth - 380)) + "px";
     const below = r.bottom + 8;  // 선택 아래에. 화면 아래로 벗어나면 위로

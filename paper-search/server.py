@@ -1132,6 +1132,16 @@ def generate_document(name, kind, text):
             pass
         # '[s10] ## 1. 서론' 처럼 번호가 소제목 기호 앞에 오면 마크다운 제목이 깨지므로 '## [s10] 1. 서론' 으로
         results = [re.sub(r"(?m)^(\[s\d+\](?:\[s\d+\])*)\s*(#{1,6}\s)", r"\2\1 ", r) for r in results]
+
+        # '3.1. 잔류 스크래치 깊이'처럼 ## 없이 절 제목만 한 줄로 나온 것은 제목으로 승격
+        # (짧고, 글자로 시작하고, 마침표·등호가 없는 번호 줄만. 수식 조각은 제외)
+        def _promote(m):
+            mk, num, title = m.group(1), m.group(2), m.group(3)
+            if re.search(r"[.!?:,;]$", title) or len(title.split()) > 10:
+                return m.group(0)
+            return ("### " if "." in num else "## ") + mk + num + ". " + title
+        results = [re.sub(r"(?m)^((?:\[s\d+\]\s*)*)(\d+(?:\.\d+){0,3})\.?[ \t]+([가-힣A-Za-z(][^\n=−¼\[]{1,60}?)[ \t]*$", _promote, r)
+                   for r in results]
     # 구간 결과 정리: 구간이 만든 # 제목은 ##로 내림(문서 제목은 하나만), 참고문헌 구간마다 반복된 '(참고문헌 생략)'은 하나로
     results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
