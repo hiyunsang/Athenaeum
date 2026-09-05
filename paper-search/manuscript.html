@@ -119,7 +119,10 @@ async function api(path, body) { const r = await fetch(path, body ? { method: "P
 async function loadList(selectId) {
   list = (await api("/api/ms/list")).items || [];
   $("msSel").innerHTML = "<option value=''>원고 선택…</option>" + list.map(m => "<option value='" + m.id + "'>" + esc(m.title) + " · 카드 " + m.cards + "</option>").join("");
-  const id = selectId || localStorage.getItem("ms_last");
+  // 열 원고: 주소의 ?id= → 마지막에 본 원고 → 가장 최근에 고친 원고 (빈 화면은 원고가 하나도 없을 때만)
+  const urlId = new URLSearchParams(location.search).get("id");
+  let id = selectId || urlId || localStorage.getItem("ms_last");
+  if (!(id && list.some(m => m.id === id)) && list.length) id = list[0].id;
   if (id && list.some(m => m.id === id)) { $("msSel").value = id; await openDoc(id); } else showEmpty();
 }
 function showEmpty() { doc = null; $("empty").style.display = ""; $("editor").style.display = "none"; $("tree").innerHTML = ""; renderDrawer(); }
