@@ -233,6 +233,7 @@ function renderCards() {
   bindCardOpen(el);
 }
 const FORM = [["theme", "관점", "select", ["both:기계적+열적", "mech:기계적", "thermal:열적"]], ["panels", "패널", "select", ["all:거시+확대", "zoom:확대만", "macro:거시만"]], ["lang", "라벨", "select", ["en:영어", "ko:한국어"]],
+  ["cmap", "열 컬러맵", "select", ["hot:논문 스타일(연분홍→진빨강)", "jet:해석 스타일(파랑→빨강)"]],
   ["tsz_top", "TSZ 폭(위)", "number", 130], ["tsz_bottom", "TSZ 폭(아래)", "number", 95], ["shear", "표면 쓸림", "number", 140], ["clearance", "여유면 기울기", "number", 18], ["surface_tilt", "가공면 기울기", "number", 55],
   ["tip_radius", "날끝 반경", "number", 34], ["grain", "결정립 간격", "number", 62], ["t_max", "최고 온도 °C", "number", 900], ["t_min", "최저 온도 °C", "number", 25], ["seed", "무작위 씨앗", "number", 7]];
 function figForm(p) {
