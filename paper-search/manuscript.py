@@ -830,6 +830,55 @@ def schematic_figure(doc, params, fig_id=None):
     return fig
 
 
+def _gen():
+    import sys, shutil
+    if cfg["BASE"] not in sys.path:
+        sys.path.insert(0, cfg["BASE"])
+    from schematic import generate as gen
+    gen.cfg["no_window"] = cfg["no_window"]
+    gen.cfg["claude_exe"] = cfg.get("claude_exe") or shutil.which("claude") or shutil.which("claude.cmd") or shutil.which("claude.exe")
+    return gen
+
+
+def save_ref(doc, name, data):
+    """참고 그림(아이패드 스케치·PPT) 저장 → 이미지 파일명 목록"""
+    gen = _gen()
+    ref_dir = os.path.join(cfg["FIG_DIR"], "refs")
+    base = "%s_%s" % (doc["id"], time.strftime("%H%M%S"))
+    paths, note = gen.save_ref_image(data, name, ref_dir, base)
+    return {"images": [os.path.basename(p) for p in paths], "note": note}
+
+
+def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
+    """설명(+참고 그림) → Claude 가 lib 로 그리는 스크립트 → SVG/PNG. fig_id 가 있으면 그 그림의 스크립트를 수정 요청으로 고친다."""
+    gen = _gen()
+    ref_dir = os.path.join(cfg["FIG_DIR"], "refs")
+    ref_paths = [os.path.join(ref_dir, os.path.basename(r)) for r in (refs or []) if os.path.isfile(os.path.join(ref_dir, os.path.basename(r)))]
+    fig = next((f for f in doc["figures"] if f["id"] == fig_id), None) if fig_id else None
+    prev = (fig or {}).get("source", {}).get("script") if fig else None
+    if fig and not spec:
+        spec = fig["source"].get("spec") or {}
+        ref_paths = ref_paths or [os.path.join(ref_dir, r) for r in fig["source"].get("refs", []) if os.path.isfile(os.path.join(ref_dir, r))]
+    log = []
+    code, svg, log = gen.generate(spec or {}, ref_paths, prev_script=prev, feedback=feedback, log=log)
+    if not fig:
+        fig = {"id": _next_id(doc["figures"], "f"), "num": len(doc["figures"]) + 1, "caption": "", "caption_en": "", "source": {}}
+        doc["figures"].append(fig)
+    hist = (fig.get("source") or {}).get("history", [])
+    if prev:
+        hist = (hist + [{"t": fig.get("t", 0), "script": prev, "feedback": feedback or ""}])[-10:]
+    fig["source"] = {"type": "claude", "spec": spec or {}, "refs": [os.path.basename(p) for p in ref_paths], "script": code, "history": hist}
+    base = "%s_%s" % (doc["id"], fig["id"])
+    svg_path = os.path.join(cfg["FIG_DIR"], base + ".svg"); png_path = os.path.join(cfg["FIG_DIR"], base + ".png")
+    io.open(svg_path, "w", encoding="utf-8").write(svg)
+    io.open(os.path.join(cfg["FIG_DIR"], base + ".py"), "w", encoding="utf-8").write(code)
+    w, h = gen.svg_size(svg)
+    ok = render_png(svg_path, png_path, w, h, 1)
+    fig["svg"] = base + ".svg"; fig["png"] = base + ".png" if ok else ""; fig["w"], fig["h"] = w, h; fig["t"] = time.time(); fig["log"] = log
+    save_ms(doc)
+    return fig
+
+
 def export_figure(doc, fig_id, scale=3):
     """저널 제출용 고해상도 PNG (기본 3배 ≈ 300 dpi 상당)"""
     fig = next((f for f in doc["figures"] if f["id"] == fig_id), None)
@@ -859,7 +908,7 @@ def handle_get(h, url):
         return h._send(200, d if d else {"error": "없음"})
     if p.startswith("/fig/"):
         name = os.path.basename(p)
-        fp = os.path.join(cfg["FIG_DIR"], name)
+        fp = os.path.join(cfg["FIG_DIR"], "refs", name) if p.startswith("/fig/refs/") else os.path.join(cfg["FIG_DIR"], name)
         if not os.path.isfile(fp):
             return h._send(404, {"error": "no file"})
         ctype = "image/svg+xml" if name.endswith(".svg") else "image/png"
@@ -938,6 +987,14 @@ def handle_post(h, body):
         if p == "/api/ms/figure/schematic":
             doc = load_ms(body.get("id"))
             return h._send(200, schematic_figure(doc, body.get("params") or {}, body.get("fig")))
+        if p == "/api/ms/figure/refs":
+            import base64
+            doc = load_ms(body.get("id"))
+            return h._send(200, save_ref(doc, body.get("name") or "ref.png", base64.b64decode(body.get("b64", ""))))
+        if p == "/api/ms/figure/generate":
+            doc = load_ms(body.get("id"))
+            fig = claude_figure(doc, body.get("spec") or {}, body.get("refs") or [], body.get("fig"), body.get("feedback"))
+            return h._send(200, fig)
         if p == "/api/ms/figure/export":
             doc = load_ms(body.get("id"))
             return h._send(200, {"path": export_figure(doc, body.get("fig"), int(body.get("scale", 3)))})
