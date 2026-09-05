@@ -205,7 +205,7 @@ function mdToHtml(md) {
   });
   let h = mdTables(esc(md));
   // 번역이 쓴 아래/위 첨자 태그만 살린다 (그 외 HTML 은 그대로 글자로 보임)
-  h = h.replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");
+  h = h.replace(/&lt;(\/?)(sub|sup)(?:&gt;|>)/g, "<$1$2>");   // esc() 는 '<' 만 바꾸므로 닫는 꺽쇠는 그대로일 수 있음
   // [[EQ:pN_K.png]] = 원문 수식을 PDF 에서 잘라 둔 그림
   h = h.replace(/\[\[EQ:([A-Za-z0-9_.-]+)\]\]/g, (m, n) => "<img class='eq' src='/eq?file=" + encodeURIComponent(file) + "&name=" + n + "' alt='수식'>");
   h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
