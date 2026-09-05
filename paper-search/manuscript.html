@@ -81,6 +81,9 @@
   <a href="/" class="act">← 논문</a>
   <select id="msSel" title="원고 선택"></select>
   <button class="btn" id="newMs">+ 새 원고</button>
+  <button class="btn" id="importMs" title="워드(.docx) 원고를 가져와 개요·문단·그림·참고문헌·주석으로 나눕니다">워드 가져오기</button>
+  <input type="file" id="importFile" accept=".docx" style="display:none">
+  <select id="journalSel" title="투고 저널 (규격 점검·머리부 생성에 반영)"><option value="">저널 선택…</option><option value="JMPT">JMPT (Elsevier)</option></select>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
   <span class="sp" id="saveState"></span>
@@ -94,9 +97,11 @@
   </div>
   <div id="center"><div id="empty">원고를 고르거나 새로 만드세요.<br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
-    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="notes">주석</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
     <div class="tab on" id="tab-cards"></div>
     <div class="tab" id="tab-figs"></div>
+    <div class="tab" id="tab-check"></div>
+    <div class="tab" id="tab-notes"></div>
     <div class="tab" id="tab-idea"></div>
     <div class="tab" id="tab-en"></div>
     <div class="tab" id="tab-out"></div>
@@ -122,7 +127,9 @@ async function openDoc(id) {
   doc = await api("/api/ms?id=" + encodeURIComponent(id));
   if (doc.error) return showEmpty();
   localStorage.setItem("ms_last", id);
-  cur = (doc.outline[0] || {}).id || null;
+  doc.front = doc.front || { title: "", authors: "", abstract: "", keywords: [], highlights: [] };
+  doc.meta = doc.meta || {}; $("journalSel").value = doc.meta.journal || "";
+  cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
   renderAll();
 }
@@ -136,6 +143,20 @@ function save(immediate) {
 $("msSel").onchange = e => e.target.value ? openDoc(e.target.value) : showEmpty();
 async function newMs() { const t = prompt("새 원고 제목:", ""); if (!t) return; const d = await api("/api/ms/new", { title: t }); await loadList(d.id); }
 $("newMs").onclick = newMs; $("newMs2").onclick = newMs;
+$("journalSel").onchange = e => { if (!doc) return; doc.meta.journal = e.target.value; save(true); renderCheck(); };
+// 워드 가져오기: 파일을 base64 로 올려 서버가 개요·문단·그림·참고문헌·주석으로 나눔
+$("importMs").onclick = () => $("importFile").click();
+$("importFile").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > 60 * 1024 * 1024) { alert("60MB 이하 파일만 가져올 수 있습니다."); return; }
+  $("saveState").textContent = "가져오는 중… (" + Math.round(f.size / 1024) + "KB)";
+  const b64 = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result.split(",")[1]); rd.readAsDataURL(f); });
+  const r = await api("/api/ms/import", { name: f.name, b64, journal: $("journalSel").value || "JMPT" });
+  e.target.value = "";
+  if (r.error) { alert("⚠ " + r.error); $("saveState").textContent = ""; return; }
+  alert("가져왔습니다.\n절 " + r.nodes + "개 · 그림 " + r.figures + "장 · 참고문헌 " + r.refs + "편 · 공저자 주석 " + r.comments + "개");
+  await loadList(r.id);
+};
 $("renameMs").onclick = () => { if (!doc) return; const t = prompt("원고 제목:", doc.title); if (t) { doc.title = t; save(true); renderEditor(); loadList(doc.id); } };
 $("delMs").onclick = async () => { if (!doc) return; if (!confirm("「" + doc.title + "」 원고를 삭제할까요? (카드·초안 모두 삭제, 되돌릴 수 없음)")) return; await api("/api/ms/delete", { id: doc.id }); localStorage.removeItem("ms_last"); await loadList(); };
 
@@ -143,8 +164,39 @@ $("delMs").onclick = async () => { if (!doc) return; if (!confirm("「" + doc.ti
 const node = id => doc.outline.find(n => n.id === id);
 const nextId = (arr, p) => p + (Math.max(0, ...arr.map(x => parseInt(String(x.id).replace(p, ""), 10) || 0)) + 1);
 function renderTree() {
-  $("tree").innerHTML = doc.outline.map(n => "<div class='node l" + n.level + (n.id === cur ? " sel" : "") + "' data-id='" + n.id + "'><span class='st " + (n.status || "") + "'></span><span class='h'>" + esc(n.heading || "(제목 없음)") + "</span><span class='n'>" + (n.cards || []).length + "</span></div>").join("");
+  const f = doc.front || {};
+  const frontOk = f.abstract && (f.highlights || []).length;
+  $("tree").innerHTML = "<div class='node l1" + (cur === "front" ? " sel" : "") + "' data-id='front'><span class='st " + (frontOk ? "done" : (f.abstract ? "drafted" : "")) + "'></span><span class='h' style='font-family:var(--font)'>머리부 · 제목·초록·키워드·하이라이트</span></div>" +
+    doc.outline.map(n => "<div class='node l" + n.level + (n.id === cur ? " sel" : "") + "' data-id='" + n.id + "'><span class='st " + (n.status || "") + "'></span><span class='h'>" + esc(n.heading || "(제목 없음)") + "</span><span class='n'>" + (n.cards || []).length + "</span></div>").join("");
   $("tree").querySelectorAll(".node").forEach(el => el.onclick = () => { cur = el.dataset.id; renderTree(); renderEditor(); });
+}
+function renderFront() {
+  const f = doc.front, ed = $("editor");
+  const wc = (f.abstract || "").split(/\s+/).filter(Boolean).length;
+  ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>머리부 · " + esc(doc.meta.journal || "저널 미지정") + (doc.meta.lang === "en" ? " · 영어 원고" : "") + "</div>" +
+    "<label class='f'>논문 제목</label><textarea id='fTitle' rows='2'>" + esc(f.title) + "</textarea>" +
+    "<label class='f'>저자·소속</label><textarea id='fAuthors' rows='3'>" + esc(f.authors) + "</textarea>" +
+    "<label class='f'>초록 <span class='hint' style='font-weight:400'>" + wc + " 단어</span></label><textarea id='fAbs' rows='9'>" + esc(f.abstract) + "</textarea>" +
+    "<label class='f'>키워드 <span class='hint' style='font-weight:400'>세미콜론으로 구분</span></label><textarea id='fKw' rows='2'>" + esc((f.keywords || []).join("; ")) + "</textarea>" +
+    "<label class='f'>하이라이트 <span class='hint' style='font-weight:400'>한 줄에 하나 · JMPT 3~5개, 각 85자 이내</span></label><textarea id='fHl' rows='5'>" + esc((f.highlights || []).join("\n")) + "</textarea>" +
+    "<div class='ctl' style='padding:8px 0;margin-left:-8px'><button class='btn pri' id='frontGen'>초록·키워드·하이라이트 생성 (Claude)</button></div><div id='frontprog'></div>" +
+    (f.abstract_ai ? "<div class='sec'>Claude 제안</div><div class='card' style='border-left-color:var(--amber)'><div class='m'><b>초록 제안</b> " + f.abstract_ai.split(/\s+/).length + " 단어 <button class='btn' data-apply='abstract'>적용</button></div><div class='t'>" + esc(f.abstract_ai) + "</div></div>" +
+      "<div class='card' style='border-left-color:var(--amber)'><div class='m'><b>키워드 제안</b> <button class='btn' data-apply='keywords'>적용</button></div><div class='t'>" + esc((f.keywords_ai || []).join("; ")) + "</div></div>" +
+      "<div class='card' style='border-left-color:var(--amber)'><div class='m'><b>하이라이트 제안</b> <button class='btn' data-apply='highlights'>적용</button></div><div class='t'>" + (f.highlights_ai || []).map(h => "• " + esc(h) + " <span class='hint'>(" + h.length + "자)</span>").join("<br>") + "</div></div>" +
+      ((f.title_suggestions || []).length ? "<div class='card' style='border-left-color:var(--amber)'><div class='m'><b>제목 대안</b></div><div class='t'>" + f.title_suggestions.map(esc).join("<br>") + "</div></div>" : "") : "");
+  const bind = (id, fn) => { const el = $(id); el.oninput = () => { fn(el.value); save(); }; };
+  bind("fTitle", v => f.title = v); bind("fAuthors", v => f.authors = v); bind("fAbs", v => f.abstract = v);
+  bind("fKw", v => f.keywords = v.split(/;\s*/).map(x => x.trim()).filter(Boolean)); bind("fHl", v => f.highlights = v.split("\n").map(x => x.trim()).filter(Boolean));
+  $("frontGen").onclick = async () => {
+    if (busy) return; busy = true;
+    $("frontprog").innerHTML = "<div class='prog'><span>본문 읽고 머리부 작성 중</span>" + pbarHtml(0.05, 0) + "<span class='eta'>~60초</span></div>";
+    const t0 = Date.now(); const tm = setInterval(() => { const b = $("frontprog").querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / 70000) * 100) + "%"; }, 1000);
+    const r = await api("/api/ms/claude", { id: doc.id, mode: "front" });
+    clearInterval(tm); busy = false;
+    if (r.error) { alert("⚠ " + r.error); $("frontprog").innerHTML = ""; return; }
+    doc.front = r; renderFront(); renderTree();
+  };
+  ed.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => { const k = b.dataset.apply; f[k] = f[k + "_ai"]; save(true); renderFront(); renderTree(); });
 }
 function addNode(level) {
   if (!doc) return;
@@ -170,6 +222,7 @@ $("reviewBtn").onclick = async () => {
 
 // ---------- 가운데: 문단 편집 ----------
 function renderEditor() {
+  if (cur === "front") return renderFront();
   const n = node(cur);
   const ed = $("editor");
   if (!n) { ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='hint'>왼쪽에서 절을 추가하세요.</div>"; return; }
@@ -183,13 +236,59 @@ function renderEditor() {
     "<button class='btn pri' data-m='draft'>초안 쓰기</button><button class='btn' data-m='rewrite'>다시 쓰기</button><button class='btn' data-m='shorten'>줄이기</button><button class='btn' data-m='plain'>쉬운 말로</button><button class='btn' data-m='english'>영문화 →</button>" +
     "<span style='margin-left:auto'></span><select id='status' style='border-color:transparent;font-size:12px;color:var(--text-2)'><option value='todo'" + (n.status === "todo" ? " selected" : "") + ">할 일</option><option value='drafted'" + (n.status === "drafted" ? " selected" : "") + ">초안 있음</option><option value='done'" + (n.status === "done" ? " selected" : "") + ">완료</option></select></div>" +
     "<div id='cprog'></div><textarea id='draft' placeholder='직접 쓰거나 「초안 쓰기」로 시작. 근거 표시 [c3] 는 내보낼 때 인용 번호로 바뀝니다.'>" + esc(n.draft) + "</textarea>" +
+    "<div class='ctl' style='padding:4px 0;margin-left:-8px;align-items:center'><button class='btn' id='revPara' title='이 문단만 심사자 눈으로 검토'>이 문단 검토</button><button class='btn' id='evidBtn' title='내 논문 데이터베이스(번역 문장)에서 이 주장의 근거 문장을 찾습니다'>내 논문에서 근거 찾기</button>" +
+    "<label class='hint' style='margin-left:auto;cursor:pointer'><input type='checkbox' id='autoRev'" + (localStorage.getItem("ms_autorev") === "1" ? " checked" : "") + "> 쓰다가 멈추면 자동 검토</label></div>" +
+    "<div id='revbox'>" + reviewHtml(n.review) + "</div><div id='evidbox'></div>" +
     "<label class='f'>영문 (한국어 초안에서 영문화)</label><textarea id='draftEn' placeholder='「영문화 →」를 누르면 용어집을 지켜 옮깁니다.'>" + esc(n.draft_en) + "</textarea>";
   const bind = (id, key, cb) => { const el = $(id); el.oninput = () => { n[key] = el.value; save(); if (cb) cb(); }; };
   bind("headIn", "heading", renderTree); bind("claim", "claim"); bind("draft", "draft"); bind("draftEn", "draft_en");
   $("status").onchange = e => { n.status = e.target.value; save(); renderTree(); };
   ed.querySelectorAll("[data-m]").forEach(b => b.onclick = () => runClaude(b.dataset.m));
+  $("revPara").onclick = () => reviewPara(n);
+  $("evidBtn").onclick = () => findEvidence(n);
+  $("autoRev").onchange = e => localStorage.setItem("ms_autorev", e.target.checked ? "1" : "0");
+  // 쓰다가 멈추면(30초) 바뀐 게 있을 때만 자동 검토 (토글 켠 경우)
+  $("draft").addEventListener("input", () => { clearTimeout(autoRevTimer); if ($("autoRev").checked) autoRevTimer = setTimeout(() => { if (!busy && n.draft.length > 200 && n.draft !== (n.review || {}).text) reviewPara(n, true); }, 30000); });
   ed.querySelectorAll("[data-detach]").forEach(b => b.onclick = () => { n.cards = n.cards.filter(x => x !== b.dataset.detach); save(); renderEditor(); renderTree(); renderDrawer(); });
   bindCardOpen(ed);
+}
+let autoRevTimer = null;
+function reviewHtml(rv) {
+  if (!rv || !rv.result) return "";
+  const r = rv.result, when = new Date((rv.t || 0) * 1000).toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" });
+  return "<div class='sec'>문단 검토 <span class='hint' style='font-weight:400'>" + when + "</span></div>" +
+    ((r.issues || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + (i.quote ? "<span style='color:var(--text-3)'>“" + esc(i.quote) + "”</span> " : "") + esc(i.text) + "</div>").join("") || "<div class='hint'>지적 사항 없음</div>") +
+    (r.summary ? "<div class='hint' style='margin-top:4px'>" + esc(r.summary) + "</div>" : "");
+}
+async function reviewPara(n, auto) {
+  if (busy || !n.draft || n.draft.length < 40) { if (!auto) alert("검토할 글이 짧습니다."); return; }
+  busy = true;
+  $("revbox").innerHTML = "<div class='prog'><span>" + (auto ? "자동 " : "") + "문단 검토 중</span>" + pbarHtml(0.05, 0) + "<span class='eta'>~25초</span></div>";
+  const t0 = Date.now(); const tm = setInterval(() => { const b = $("revbox").querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / 30000) * 100) + "%"; }, 800);
+  const r = await api("/api/ms/claude", { id: doc.id, node: n.id, mode: "review_para" });
+  clearInterval(tm); busy = false;
+  if (r.error) { $("revbox").innerHTML = "<div class='hint'>⚠ " + esc(r.error) + "</div>"; return; }
+  n.review = { t: Date.now() / 1000, result: r, text: n.draft };
+  $("revbox").innerHTML = reviewHtml(n.review);
+}
+async function findEvidence(n) {
+  if (busy) return; busy = true;
+  $("evidbox").innerHTML = "<div class='prog'><span>내 논문 " + "문장 색인 검색 중</span>" + pbarHtml(0.05, 0) + "<span class='eta'>~20초</span></div>";
+  const r = await api("/api/ms/evidence", { id: doc.id, node: n.id });
+  busy = false;
+  if (r.error) { $("evidbox").innerHTML = "<div class='hint'>⚠ " + esc(r.error) + "</div>"; return; }
+  $("evidbox").innerHTML = "<div class='sec'>근거 후보 " + r.hits.length + "개 <span class='hint' style='font-weight:400'>내 논문 " + r.searched + "편 번역 문장에서 · 검색어: " + esc(r.phrases.join(", ")) + "</span></div>" +
+    (r.hits.map((h, i) => "<div class='card' style='border-left-color:var(--green)'><div class='m'><b>" + esc(h.short) + "</b>" + (h.page ? "<span>p." + h.page + "</span>" : "") + "<span>" + esc(h.sent) + "</span><span>일치 " + h.score + "</span></div>" +
+      (h.ko ? "<div class='t'>" + esc(h.ko) + "</div>" : "") + "<div class='src'>" + esc(h.en) + "</div>" +
+      "<div class='acts'><button class='btn pri' data-take='" + i + "'>카드로 담고 이 문단에 붙이기</button><button class='btn' data-openh='" + i + "'>원문 열기</button></div></div>").join("") || "<div class='hint'>맞는 문장을 찾지 못했습니다. 주장을 더 구체적으로 써 보세요.</div>");
+  $("evidbox").querySelectorAll("[data-take]").forEach(b => b.onclick = async () => {
+    const h = r.hits[+b.dataset.take];
+    const c = await api("/api/ms/card", { id: doc.id, text: h.ko || h.en, source: { file: h.file, kind: "translation", sent: h.sent, page: h.page } });
+    if (c.error) { alert("⚠ " + c.error); return; }
+    doc = await api("/api/ms?id=" + encodeURIComponent(doc.id)); const nn = node(n.id); if (nn && !nn.cards.includes(c.id)) nn.cards.push(c.id); save(true); renderAll();
+    document.querySelector(".tabs div[data-t=cards]").click();
+  });
+  $("evidbox").querySelectorAll("[data-openh]").forEach(b => b.onclick = () => { const h = r.hits[+b.dataset.openh]; window.open("/view?file=" + encodeURIComponent(h.file) + "&kind=translation&sent=" + h.sent, "athenaeum_reader"); });
 }
 function cardHtml(c, attached) {
   return "<div class='card' data-cid='" + c.id + "'><div class='m'><span class='id'>" + c.id + "</span><b>" + esc(short(c.source.file)) + "</b>" + (c.source.page ? "<span>p." + c.source.page + "</span>" : "") + (c.source.sent ? "<span>" + c.source.sent + "</span>" : "") + "</div>" +
@@ -219,7 +318,44 @@ async function runClaude(mode) {
 
 // ---------- 서랍 ----------
 document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x === t)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + t.dataset.t)); });
-function renderDrawer() { renderCards(); renderFigs(); renderIdea(); renderEn(); renderOut(); }
+function renderDrawer() { renderCards(); renderFigs(); renderCheck(); renderNotes(); renderIdea(); renderEn(); renderOut(); }
+function issuesHtml(list) { return (list || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + esc(i.text) + "</div>").join("") || "<div class='hint'>문제 없음</div>"; }
+function renderCheck() {
+  const el = $("tab-check"); if (!doc) { el.innerHTML = ""; return; }
+  const rv = (doc.review || {}).result;
+  el.innerHTML = "<div class='sec'>원고 점검 <span class='hint' style='font-weight:400'>" + esc(doc.meta.journal || "저널 미지정 → 헤더에서 선택") + "</span></div>" +
+    "<div class='hint'>규격 점검은 즉시(그림 번호·언급 순서, 참고문헌 인용 누락·순서, 초록 길이, 하이라이트, 키워드). 전체 검토는 Claude가 원고를 통독합니다(1~2분).</div>" +
+    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='chkRules'>규격 점검</button><button class='btn' id='chkFull'>전체 검토 (Claude)</button></div><div id='chkprog'></div><div id='chkout'>" + (rv ? checkHtml(rv) : "") + "</div>";
+  $("chkRules").onclick = async () => { $("chkout").innerHTML = "<div class='hint'>점검 중…</div>"; const r = await api("/api/ms/check", { id: doc.id }); $("chkout").innerHTML = checkHtml(r); };
+  $("chkFull").onclick = async () => {
+    if (busy) return; busy = true;
+    $("chkprog").innerHTML = "<div class='prog'><span>원고 통독 중</span>" + pbarHtml(0.03, 0) + "<span class='eta'>~90초</span></div>";
+    const t0 = Date.now(); const tm = setInterval(() => { const b = $("chkprog").querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / 110000) * 100) + "%"; }, 1000);
+    const r = await api("/api/ms/claude", { id: doc.id, mode: "review_full" });
+    clearInterval(tm); busy = false; $("chkprog").innerHTML = "";
+    if (r.error) { $("chkout").innerHTML = "<div class='hint'>⚠ " + esc(r.error) + "</div>"; return; }
+    doc.review = { t: Date.now() / 1000, result: r }; $("chkout").innerHTML = checkHtml(r);
+  };
+}
+function checkHtml(r) {
+  const s = r.stats || {};
+  let h = "<div class='hint' style='margin:6px 0'>단어 " + (s.words || 0).toLocaleString() + " · 절 " + s.sections + " · 그림 " + s.figures + " · 참고문헌 " + s.refs + " (인용 " + s.cited + ") · 주석 " + s.comments + "</div>" +
+    "<div class='sec'>규격 <span class='hint' style='font-weight:400'>" + (r.issues || []).length + "건</span></div>" + issuesHtml(r.issues);
+  const c = r.claude;
+  if (c) {
+    h += "<div class='sec'>Claude 전체 검토</div>" + (c.overall ? "<div style='font-size:13px;line-height:1.7;margin-bottom:6px'>" + esc(c.overall) + "</div>" : "");
+    const sec = (title, arr, fmt) => (arr && arr.length) ? "<div class='sec' style='padding-top:6px'>" + title + "</div>" + arr.map(x => "<div class='issue'>" + fmt(x) + "</div>").join("") : "";
+    h += sec("용어 일관성", c.terminology, t => esc((t.variants || []).join(" / ")) + " → <b style='color:var(--accent)'>" + esc(t.suggest || "") + "</b>");
+    h += sec("반복", c.repetition, esc) + sec("논리·근거", c.logic, esc) + sec("문장·시제", c.style, esc);
+  }
+  return h;
+}
+function renderNotes() {
+  const el = $("tab-notes"); if (!doc) { el.innerHTML = ""; return; }
+  const cs = doc.comments || [];
+  el.innerHTML = "<div class='sec'>공저자 주석 " + cs.length + "개 <span class='hint' style='font-weight:400'>워드에서 가져옴 · 읽기 전용</span></div>" +
+    (cs.map(c => "<div class='card' style='border-left-color:var(--amber)'><div class='m'><b>" + esc(c.author) + "</b><span>" + esc(c.date) + "</span></div>" + (c.anchor ? "<div class='src'>“" + esc(c.anchor) + "”</div>" : "") + "<div class='t'>" + esc(c.text) + "</div></div>").join("") || "<div class='hint'>주석이 없습니다.</div>");
+}
 function renderCards() {
   const el = $("tab-cards");
   if (!doc) { el.innerHTML = "<div class='hint' style='padding:12px'>원고를 열면 카드가 보입니다.</div>"; return; }
