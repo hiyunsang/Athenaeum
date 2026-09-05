@@ -38,40 +38,71 @@ function animateBars(root) {
   });
 }
 
-// ---------- 화면 조절: 다크 모드 · 읽기 글꼴 배율 (모든 화면 공통, localStorage 에 기억) ----------
-(function () {
+// ---------- 환경설정 (모든 화면 공통, localStorage 에 기억) ----------
+// 항목: 테마(시스템/밝게/어둡게) · 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 · 원고 자동 검토
+const UI_DEFAULTS = { ui_theme: "system", ui_scale_read: 1, ui_scale_ms: 1, ui_width: 760, ui_lh: 1.8, ms_autorev: "0" };
+function uiGet(k) {
   try {
-    const t = localStorage.getItem("ui_theme");
-    if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
-    const s = parseFloat(localStorage.getItem("ui_scale") || "1");
-    if (s > 0) document.documentElement.style.setProperty("--read-scale", s);
-  } catch (e) {}
-})();
-function uiTheme() {
-  const t = document.documentElement.dataset.theme;
-  if (t) return t;
-  return (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    let v = localStorage.getItem(k);
+    if (v === null && k === "ui_scale_read") v = localStorage.getItem("ui_scale");   // 옛 키 이어받기
+    if (v === null) return UI_DEFAULTS[k];
+    return (typeof UI_DEFAULTS[k] === "number") ? (parseFloat(v) || UI_DEFAULTS[k]) : v;
+  } catch (e) { return UI_DEFAULTS[k]; }
 }
-function setTheme(t) {
-  document.documentElement.dataset.theme = t;
-  try { localStorage.setItem("ui_theme", t); } catch (e) {}
-  document.querySelectorAll(".uictl .th").forEach(b => b.textContent = t === "dark" ? "☀" : "☾");
+function uiSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} applyUi(); }
+function applyUi() {
+  const root = document.documentElement;
+  const t = uiGet("ui_theme");
+  if (t === "dark" || t === "light") root.dataset.theme = t; else delete root.dataset.theme;
+  root.style.setProperty("--read-scale", uiGet("ui_scale_read"));
+  root.style.setProperty("--ms-scale", uiGet("ui_scale_ms"));
+  const w = uiGet("ui_width"); root.style.setProperty("--read-width", w >= 9999 ? "100%" : w + "px");
+  root.style.setProperty("--read-lh", uiGet("ui_lh"));
+  document.querySelectorAll("#uiSettings [data-k]").forEach(el => {
+    const k = el.dataset.k, v = uiGet(k);
+    if (el.type === "checkbox") el.checked = String(v) === "1"; else el.value = v;
+    const out = document.querySelector("#uiSettings [data-out='" + k + "']");
+    if (out) out.textContent = k.startsWith("ui_scale") ? Math.round(v * 100) + "%" : (k === "ui_width" ? (v >= 9999 ? "전체" : v + "px") : v);
+  });
 }
+applyUi();
+// 옛 함수 이름 호환 (다른 화면 코드가 부를 수 있음)
+function uiTheme() { const t = document.documentElement.dataset.theme; return t || ((window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light"); }
+function setTheme(t) { uiSet("ui_theme", t); }
 function toggleTheme() { setTheme(uiTheme() === "dark" ? "light" : "dark"); }
-function uiScale() { return parseFloat(localStorage.getItem("ui_scale") || "1") || 1; }
-function setScale(s) {
-  s = Math.min(1.8, Math.max(0.8, Math.round(s * 20) / 20));
-  document.documentElement.style.setProperty("--read-scale", s);
-  try { localStorage.setItem("ui_scale", s); } catch (e) {}
-  document.querySelectorAll(".uictl .sc").forEach(el => el.textContent = Math.round(s * 100) + "%");
+function uiScale() { return uiGet("ui_scale_read"); }
+function setScale(s) { uiSet("ui_scale_read", Math.min(1.8, Math.max(0.8, Math.round(s * 20) / 20))); }
+
+function openSettings() {
+  if (document.getElementById("uiSettings")) { closeSettings(); return; }
+  const row = (label, inner, hint) => "<div class='urow'><div class='ulab'>" + label + (hint ? "<div class='uhint'>" + hint + "</div>" : "") + "</div><div class='uctl'>" + inner + "</div></div>";
+  const range = (k, min, max, step) => "<input type='range' data-k='" + k + "' min='" + min + "' max='" + max + "' step='" + step + "'><span class='uout' data-out='" + k + "'></span>";
+  const html =
+    "<div id='uiSettings'><div class='ubox'>" +
+    "<div class='uhead'><b>환경설정</b><span class='uhint'>바꾸면 바로 적용되고 이 컴퓨터에 기억됩니다</span><button class='uclose' onclick='closeSettings()'>✕</button></div>" +
+    row("테마", "<select data-k='ui_theme'><option value='system'>시스템 설정 따르기</option><option value='light'>밝게</option><option value='dark'>어둡게</option></select>") +
+    row("읽기 글꼴", range("ui_scale_read", 0.8, 1.8, 0.05), "요약·번역 본문. 누워서 볼 때 크게") +
+    row("원고 글꼴", range("ui_scale_ms", 0.8, 1.8, 0.05), "원고의 초안·영문·초록·카드") +
+    row("읽기 폭", range("ui_width", 560, 9999, 40), "본문 한 줄 길이. 오른쪽 끝 = 전체 폭") +
+    row("줄 간격", range("ui_lh", 1.4, 2.4, 0.1), "요약·번역 본문") +
+    row("원고 자동 검토", "<label class='uswitch'><input type='checkbox' data-k='ms_autorev'> 쓰다가 30초 멈추면 Claude가 그 문단을 검토</label>", "토큰이 듭니다. 기본은 꺼짐") +
+    "<div class='ufoot'><button class='ureset' onclick='resetSettings()'>기본값으로</button></div>" +
+    "</div></div>";
+  document.body.insertAdjacentHTML("beforeend", html);
+  const box = document.getElementById("uiSettings");
+  box.addEventListener("click", e => { if (e.target === box) closeSettings(); });
+  box.querySelectorAll("[data-k]").forEach(el => {
+    el.addEventListener("input", () => uiSet(el.dataset.k, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));
+    el.addEventListener("change", () => uiSet(el.dataset.k, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));
+  });
+  applyUi();
+  document.addEventListener("keydown", escClose);
 }
-// 헤더에 넣는 조절 버튼: 가- / 배율 / 가+ / 다크
-function uiControlsHtml() {
-  return "<span class='uictl' title='읽기 글꼴 크기 · 다크 모드'>" +
-    "<button onclick='setScale(uiScale()-0.1)' title='글꼴 작게'>가−</button><span class='sc'>" + Math.round(uiScale() * 100) + "%</span>" +
-    "<button onclick='setScale(uiScale()+0.1)' title='글꼴 크게'>가+</button>" +
-    "<button class='th' onclick='toggleTheme()' title='다크 모드 켜기/끄기'>" + (uiTheme() === "dark" ? "☀" : "☾") + "</button></span>";
-}
+function escClose(e) { if (e.key === "Escape") closeSettings(); }
+function closeSettings() { const b = document.getElementById("uiSettings"); if (b) b.remove(); document.removeEventListener("keydown", escClose); }
+function resetSettings() { Object.keys(UI_DEFAULTS).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); try { localStorage.removeItem("ui_scale"); } catch (e) {} applyUi(); }
+// 헤더에 넣는 버튼: ⚙ 하나 (안에서 전부 조절)
+function uiControlsHtml() { return "<span class='uictl'><button onclick='openSettings()' title='환경설정: 테마·글꼴 크기·읽기 폭·줄 간격'>⚙ 설정</button></span>"; }
 function mountUiControls(sel) {
   const host = typeof sel === "string" ? document.querySelector(sel) : sel;
   if (host && !host.querySelector(".uictl")) host.insertAdjacentHTML("beforeend", uiControlsHtml());
