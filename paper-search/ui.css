@@ -32,6 +32,24 @@
   /* 제목용 세리프: 논문 제목·절 제목에만. 한글 글리프는 없으므로 한글은 Pretendard로 떨어짐 (라틴 세리프 + 한글 산세리프 조합) */
   --font-serif: Georgia, "Times New Roman", "Pretendard Variable", Pretendard, serif;
 }
+/* 다크 모드: 토큰만 바꾼다. 명시 선택(data-theme)이 우선, 없으면 OS 설정을 따른다 */
+:root[data-theme="dark"] { color-scheme: dark;
+  --bg: #171716; --panel: #1d1d1b; --surface: #202020; --text: #e8e6e1; --text-2: #b0aea7; --text-3: #7e7d78; --text-quiet: #8a8983;
+  --line: #2e2e2b; --line-2: #3e3e3a; --accent: #7fa3ff; --accent-bg: #23304f; --amber: #e0b35a; --amber-bg: #3a2f14;
+  --green: #6fcf97; --red: #ef7b7b; --hover: #262624; --sel-bg: #232a3d; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark;
+    --bg: #171716; --panel: #1d1d1b; --surface: #202020; --text: #e8e6e1; --text-2: #b0aea7; --text-3: #7e7d78; --text-quiet: #8a8983;
+    --line: #2e2e2b; --line-2: #3e3e3a; --accent: #7fa3ff; --accent-bg: #23304f; --amber: #e0b35a; --amber-bg: #3a2f14;
+    --green: #6fcf97; --red: #ef7b7b; --hover: #262624; --sel-bg: #232a3d; }
+}
+/* 읽기 글꼴 배율: 요약·번역 본문과 원고 초안에 적용 (누워서 볼 때 크게). ui.js 가 localStorage 값으로 설정 */
+:root { --read-scale: 1; }
+/* 공통 화면 조절 버튼 (글꼴 크기·다크 모드) */
+.uictl { display: inline-flex; align-items: center; gap: 2px; margin-left: var(--s2); }
+.uictl button { background: none; border: 0; color: var(--text-quiet); font-size: 12px; padding: 4px 6px; cursor: pointer; border-radius: var(--r); line-height: 1; }
+.uictl button:hover { color: var(--accent); background: var(--hover); }
+.uictl .sc { font-size: 11px; color: var(--text-3); min-width: 3.2em; text-align: center; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { font-family: var(--font); font-size: 13px; line-height: 1.45; color: var(--text); background: var(--bg);

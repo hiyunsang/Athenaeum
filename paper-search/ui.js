@@ -37,3 +37,42 @@ function animateBars(root) {
     requestAnimationFrame(() => requestAnimationFrame(() => { const i = el.querySelector("i"); if (i) i.style.width = to + "%"; }));
   });
 }
+
+// ---------- 화면 조절: 다크 모드 · 읽기 글꼴 배율 (모든 화면 공통, localStorage 에 기억) ----------
+(function () {
+  try {
+    const t = localStorage.getItem("ui_theme");
+    if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+    const s = parseFloat(localStorage.getItem("ui_scale") || "1");
+    if (s > 0) document.documentElement.style.setProperty("--read-scale", s);
+  } catch (e) {}
+})();
+function uiTheme() {
+  const t = document.documentElement.dataset.theme;
+  if (t) return t;
+  return (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("ui_theme", t); } catch (e) {}
+  document.querySelectorAll(".uictl .th").forEach(b => b.textContent = t === "dark" ? "☀" : "☾");
+}
+function toggleTheme() { setTheme(uiTheme() === "dark" ? "light" : "dark"); }
+function uiScale() { return parseFloat(localStorage.getItem("ui_scale") || "1") || 1; }
+function setScale(s) {
+  s = Math.min(1.8, Math.max(0.8, Math.round(s * 20) / 20));
+  document.documentElement.style.setProperty("--read-scale", s);
+  try { localStorage.setItem("ui_scale", s); } catch (e) {}
+  document.querySelectorAll(".uictl .sc").forEach(el => el.textContent = Math.round(s * 100) + "%");
+}
+// 헤더에 넣는 조절 버튼: 가- / 배율 / 가+ / 다크
+function uiControlsHtml() {
+  return "<span class='uictl' title='읽기 글꼴 크기 · 다크 모드'>" +
+    "<button onclick='setScale(uiScale()-0.1)' title='글꼴 작게'>가−</button><span class='sc'>" + Math.round(uiScale() * 100) + "%</span>" +
+    "<button onclick='setScale(uiScale()+0.1)' title='글꼴 크게'>가+</button>" +
+    "<button class='th' onclick='toggleTheme()' title='다크 모드 켜기/끄기'>" + (uiTheme() === "dark" ? "☀" : "☾") + "</button></span>";
+}
+function mountUiControls(sel) {
+  const host = typeof sel === "string" ? document.querySelector(sel) : sel;
+  if (host && !host.querySelector(".uictl")) host.insertAdjacentHTML("beforeend", uiControlsHtml());
+}

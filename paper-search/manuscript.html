@@ -34,8 +34,10 @@
   label.f { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); margin: var(--s4) 0 var(--s1); }
   textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; font: inherit; font-size: 14px; line-height: 1.7; background: var(--surface); resize: vertical; }
   textarea:focus { outline: none; border-color: var(--accent); }
-  #draft { min-height: 220px; font-size: 15px; line-height: 1.8; }
-  #draftEn { min-height: 160px; font-family: var(--font-serif); font-size: 14.5px; }
+  #draft { min-height: 220px; font-size: calc(15px * var(--read-scale, 1)); line-height: 1.8; }
+  #draftEn { min-height: 160px; font-family: var(--font-serif); font-size: calc(14.5px * var(--read-scale, 1)); }
+  #fAbs, #fTitle { font-size: calc(14px * var(--read-scale, 1)); }
+  .card .t, .card .src, .issue { font-size: calc(12.5px * var(--read-scale, 1)); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
   .cards { display: flex; flex-direction: column; gap: var(--s1); }
   .card { border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 6px 10px; font-size: 12.5px; line-height: 1.55; background: var(--surface); }
@@ -87,6 +89,7 @@
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
   <span class="sp" id="saveState"></span>
+  <span id="uiCtlHost"></span>
 </header>
 <div id="layout">
   <div id="outline">
@@ -109,6 +112,7 @@
 </div>
 <script>
 const $ = id => document.getElementById(id);
+mountUiControls("#uiCtlHost");   // 글꼴 크기 · 다크 모드 (ui.js)
 let list = [], doc = null, cur = null, saveTimer = null, busy = false;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const short = f => { const m = /^(\d{4})_([A-Za-z0-9&-]+)_([^_]+)_/.exec(f || ""); return m ? m[3] + " " + m[1] : (f || "").slice(0, 24); };

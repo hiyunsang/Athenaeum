@@ -47,7 +47,7 @@
   .item .loc { position: absolute; top: var(--s2); right: 34px; color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 4px; }
   .a p { margin: 3px 0; } .a li { margin-left: 16px; }
   .item .a h1, .item .a h2, .item .a h3, .item .a h4 { font-size: 12px; font-weight: 600; margin: var(--s1) 0 2px; border: 0; padding: 0; }
-  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: var(--s4) var(--s8) 80px; line-height: 1.8; font-size: 15px; background: var(--surface); position: relative; }
+  #read { flex: 1; min-width: 360px; overflow-y: auto; padding: var(--s4) var(--s8) 80px; line-height: 1.8; font-size: calc(15px * var(--read-scale, 1)); background: var(--surface); position: relative; }
   #read > * { max-width: 760px; margin-left: auto; margin-right: auto; }  /* 읽기 폭 제한 (긴 줄 방지) */
   #read h2 { font-family: var(--font-serif); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: var(--s8); font-size: 19px; font-weight: 700; letter-spacing: -.005em; }
   #read h3 { font-family: var(--font-serif); margin-top: var(--s4); font-size: 16px; font-weight: 700; color: var(--text); }
@@ -855,6 +855,7 @@ followBtn.onclick = () => { followOn = !followOn; followBtn.classList.toggle("on
 
 // ---------- 선택 툴바 ----------
 const seltool = document.getElementById("seltool"), askmenu = document.getElementById("askmenu");
+mountUiControls("#bar");   // 글꼴 크기 · 다크 모드 (ui.js)
 read.addEventListener("mouseup", () => {
   setTimeout(() => {
     const s = window.getSelection(); const t = s ? s.toString().trim() : "";
