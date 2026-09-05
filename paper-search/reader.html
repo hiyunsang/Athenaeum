@@ -53,6 +53,8 @@
   #read h3 { font-family: var(--font-serif); margin-top: var(--s4); font-size: 16px; font-weight: 700; color: var(--text); }
   #read .flash { background: var(--amber-bg); transition: background 1.2s; }
   #read .figref { color: var(--accent); text-decoration: underline dotted; cursor: pointer; }
+  #read img.eq { display: block; max-width: 92%; height: auto; margin: 6px auto 8px; background: #fff; border: 1px solid var(--line); padding: 4px 8px; }
+  #read sub, #read sup { font-size: 0.75em; line-height: 0; }
   #read li { margin-left: 18px; }
   #read li.d2 { margin-left: 36px; } #read li.d3 { margin-left: 54px; }
   #read li.num { list-style: none; margin-left: 0; }
@@ -202,6 +204,10 @@ function mdToHtml(md) {
     return (num.includes(".") ? "### " : "## ") + mk + num + ". " + title;
   });
   let h = mdTables(esc(md));
+  // 번역이 쓴 아래/위 첨자 태그만 살린다 (그 외 HTML 은 그대로 글자로 보임)
+  h = h.replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");
+  // [[EQ:pN_K.png]] = 원문 수식을 PDF 에서 잘라 둔 그림
+  h = h.replace(/\[\[EQ:([A-Za-z0-9_.-]+)\]\]/g, (m, n) => "<img class='eq' src='/eq?file=" + encodeURIComponent(file) + "&name=" + n + "' alt='수식'>");
   h = h.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h2>$1</h2>")
        .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
        // 글머리표: 들여쓴 깊이(공백 2칸 = 한 단계)를 d1~d3 클래스로. 줄 첫머리 '1. ' 번호 항목도 한 줄씩

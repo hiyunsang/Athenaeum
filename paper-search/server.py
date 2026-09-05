@@ -441,19 +441,31 @@ def pdf_blocks(name):
         for b in d["blocks"]:
             if b.get("type") != 0:
                 continue
-            lines, sizes = [], {}
+            sizes = {}
+            linfo = []   # (줄 글자, x0, bbox)
             for ln in b.get("lines", []):
-                lines.append("".join(sp.get("text", "") for sp in ln.get("spans", [])))
+                txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
                 for sp in ln.get("spans", []):
                     k = round(float(sp.get("size", 0)), 1)
                     sizes[k] = sizes.get(k, 0) + len(sp.get("text", ""))
-            t = _join_lines(lines)
-            if not t:
+                if txt.strip():
+                    linfo.append((txt, float(ln["bbox"][0]), tuple(ln["bbox"])))
+            if not linfo:
                 continue
-            bb = tuple(b["bbox"])
-            blocks.append({"t": t, "bbox": bb, "chars": len(t),
-                           "size": max(sizes.items(), key=lambda kv: kv[1])[0] if sizes else 0.0,
-                           "in_fig": any(_inside(bb, f) for f in figs)})
+            # 저널 PDF 는 문단 첫 줄을 들여쓴다: 블록 안에서 들여쓴 줄(앞 줄이 문장부호로 끝남)을 새 문단의 시작으로 본다
+            bx0 = min(x0 for _, x0, _ in linfo)
+            groups = [[linfo[0]]]
+            for prev, cur in zip(linfo, linfo[1:]):
+                if cur[1] - bx0 > 9 and re.search(r"[.!?:]\s*$", prev[0]):
+                    groups.append([])
+                groups[-1].append(cur)
+            size = max(sizes.items(), key=lambda kv: kv[1])[0] if sizes else 0.0
+            for g in groups:
+                t = _join_lines([x[0] for x in g])
+                if not t:
+                    continue
+                bb = (min(x[2][0] for x in g), min(x[2][1] for x in g), max(x[2][2] for x in g), max(x[2][3] for x in g))
+                blocks.append({"t": t, "bbox": bb, "chars": len(t), "size": size, "in_fig": any(_inside(bb, f) for f in figs)})
         pages.append({"blocks": blocks, "half": width * 0.5})
     doc.close()
     # 2단 편집 여부는 문서 전체로 판단한다. 한 페이지만 보면 그림 조각이 많은 쪽에서 잘못 판정된다
@@ -481,6 +493,26 @@ def pdf_body_and_asides(name):
     body_size = max(cnt.items(), key=lambda kv: kv[1])[0]
     body, aside = [], []
     in_nomen = False   # 기호표(Nomenclature)는 페이지 맨 위 상자로 들어가 본문 문장을 끊는다 → 곁텍스트로
+    eq_dir = os.path.join(GEN_DIR, "수식", os.path.splitext(name)[0])
+    eq_doc = None      # 수식 크롭용 PDF (필요할 때만 연다)
+    eq_n = 0
+    last_eq = None     # 직전 수식 {"pi", "col", "bbox", "path"} - 붙어 있는 수식 조각(여러 줄 수식, 식 번호)을 한 그림으로 합침
+
+    def _eq_render(pi, bbox, path, col=0, two_col=False):
+        """수식 자리를 그림으로. 가로는 그 단(column) 전체 폭으로 잘라 좌변·식 번호까지 담고, 세로는 블록 높이에 여유 3pt"""
+        nonlocal eq_doc
+        import fitz
+        if eq_doc is None:
+            eq_doc = fitz.open(os.path.join(ARCHIVE, name))
+        page = eq_doc[pi]
+        W = page.rect.width
+        if two_col:
+            x0, x1 = (W * 0.045, W * 0.5 - 2) if col == 0 else (W * 0.5 + 2, W * 0.955)
+        else:
+            x0, x1 = W * 0.045, W * 0.955
+        r = fitz.Rect(min(x0, bbox[0] - 4), bbox[1] - 3, max(x1, bbox[2] + 4), bbox[3] + 3) & page.rect
+        page.get_pixmap(clip=r, dpi=220, alpha=False).save(path)
+
     for pi, blocks in enumerate(pages):
         for b in blocks:
             t = b["t"]
@@ -496,15 +528,41 @@ def pdf_body_and_asides(name):
             # 작은 글꼴은 곁텍스트(캡션·표·각주). 단 1~2쪽의 긴 산문은 초록·키워드이므로 본문에 남긴다
             # (표 칸도 길 수 있으므로 길이만으로 판단하면 안 된다 - 실제로 6.5pt 1754자 표가 본문에 섞였던 적 있음)
             small = b["size"] < body_size * 0.95 and not (pi <= 1 and len(t) >= 200)
+            # 수식으로 볼 조건: 부스러기이면서 수학 기호나 식 번호 '(12)' 가 있고, 이메일·주소·DOI 같은 서지 줄이 아닐 때
+            looks_eq = bool(re.search(r"[=+−±×÷√∑∫≈≤≥∂∆∇α-ωΑ-Ω^]|\(\d{1,2}\)\s*$", t)) \
+                and "@" not in t and "http" not in t and not re.search(r"\b(University|Department|Institute|Received|Accepted|Keywords)\b", t)
+            words4 = len(re.findall(r"[A-Za-z]{4,}", t))   # 진짜 단어 수: 표 행('Size of machined area …')은 많고 수식은 적다
+            if debris and looks_eq and not small and words4 <= 3 and not b["in_fig"] and not in_nomen and not CAP_LINE.match(t) and body:
+                # 본문 흐름 속 수식(기호 조각): 글자로는 깨지니 PDF 에서 그 자리를 그림으로 잘라 제자리에 둔다
+                try:
+                    os.makedirs(eq_dir, exist_ok=True)
+                    bb = b["bbox"]
+                    two_col_page = any(x.get("col") == 1 for x in blocks)
+                    if last_eq and last_eq["pi"] == pi and last_eq["col"] == b.get("col") and bb[1] - last_eq["bbox"][3] < 10:
+                        # 바로 아래(또는 옆에) 이어지는 조각 → 같은 그림에 합침 (여러 줄 수식, 좌변, 식 번호)
+                        u = (min(last_eq["bbox"][0], bb[0]), min(last_eq["bbox"][1], bb[1]), max(last_eq["bbox"][2], bb[2]), max(last_eq["bbox"][3], bb[3]))
+                        last_eq["bbox"] = u
+                        _eq_render(pi, u, last_eq["path"], b.get("col", 0), two_col_page)
+                    else:
+                        eq_n += 1
+                        fname = "p%d_%d.png" % (pi + 1, eq_n)
+                        path_ = os.path.join(eq_dir, fname)
+                        _eq_render(pi, bb, path_, b.get("col", 0), two_col_page)
+                        body.append("[[EQ:%s]]" % fname)
+                        last_eq = {"pi": pi, "col": b.get("col"), "bbox": list(bb), "path": path_}
+                    continue
+                except Exception:
+                    aside.append(t); continue
             if b["in_fig"] or small or debris or in_nomen or CAP_LINE.match(t):
                 aside.append(t)
             else:
                 body.append(t)
+                last_eq = None
     # 단·페이지 경계에서 갈린 문단 잇기: 앞이 문장부호로 끝나지 않고 뒤가 소문자로 시작하면 한 문단
     joined = []
     for t in body:
         prev = joined[-1].rstrip() if joined else ""
-        if prev and not re.search(r"[.!?:;]$", prev) and re.match(r"^[a-z(\[]", t):
+        if prev and not re.search(r"[.!?:;]$", prev) and re.match(r"^[a-z(\[]", t) and not t.startswith("[[EQ:") and not prev.startswith("[[EQ:"):
             joined[-1] = (prev[:-1] + t) if prev.endswith("-") else (prev + " " + t)
         else:
             joined.append(t)
@@ -815,6 +873,8 @@ def _run_generation(name, kind):
     if reader.is_encrypted:
         reader.decrypt("")
     text = paper_text(name)
+    if kind == "summary":
+        text = re.sub(r"\[\[EQ:[^\]]+\]\]\n*", "", text)   # 요약에는 수식 그림 자리를 넣지 않는다
     if len(text.strip()) < 500:
         raise RuntimeError("이 PDF는 글자를 추출할 수 없습니다 (스캔본인 듯)")
     if not find_claude():
@@ -1013,18 +1073,54 @@ def number_chunks(chunks, name):
             for pi, pg in enumerate(pages):
                 if k in pg: return pi
         return None
-    numbered, table, n = [], {}, 0
+    numbered, table, n, pid = [], {}, 0, 0
     for ch in chunks:
         paras = []
         for para in split_paragraphs_en(ch):
+            pid += 1
             marked = []
             for sent in para:
                 n += 1
-                table[str(n)] = {"t": sent, "p": page_of(sent)}
+                table[str(n)] = {"t": sent, "p": page_of(sent), "para": pid}
                 marked.append("[s%d] %s" % (n, sent))
             paras.append(" ".join(marked))   # 같은 문단 문장은 한 줄에 이어서
         numbered.append("\n\n".join(paras) if paras else ch)
     return numbered, table
+
+
+def rebuild_paragraphs(text, table):
+    """번역문의 문단을 원문대로 다시 묶는다: 문장 번호 → 원문 문단 번호(table[n]["para"]).
+    Claude 가 문장마다 줄을 바꿨든 붙였든 상관없이 원문 문단 구조가 나온다. 제목·목록·표·수식 표식 줄은 그대로 둔다."""
+    para_of = {k: v.get("para") for k, v in table.items()}
+    if not any(p is not None for p in para_of.values()):
+        return text
+    out, buf, cur = [], [], None
+
+    def flush():
+        if buf:
+            out.append(" ".join(x.strip() for x in buf if x.strip()))
+        del buf[:]
+
+    for line in text.split("\n"):
+        st = line.strip()
+        if not st:
+            continue
+        if st.startswith(("#", "- ", "* ", "[[EQ:", "**", "|", "---")):
+            flush(); out.append(st); cur = None
+            continue
+        for part in re.split(r"(?=\[s\d+\])", st):
+            if not part.strip():
+                continue
+            m = re.match(r"\[s(\d+)\]", part)
+            pid = para_of.get(m.group(1)) if m else None
+            if pid is None:              # 번호 없는 조각은 현재 문단에 붙인다
+                buf.append(part); continue
+            if cur is not None and pid != cur:
+                flush()
+            cur = pid
+            buf.append(part)
+    flush()
+    return "\n\n".join(out)
 
 
 def align_path(name):
@@ -1095,6 +1191,8 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
         "- 수식·그림/표 번호는 원문 그대로, 그림/표 캡션도 번역 ('**Fig. N** - 번역').\n"
         + (FRONT_RULE if front else "") + CUT_RULE +
         "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
+        "- '[[EQ:파일명]]' 표식은 원문 수식이 있던 자리(그림으로 넣음)다. 번역하거나 지우지 말고 그 줄을 표식 그대로 출력하라.\n"
+        "- 아래 첨자·위 첨자는 <sub>…</sub>, <sup>…</sup> 로 써라 (예: R<sub>e</sub>, 10<sup>-3</sup>). 그 밖의 HTML 은 쓰지 마라.\n"
         "- 원문 문장마다 [s번호]가 붙어 있다. 번역문에서도 각 문장 앞에 같은 번호를 그대로 붙여라 (예: '[s12] 번역문'). "
         "번호를 빠뜨리거나 바꾸지 마라. 두 문장을 한 문장으로 합쳐 옮기면 '[s12][s13] 번역문'처럼 둘 다 붙이고, 한 문장을 둘로 나누면 둘 다 같은 번호를 붙여라. "
         "소제목·캡션 줄도 번호를 유지하라.\n"
@@ -1243,6 +1341,11 @@ def generate_document(name, kind, text):
     # 구간 결과 정리: 구간이 만든 # 제목은 ##로 내림(문서 제목은 하나만), 참고문헌 구간마다 반복된 '(참고문헌 생략)'은 하나로
     results = [re.sub(r"^#\s+(?!#)", "## ", r, flags=re.M) for r in results]
     body = "\n\n".join(results)
+    if align_table is not None:
+        try:
+            body = rebuild_paragraphs(body, align_table)   # 문단을 원문 문단 번호대로 다시 묶기 (Claude 줄바꿈과 무관)
+        except Exception:
+            pass
     if is_sum:  # 구간 경계에서 같은 절 소제목이 반복되면('## 5. … (연속)') 두 번째부터는 소제목 줄만 지움
         seen, kept = set(), []
         for line in body.split("\n"):
@@ -1559,6 +1662,16 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, get_captions(name))
                 except Exception as e:
                     self._send(200, {"captions": [], "error": str(e)[:200]})
+        elif url.path == "/eq":
+            # 수식 그림: ?file=<논문>&name=<pN_K.png>
+            q = parse_qs(url.query)
+            name = os.path.basename(q.get("file", [""])[0]); fname = os.path.basename(q.get("name", [""])[0])
+            fp = os.path.join(GEN_DIR, "수식", os.path.splitext(name)[0], fname)
+            if os.path.isfile(fp):
+                with open(fp, "rb") as f:
+                    self._send(200, f.read(), "image/png")
+            else:
+                self._send(404, {"error": "no eq"})
         elif url.path == "/api/align":
             # 번역문의 [s번호] → 원문 문장·페이지 표 (없으면 {})
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
