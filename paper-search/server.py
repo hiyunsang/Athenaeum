@@ -575,8 +575,41 @@ def pdf_pages_text_raw(name):
 CAP_START = re.compile(r"^\s*(Fig\.?|Figure|Table)\s*(\d+)\s*[.:|]?\s*(.*)$", re.I)
 
 
+_CAP_REF = re.compile(r"^(?:fig\.?|figure|table)\s*\d+\s*(?:\(|[a-z]|\s+(?:shows?|illustrates?|presents?|depicts?|compares?|summari[sz]es?|and|to|in)\b)", re.I)
+
+
 def extract_captions(name):
-    """줄 첫머리가 Fig. N / Table N 인 줄을 캡션으로 보고, 이어지는 줄을 붙인다."""
+    """캡션 = 'Fig. N.'/'Table N' 으로 시작하는 문단 블록. PyMuPDF 블록·글꼴 크기로 본문 참조('Fig. 1(c) shows…')와 구분한다.
+    (예전 방식은 줄 첫머리만 봐서 본문 참조 문장을 캡션으로 잡는 일이 있었다)"""
+    try:
+        pages = pdf_blocks(name)
+    except Exception:
+        pages = None
+    if pages:
+        cnt = {}
+        for blocks in pages:
+            for b in blocks:
+                cnt[b["size"]] = cnt.get(b["size"], 0) + b["chars"]
+        body_size = max(cnt.items(), key=lambda kv: kv[1])[0] if cnt else 0
+        caps = {}
+        for pi, blocks in enumerate(pages):
+            for b in blocks:
+                t = " ".join(b["t"].split())
+                m = CAP_START.match(t)
+                if not m or len(m.group(3)) <= 8:
+                    continue
+                kind = "table" if m.group(1).lower().startswith("t") else "fig"
+                n = int(m.group(2))
+                is_ref = bool(_CAP_REF.match(t))
+                small = b["size"] < body_size * 0.97
+                capstyle = bool(re.match(r"^(?:fig\.?|figure|table)\s*\d+\s*[.:]\s*[A-Z(]", t, re.I))
+                score = (2 if capstyle else 0) + (1.5 if small else 0) - (3 if is_ref else 0) + min(len(t), 300) / 300.0
+                if score < 1:
+                    continue
+                key = (kind, n)
+                if key not in caps or score > caps[key][0]:
+                    caps[key] = (score, {"kind": kind, "n": n, "page": pi + 1, "en": m.group(3).strip()[:500]})
+        return [caps[k][1] for k in sorted(caps)]
     caps = {}
     for pi, page in enumerate(pdf_pages_text_raw(name)):
         lines = page.splitlines()
@@ -1125,6 +1158,71 @@ def generate_document(name, kind, text):
     if errors:
         raise errors[0]
     if align_table is not None:
+        # ---- 번호 검증·보정: Claude가 [sN] 표식을 빠뜨리거나 문장을 합치거나, 구간 전체 번호를 일정하게 밀어 쓴 경우를 고친다 ----
+        # 문제가 없는 구간은 그대로 두므로 정상 결과의 동작은 바뀌지 않는다.
+        _mk = re.compile(r"\[s(\d+)\]")
+        _ref_line = re.compile(r"^\[\d+\]|^\d+\.\s+[A-Z][^\n]*\d{4}")
+
+        def _is_refs(src):  # 줄의 40% 이상이 참고문헌 항목 꼴이면 참고문헌 구간으로 본다 ('(참고문헌 생략)'만 나오므로 번호 누락이 정상)
+            lines = [l.strip() for l in src.split("\n") if l.strip()]
+            return bool(lines) and sum(1 for l in lines if _ref_line.match(l)) >= 0.4 * len(lines)
+
+        def _coverage(out, expected):  # 원문 번호 중 번역문에 남아 있는 비율
+            got = {int(x) for x in _mk.findall(out)}
+            return len(got & expected) / len(expected) if expected else 1.0
+
+        repairs = []
+        for i in range(n):
+            _set_stage(key, "번호 검증·보정 중 ({}/{})".format(i + 1, n))
+            src, out = chunks[i], results[i] or ""
+            expected = {int(x) for x in _mk.findall(src)}
+            if not expected:
+                continue
+            got = [int(x) for x in _mk.findall(out)]
+            lo, hi = min(expected), max(expected)
+            note = []
+            # (1) 번호가 대부분 원문 범위 밖: 일정한 offset 으로 밀린 것이면 되돌리고, 아니면 범위 밖 번호만 지운다
+            if got and sum(1 for g in got if g < lo or g > hi) >= 0.8 * len(got):
+                best_d, best_c = 0, -1
+                for d in range(-5, 6):
+                    if d == 0:
+                        continue
+                    c = sum(1 for g in got if g + d in expected)
+                    if c > best_c:
+                        best_d, best_c = d, c
+                if best_c >= 0.8 * len(got):
+                    out = _mk.sub(lambda m: "[s%d]" % (int(m.group(1)) + best_d), out)
+                    note.append("offset %+d" % best_d)
+                else:
+                    out = re.sub(r"\[s(\d+)\] ?", lambda m: m.group(0) if lo <= int(m.group(1)) <= hi else "", out)
+                    out = re.sub(r" {2,}", " ", out)
+                    note.append("범위 밖 번호 제거")
+                results[i] = out
+            # (2) 번호 누락이 많은 구간은 같은 프롬프트에 강조 문구를 붙여 한 번만 재시도 (참고문헌·부록(Figures and Tables) 구간은 제외)
+            cov = _coverage(out, expected)
+            if len(expected) >= 8 and cov < 0.6 and "Figures and Tables" not in src and not _is_refs(src):
+                prev_src = chunks[i - 1][-500:] if i and not (has_front and i == 1) else ""
+                prompt2 = (chunk_prompt(header, kind, i, n, src, prev_src, front=(has_front and i == 0), mode=mode)
+                           + "\n\n중요: 원문의 [s번호] 표식을 하나도 빠뜨리지 말고 모든 문장에 붙여라. 번호는 절대 바꾸지 마라.")
+                try:
+                    with _chunk_sem:
+                        out2 = _claude(prompt2)
+                    cov2 = _coverage(out2, expected)
+                    if cov2 > cov:
+                        results[i] = out2
+                        note.append("재시도(coverage %.2f→%.2f)" % (cov, cov2))
+                    else:
+                        note.append("재시도 효과 없음(coverage %.2f)" % cov)
+                except Exception:
+                    note.append("재시도 실패(coverage %.2f)" % cov)
+            if note:
+                repairs.append("구간 {} {}".format(i + 1, ", ".join(note)))
+        if repairs:  # 보정 내역은 야간작업 기록에 한 줄 남긴다 (batch_generate.py 와 같은 시각 형식)
+            try:
+                with open(os.path.join(GEN_DIR, "야간작업_기록.txt"), "a", encoding="utf-8") as f:
+                    f.write(time.strftime("%m-%d %H:%M:%S") + "  [번역] 번호 보정: " + name[:60] + " - " + ", ".join(repairs) + "\n")
+            except Exception:
+                pass
         try:
             os.makedirs(GEN_DIR, exist_ok=True)
             save_json(align_path(name), align_table)
@@ -1374,6 +1472,13 @@ def _refresh_new_papers():
         _texts_cache = texts
 
 
+# ---------- 원고(작성) 모듈 ----------
+sys.path.insert(0, BASE)
+import manuscript as ms
+ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
+        claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search)
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -1391,6 +1496,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path == "/ms" or url.path.startswith("/api/ms") or url.path.startswith("/fig/"):
+            return ms.handle_get(self, url)
         if url.path in ("/", "/index.html"):
             with open(os.path.join(BASE, "index.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -1719,6 +1826,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._send(400, {"error": "bad json"})
             return
+        if self.path.startswith("/api/ms"):
+            return ms.handle_post(self, body)
         if self.path == "/api/read_ping":
             # 읽기 화면의 30초 신호 {file, kind, pos(0~1), sec}
             name = os.path.basename(body.get("file", ""))

@@ -140,6 +140,7 @@
   <button data-act="locate" title="드래그하면 자동으로 원문 문장을 찍습니다. 어긋나면 이 버튼으로 Claude에게 정확한 위치를 묻습니다">Claude로 찾기</button>
   <button data-act="cross">대조</button>
   <button data-act="note">메모</button>
+  <button data-act="ms" title="선택한 구절을 원고의 근거 카드로 담습니다 (출처: 논문·문장·쪽 자동 기록)">원고에 담기</button>
   <button data-act="ask">질문 ▾</button>
 </div>
 <div id="askmenu">
@@ -276,12 +277,19 @@ function wrapSentences(root) {
     if (n.nodeValue.indexOf("[s") >= 0) n.nodeValue = n.nodeValue.replace(/\[s\d+\]\s*/g, "");
   }
 }
+let sentJumped = false;
 function renderMd(md) {
   read.innerHTML = mdToHtml(md);
   if (kind === "translation") { wrapSentences(read); loadAlign(); }
   bindFigrefs(read);
   postProcess();
   markAnchors();
+  // 원고 카드에서 '원문 열기'로 들어온 경우: ?sent=s12 → 그 문장으로 이동하고 잠깐 강조
+  const sentParam = new URLSearchParams(location.search).get("sent");
+  if (sentParam && kind === "translation" && !sentJumped) {
+    const sp = read.querySelector('.sent[data-s="' + sentParam.replace(/^s/, "") + '"]');
+    if (sp) { sentJumped = true; setTimeout(() => { sp.scrollIntoView({ block: "center" }); sp.style.background = "var(--sel-bg)"; sp.style.boxShadow = "inset 3px 0 0 var(--accent)"; }, 150); }
+  }
 }
 
 // ---------- 목차 / 약어표 정리 ----------
@@ -429,9 +437,11 @@ function highlightItems(pi, idxs, cls = "", align = "top") {
   }
   if (idxs.length) { pauseFollow(10000); scrollPdfTo(pi, pg.items[idxs[0]].y, align); }
 }
-function findInPdf(quote, preferPage) {
+function findInPdf(quote, preferPage, onlyPages) {
   const tries = [quote, quote.slice(0, 80), quote.slice(0, 50), quote.slice(0, 30)].map(norm).filter(q => q.length >= 12);
-  const order = pages.map((_, i) => i); if (preferPage != null && pages[preferPage]) order.unshift(preferPage);
+  // onlyPages 가 있으면 그 쪽들만 본다 (짧은 조각이 엉뚱한 앞쪽 페이지에 걸리는 것을 막음)
+  let order = onlyPages ? onlyPages.filter(i => pages[i]) : pages.map((_, i) => i);
+  if (preferPage != null && pages[preferPage]) order = [preferPage].concat(order.filter(i => i !== preferPage));
   for (const q of tries) for (const pi of order) {
     const pg = pages[pi]; let s = "", map = [];
     pg.items.forEach((it, idx) => { const t = norm(it.str) + " "; for (let c = 0; c < t.length; c++) map.push(idx); s += t; });
@@ -441,11 +451,24 @@ function findInPdf(quote, preferPage) {
   return null;
 }
 function findCaptionItem(k, n) {
+  // 'Fig. 1.' 캡션과 'Fig. 1(c) shows…' 본문 참조를 구분한다: 번호 뒤에 마침표·콜론이 오고 대문자로 이어지면 캡션.
   const re = k === "table" ? new RegExp("^(table|표)\\s*" + n + "\\b", "i") : new RegExp("^(fig\\.?|figure|그림)\\s*" + n + "\\b", "i");
+  const capStyle = k === "table" ? new RegExp("^(table|표)\\s*" + n + "\\s*[.:]?\\s+[A-Z가-힣]", "i") : new RegExp("^(fig\\.?|figure|그림)\\s*" + n + "\\s*[.:]\\s*[A-Z가-힣(]", "i");
+  const refStyle = new RegExp("^(fig\\.?|figure|table)\\s*" + n + "\\s*(\\(|[a-z]|\\s+(shows?|illustrates?|presents?|depicts?|compares?|summari[sz]es?|and|to|in)\\b)", "i");
+  const capPage = (captions || []).find(c => c.kind === k && String(c.n) === String(n) && c.page);   // 서버가 아는 캡션 쪽
   const cands = [];
-  pages.forEach((pg, pi) => pg.items.forEach((it, idx) => { if (re.test(it.str.trim())) cands.push({ pi, idx, len: it.str.length }); }));
+  pages.forEach((pg, pi) => pg.items.forEach((it, idx) => {
+    const s = it.str.trim();
+    if (!re.test(s)) return;
+    let score = Math.min(s.length, 120) / 120;             // 길면 캡션일 가능성
+    if (capStyle.test(s)) score += 2;
+    if (refStyle.test(s)) score -= 2;
+    if (capPage && capPage.page === pi + 1) score += 1.5;   // 서버가 찍은 쪽과 같으면 가산
+    if (it.y > pg.vp.height * 0.5) score += 0.3;           // 캡션은 그림 아래(페이지 아래쪽)가 흔함
+    cands.push({ pi, idx, score });
+  }));
   if (!cands.length) return null;
-  cands.sort((a, b) => b.len - a.len);  // 캡션 문장이 본문 참조보다 길다
+  cands.sort((a, b) => b.score - a.score);
   return cands[0];
 }
 function jumpToCaption(k, n) {
@@ -706,14 +729,43 @@ function mapKoToSrc(el, offset) {
   const r = src[best];
   return { page: r.page, y: r.y, items: r.items, approx: bestSc === 0, text: r.text };
 }
+// 문장 번호 → 쪽. 번호표에 쪽이 없으면 이웃 문장에서 추정 (문장 순서 = 쪽 순서)
+function pageOfSent(id) {
+  if (!alignData) return null;
+  const a = alignData[id]; if (a && a.p != null) return a.p;
+  const n = parseInt(id, 10);
+  for (let d = 1; d < 60; d++) {
+    const b = alignData[n - d], c = alignData[n + d];
+    if (b && b.p != null) return b.p;
+    if (c && c.p != null) return c.p;
+  }
+  return null;
+}
+// 같은 쪽 문장들 사이에서 순번 비율로 세로 위치 추정 (글자 검색이 실패했을 때의 근사)
+function approxYOnPage(pi, id) {
+  const ids = Object.keys(alignData).filter(k => alignData[k].p === pi).map(Number).sort((a, b) => a - b);
+  const pg = pages[pi], H = pg && pg.vp ? pg.vp.height : 1000;
+  if (!ids.length) return H * 0.3;
+  const n = parseInt(id, 10); let r = ids.findIndex(k => k >= n); if (r < 0) r = ids.length - 1;
+  return H * (0.08 + 0.84 * r / Math.max(1, ids.length - 1));
+}
+// 문장 번호 → PDF 위치. 정확히 찾으면 {exact:true, idxs}, 못 찾으면 쪽·순번으로 근사 {exact:false}
+function sentHit(id) {
+  const a = alignData && alignData[id]; if (!a) return null;
+  const p = pageOfSent(id);
+  const only = p == null ? null : [p, p + 1, p - 1].filter(k => pages[k]);
+  const hit = a.t ? findInPdf(a.t, p == null ? undefined : p, only) : null;   // 쪽 범위 안에서만 검색 → 엉뚱한 쪽으로 튀지 않음
+  if (hit) { const it = pages[hit.page].items[hit.idxs[0]]; return { page: hit.page, idxs: hit.idxs, y: it.y, exact: true }; }
+  if (p == null) return null;
+  return { page: p, idxs: null, y: approxYOnPage(p, id), exact: false };
+}
 function locateBySentId(id) {
-  // [s번호] → 번호표의 원문 문장을 PDF 에서 그대로 찾아 강조. 성공 True
-  const a = alignData && alignData[id]; if (!a || !a.t) return false;
-  const hit = findInPdf(a.t, a.p == null ? undefined : a.p);
-  if (!hit) return false;
+  // [s번호] → 번호표의 원문 문장을 PDF 에서 찾아 강조. 못 찾으면 그 쪽의 근사 위치로 이동. 처리했으면 True
+  const h = sentHit(id); if (!h) return false;
   document.getElementById("pdfTog").checked = true; pdfcol.classList.add("on");
-  clearHl(); highlightItems(hit.page, hit.idxs, "", "top");
-  status((hit.page + 1) + "쪽 · 원문 문장 표시", 2000);
+  clearHl();
+  if (h.exact) { highlightItems(h.page, h.idxs, "", "top"); status((h.page + 1) + "쪽 · 원문 문장 표시", 2000); }
+  else { pauseFollow(6000); scrollPdfTo(h.page, h.y, "top"); status((h.page + 1) + "쪽 · 근사 위치 (원문 글자를 그대로 찾지 못함)", 2500); }
   return true;
 }
 function locateSelection(range) {
@@ -760,9 +812,8 @@ function followPdf(force) {
   if (alignData && topEl) {   // 번호표: 화면 맨 위에 보이는 문장 span → 원문 문장 → PDF 위치
     const rTop = read.getBoundingClientRect().top;
     const sp = [...topEl.querySelectorAll(".sent")].find(x => x.getBoundingClientRect().bottom > rTop + 60);
-    const a = sp && alignData[sp.dataset.s];
-    const hit = a && a.t ? findInPdf(a.t, a.p == null ? undefined : a.p) : null;
-    if (hit) { const it = pages[hit.page].items[hit.idxs[0]]; sm = { page: hit.page, y: it.y }; }
+    const h = sp ? sentHit(sp.dataset.s) : null;        // 정확히 못 찾아도 쪽·순번 근사로 (옛 추정 방식으로 떨어지지 않게)
+    if (h) sm = { page: h.page, y: h.y };
   }
   if (!sm) sm = topEl ? mapKoToSrc(topEl, Math.max(0, Math.round((S - topEl.offsetTop) / Math.max(1, topEl.offsetHeight) * topEl.textContent.length))) : null;
   if (sm) { target = pdfAbs(sm.page, sm.y); mark = { pi: sm.page, y: sm.y }; }
@@ -856,7 +907,45 @@ async function doAction(act) {
     if (t === null) return;
     notesData = await (await fetch("/api/notes", { method: "POST", body: JSON.stringify({ file, op: "add_note", quote: text, text: t, kind }) })).json();
     renderSide(); markAnchors(); status("메모 저장됨");
+  } else if (act === "ms") {
+    await addToManuscript(text);
   }
+}
+
+// ---------- 원고에 담기: 선택 구절 → 근거 카드 (출처 = 논문 + 문장 번호 + 쪽) ----------
+async function addToManuscript(text) {
+  let list = [];
+  try { list = (await (await fetch("/api/ms/list")).json()).items || []; } catch (e) {}
+  let mid = localStorage.getItem("ms_last");
+  if (!list.some(m => m.id === mid)) mid = null;
+  if (!mid) {
+    if (!list.length) {
+      const title = prompt("원고가 없습니다. 새 원고 제목을 입력하세요:", "");
+      if (!title) return;
+      const d = await (await fetch("/api/ms/new", { method: "POST", body: JSON.stringify({ title }) })).json();
+      mid = d.id;
+    } else if (list.length === 1) {
+      mid = list[0].id;
+    } else {
+      const pick = prompt("어느 원고에 담을까요? 번호 입력:\n" + list.map((m, i) => (i + 1) + ". " + m.title).join("\n"), "1");
+      const k = parseInt(pick, 10) - 1;
+      if (isNaN(k) || !list[k]) return;
+      mid = list[k].id;
+    }
+    localStorage.setItem("ms_last", mid);
+  }
+  // 선택 시작 위치의 문장 번호 (번역 탭에서만 있음)
+  let sent = "", page = null;
+  try {
+    const rg = sel.range || window.getSelection().getRangeAt(0);
+    let node = rg.startContainer; if (node.nodeType === 3) node = node.parentElement;
+    const sp = node.closest && node.closest(".sent");
+    if (sp) { sent = "s" + sp.dataset.s; const a = alignData && alignData[sp.dataset.s]; if (a && a.p != null) page = a.p + 1; }
+  } catch (e) {}
+  const r = await (await fetch("/api/ms/card", { method: "POST", body: JSON.stringify({ id: mid, text, source: { file, kind, sent, page } }) })).json();
+  if (r.error) { status("⚠ " + r.error); return; }
+  const title = (list.find(m => m.id === mid) || {}).title || "원고";
+  status("「" + title + "」에 근거 카드 " + r.id + " 담김" + (sent ? " (원문 " + (page ? page + "쪽 " : "") + sent + ")" : ""), 4000);
 }
 
 async function ask(q, quote, parent) {

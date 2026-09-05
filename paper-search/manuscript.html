@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>원고 · Athenaeum</title>
+<link rel="stylesheet" href="/ui.css">
+<style>
+  header { display: flex; align-items: center; gap: var(--s3); min-height: 44px; padding: 0 var(--s4); background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-family: var(--font-serif); font-style: italic; font-size: 18px; font-weight: 400; color: var(--text); margin-right: var(--s2); }
+  header a { font-size: 12px; color: var(--text-quiet); }
+  header select { border-color: transparent; background: var(--bg); padding: 4px 8px; max-width: 320px; font-family: var(--font-serif); font-size: 14px; }
+  header .sp { margin-left: auto; font-size: 12px; color: var(--text-3); }
+  #layout { display: flex; height: calc(100vh - 44px); }
+  #outline { width: 260px; min-width: 260px; background: var(--panel); border-right: 1px solid var(--line-2); overflow-y: auto; padding: var(--s2) 0 var(--s8); }
+  #center { flex: 1; min-width: 0; overflow-y: auto; background: var(--surface); padding: var(--s4) var(--s6) var(--s8); }
+  #drawer { width: 340px; min-width: 340px; background: var(--panel); border-left: 1px solid var(--line-2); overflow-y: auto; display: flex; flex-direction: column; }
+  .sec { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); padding: var(--s3) var(--s3) var(--s1); display: flex; justify-content: space-between; align-items: center; }
+  .sec .act { font-weight: 400; letter-spacing: 0; }
+  .node { padding: 5px 10px 5px 12px; cursor: pointer; display: flex; align-items: baseline; gap: 6px; line-height: 1.4; font-size: 13px; color: var(--text); }
+  .node.l2 { padding-left: 26px; font-size: 12.5px; }
+  .node:hover { background: var(--hover); }
+  .node.sel { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel-bg); }
+  .node .st { width: 8px; height: 8px; border-radius: 4px; background: var(--line-2); flex: none; align-self: center; }
+  .node .st.drafted { background: var(--amber); } .node .st.done { background: var(--green); }
+  .node .h { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-serif); }
+  .node .n { color: var(--text-3); font-size: 11px; }
+  .ctl { display: flex; gap: 2px; padding: 4px 10px; }
+  .ctl button, .btn { background: none; border: 0; color: var(--text-quiet); font-size: 12px; padding: 4px 8px; cursor: pointer; border-radius: 0; }
+  .ctl button:hover, .btn:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .btn.pri { color: var(--accent); font-weight: 500; }
+  .btn:disabled { color: var(--text-3); text-decoration: none; cursor: default; }
+  #center h2.title { font-family: var(--font-serif); font-size: 22px; font-weight: 400; margin: 0 0 var(--s1); }
+  #center .crumb { font-size: 12px; color: var(--text-3); margin-bottom: var(--s4); }
+  label.f { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); margin: var(--s4) 0 var(--s1); }
+  textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; font: inherit; font-size: 14px; line-height: 1.7; background: var(--surface); resize: vertical; }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  #draft { min-height: 220px; font-size: 15px; line-height: 1.8; }
+  #draftEn { min-height: 160px; font-family: var(--font-serif); font-size: 14.5px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
+  .cards { display: flex; flex-direction: column; gap: var(--s1); }
+  .card { border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 6px 10px; font-size: 12.5px; line-height: 1.55; background: var(--surface); }
+  .card .m { color: var(--text-3); font-size: 11px; display: flex; gap: var(--s2); align-items: baseline; }
+  .card .m b { color: var(--text-2); font-weight: 600; }
+  .card .m .id { font-family: ui-monospace, Consolas, monospace; }
+  .card .t { margin-top: 2px; color: var(--text); }
+  .card .src { color: var(--text-3); font-style: italic; margin-top: 2px; font-family: var(--font-serif); }
+  .card .acts { margin-top: 2px; margin-left: -8px; }
+  .card.dim { opacity: .55; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; }
+  .tabs div { padding: 8px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+  .tabs div.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+  .tab { display: none; padding: var(--s2) var(--s3) var(--s8); }
+  .tab.on { display: block; }
+  .hint { font-size: 12px; color: var(--text-3); line-height: 1.6; }
+  .prog { display: flex; align-items: center; gap: var(--s2); font-size: 12px; color: var(--text-2); margin: var(--s2) 0; }
+  .prog .pbar { flex: 1; }
+  .fig { border: 1px solid var(--line); padding: var(--s2); margin-bottom: var(--s2); background: var(--surface); }
+  .fig img { width: 100%; display: block; background: #fff; }
+  .fig .cap { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12px; }
+  .form label { display: flex; flex-direction: column; gap: 2px; color: var(--text-2); }
+  .form input, .form select { border: 1px solid var(--line); border-radius: var(--r); padding: 3px 6px; font: inherit; font-size: 12px; background: var(--surface); }
+  .issue { font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .issue b { color: var(--amber); font-weight: 600; margin-right: 4px; }
+  .rel { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .rel .tt { font-family: var(--font-serif); color: var(--text); }
+  .rel .mm { color: var(--text-3); font-size: 11px; }
+  #empty { padding: var(--s8); text-align: center; color: var(--text-3); font-size: 13px; line-height: 1.8; }
+  #empty button { margin-top: var(--s3); background: var(--accent); color: #fff; border: 0; border-radius: var(--r); padding: 7px 14px; cursor: pointer; }
+  .gl { font-size: 12px; columns: 2; column-gap: 12px; }
+  .gl div { break-inside: avoid; padding: 1px 0; color: var(--text-2); }
+  .gl div b { color: var(--text); font-weight: 500; }
+  input.inl { border: 0; border-bottom: 1px dashed var(--line-2); font: inherit; background: transparent; width: 100%; padding: 2px 0; }
+  input.inl:focus { outline: none; border-bottom-color: var(--accent); }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <h1>Athenaeum</h1>
+  <a href="/" class="act">← 논문</a>
+  <select id="msSel" title="원고 선택"></select>
+  <button class="btn" id="newMs">+ 새 원고</button>
+  <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
+  <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
+  <span class="sp" id="saveState"></span>
+</header>
+<div id="layout">
+  <div id="outline">
+    <div class="sec">개요 <span><button class="btn act" id="addN1" title="절 추가">+ 절</button><button class="btn act" id="addN2" title="선택한 절 아래 소절/문단 추가">+ 소절</button></span></div>
+    <div id="tree"></div>
+    <div class="ctl"><button id="mvUp" title="위로">▲</button><button id="mvDn" title="아래로">▼</button><button id="delN" title="삭제">삭제</button><button id="reviewBtn" title="Claude가 개요의 논리 흐름을 검토">개요 검토</button></div>
+    <div id="review" style="padding: 0 12px"></div>
+  </div>
+  <div id="center"><div id="empty">원고를 고르거나 새로 만드세요.<br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
+  <div id="drawer">
+    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div class="tab on" id="tab-cards"></div>
+    <div class="tab" id="tab-figs"></div>
+    <div class="tab" id="tab-idea"></div>
+    <div class="tab" id="tab-en"></div>
+    <div class="tab" id="tab-out"></div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let list = [], doc = null, cur = null, saveTimer = null, busy = false;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const short = f => { const m = /^(\d{4})_([A-Za-z0-9&-]+)_([^_]+)_/.exec(f || ""); return m ? m[3] + " " + m[1] : (f || "").slice(0, 24); };
+const viewUrl = c => "/view?file=" + encodeURIComponent(c.source.file) + "&kind=" + (c.source.kind || "translation") + (c.source.sent ? "&sent=" + c.source.sent : "");
+async function api(path, body) { const r = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : undefined); return r.json(); }
+
+// ---------- 목록 / 문서 ----------
+async function loadList(selectId) {
+  list = (await api("/api/ms/list")).items || [];
+  $("msSel").innerHTML = "<option value=''>원고 선택…</option>" + list.map(m => "<option value='" + m.id + "'>" + esc(m.title) + " · 카드 " + m.cards + "</option>").join("");
+  const id = selectId || localStorage.getItem("ms_last");
+  if (id && list.some(m => m.id === id)) { $("msSel").value = id; await openDoc(id); } else showEmpty();
+}
+function showEmpty() { doc = null; $("empty").style.display = ""; $("editor").style.display = "none"; $("tree").innerHTML = ""; renderDrawer(); }
+async function openDoc(id) {
+  doc = await api("/api/ms?id=" + encodeURIComponent(id));
+  if (doc.error) return showEmpty();
+  localStorage.setItem("ms_last", id);
+  cur = (doc.outline[0] || {}).id || null;
+  $("empty").style.display = "none"; $("editor").style.display = "";
+  renderAll();
+}
+function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
+function save(immediate) {
+  if (!doc) return;
+  clearTimeout(saveTimer); $("saveState").textContent = "저장 중…";
+  const run = async () => { const r = await api("/api/ms/save", { data: doc }); $("saveState").textContent = r.ok ? "저장됨 " + new Date().toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }) : "⚠ 저장 실패"; };
+  if (immediate) run(); else saveTimer = setTimeout(run, 700);
+}
+$("msSel").onchange = e => e.target.value ? openDoc(e.target.value) : showEmpty();
+async function newMs() { const t = prompt("새 원고 제목:", ""); if (!t) return; const d = await api("/api/ms/new", { title: t }); await loadList(d.id); }
+$("newMs").onclick = newMs; $("newMs2").onclick = newMs;
+$("renameMs").onclick = () => { if (!doc) return; const t = prompt("원고 제목:", doc.title); if (t) { doc.title = t; save(true); renderEditor(); loadList(doc.id); } };
+$("delMs").onclick = async () => { if (!doc) return; if (!confirm("「" + doc.title + "」 원고를 삭제할까요? (카드·초안 모두 삭제, 되돌릴 수 없음)")) return; await api("/api/ms/delete", { id: doc.id }); localStorage.removeItem("ms_last"); await loadList(); };
+
+// ---------- 개요 트리 ----------
+const node = id => doc.outline.find(n => n.id === id);
+const nextId = (arr, p) => p + (Math.max(0, ...arr.map(x => parseInt(String(x.id).replace(p, ""), 10) || 0)) + 1);
+function renderTree() {
+  $("tree").innerHTML = doc.outline.map(n => "<div class='node l" + n.level + (n.id === cur ? " sel" : "") + "' data-id='" + n.id + "'><span class='st " + (n.status || "") + "'></span><span class='h'>" + esc(n.heading || "(제목 없음)") + "</span><span class='n'>" + (n.cards || []).length + "</span></div>").join("");
+  $("tree").querySelectorAll(".node").forEach(el => el.onclick = () => { cur = el.dataset.id; renderTree(); renderEditor(); });
+}
+function addNode(level) {
+  if (!doc) return;
+  const h = prompt(level === 1 ? "절 제목:" : "소절/문단 제목:", ""); if (!h) return;
+  const n = { id: nextId(doc.outline, "n"), level, heading: h, claim: "", cards: [], draft: "", draft_en: "", status: "todo" };
+  const i = cur ? doc.outline.findIndex(x => x.id === cur) : -1;
+  if (level === 2 && i >= 0) { let j = i + 1; while (j < doc.outline.length && doc.outline[j].level > 1) j++; doc.outline.splice(j, 0, n); }
+  else doc.outline.push(n);
+  cur = n.id; save(); renderTree(); renderEditor();
+}
+$("addN1").onclick = () => addNode(1); $("addN2").onclick = () => addNode(2);
+$("mvUp").onclick = () => { const i = doc.outline.findIndex(x => x.id === cur); if (i > 0) { [doc.outline[i - 1], doc.outline[i]] = [doc.outline[i], doc.outline[i - 1]]; save(); renderTree(); } };
+$("mvDn").onclick = () => { const i = doc.outline.findIndex(x => x.id === cur); if (i >= 0 && i < doc.outline.length - 1) { [doc.outline[i + 1], doc.outline[i]] = [doc.outline[i], doc.outline[i + 1]]; save(); renderTree(); } };
+$("delN").onclick = () => { const n = node(cur); if (!n || !confirm("「" + n.heading + "」 문단을 삭제할까요?")) return; doc.outline = doc.outline.filter(x => x.id !== cur); cur = (doc.outline[0] || {}).id || null; save(); renderTree(); renderEditor(); };
+$("reviewBtn").onclick = async () => {
+  if (!doc || busy) return; busy = true;
+  $("review").innerHTML = "<div class='prog'><span>개요 검토 중</span>" + pbarHtml(0.05, 0) + "<span class='eta'>~40초</span></div>";
+  const t0 = Date.now(); const tm = setInterval(() => { const b = $("review").querySelector(".pbar"); if (b) { const f = Math.min(0.95, (Date.now() - t0) / 45000); b.querySelector("i").style.width = (f * 100) + "%"; } }, 1000);
+  const r = await api("/api/ms/claude", { id: doc.id, mode: "review_outline" });
+  clearInterval(tm); busy = false;
+  $("review").innerHTML = "<div class='hint' style='margin:6px 0'>" + esc(r.summary || r.error || "") + "</div>" + (r.issues || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + esc((node(i.node) || {}).heading || i.node) + ": " + esc(i.text) + "</div>").join("");
+};
+
+// ---------- 가운데: 문단 편집 ----------
+function renderEditor() {
+  const n = node(cur);
+  const ed = $("editor");
+  if (!n) { ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='hint'>왼쪽에서 절을 추가하세요.</div>"; return; }
+  const by = Object.fromEntries(doc.cards.map(c => [c.id, c]));
+  ed.innerHTML =
+    "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>" + (n.level === 2 ? "소절 · " : "절 · ") + "<input class='inl' id='headIn' value='" + esc(n.heading) + "' style='width:60%;font-family:var(--font-serif);font-size:15px;color:var(--text)'></div>" +
+    "<label class='f'>주장 (이 문단이 말하려는 것 한두 줄)</label><textarea id='claim' rows='2' placeholder='예: 극저온 냉각은 Ta 합금 절삭에서 공구 마모를 줄이지만 칩 형태는 크게 바꾸지 않는다'>" + esc(n.claim) + "</textarea>" +
+    "<label class='f'>붙인 근거 카드 " + (n.cards || []).length + "개 <span class='hint' style='font-weight:400'>· 오른쪽 카드 서랍에서 「이 문단에 붙이기」</span></label><div class='cards' id='ncards'>" +
+    ((n.cards || []).map(id => by[id]).filter(Boolean).map(c => cardHtml(c, true)).join("") || "<div class='hint'>아직 없음. 카드 없이 초안을 쓰면 Claude가 근거 필요 자리를 표시합니다.</div>") + "</div>" +
+    "<label class='f'>초안 (한국어)</label><div class='ctl' style='padding:0 0 4px;margin-left:-8px'>" +
+    "<button class='btn pri' data-m='draft'>초안 쓰기</button><button class='btn' data-m='rewrite'>다시 쓰기</button><button class='btn' data-m='shorten'>줄이기</button><button class='btn' data-m='plain'>쉬운 말로</button><button class='btn' data-m='english'>영문화 →</button>" +
+    "<span style='margin-left:auto'></span><select id='status' style='border-color:transparent;font-size:12px;color:var(--text-2)'><option value='todo'" + (n.status === "todo" ? " selected" : "") + ">할 일</option><option value='drafted'" + (n.status === "drafted" ? " selected" : "") + ">초안 있음</option><option value='done'" + (n.status === "done" ? " selected" : "") + ">완료</option></select></div>" +
+    "<div id='cprog'></div><textarea id='draft' placeholder='직접 쓰거나 「초안 쓰기」로 시작. 근거 표시 [c3] 는 내보낼 때 인용 번호로 바뀝니다.'>" + esc(n.draft) + "</textarea>" +
+    "<label class='f'>영문 (한국어 초안에서 영문화)</label><textarea id='draftEn' placeholder='「영문화 →」를 누르면 용어집을 지켜 옮깁니다.'>" + esc(n.draft_en) + "</textarea>";
+  const bind = (id, key, cb) => { const el = $(id); el.oninput = () => { n[key] = el.value; save(); if (cb) cb(); }; };
+  bind("headIn", "heading", renderTree); bind("claim", "claim"); bind("draft", "draft"); bind("draftEn", "draft_en");
+  $("status").onchange = e => { n.status = e.target.value; save(); renderTree(); };
+  ed.querySelectorAll("[data-m]").forEach(b => b.onclick = () => runClaude(b.dataset.m));
+  ed.querySelectorAll("[data-detach]").forEach(b => b.onclick = () => { n.cards = n.cards.filter(x => x !== b.dataset.detach); save(); renderEditor(); renderTree(); renderDrawer(); });
+  bindCardOpen(ed);
+}
+function cardHtml(c, attached) {
+  return "<div class='card' data-cid='" + c.id + "'><div class='m'><span class='id'>" + c.id + "</span><b>" + esc(short(c.source.file)) + "</b>" + (c.source.page ? "<span>p." + c.source.page + "</span>" : "") + (c.source.sent ? "<span>" + c.source.sent + "</span>" : "") + "</div>" +
+    "<div class='t'>" + esc(c.text) + "</div>" + (c.src_text ? "<div class='src'>" + esc(c.src_text.slice(0, 220)) + (c.src_text.length > 220 ? "…" : "") + "</div>" : "") +
+    (c.note ? "<div class='m'>메모: " + esc(c.note) + "</div>" : "") +
+    "<div class='acts'>" + (c.source.file ? "<button class='btn' data-open='" + c.id + "'>원문 열기</button>" : "") +
+    (attached ? "<button class='btn' data-detach='" + c.id + "'>떼기</button>" : "<button class='btn pri' data-attach='" + c.id + "'>이 문단에 붙이기</button><button class='btn' data-note='" + c.id + "'>메모</button><button class='btn' data-delc='" + c.id + "'>삭제</button>") + "</div></div>";
+}
+function bindCardOpen(root) { root.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { const c = doc.cards.find(x => x.id === b.dataset.open); if (c) window.open(viewUrl(c), "athenaeum_reader"); }); }
+async function runClaude(mode) {
+  const n = node(cur); if (!n || busy) return;
+  if (mode !== "draft" && !n.draft) { alert("먼저 초안이 있어야 합니다."); return; }
+  if (mode === "english" && !(doc.glossary || []).length && doc.cards.some(c => c.src_text)) {
+    if (confirm("용어집이 아직 없습니다. 카드의 원문에서 용어집을 먼저 만들까요? (권장, 30초)")) await buildGlossary();
+  }
+  busy = true;
+  const labels = { draft: "초안 작성", rewrite: "다시 쓰기", shorten: "줄이기", plain: "쉬운 말로", english: "영문화" };
+  $("cprog").innerHTML = "<div class='prog'><span>Claude " + labels[mode] + " 중</span>" + pbarHtml(0.04, 0) + "<span class='eta'>~30초</span></div>";
+  const t0 = Date.now(); const tm = setInterval(() => { const b = $("cprog").querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / 40000) * 100) + "%"; }, 800);
+  const r = await api("/api/ms/claude", { id: doc.id, node: cur, mode });
+  clearInterval(tm); busy = false; $("cprog").innerHTML = "";
+  if (r.error) { alert("⚠ " + r.error); return; }
+  if (mode === "english") { n.draft_en = r.text; $("draftEn").value = r.text; }
+  else { if (n.draft && mode !== "draft" && !confirm("지금 초안을 새 결과로 바꿀까요? (취소하면 아래에 덧붙입니다)")) n.draft = n.draft + "\n\n--- " + labels[mode] + " ---\n" + r.text; else n.draft = r.text; $("draft").value = n.draft; if (n.status === "todo") { n.status = "drafted"; $("status").value = "drafted"; } }
+  save(); renderTree();
+}
+
+// ---------- 서랍 ----------
+document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x === t)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + t.dataset.t)); });
+function renderDrawer() { renderCards(); renderFigs(); renderIdea(); renderEn(); renderOut(); }
+function renderCards() {
+  const el = $("tab-cards");
+  if (!doc) { el.innerHTML = "<div class='hint' style='padding:12px'>원고를 열면 카드가 보입니다.</div>"; return; }
+  const used = new Set(doc.outline.flatMap(n => n.cards || []));
+  const cards = [...doc.cards].reverse();
+  el.innerHTML = "<div class='sec'>근거 카드 " + cards.length + "개 <span class='hint' style='font-weight:400'>읽기 화면 드래그 → 원고에 담기</span></div><div class='cards'>" +
+    (cards.map(c => cardHtml(c, false).replace("class='card'", "class='card" + (used.has(c.id) ? " dim" : "") + "'")).join("") || "<div class='hint'>아직 카드가 없습니다.</div>") + "</div>";
+  el.querySelectorAll("[data-attach]").forEach(b => b.onclick = () => { const n = node(cur); if (!n) { alert("먼저 왼쪽에서 문단을 고르세요."); return; } if (!n.cards.includes(b.dataset.attach)) n.cards.push(b.dataset.attach); save(); renderEditor(); renderTree(); renderCards(); });
+  el.querySelectorAll("[data-note]").forEach(b => b.onclick = () => { const c = doc.cards.find(x => x.id === b.dataset.note); const t = prompt("카드 메모:", c.note || ""); if (t === null) return; c.note = t; save(); renderCards(); renderEditor(); });
+  el.querySelectorAll("[data-delc]").forEach(b => b.onclick = () => { if (!confirm("카드 " + b.dataset.delc + " 삭제?")) return; doc.cards = doc.cards.filter(x => x.id !== b.dataset.delc); doc.outline.forEach(n => n.cards = (n.cards || []).filter(x => x !== b.dataset.delc)); save(); renderAll(); });
+  bindCardOpen(el);
+}
+const FORM = [["theme", "관점", "select", ["both:기계적+열적", "mech:기계적", "thermal:열적"]], ["panels", "패널", "select", ["all:거시+확대", "zoom:확대만", "macro:거시만"]], ["lang", "라벨", "select", ["en:영어", "ko:한국어"]],
+  ["tsz_top", "TSZ 폭(위)", "number", 130], ["tsz_bottom", "TSZ 폭(아래)", "number", 95], ["shear", "표면 쓸림", "number", 140], ["clearance", "여유면 기울기", "number", 18], ["surface_tilt", "가공면 기울기", "number", 55],
+  ["tip_radius", "날끝 반경", "number", 34], ["grain", "결정립 간격", "number", 62], ["t_max", "최고 온도 °C", "number", 900], ["t_min", "최저 온도 °C", "number", 25], ["seed", "무작위 씨앗", "number", 7]];
+function figForm(p) {
+  return "<div class='form'>" + FORM.map(([k, lab, ty, opt]) => "<label>" + lab + (ty === "select" ? "<select name='" + k + "'>" + opt.map(o => { const [v, t] = o.split(":"); return "<option value='" + v + "'" + ((p[k] || opt[0].split(":")[0]) === v ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select>" : "<input name='" + k + "' type='number' value='" + (p[k] ?? opt) + "'>") + "</label>").join("") +
+    "<label style='grid-column:1/-1;flex-direction:row;align-items:center;gap:6px'><input type='checkbox' name='contact'" + (p.contact === false ? "" : " checked") + " style='width:auto'> 접촉면 마찰열 띠</label></div>";
+}
+function readForm(root) { const p = {}; root.querySelectorAll("[name]").forEach(i => p[i.name] = i.type === "checkbox" ? i.checked : i.value); return p; }
+function renderFigs() {
+  const el = $("tab-figs");
+  if (!doc) { el.innerHTML = ""; return; }
+  const cur_p = (window._figParams || {});
+  el.innerHTML = "<div class='sec'>그림 " + doc.figures.length + "개</div>" +
+    doc.figures.map(f => "<div class='fig' data-f='" + f.id + "'>" + (f.png ? "<img src='/fig/" + f.png + "?t=" + (f.t || 0) + "'>" : "<div class='hint'>이미지 없음</div>") +
+      "<div class='cap'><b>Fig. " + f.num + "</b> <input class='inl' data-cap='" + f.id + "' value='" + esc(f.caption) + "' placeholder='캡션(한국어)'></div>" +
+      "<div class='cap'><input class='inl' data-capen='" + f.id + "' value='" + esc(f.caption_en) + "' placeholder='Caption (English)'></div>" +
+      "<div class='ctl' style='padding:2px 0 0;margin-left:-8px'>" + (f.svg ? "<a class='btn' href='/fig/" + f.svg + "' target='_blank'>SVG</a>" : "") + (f.source && f.source.type === "schematic" ? "<button class='btn' data-edit='" + f.id + "'>수치 수정</button>" : "") + "<button class='btn' data-hi='" + f.id + "'>고해상도 PNG</button><button class='btn' data-delf='" + f.id + "'>삭제</button></div></div>").join("") +
+    "<div class='sec'>절삭 도식 생성기 <span class='hint' style='font-weight:400'>선삭 · 변형 구역</span></div><div id='figform'>" + figForm(cur_p) + "</div>" +
+    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='figMake'>" + (cur_p._edit ? "이 수치로 다시 만들기" : "그림 만들기") + "</button><button class='btn' id='figPrev'>미리보기</button>" + (cur_p._edit ? "<button class='btn' id='figCancel'>취소</button>" : "") + "</div><div id='figprog'></div><div id='figprev'></div>";
+  el.querySelectorAll("[data-cap]").forEach(i => i.oninput = () => { doc.figures.find(f => f.id === i.dataset.cap).caption = i.value; save(); });
+  el.querySelectorAll("[data-capen]").forEach(i => i.oninput = () => { doc.figures.find(f => f.id === i.dataset.capen).caption_en = i.value; save(); });
+  el.querySelectorAll("[data-delf]").forEach(b => b.onclick = () => { if (!confirm("그림 삭제?")) return; doc.figures = doc.figures.filter(f => f.id !== b.dataset.delf); doc.figures.forEach((f, i) => f.num = i + 1); save(); renderFigs(); });
+  el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => { const f = doc.figures.find(x => x.id === b.dataset.edit); window._figParams = Object.assign({}, (f.source || {}).params || {}, { _edit: f.id }); renderFigs(); });
+  el.querySelectorAll("[data-hi]").forEach(b => b.onclick = async () => { b.textContent = "렌더 중…"; const r = await api("/api/ms/figure/export", { id: doc.id, fig: b.dataset.hi, scale: 3 }); b.textContent = "고해상도 PNG"; if (r.error) alert("⚠ " + r.error); else { alert("저장됨:\n" + r.path); } });
+  const fc = $("figCancel"); if (fc) fc.onclick = () => { window._figParams = {}; renderFigs(); };
+  $("figPrev").onclick = async () => {
+    const p = readForm($("figform")); window._figParams = Object.assign({}, p, cur_p._edit ? { _edit: cur_p._edit } : {});
+    $("figprev").innerHTML = "<div class='hint'>미리보기 생성 중…</div>";
+    const r = await fetch("/api/ms/figure/preview", { method: "POST", body: JSON.stringify({ params: p }) });
+    const svg = await r.text(); const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    $("figprev").innerHTML = "<div class='fig'><img src='" + url + "'><div class='cap hint'>미리보기 (저장 안 됨)</div></div>";
+  };
+  $("figMake").onclick = async () => {
+    if (busy) return; busy = true;
+    const p = readForm($("figform"));
+    $("figprog").innerHTML = "<div class='prog'><span>도식 생성·렌더 중</span>" + pbarHtml(0.1, 0) + "<span class='eta'>~10초</span></div>";
+    const r = await api("/api/ms/figure/schematic", { id: doc.id, params: p, fig: cur_p._edit || null });
+    busy = false; $("figprog").innerHTML = "";
+    if (r.error) { alert("⚠ " + r.error); return; }
+    doc = await api("/api/ms?id=" + encodeURIComponent(doc.id)); window._figParams = {}; renderFigs();
+  };
+}
+function renderIdea() {
+  const el = $("tab-idea"); if (!doc) { el.innerHTML = ""; return; }
+  const i = doc.idea || {};
+  el.innerHTML = "<div class='sec'>아이디어 검토</div><div class='hint'>연구 질문을 한국어로 적으면 OpenAlex에서 관련 문헌을 찾고 Claude가 신규성을 판단합니다 (1~2분).</div>" +
+    "<textarea id='ideaQ' rows='4' style='margin-top:6px' placeholder='예: 탄탈럼 합금을 극저온에서 밀링하면 구성인선이 억제되는가'>" + esc(i.question || "") + "</textarea>" +
+    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='ideaGo'>검토</button></div><div id='ideaprog'></div>" +
+    (i.assessment ? "<div class='sec'>판단</div><div style='font-size:13px;line-height:1.7'>" + esc(i.assessment) + "</div>" : "") +
+    (i.gaps ? "<div class='sec'>빈틈</div><div style='font-size:13px;line-height:1.7;white-space:pre-line'>" + esc(i.gaps) + "</div>" : "") +
+    ((i.overlap || []).length ? "<div class='sec'>가장 겹치는 논문</div>" + i.overlap.map(o => "<div class='rel'><div class='tt'>" + esc(o.title) + "</div><div class='mm'>" + esc(o.why) + "</div></div>").join("") : "") +
+    ((i.related || []).length ? "<div class='sec'>관련 문헌 " + i.related.length + "편</div>" + i.related.slice(0, 25).map(r => "<div class='rel'><div class='tt'>" + (r.doi ? "<a href='https://doi.org/" + esc(r.doi) + "' target='_blank'>" : "") + esc(r.title) + (r.doi ? "</a>" : "") + "</div><div class='mm'>" + esc(r.year) + " · " + esc(r.venue) + " · 피인용 " + esc(r.cit) + (r.owned ? " · <b>보유</b>" : "") + "</div></div>").join("") : "");
+  $("ideaGo").onclick = async () => {
+    const q = $("ideaQ").value.trim(); if (!q || busy) return; busy = true;
+    $("ideaprog").innerHTML = "<div class='prog'><span>문헌 검색·판단 중</span>" + pbarHtml(0.03, 0) + "<span class='eta'>~90초</span></div>";
+    const t0 = Date.now(); const tm = setInterval(() => { const b = $("ideaprog").querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / 100000) * 100) + "%"; }, 1000);
+    const r = await api("/api/ms/idea", { id: doc.id, question: q });
+    clearInterval(tm); busy = false;
+    if (r.error) { $("ideaprog").innerHTML = "<div class='hint'>⚠ " + esc(r.error) + "</div>"; return; }
+    doc.idea = r; renderIdea();
+  };
+}
+async function buildGlossary() {
+  const r = await api("/api/ms/claude", { id: doc.id, mode: "glossary" });
+  if (r.error) { alert("⚠ " + r.error); return; }
+  doc.glossary = r.terms || []; renderEn();
+}
+function renderEn() {
+  const el = $("tab-en"); if (!doc) { el.innerHTML = ""; return; }
+  const g = doc.glossary || [];
+  const done = doc.outline.filter(n => n.draft_en).length, tot = doc.outline.filter(n => n.draft).length;
+  el.innerHTML = "<div class='sec'>영문화 <span class='hint' style='font-weight:400'>" + done + "/" + tot + " 문단</span></div>" +
+    "<div class='hint'>한국어로 쓰고 마지막에 영어로 바꾸는 흐름입니다. 카드의 원문에서 뽑은 용어집이 번역에 강제되어 인용 논문과 같은 표기를 씁니다.</div>" +
+    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='glMake'>" + (g.length ? "용어집 다시 만들기" : "용어집 만들기") + "</button><button class='btn' id='enAll'>초안 있는 문단 전부 영문화</button></div><div id='enprog'></div>" +
+    (g.length ? "<div class='sec'>용어집 " + g.length + "개</div><div class='gl'>" + g.map(t => "<div><b>" + esc(t.ko) + "</b> → " + esc(t.en) + "</div>").join("") + "</div>" : "");
+  $("glMake").onclick = async () => { if (busy) return; busy = true; $("enprog").innerHTML = "<div class='hint'>용어집 추출 중… (~30초)</div>"; await buildGlossary(); busy = false; };
+  $("enAll").onclick = async () => {
+    if (busy) return; const todo = doc.outline.filter(n => n.draft && !n.draft_en); if (!todo.length) { alert("영문화할 문단이 없습니다."); return; }
+    if (!g.length && doc.cards.some(c => c.src_text) && confirm("용어집을 먼저 만들까요? (권장)")) await buildGlossary();
+    busy = true;
+    for (let i = 0; i < todo.length; i++) {
+      $("enprog").innerHTML = "<div class='prog'><span>영문화 " + (i + 1) + "/" + todo.length + " · " + esc(todo[i].heading) + "</span>" + pbarHtml((i + 0.3) / todo.length, i / todo.length) + "</div>";
+      const r = await api("/api/ms/claude", { id: doc.id, node: todo[i].id, mode: "english" });
+      if (r.error) { alert("⚠ " + r.error); break; }
+      todo[i].draft_en = r.text; save(true);
+    }
+    busy = false; renderEn(); renderEditor();
+  };
+}
+function renderOut() {
+  const el = $("tab-out"); if (!doc) { el.innerHTML = ""; return; }
+  const refs = new Set(); doc.outline.forEach(n => (n.draft || "").replace(/\[c(\d+)\]/g, (m, k) => { const c = doc.cards.find(x => x.id === "c" + k); if (c && c.source.file) refs.add(c.source.file); return m; }));
+  el.innerHTML = "<div class='sec'>내보내기 (.docx)</div><div class='hint'>제목 → 절 제목 → 문단 → 그림(캡션 포함) → 참고문헌 순으로 워드 파일을 만듭니다. 초안의 [c3] 표시는 출처 논문의 등장 순서로 [1], [2]… 인용 번호가 되고, 참고문헌 목록이 자동으로 붙습니다. 서식(저널 템플릿)·공저자 교정은 워드에서.</div>" +
+    "<div class='ctl' style='padding:8px 0;margin-left:-8px'><button class='btn pri' data-lang='ko'>한국어 .docx</button><button class='btn pri' data-lang='en'>영문 .docx</button><button class='btn' id='openFolder'>폴더 열기</button></div><div id='outmsg' class='hint'></div>" +
+    "<div class='sec'>인용될 논문 " + refs.size + "편</div><div class='hint'>" + [...refs].map(short).join(" · ") + "</div>";
+  el.querySelectorAll("[data-lang]").forEach(b => b.onclick = async () => { $("outmsg").textContent = "만드는 중…"; const r = await api("/api/ms/export", { id: doc.id, lang: b.dataset.lang }); $("outmsg").textContent = r.error ? "⚠ " + r.error : "저장됨: " + r.path; });
+  $("openFolder").onclick = () => api("/api/ms/open_folder", {});
+}
+
+loadList();
+</script>
+</body>
+</html>
