@@ -15,7 +15,7 @@ if exist "%HERE%..\python\pythonw.exe" (
   where pythonw >nul 2>nul && set "PYW=pythonw" && set "PY=python"
 )
 if not defined PYW (
-  echo Python 3 was not found. Use the portable release (it includes a python folder) or install Python 3.8+ with "Add to PATH".
+  echo Python 3 was not found. Use the portable release which includes a python folder, or install Python 3.8+ with Add to PATH.
   pause
   exit /b 1
 )
