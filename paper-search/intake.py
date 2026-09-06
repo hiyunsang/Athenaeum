@@ -484,7 +484,7 @@ def pii_dois(pdf_path):
 
 
 def search_by_text(page_text):
-    """최후 수단 2: 첫 쪽 본문(초록 앞부분)의 문장으로 Crossref 검색 후 제목 대조. 파일명이 1-s2.0-… 처럼 무의미할 때."""
+    """(사용 안 함 - 오탐 사고) 첫 쪽 본문 문장으로 Crossref 검색. 제목 단어 50% 대조만으로는 카메라 견적서가 CMOS 센서 논문으로 통과함."""
     words = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", page_text[:3000])
     if len(words) < 25:
         return None
@@ -505,14 +505,15 @@ def search_by_text(page_text):
 
 def resolve_meta(pdf_path):
     """PDF에서 DOI를 찾아 서지정보를 얻는다. 실패하면 None. (서버의 라벨링·관련맵도 이 함수를 같이 쓴다)
-    순서: 본문 DOI → 파일명 PII(Elsevier) → 파일명 낱말 검색 → 첫 쪽 문장 검색. 모두 제목 대조를 통과해야 채택."""
+    순서: 본문 DOI → 파일명 PII(Elsevier) → 파일명 낱말 검색. 모두 제목 대조를 통과해야 채택.
+    (첫 쪽 문장으로 Crossref 검색하는 방식은 견적서·공지 PDF 를 엉뚱한 논문으로 판정해 파일을 옮기는 사고를 내서 쓰지 않는다.)"""
     candidates, page_text = extract_doi_candidates(pdf_path)
     if not candidates:
         candidates = pii_dois(pdf_path)
     if not candidates:
         if not page_text.strip():
             return None   # 글자가 없는 스캔본: 검색할 실마리가 없음
-        return search_by_filename(pdf_path, page_text) or search_by_text(page_text)
+        return search_by_filename(pdf_path, page_text)   # 본문 문장 검색(search_by_text)은 견적서·공지를 논문으로 오인해 2026-09-06 에 제거
     meta = None
     attempts = 0
     for doi in candidates:
@@ -530,7 +531,7 @@ def resolve_meta(pdf_path):
             break
     if meta is None:
         # DOI 경로가 다 실패했을 때만 파일명·본문 검색 시도 (DOI가 있는 문서 = 논문일 확률 높음)
-        meta = search_by_filename(pdf_path, page_text) or search_by_text(page_text)
+        meta = search_by_filename(pdf_path, page_text)
     return meta
 
 
