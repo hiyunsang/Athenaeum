@@ -505,15 +505,15 @@ def search_by_text(page_text):
 
 def resolve_meta(pdf_path):
     """PDF에서 DOI를 찾아 서지정보를 얻는다. 실패하면 None. (서버의 라벨링·관련맵도 이 함수를 같이 쓴다)
-    순서: 본문 DOI → 파일명 PII(Elsevier) → 파일명 낱말 검색. 모두 제목 대조를 통과해야 채택.
+    순서: 본문 DOI → 파일명 PII(Elsevier). DOI 실마리가 없으면 None (파일명 낱말 검색은 DOI 후보가 있었을 때의 보조 수단으로만).
     (첫 쪽 문장으로 Crossref 검색하는 방식은 견적서·공지 PDF 를 엉뚱한 논문으로 판정해 파일을 옮기는 사고를 내서 쓰지 않는다.)"""
     candidates, page_text = extract_doi_candidates(pdf_path)
     if not candidates:
-        candidates = pii_dois(pdf_path)
+        candidates = pii_dois(pdf_path)   # 파일명의 Elsevier PII → DOI (결정적 근거)
     if not candidates:
-        if not page_text.strip():
-            return None   # 글자가 없는 스캔본: 검색할 실마리가 없음
-        return search_by_filename(pdf_path, page_text)   # 본문 문장 검색(search_by_text)은 견적서·공지를 논문으로 오인해 2026-09-06 에 제거
+        # DOI 실마리가 전혀 없으면 논문으로 보지 않는다. 파일명 낱말 검색을 여기서 쓰면 'Program Notice', '견적서 Memrecam' 같은
+        # 파일이 엉뚱한 논문으로 판정된다 (2026-09-06 두 번 사고). 파일명 검색은 DOI 후보가 있었으나 조회가 다 실패했을 때만.
+        return None
     meta = None
     attempts = 0
     for doi in candidates:
