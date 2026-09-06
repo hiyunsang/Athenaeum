@@ -3,10 +3,13 @@
 <head>
 <meta charset="utf-8">
 <title>원고 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg"><link rel="icon" type="image/png" sizes="192x192" href="/logo/icon-192.png"><link rel="apple-touch-icon" href="/logo/icon-180.png">
 <link rel="stylesheet" href="/ui.css">
 <style>
   header { display: flex; align-items: center; gap: var(--s3); min-height: 44px; padding: 0 var(--s4); background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
-  header h1 { font-family: var(--font-serif); font-style: italic; font-size: 18px; font-weight: 400; color: var(--text); margin-right: var(--s2); }
+  header h1 { margin-right: var(--s2); line-height: 1; }
+  header h1 .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text); font-family: var(--font-serif); font-size: 13px; font-weight: 400; letter-spacing: .22em; }
+  header h1 .brand-mark { height: 26px; width: auto; display: block; }
   header a { font-size: 12px; color: var(--text-quiet); }
   header select { border-color: transparent; background: var(--bg); padding: 4px 8px; max-width: 320px; font-family: var(--font-serif); font-size: 14px; }
   header .sp { margin-left: auto; font-size: 12px; color: var(--text-3); }
@@ -110,7 +113,7 @@
 </head>
 <body>
 <header>
-  <h1>Athenaeum</h1>
+  <h1><a class="brand" href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
   <a href="/" class="act">← 논문</a>
   <select id="msSel" title="원고 선택"></select>
   <button class="btn" id="newMs">+ 새 원고</button>
