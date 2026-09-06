@@ -27,7 +27,7 @@ set /a N=0
 if %errorlevel%==0 goto up
 set /a N+=1
 if %N% geq 12 goto failed
-timeout /t 1 >nul
+"%PY%" -c "import time; time.sleep(1)"
 goto waitloop
 :failed
 echo The server did not start. Running it in this window to show the error:
