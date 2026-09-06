@@ -1,5 +1,7 @@
 # Athenaeum
 
+[github.com/hiyunsang/Athenaeum](https://github.com/hiyunsang/Athenaeum)
+
 연구실 논문 작업대 — 논문을 **모으고(수집) → 찾고(검색·탐색) → 읽고(요약·전문 번역·질문) → 쓰는(원고)** 일을 한 화면에서 합니다.
 로컬 컴퓨터에서 혼자 돌아가는 프로그램이고, 논문 PDF·요약·번역·원고는 전부 내 컴퓨터 폴더에만 저장됩니다.
 
