@@ -33,6 +33,47 @@ def post(path, body):
     return json.load(urllib.request.urlopen(req, timeout=60))
 
 
+STATUS = os.path.join(os.path.dirname(LOG), "일괄진행.json")
+_pause = {"until": 0.0, "rounds": 0}          # 사용량 한도에 걸리면 모든 줄기가 함께 쉰다
+_pause_lock = threading.Lock()
+_stat = {"start": time.time(), "done": 0, "fail": 0, "total": 0, "cur": [], "paused_until": 0, "pauses": 0}
+
+
+def save_status():
+    try:
+        d = dict(_stat); d["cur"] = list(_stat["cur"])[:8]; d["updated"] = time.time()
+        tmp = STATUS + ".tmp"
+        with io.open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, STATUS)
+    except Exception:
+        pass
+
+
+def hit_limit(label, err):
+    """사용량 한도: 모든 줄기가 함께 쉰다. 쉬는 시간은 20 → 30 → 45 → 60분 (최대 60분)."""
+    with _pause_lock:
+        now = time.time()
+        if _pause["until"] > now + 60:      # 이미 다른 줄기가 쉼을 걸어 둠
+            return _pause["until"]
+        mins = [20, 30, 45, 60][min(_pause["rounds"], 3)]
+        _pause["rounds"] += 1
+        _pause["until"] = now + mins * 60
+        _stat["paused_until"] = _pause["until"]; _stat["pauses"] = _pause["rounds"]; save_status()
+        log("[%s] 사용량 한도 - 전체 %d분 쉼 (%d번째): %s" % (label, mins, _pause["rounds"], (err or "")[:100]))
+        return _pause["until"]
+
+
+def wait_if_paused():
+    while True:
+        with _pause_lock:
+            until = _pause["until"]
+        left = until - time.time()
+        if left <= 0:
+            return
+        time.sleep(min(60, left + 1))
+
+
 def is_limit(err):
     e = (err or "").lower()
     return any(k in e for k in ("한도", "limit", "usage", "rate", "거절", "429", "too many"))
@@ -43,6 +84,7 @@ def run_one(name, kind, label, force=False):
     q = urllib.parse.quote(name)
     retries = 0
     while True:
+        wait_if_paused()
         try:
             r = post("/api/generate", {"file": name, "kind": kind, "force": bool(force)})
             force = False  # 재시도 때는 이어서(다시 지우지 않음)
@@ -69,11 +111,9 @@ def run_one(name, kind, label, force=False):
                 log("[%s] 작업이 사라짐(서버 재시작?) - 다시 요청: %s" % (label, name[:60])); break
             if st == "error":
                 err = s.get("error", "")
-                if is_limit(err) and retries < 8:
-                    wait = 30 if kind == "summary" else 15
-                    retries += 1
-                    log("[%s] 한도/거절: %s → %d분 후 재시도(%d/8): %s" % (label, err[:80], wait, retries, name[:60]))
-                    time.sleep(wait * 60); break
+                if is_limit(err):
+                    hit_limit(label, err)
+                    return None      # 건너뛰지 않고 뒤로 미룬다 (쉬고 나서 다시)
                 log("[%s] 실패, 건너뜀: %s | %s" % (label, err[:120], name[:70])); return False
             if time.time() - t0 > 3 * 3600:
                 log("[%s] 3시간 초과, 건너뜀: %s" % (label, name[:60])); return False
@@ -105,6 +145,54 @@ def worker(kind, names, label, force=False, workers=5):
     log("[%s] 줄기 종료: %d/%d 성공" % (label, state["ok"], len(names)))
 
 
+def paper_worker(names, kinds, workers=5, force=()):
+    """최신순 논문 목록을 받아 한 편씩 kinds(요약·번역)를 끝내고 다음 편으로. 한도로 미뤄진 것은 뒤에 다시 붙인다."""
+    from collections import deque
+    q = deque((n, 0) for n in names)          # (파일명, 미뤄진 횟수)
+    lock = threading.Lock()
+    _stat["total"] = len(names) * len(kinds)
+    done_pairs = {"n": 0}
+
+    def run(wid):
+        while True:
+            with lock:
+                if not q:
+                    return
+                name, tries = q.popleft()
+            with lock:
+                _stat["cur"].append(name[:60])
+            requeue = False
+            for kind in kinds:
+                label = "요약" if kind == "summary" else "번역"
+                r = run_one(name, kind, label, kind in force)
+                if r is None:                  # 한도 → 이 논문을 뒤로
+                    requeue = True
+                    break
+                with lock:
+                    done_pairs["n"] += 1
+                    _stat["done"] = done_pairs["n"]
+                    if r is False:
+                        _stat["fail"] += 1
+                save_status()
+            with lock:
+                try: _stat["cur"].remove(name[:60])
+                except ValueError: pass
+                if requeue:
+                    if tries < 6:
+                        q.append((name, tries + 1))
+                    else:
+                        log("[일괄] 여러 번 한도로 밀림 - 건너뜀: %s" % name[:60]); _stat["fail"] += 1
+            save_status()
+            time.sleep(2)
+
+    ts = [threading.Thread(target=run, args=(i,), daemon=True) for i in range(max(1, min(workers, len(names))))]
+    for t in ts:
+        t.start(); time.sleep(2)
+    for t in ts:
+        t.join()
+    log("[일괄] 끝: %d/%d 작업 완료 (실패·건너뜀 %d, 쉼 %d회)" % (_stat["done"], _stat["total"], _stat["fail"], _stat["pauses"]))
+
+
 def claude_worker(queue):
     """Claude 작업은 한 줄기로: 번역 전부 → 요약 전부 (동시에 돌리면 사용 한도를 더 빨리 소진).
     번역을 먼저 하는 이유: 원문 추출 품질이 그대로 드러나는 쪽이라 결과를 빨리 확인할 수 있다."""
@@ -115,6 +203,13 @@ def claude_worker(queue):
 
 def main():
     queue = json.load(io.open(sys.argv[1], encoding="utf-8"))
+    if queue.get("papers"):
+        kinds = queue.get("kinds") or ["summary", "translation"]
+        log("===== 일괄 생성 시작(논문 단위): %d편 x %s = %d작업 =====" % (len(queue["papers"]), "+".join(kinds), len(queue["papers"]) * len(kinds)))
+        save_status()
+        paper_worker(queue["papers"], kinds, int(queue.get("workers", 5)), set(queue.get("force", [])))
+        log("===== 일괄 생성 끝 =====")
+        return
     log("===== 야간 일괄 생성 시작: 요약 %d편, 번역 %d편, 관련맵 %d편%s =====" % (
         len(queue.get("summary", [])), len(queue.get("translation", [])), len(queue.get("map", [])),
         (" (다시 생성: " + ",".join(queue.get("force", [])) + ")") if queue.get("force") else ""))
