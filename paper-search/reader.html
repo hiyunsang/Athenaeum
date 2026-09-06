@@ -114,7 +114,7 @@
   <span class="tab" id="regen" title="현재 탭(요약/번역)을 지우고 다시 생성">↻ 다시 생성</span>
   <label class="tog"><input type="checkbox" id="pdfTog" checked> PDF</label>
   <span class="ttl" id="ttl">불러오는 중…</span>
-  <span class="hint">문장 드래그 → PDF 찾기 · 대조 · 메모 · 질문</span>
+  <span class="hint">번역본에서 드래그 → PDF 원문 문장 표시 · 요약에서는 대조 → 번역본·PDF 로 · 메모 · 질문</span>
 </div>
 <div id="layout">
   <div id="side" class="on">
@@ -140,8 +140,7 @@
   </div>
 </div>
 <div id="seltool">
-  <button data-act="locate" title="드래그하면 자동으로 원문 문장을 찍습니다. 어긋나면 이 버튼으로 Claude에게 정확한 위치를 묻습니다">Claude로 찾기</button>
-  <button data-act="cross">대조</button>
+  <button data-act="cross" title="요약 ↔ 번역본의 같은 부분으로 이동. 번역본으로 갈 때는 PDF 의 그 문장도 함께 표시">대조</button>
   <button data-act="note">메모</button>
   <button data-act="ms" title="선택한 구절을 원고의 근거 카드로 담습니다 (출처: 논문·문장·쪽 자동 기록)">원고에 담기</button>
   <button data-act="ask">질문 ▾</button>
@@ -888,16 +887,8 @@ askmenu.querySelectorAll("div").forEach(d => d.onclick = async () => {
 
 async function doAction(act) {
   const text = sel.text;
-  if (act === "locate") {
-    status("원문 위치를 찾는 중… (Claude, 10~30초)", 0);
-    document.getElementById("pdfTog").checked = true; pdfcol.classList.add("on");
-    const r = await (await fetch("/api/locate", { method: "POST", body: JSON.stringify({ file, passage: text }) })).json();
-    if (r.error || !r.quote) { status("⚠ " + (r.error || "찾지 못했습니다")); return; }
-    const hit = findInPdf(r.quote, (r.page || 1) - 1);
-    clearHl();
-    if (hit) { highlightItems(hit.page, hit.idxs); status((hit.page + 1) + "쪽에서 찾았습니다" + (r.confidence === "low" ? " (확신도 낮음)" : "")); }
-    else if (r.page && pages[r.page - 1]) { scrollPdfTo(r.page - 1, 0, "top"); status(r.page + "쪽으로 이동 (정확한 문장은 강조 못 함)"); }
-  } else if (act === "cross") {
+  // ('Claude로 찾기' 는 2026-09-06 제거: 번역본은 문장 번호표로 자동 표시되고, 요약은 '대조' 로 번역본·PDF 까지 감. Opus 호출 절약)
+  if (act === "cross") {
     const other = kind === "summary" ? "translation" : "summary";
     await showKind(other);
     if (texts[other] === null) return;
@@ -909,6 +900,7 @@ async function doAction(act) {
       sc = sc / Math.sqrt(30 + et.length);
       if (sc > bestScore) { bestScore = sc; best = el; }
     });
+    if (best && other === "translation") { const sp = best.querySelector(".sent[data-s]"); if (sp) locateBySentId(sp.dataset.s); }   // 번역본 문단의 첫 문장으로 PDF 도 이동
     if (best) { best.scrollIntoView({ block: "center" }); best.classList.add("flash"); setTimeout(() => best.classList.remove("flash"), 2500); status((other === "summary" ? "요약" : "번역본") + "에서 가장 비슷한 부분으로 이동"); }
   } else if (act === "note") {
     const t = prompt("메모 (선택 구절이 함께 저장되고 본문에 표시가 남습니다):", "");
