@@ -57,6 +57,17 @@ DOI_JOIN_RE = re.compile(r"10\.\d{4,9}/(?:[-._;()/:A-Za-z0-9]|\n(?=[-._;()/:A-Za
 STOPWORDS = {"of", "the", "and", "in", "on", "for", "a", "an", "de", "la", "&", "amp"}
 
 _listeners = []   # log() 가 부르는 함수들 (서버가 화면용 이벤트를 받아 간다)
+_forced_archive = None   # 서버 안에서 돌 때는 보관소를 서버의 ARCHIVE 로 고정 (설정 파일의 논문폴더보다 우선)
+_wake = threading.Event()   # '지금 검사'·일시정지·설정 저장 때 감시 스레드를 바로 깨운다
+
+
+def _int_or(v, default, lo, hi):
+    """설정 파일을 손으로 고치다 잘못 넣은 값("3초", null 등)에도 스레드가 죽지 않게 정수로 안전 변환."""
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return default
+    return min(hi, max(lo, v))
 
 
 def log(msg):
@@ -134,15 +145,15 @@ class Config:
 
     @property
     def target_dir(self):
-        return self.data.get("논문폴더", DEFAULT_ARCHIVE)
+        return _forced_archive or self.data.get("논문폴더", DEFAULT_ARCHIVE)
 
     @property
     def interval(self):
-        return max(1, int(self.data.get("검사주기_초", 3)))
+        return _int_or(self.data.get("검사주기_초", 3), 3, 1, 300)
 
     @property
     def title_max(self):
-        return max(20, int(self.data.get("제목최대길이", 80)))
+        return _int_or(self.data.get("제목최대길이", 140), 140, 20, 200)
 
     @property
     def journal_map(self):
@@ -165,15 +176,20 @@ class Config:
         """홈 화면에서 바꾼 설정을 검사해 파일에 쓴다. 문제가 있으면 오류 문장 목록을 돌려주고 아무것도 바꾸지 않는다."""
         errs, data = [], dict(self.data)
         if "감시폴더" in changes:
-            p = os.path.normpath(str(changes["감시폴더"]).strip())
-            if not os.path.isdir(p):
+            raw = str(changes["감시폴더"]).strip()
+            p = os.path.normpath(raw) if raw else ""
+            if not raw or not os.path.isabs(p):
+                errs.append("감시 폴더는 전체 경로로 적어 주세요 (예: C:%sUsers%sPC1%sDownloads)" % ((os.sep,) * 3))
+            elif not os.path.isdir(p):
                 errs.append("감시 폴더가 없습니다: %s" % p)
             else:
                 data["감시폴더"] = p
         if "주제폴더" in changes:
-            p = str(changes["주제폴더"]).strip()
-            p = os.path.normpath(p) if p else ""
-            if p and not os.path.isdir(p):
+            raw = str(changes["주제폴더"]).strip()
+            p = os.path.normpath(raw) if raw else ""
+            if p and not os.path.isabs(p):
+                errs.append("주제 폴더는 전체 경로로 적어 주세요")
+            elif p and not os.path.isdir(p):
                 errs.append("주제 폴더가 없습니다: %s" % p)
             else:
                 data["주제폴더"] = p
@@ -208,18 +224,34 @@ class Config:
                 data["저널약어"] = clean
         if errs:
             return errs
-        if "감시폴더" in data and "논문폴더" in data and os.path.normcase(data["감시폴더"]) == os.path.normcase(data["논문폴더"]):
-            return ["감시 폴더와 보관 폴더가 같으면 안 됩니다"]
+        # 폴더 관계 검사: 보관소를 감시하거나(무한 루프), 주제 폴더가 보관소를 품으면(보관소 PDF 를 전부 바로가기로 바꿔 버림) 안 된다
+        archive = os.path.normcase(os.path.abspath(self.target_dir))
+        watch = os.path.normcase(os.path.abspath(data.get("감시폴더", self.watch_dir)))
+        tree = data.get("주제폴더", self.tree_dir)
+        tree = os.path.normcase(os.path.abspath(tree)) if tree else ""
+
+        def inside(child, parent):
+            return child == parent or child.startswith(parent.rstrip(os.sep) + os.sep)
+        if inside(watch, archive) or inside(archive, watch):
+            return ["감시 폴더와 보관 폴더(논문모음)는 서로 안에 있으면 안 됩니다"]
+        if tree and (inside(archive, tree) or inside(tree, archive)):
+            return ["주제 폴더가 보관 폴더(논문모음)를 품거나 그 안에 있으면 안 됩니다. 보관소의 논문이 전부 바로가기로 바뀌어 버립니다"]
+        if tree and inside(tree, watch):
+            return ["주제 폴더가 감시 폴더 안에 있으면 안 됩니다"]
         tmp = CONFIG_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, CONFIG_PATH)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, CONFIG_PATH)
+        except OSError as e:
+            return ["설정 파일을 쓰지 못했습니다 (다른 프로그램이 열고 있나요?): %s" % e]
         self.data = data
         try:
             self.mtime = os.path.getmtime(CONFIG_PATH)
         except OSError:
             pass
         log("설정 저장: 감시 {} · 주기 {}초 · 저널약어 {}개".format(self.watch_dir, self.interval, len(data.get("저널약어", {}))))
+        _wake.set()
         return []
 
 
@@ -631,22 +663,39 @@ def _kind(msg):
     return "info"
 
 
+_today = {"day": "", "done": 0, "dup": 0, "skip": 0, "fail": 0}
+
+
+def _count_today(kind, t):
+    day = time.strftime("%Y-%m-%d", time.localtime(t))
+    if _today["day"] != day:
+        _today.update(day=day, done=0, dup=0, skip=0, fail=0)
+    if kind in _today:
+        _today[kind] += 1
+
+
 def _push(msg, t=None):
-    _state["events"].appendleft({"t": t or time.time(), "msg": msg, "kind": _kind(msg)})
+    t = t or time.time()
+    kind = _kind(msg)
+    _state["events"].appendleft({"t": t, "msg": msg, "kind": kind})
+    _count_today(kind, t)
 
 
 _LOG_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\] (.*)$")
 
 
 def _backfill_events(n=120):
-    """서버를 다시 켜도 패널이 비지 않게, 기록 파일의 마지막 n 줄을 이벤트로 되살린다."""
+    """서버를 다시 켜도 패널이 비지 않게, 기록 파일의 마지막 n 줄을 이벤트로 되살린다.
+    '오늘' 통계는 화면에 보이는 n 줄이 아니라 오늘 날짜의 모든 줄에서 센다 (다운로드 폴더를 처음 훑을 때 수백 줄이 나오므로)."""
     try:
         with open(LOG_PATH, "rb") as f:
             f.seek(0, 2)
-            f.seek(max(0, f.tell() - 200000))
-            lines = f.read().decode("utf-8", "ignore").splitlines()[-n:]
+            f.seek(max(0, f.tell() - 1500000))
+            lines = f.read().decode("utf-8", "ignore").splitlines()
     except OSError:
         return
+    today = time.strftime("%Y-%m-%d")
+    parsed = []
     for line in lines:
         m = _LOG_LINE.match(line)
         if not m:
@@ -655,14 +704,20 @@ def _backfill_events(n=120):
             t = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
         except ValueError:
             continue
-        _push(m.group(2), t)
+        parsed.append((t, m.group(2)))
+    for t, msg in parsed[:-n]:
+        if msg and time.strftime("%Y-%m-%d", time.localtime(t)) == today:
+            _count_today(_kind(msg), t)
+    for t, msg in parsed[-n:]:
+        _push(msg, t)
 
 
 def init(load_json=None, save_json=None, archive=None):
     """server.py 가 부른다. 보관소 경로를 서버와 같은 값으로 맞춘다."""
-    global DEFAULT_ARCHIVE, _cfg
+    global DEFAULT_ARCHIVE, _cfg, _forced_archive
     if archive:
         DEFAULT_ARCHIVE = archive
+        _forced_archive = archive   # 서버 안에서는 보관소가 곧 검색·읽기 화면의 논문모음이므로 설정 파일로 바꿀 수 없게
     migrate_legacy()
     os.makedirs(DATA_DIR, exist_ok=True)
     if not os.path.isfile(CONFIG_PATH):
@@ -743,8 +798,8 @@ def _run():
     log("감시 시작 (Athenaeum 안에서): {}  ->  {}".format(cfg.watch_dir, cfg.target_dir))
     while True:
         try:
+            cfg.reload_if_changed()   # 정지 중에도 파일 편집은 바로 반영 (화면의 설정 폼이 옛 값을 보이지 않게)
             if _state["enabled"]:
-                cfg.reload_if_changed()
                 scan_once(cfg, state["skipped"], state["retries"], state["size_history"], state["hash_index"], state["cooldown"])
                 scan_tree_once(cfg, state["size_history"], state["hash_index"], state["cooldown"])
                 _save_skips(state["skipped"], skip_cache)
@@ -752,20 +807,29 @@ def _run():
                 _state["error"] = ""
         except Exception as e:
             _state["error"] = str(e)[:200]
-        time.sleep(cfg.interval if _state["enabled"] else 2)
+        try:
+            wait = cfg.interval if _state["enabled"] else 5
+        except Exception:
+            wait = 3
+        _wake.wait(wait)   # '지금 검사'·재개·설정 저장이 set() 하면 바로 깬다
+        _wake.clear()
 
 
 def view():
     """홈 화면 '수집' 패널이 10초마다 가져가는 상태."""
     cfg = _cfg or Config()
+    try:
+        cfg.reload_if_changed()   # 파일을 메모장으로 고친 직후에도 화면이 새 값을 보이게
+    except Exception:
+        pass
     ev = list(_state["events"])
-    day0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))   # 오늘 0시 (로컬)
-    today = [e for e in ev if e["t"] >= day0]
+    if _today["day"] != time.strftime("%Y-%m-%d"):
+        _today.update(day=time.strftime("%Y-%m-%d"), done=0, dup=0, skip=0, fail=0)
     return {"enabled": _state["enabled"], "alive": _state["alive"], "waiting_lock": _state["waiting_lock"],
             "error": _state["error"], "last_scan": _state["last_scan"],
             "watch": cfg.watch_dir, "target": cfg.target_dir, "interval": cfg.interval,
             "config": cfg.public(), "config_path": CONFIG_PATH, "log_path": LOG_PATH,
-            "today": {k: sum(1 for e in today if e["kind"] == k) for k in ("done", "dup", "skip", "fail")},
+            "today": {k: _today[k] for k in ("done", "dup", "skip", "fail")},
             "events": ev[:150]}
 
 
@@ -775,11 +839,13 @@ def control(body):
     out_errs = []
     if op == "pause":
         _state["enabled"] = False
+        _wake.set()
     elif op == "resume":
         _state["enabled"] = True
+        _wake.set()
     elif op == "scan":
         _state["enabled"] = True
-        _state["last_scan"] = 0   # 다음 주기에 바로 돈다 (몇 초 안)
+        _wake.set()   # 감시 스레드를 바로 깨워 즉시 한 번 돈다
     elif op == "open_log":
         try:
             os.startfile(LOG_PATH)
@@ -798,7 +864,10 @@ def control(body):
     elif op == "config":
         cfg = _cfg or Config()
         changes = body.get("config") or {}
-        out_errs = cfg.update({k: v for k, v in changes.items() if k in Config.EDITABLE})
+        try:
+            out_errs = cfg.update({k: v for k, v in changes.items() if k in Config.EDITABLE})
+        except Exception as e:
+            out_errs = ["설정을 저장하지 못했습니다: %s" % e]
     v = view()
     v["errors"] = out_errs
     return v
@@ -827,12 +896,14 @@ def main():
         time.sleep(1)
         scan_once(cfg, skipped, retries, size_history, hash_index, cooldown)  # 안정 확인 후 처리
         scan_tree_once(cfg, size_history, hash_index, cooldown)
+        _save_skips(skipped, _cache)
         log("1회 정리 완료.")
         return
     while True:
         cfg.reload_if_changed()
         scan_once(cfg, skipped, retries, size_history, hash_index, cooldown)
         scan_tree_once(cfg, size_history, hash_index, cooldown)
+        _save_skips(skipped, _cache)
         time.sleep(cfg.interval)
 
 

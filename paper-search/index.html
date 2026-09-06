@@ -43,7 +43,8 @@
   .iset { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
   .iset summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
   .iset label { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; margin: 6px 0; font-size: 12px; color: var(--text-2); }
-  .iset input, .iset textarea { width: 100%; font-size: 12px; box-sizing: border-box; } .iset textarea { font-family: var(--font-mono, monospace); line-height: 1.5; }
+  .iset input, .iset textarea { width: 100%; font-size: 12px; box-sizing: border-box; } .iset textarea { font-family: Consolas, "Cascadia Mono", monospace; line-height: 1.5; }
+  .iset input[type=number] { border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); padding: 3px 6px; }
   .iset .ro { color: var(--text-3); word-break: break-all; }
   .jpend b { color: var(--text); font-weight: 600; }
   #chips { padding: var(--s1) var(--s4) 0; display: flex; flex-wrap: wrap; gap: var(--s1); min-height: 6px; }
@@ -184,37 +185,55 @@ function renderIntake() {
     }).join("") || "<div class='hint'>아직 기록이 없습니다. PDF 를 다운로드 폴더에 넣으면 몇 초 안에 정리됩니다.</div>");
   intakePanel.querySelectorAll("#intakeMain [data-op]").forEach(b => b.onclick = async () => { intakeData = await postIntake({ op: b.dataset.op }); renderIntake(); });
   const sb = intakePanel.querySelector("#intakeSetBody");
-  if (!sb.innerHTML && d.config) renderIntakeSettings(sb, d.config);
+  if (!d.config) { sb.innerHTML = "<div class='hint'>서버를 다시 시작하면 여기서 설정을 고칠 수 있습니다.</div>"; return; }
+  const sig = JSON.stringify(d.config);
+  // 처음이거나, 파일이 바깥에서 바뀌었고 폼에 손대지 않았으면 다시 그린다 (편집 중인 내용은 지우지 않음)
+  if (!sb.innerHTML || (sb.dataset.sig !== sig && !sb.dataset.dirty)) renderIntakeSettings(sb, d.config);
 }
 function renderIntakeSettings(sb, c) {
   const abbr = Object.entries(c.저널약어 || {}).map(([k, v]) => k + " = " + v).join("\n");
   sb.innerHTML =
-    "<label>감시 폴더<input id='iWatch' value='" + escH(c.감시폴더 || "") + "' spellcheck='false'></label>" +
+    "<label>감시 폴더<input id='iWatch' type='text' value='" + escH(c.감시폴더 || "") + "' spellcheck='false'></label>" +
     "<label>보관 폴더<span class='ro'>" + escH(c.논문폴더 || "") + " <span class='hint'>(Athenaeum 보관소 · 고정)</span></span></label>" +
-    "<label>주제 폴더<input id='iTree' value='" + escH(c.주제폴더 || "") + "' placeholder='비워 두면 사용 안 함' spellcheck='false'></label>" +
+    "<label>주제 폴더<input id='iTree' type='text' value='" + escH(c.주제폴더 || "") + "' placeholder='비워 두면 사용 안 함' spellcheck='false'></label>" +
     "<div class='hint' style='margin:-2px 0 4px 104px'>주제 폴더 트리에 진짜 PDF 를 넣으면 보관소로 옮기고 그 자리에 바로가기를 남깁니다.</div>" +
     "<label>검사 주기<span><input id='iInt' type='number' min='1' max='300' value='" + (c.검사주기_초 || 3) + "' style='width:72px'> 초마다 다운로드 폴더를 봅니다</span></label>" +
     "<label>제목 길이<span><input id='iMax' type='number' min='40' max='200' value='" + (c.제목최대길이 || 140) + "' style='width:72px'> 자까지 파일명에 넣습니다</span></label>" +
     "<label style='align-items:start'>저널 약어<textarea id='iAbbr' rows='7' spellcheck='false'>" + escH(abbr) + "</textarea></label>" +
     "<div class='hint' style='margin:-2px 0 4px 104px'>한 줄에 「저널 이름 = 약어」. 목록에 없는 저널은 이니셜로 자동(Journal of Manufacturing Science and Engineering → JMSE), 한 단어 저널은 그대로(WEAR).</div>" +
-    "<div style='display:flex;gap:8px;align-items:center;margin-top:6px'><button class='btn act pri' id='iSave'>저장</button><button class='btn act' id='iOpenCfg'>설정 파일 열기</button><span id='iMsg' class='hint'></span></div>";
+    "<div style='display:flex;gap:8px;align-items:center;margin-top:6px'><button class='btn act ready' id='iSave' style='font-weight:600'>저장</button><button class='btn act' id='iOpenCfg'>설정 파일 열기</button><span id='iMsg' class='hint'></span></div>";
+  sb.dataset.sig = JSON.stringify(c); sb.dataset.dirty = "";
+  sb.querySelectorAll("input, textarea").forEach(el => el.addEventListener("input", () => { sb.dataset.dirty = "1"; }));
   sb.querySelector("#iOpenCfg").onclick = () => postIntake({ op: "open_config" });
   sb.querySelector("#iSave").onclick = async () => {
-    const map = {};
-    sb.querySelector("#iAbbr").value.split("\n").forEach(l => { const k = l.indexOf("="); if (k > 0) map[l.slice(0, k).trim()] = l.slice(k + 1).trim(); });
-    const r = await postIntake({ op: "config", config: {
-      감시폴더: sb.querySelector("#iWatch").value, 주제폴더: sb.querySelector("#iTree").value,
-      검사주기_초: sb.querySelector("#iInt").value, 제목최대길이: sb.querySelector("#iMax").value, 저널약어: map } });
-    const msg = sb.querySelector("#iMsg");
-    if (r.errors && r.errors.length) { msg.style.color = "var(--red)"; msg.textContent = r.errors.join(" / "); return; }
-    intakeData = r; sb.innerHTML = ""; renderIntake();
-    const m2 = intakePanel.querySelector("#iMsg"); if (m2) { m2.style.color = "var(--green)"; m2.textContent = "저장됨 · 바로 반영됩니다"; }
+    const msg = sb.querySelector("#iMsg"), btn = sb.querySelector("#iSave");
+    const map = {}, bad = [];
+    sb.querySelector("#iAbbr").value.split("\n").forEach(l => {
+      if (!l.trim()) return;
+      const k = l.indexOf("="); const name = k > 0 ? l.slice(0, k).trim() : "", ab = k > 0 ? l.slice(k + 1).trim() : "";
+      if (name && ab) map[name] = ab; else bad.push(l.trim());
+    });
+    if (bad.length) { msg.style.color = "var(--red)"; msg.textContent = "「저널 이름 = 약어」 꼴이 아닌 줄: " + bad.slice(0, 3).join(" · ") + (bad.length > 3 ? " 외 " + (bad.length - 3) : ""); return; }
+    btn.disabled = true; msg.style.color = ""; msg.textContent = "저장 중…";
+    try {
+      const r = await postIntake({ op: "config", config: {
+        감시폴더: sb.querySelector("#iWatch").value, 주제폴더: sb.querySelector("#iTree").value,
+        검사주기_초: sb.querySelector("#iInt").value, 제목최대길이: sb.querySelector("#iMax").value, 저널약어: map } });
+      if (r.errors && r.errors.length) { msg.style.color = "var(--red)"; msg.textContent = r.errors.join(" / "); return; }
+      if (!r.config) { msg.style.color = "var(--red)"; msg.textContent = "서버 응답이 이상합니다: " + (r.error || "다시 시도"); return; }
+      intakeData = r; sb.innerHTML = ""; renderIntake();
+      const m2 = intakePanel.querySelector("#iMsg"); if (m2) { m2.style.color = "var(--green)"; m2.textContent = "저장됨 · 바로 반영됩니다"; }
+    } catch (e) {
+      msg.style.color = "var(--red)"; msg.textContent = "저장 실패 (서버가 꺼져 있나요?) " + e;
+    } finally { btn.disabled = false; }
   };
 }
 async function postIntake(b) { return (await fetch("/api/intake", { method: "POST", body: JSON.stringify(b) })).json(); }
 async function pollIntake() { try { intakeData = await (await fetch("/api/intake")).json(); renderIntake(); } catch (e) {} }
 intakeBtn.onclick = e => { e.preventDefault(); intakePanel.style.display = intakePanel.style.display === "none" ? "block" : "none"; renderIntake(); };
-document.addEventListener("click", e => { if (intakePanel.style.display !== "none" && !intakePanel.contains(e.target) && e.target !== intakeBtn) intakePanel.style.display = "none"; });
+let intakeDownInside = false;
+document.addEventListener("mousedown", e => { intakeDownInside = intakePanel.contains(e.target); });
+document.addEventListener("click", e => { if (intakePanel.style.display !== "none" && !intakeDownInside && !intakePanel.contains(e.target) && e.target !== intakeBtn) intakePanel.style.display = "none"; });
 pollIntake(); setInterval(pollIntake, 10000);
 let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, editing = null;
 let searchQ = "";   // 제목·저자·연도·저널·라벨 검색어 (타자와 동시에 적용)
@@ -471,7 +490,7 @@ function fmtDur(sec) {
   if (sec < 3600) return Math.round(sec / 60) + "분";
   return Math.floor(sec / 3600) + "시간 " + Math.round(sec % 3600 / 60) + "분";
 }
-const escH = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const escH = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 // 사이드바 '최근 읽음' 5편: 클릭하면 마지막에 보던 종류(요약/번역)로 읽기 화면
 function renderRecent() {
   const frag = document.createDocumentFragment();
