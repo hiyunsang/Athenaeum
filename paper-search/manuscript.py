@@ -524,6 +524,56 @@ JOURNALS = {
              "notes": "하이라이트 필수(3~5개, 공백 포함 85자 이내). 그림은 TIFF/EPS/JPEG, 본문 언급 순서대로 번호. 초록 단어 수 한도는 최신 가이드로 확인 필요."},
 }
 
+# 논문모음 파일명의 저널 약어(연도_약어_저자_제목) 에서 자주 쓰는 저널의 전체 이름. 수집설정.json 의 저널약어(사용자 지정)가 우선.
+JOURNAL_NAMES = {
+    "IJMTM": "International Journal of Machine Tools and Manufacture (Elsevier)", "JMPT": "Journal of Materials Processing Technology (Elsevier)",
+    "JMP": "Journal of Manufacturing Processes (Elsevier)", "IJMS": "International Journal of Mechanical Sciences (Elsevier)",
+    "PE": "Precision Engineering (Elsevier)", "AMT": "International Journal of Advanced Manufacturing Technology (Springer)",
+    "WEAR": "Wear (Elsevier)", "JMSE": "Journal of Manufacturing Science and Engineering (ASME)", "Trib": "Tribology International (Elsevier)",
+    "CIRPA": "CIRP Annals - Manufacturing Technology (Elsevier)", "CIRPJMST": "CIRP Journal of Manufacturing Science and Technology (Elsevier)",
+    "IJPEM": "International Journal of Precision Engineering and Manufacturing (Springer)", "IJEM": "International Journal of Extreme Manufacturing (IOP)",
+    "IJHMT": "International Journal of Heat and Mass Transfer (Elsevier)", "JMPS": "Journal of the Mechanics and Physics of Solids (Elsevier)",
+    "MD": "Materials & Design (Elsevier)", "MST": "Materials Science and Technology", "PRA": "Physical Review Applied (APS)",
+    "ATE": "Applied Thermal Engineering (Elsevier)", "AM": "Additive Manufacturing (Elsevier)", "MATERIALS": "Materials (MDPI)", "METALS": "Metals (MDPI)",
+    "MICROMACHINES": "Micromachines (MDPI)", "COATINGS": "Coatings (MDPI)", "JMMP": "Journal of Manufacturing and Materials Processing (MDPI)",
+    "PNAS": "Proceedings of the National Academy of Sciences", "FME": "Frontiers of Mechanical Engineering (Springer)",
+}
+ELSEVIER_GENERIC = {"ref_style": "번호식 [n] (저널 가이드 확인)", "abstract_max_words": 250, "highlights": {"min": 3, "max": 5, "max_chars": 85},
+                    "keywords_max": 6, "fig_width_mm": {"single": 90, "double": 190}, "fig_dpi": {"halftone": 300, "combination": 500, "line": 1000},
+                    "notes": "이 저널의 세부 규격은 아직 등록되지 않아 Elsevier 공통 규칙(초록 250단어·하이라이트 3~5개 85자·키워드 6개)으로 점검합니다. 정확한 한도는 저널 Guide for Authors 로 확인하세요."}
+
+
+def journal_rules(abbr):
+    """저널 약어 → 점검·머리부 규칙. 등록된 저널(JMPT)은 세부 규칙, 나머지는 일반 규칙 + 이름."""
+    abbr = (abbr or "").strip()
+    if abbr in JOURNALS:
+        return dict(JOURNALS[abbr], registered=True)
+    if not abbr:
+        return dict(JOURNALS["JMPT"], name="저널 미지정 (JMPT 규칙으로 점검)", registered=False)
+    j = dict(ELSEVIER_GENERIC); j["name"] = JOURNAL_NAMES.get(abbr, abbr) + " · 규격 미등록(일반 규칙)"; j["registered"] = False
+    return j
+
+
+def archive_journals():
+    """논문모음 파일명에서 저널 약어별 편수. 원고 화면의 저널 선택 목록용."""
+    import collections
+    c = collections.Counter()
+    try:
+        for f in os.listdir(cfg["ARCHIVE"]):
+            m = re.match(r"^\d{4}_([^_]+)_", f)
+            if m and f.lower().endswith(".pdf"):
+                c[m.group(1)] += 1
+    except OSError:
+        pass
+    names = dict(JOURNAL_NAMES)
+    try:
+        import intake
+        for full, ab in intake.Config().data.get("저널약어", {}).items():
+            names.setdefault(ab, full)
+    except Exception:
+        pass
+    return [{"abbr": k, "count": n, "name": names.get(k, ""), "registered": k in JOURNALS} for k, n in c.most_common()]
+
 
 def _body_text(doc, key="draft"):
     return "\n\n".join(("## " + n.get("heading", "") + "\n" + (n.get(key) or n.get("draft") or "")) for n in doc["outline"])
@@ -531,7 +581,7 @@ def _body_text(doc, key="draft"):
 
 def front_matter(doc):
     """본문에서 초록·키워드·하이라이트 생성 (저널 규격 반영)"""
-    j = JOURNALS.get((doc.get("meta") or {}).get("journal", ""), JOURNALS["JMPT"])
+    j = journal_rules((doc.get("meta") or {}).get("journal", ""))
     lang = (doc.get("meta") or {}).get("lang", "ko")
     body = _body_text(doc)[:60000]
     hl = j["highlights"]
@@ -553,7 +603,7 @@ def front_matter(doc):
 
 def check_manuscript(doc):
     """규칙 점검 (Claude 없이): 그림 번호·언급 순서, 참고문헌 인용 누락, 초록 길이, 하이라이트, 키워드"""
-    j = JOURNALS.get((doc.get("meta") or {}).get("journal", ""), JOURNALS["JMPT"])
+    j = journal_rules((doc.get("meta") or {}).get("journal", ""))
     issues = []
     body = _body_text(doc)
     # 그림: 본문 첫 언급 순서
@@ -1110,6 +1160,8 @@ def handle_get(h, url):
             return h._send(200, f.read(), "text/html; charset=utf-8")
     if p == "/api/ms/list":
         return h._send(200, {"items": list_ms()})
+    if p == "/api/ms/journals":
+        return h._send(200, {"journals": archive_journals()})
     if p == "/api/ms":
         d = load_ms(_q(url, "id"))
         return h._send(200, d if d else {"error": "없음"})

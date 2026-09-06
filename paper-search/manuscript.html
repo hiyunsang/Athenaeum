@@ -99,6 +99,13 @@
   .fbig img { max-width: 100%; max-height: 66vh; object-fit: contain; display: block; }
   .fmeta { display: flex; gap: var(--s3); align-items: baseline; font-size: 12px; color: var(--text-3); margin: var(--s2) 0; flex-wrap: wrap; }
   .fmeta .ctl { margin-left: auto; padding: 0; }
+  /* 처음 안내 */
+  #guide { display: none; max-width: 760px; margin: 0 auto var(--s6); padding: 14px 18px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); font-size: 13px; line-height: 1.7; color: var(--text-2); }
+  body.guide #guide { display: block; }
+  #guide h3 { font-family: var(--font-serif); font-size: 16px; color: var(--text); margin: 0 0 6px; }
+  #guide ol { margin: 4px 0 8px 18px; padding: 0; } #guide li { margin: 2px 0; } #guide b { color: var(--text); }
+  #guide table { border-collapse: collapse; margin: 6px 0; font-size: 12px; } #guide td, #guide th { border-bottom: 1px solid var(--line); padding: 3px 10px 3px 0; text-align: left; vertical-align: top; }
+  #guide .x { float: right; font-size: 12px; color: var(--text-quiet); cursor: pointer; }
   /* 원고 모드: 절 제목과 문단이 위에서 아래로 이어지는 큰 편집 화면 (워드처럼 펼쳐 놓고 쓰기) */
   header > *, header .btn, #modeSeg button { white-space: nowrap; flex-shrink: 0; }
   header #msSel { flex: 0 1 320px; min-width: 120px; }
@@ -132,9 +139,10 @@
   <button class="btn" id="newMs">+ 새 원고</button>
   <button class="btn" id="importMs" title="워드(.docx) 원고를 가져와 개요·문단·그림·참고문헌·주석으로 나눕니다">워드 가져오기</button>
   <input type="file" id="importFile" accept=".docx" style="display:none">
-  <select id="journalSel" title="투고 저널 (규격 점검·머리부 생성에 반영)"><option value="">저널 선택…</option><option value="JMPT">JMPT (Elsevier)</option></select>
+  <select id="journalSel" title="투고 저널 (규격 점검·머리부 생성에 반영). 목록은 내 논문모음의 저널들"><option value="">저널 선택…</option><option value="JMPT">JMPT (Elsevier)</option></select>
   <span id="modeSeg"><button class="btn" data-m="para" onclick="setMode('para')" title="주장·근거 카드·초안·검토를 문단 하나씩">문단 모드</button><button class="btn" data-m="doc" onclick="setMode('doc')" title="전체 원고를 펼쳐 놓고 이어서 쓰기">원고 모드</button></span>
   <button class="btn" id="focusBtn" onclick="toggleFocus()" title="개요·서랍을 숨기고 글에만 집중 (다시 누르면 복귀)">집중</button>
+  <button class="btn" id="guideBtn" onclick="toggleGuide()" title="이 화면이 어떻게 돌아가는지 (워드·LaTeX 와 비교)">안내</button>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
   <span class="sp" id="saveState"></span>
@@ -147,7 +155,25 @@
     <div class="ctl"><button id="mvUp" title="위로">▲</button><button id="mvDn" title="아래로">▼</button><button id="delN" title="삭제">삭제</button><button id="reviewBtn" title="Claude가 개요의 논리 흐름을 검토">개요 검토</button></div>
     <div id="review" style="padding: 0 12px"></div>
   </div>
-  <div id="center"><div id="empty">원고를 고르거나 새로 만드세요.<br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
+  <div id="center"><div id="guide"><span class="x" onclick="toggleGuide()">닫기 ✕</span>
+    <h3>이 화면은 어떻게 쓰나</h3>
+    <div>워드가 "빈 종이"라면 여기는 <b>근거를 붙여 쓰는 작업대</b>입니다. 흐름은 한 방향입니다.</div>
+    <ol>
+      <li><b>읽기 화면에서 근거를 모은다.</b> 논문을 읽다가 문장을 드래그 → <b>원고에 담기</b>. 출처(논문·문장·쪽)가 붙은 <b>근거 카드</b>가 오른쪽 「카드」 탭에 쌓입니다.</li>
+      <li><b>개요(왼쪽)를 짠다.</b> 절·문단 하나가 개요의 한 줄. 「+ 절」로 추가, 「개요 검토」로 Claude 가 빠진 절·순서를 봐 줍니다. 워드 원고가 있으면 「워드 가져오기」로 개요·문단·그림·참고문헌·주석이 한 번에 들어옵니다.</li>
+      <li><b>문단 모드에서 문단을 만든다.</b> 주장 한 줄 → 카드 붙이기 → 「초안 쓰기」(카드만 근거로, 문장 끝에 [c3] 카드 번호) → 「이 문단 검토」(심사자 눈) → 「영문화」(용어집 유지).</li>
+      <li><b>원고 모드로 통독하며 고친다.</b> 전체가 한 화면에 이어져 워드처럼 씁니다. 「집중」으로 양옆을 숨깁니다.</li>
+      <li><b>그림·피드백·점검.</b> 「그림」 탭: 말로 설명하면 Claude 가 도식을 그리고 피드백으로 다듬음. 「피드백」 탭: 교수님 워드 주석을 놓고 논의·반영. 「점검」 탭: 저널 규격(초록·하이라이트·그림 순서·인용 누락).</li>
+      <li><b>내보내기.</b> 「내보내기」 탭에서 .docx — [c3] 은 참고문헌 번호로 바뀌고 참고문헌 목록이 자동으로 붙습니다. 교수님과는 워드로 주고받고, 돌아온 주석은 다시 가져옵니다.</li>
+    </ol>
+    <table><tr><th></th><th>워드</th><th>LaTeX·Overleaf</th><th>Scrivener</th><th>여기</th></tr>
+      <tr><td>구조</td><td>제목 스타일</td><td>\section 마크업</td><td>바인더(조각)</td><td>개요 트리 (조각마다 주장·카드·검토)</td></tr>
+      <tr><td>참고문헌</td><td>손으로/EndNote</td><td>BibTeX \cite</td><td>없음</td><td>내 논문모음의 카드 → [c3] → 번호·목록 자동</td></tr>
+      <tr><td>근거 추적</td><td>없음</td><td>없음</td><td>없음</td><td>카드마다 원문 문장·쪽으로 되돌아감</td></tr>
+      <tr><td>검토</td><td>사람 주석</td><td>컴파일 오류만</td><td>없음</td><td>문단 검토·전체 검토·규격 점검 + 교수님 주석 논의</td></tr>
+      <tr><td>조판·제출</td><td>바로</td><td>PDF 컴파일</td><td>내보내기</td><td>.docx 로 내보내 워드에서 마무리</td></tr></table>
+    <div class="hint" style="padding:0">지금 원고(BUE)라면: ① 피드백 탭에서 교수님 주석부터 처리 → ② 원고 모드로 통독하며 고치기 → ③ 점검 → ④ 내보내기.</div>
+  </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
     <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
     <div class="tab on" id="tab-cards"></div>
@@ -184,7 +210,7 @@ async function openDoc(id) {
   if (doc.error) return showEmpty();
   localStorage.setItem("ms_last", id);
   doc.front = doc.front || { title: "", authors: "", abstract: "", keywords: [], highlights: [] };
-  doc.meta = doc.meta || {}; $("journalSel").value = doc.meta.journal || "";
+  doc.meta = doc.meta || {}; if (doc.meta.journal) ensureJournalOption(doc.meta.journal, doc.meta.journal); $("journalSel").value = doc.meta.journal || "";
   cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
   renderAll();
@@ -199,7 +225,23 @@ function save(immediate) {
 $("msSel").onchange = e => e.target.value ? openDoc(e.target.value) : showEmpty();
 async function newMs() { const t = prompt("새 원고 제목:", ""); if (!t) return; const d = await api("/api/ms/new", { title: t }); await loadList(d.id); }
 $("newMs").onclick = newMs; $("newMs2").onclick = newMs;
-$("journalSel").onchange = e => { if (!doc) return; doc.meta.journal = e.target.value; save(true); renderCheck(); };
+$("journalSel").onchange = e => {
+  if (e.target.value === "__other") { const v = prompt("저널 약어를 입력하세요 (예: WEAR, CIRPA):", ""); if (!v) { e.target.value = (doc && doc.meta.journal) || ""; return; } ensureJournalOption(v.trim(), ""); e.target.value = v.trim(); }
+  if (!doc) return; doc.meta.journal = e.target.value; save(true); renderCheck();
+};
+function ensureJournalOption(abbr, label) {
+  const sel = $("journalSel"); if (!abbr || [...sel.options].some(o => o.value === abbr)) return;
+  const o = document.createElement("option"); o.value = abbr; o.textContent = label || abbr; sel.insertBefore(o, sel.querySelector("option[value='__other']"));
+}
+async function loadJournals() {   // 내 논문모음의 저널들을 편수 순으로 (JMPT 등 규격 등록된 것은 ● 표시)
+  const sel = $("journalSel"); const keep = sel.value;
+  try {
+    const r = await api("/api/ms/journals"); if (!r.journals) throw 0;
+    sel.innerHTML = "<option value=''>저널 선택…</option>" + r.journals.map(j => "<option value='" + esc(j.abbr) + "' title='" + esc(j.name) + "'>" + (j.registered ? "● " : "") + esc(j.abbr) + " · " + j.count + "편" + "</option>").join("") + "<option value='__other'>다른 저널 (직접 입력)…</option>";
+  } catch (e) { sel.insertAdjacentHTML("beforeend", "<option value='__other'>다른 저널 (직접 입력)…</option>"); }
+  if (keep) { ensureJournalOption(keep, keep); sel.value = keep; }
+}
+loadJournals();
 // 워드 가져오기: 파일을 base64 로 올려 서버가 개요·문단·그림·참고문헌·주석으로 나눔
 $("importMs").onclick = () => $("importFile").click();
 $("importFile").onchange = async e => {
@@ -284,6 +326,8 @@ function setMode(m) {
   document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   if (doc) { if (m === "doc" && activeTab() === "figs") switchTab("cards"); renderEditor(); }
 }
+function toggleGuide() { const on = document.body.classList.toggle("guide"); localStorage.setItem("ms_guide_seen", "1"); $("guideBtn").classList.toggle("pri", on); }
+if (!localStorage.getItem("ms_guide_seen")) document.body.classList.add("guide");   // 처음 한 번은 펼쳐 둠
 function toggleFocus() { const on = document.body.classList.toggle("focus"); localStorage.setItem("ms_focus", on ? "1" : "0"); $("focusBtn").classList.toggle("pri", on); setTimeout(refitAll, 30); }
 function autogrow(el) {
   if (!el) return;
@@ -649,19 +693,19 @@ function renderFigs() {
       (f.source && f.source.type === "claude" ? "<div class='cap'><textarea data-fb='" + f.id + "' rows='2' style='font-size:12px;margin-top:4px' placeholder='수정 요청 (예: 화살표를 더 굵게, 라벨을 영어로, 칩을 더 길게)'></textarea>" +
         "<div class='ctl' style='padding:2px 0 0;margin-left:-8px'><button class='btn pri' data-refine='" + f.id + "'>이렇게 고쳐 줘</button>" + ((f.source.history || []).length ? "<span class='hint'>수정 " + f.source.history.length + "회</span>" : "") + "<button class='btn' data-code='" + f.id + "'>코드 보기</button></div><pre data-codebox='" + f.id + "' style='display:none;font-size:10.5px;white-space:pre-wrap;max-height:220px;overflow:auto;background:var(--bg);padding:6px'>" + esc(f.source.script || "") + "</pre></div>" : "") +
       "<div class='ctl' style='padding:2px 0 0;margin-left:-8px'>" + (f.svg ? "<a class='btn' href='/fig/" + f.svg + "' target='_blank'>SVG</a>" : "") + (f.source && f.source.type === "schematic" ? "<button class='btn' data-edit='" + f.id + "'>수치 수정</button>" : "") + "<button class='btn' data-hi='" + f.id + "'>고해상도 PNG</button><button class='btn' data-delf='" + f.id + "'>삭제</button></div></div>").join("") +
-    "<div class='sec'>도식 만들기 <span class='hint' style='font-weight:400'>말로 설명 · 스케치·PPT 참고 · Claude 가 그림</span></div>" +
+    "<div class='sec'>도식 만들기 <span class='hint' style='font-weight:400'>말로 설명하면 Claude 가 그리고, 만든 뒤에는 「이렇게 고쳐 줘」로 다듬습니다 · 스케치·PPT 를 참고로 올릴 수 있음</span></div>" +
     "<textarea id='gDesc' rows='4' placeholder='예: 직교 절삭 도식. 공구 경사각 -10°, 여유각 6°, 톱니 칩, 전단면과 전단각 φ 표시, 힘 벡터 Fc·Ft, 미변형 칩 두께 h 치수선, 절삭 속도 화살표. 라벨 한국어.'>" + esc(gs.description || "") + "</textarea>" +
     "<div class='form' style='margin-top:6px'>" +
     sel("gDomain", "분야", [["cutting", "절삭·공구"], ["grinding", "연삭·밀링 운동학"], ["setup", "실험 장치 구성"], ["flow", "흐름도·개념도"], ["micro", "미세조직·재료"], ["mechanics", "힘·역학 벡터"], ["general", "일반"]], gs.domain || "cutting") +
     sel("gComplex", "복잡도", [["simple", "간단(선·라벨)"], ["normal", "보통(구역 채움)"], ["detailed", "자세히(그라데이션·질감)"]], gs.complexity || "normal") +
     sel("gStyle", "스타일", [["color", "논문 컬러"], ["line", "흑백 선화"], ["thermal", "온도장·컬러맵"]], gs.style || "color") +
     sel("gSize", "크기", [["single", "1단 (900×700)"], ["double", "2단 (1800×1000)"], ["square", "정사각"], ["tall", "세로"]], gs.size || "single") +
-    sel("gLang", "라벨", [["ko", "한국어"], ["en", "영어"]], gs.lang || "ko") +
+    sel("gLang", "라벨", [["en", "영어"], ["ko", "한국어"]], gs.lang || "en") +
     "<label>참고 그림<input type='file' id='gRefs' accept='.png,.jpg,.jpeg,.pptx' multiple style='font-size:11px'></label></div>" +
     "<div id='gRefList' class='hint' style='margin:4px 0'>" + (window._gRefs || []).map(r => "<span style='display:inline-block;margin:2px 6px 2px 0'><img src='/fig/refs/" + r + "' style='height:44px;vertical-align:middle;border:1px solid var(--line)'> <button class='btn' data-unref='" + r + "'>×</button></span>").join("") + "</div>" +
     "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='gMake'>그림 만들기 (1~3분)</button></div><div id='gprog'></div>" +
-    "<div class='sec'>빠른 틀 <span class='hint' style='font-weight:400'>선삭 변형 구역 (수치 폼)</span></div><div id='figform'>" + figForm(cur_p) + "</div>" +
-    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='figMake'>" + (cur_p._edit ? "이 수치로 다시 만들기" : "그림 만들기") + "</button><button class='btn' id='figPrev'>미리보기</button>" + (cur_p._edit ? "<button class='btn' id='figCancel'>취소</button>" : "") + "</div><div id='figprog'></div><div id='figprev'></div>";
+    (cur_p._edit ? "<div class='sec'>빠른 틀 <span class='hint' style='font-weight:400'>선삭 변형 구역 (수치 폼)</span></div><div id='figform'>" + figForm(cur_p) + "</div>" +
+    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='figMake'>" + (cur_p._edit ? "이 수치로 다시 만들기" : "그림 만들기") + "</button><button class='btn' id='figPrev'>미리보기</button>" + (cur_p._edit ? "<button class='btn' id='figCancel'>취소</button>" : "") + "</div><div id='figprog'></div><div id='figprev'></div>" : "");
   el.querySelectorAll(".fig img").forEach(img => { img.style.cursor = "zoom-in"; img.title = "가운데 작업대에 크게 보기"; img.onclick = () => { figView = img.closest(".fig").dataset.f; renderFigWorkspace(); }; });
   el.querySelectorAll("[data-cap]").forEach(i => i.oninput = () => { doc.figures.find(f => f.id === i.dataset.cap).caption = i.value; save(); });
   el.querySelectorAll("[data-capen]").forEach(i => i.oninput = () => { doc.figures.find(f => f.id === i.dataset.capen).caption_en = i.value; save(); });
@@ -702,14 +746,14 @@ function renderFigs() {
   $("gMake").onclick = () => genFigure(null, null);
   el.querySelectorAll("[data-refine]").forEach(b => b.onclick = () => { const fb = el.querySelector("textarea[data-fb='" + b.dataset.refine + "']").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } genFigure(b.dataset.refine, fb); });
   el.querySelectorAll("[data-code]").forEach(b => b.onclick = () => { const pre = el.querySelector("pre[data-codebox='" + b.dataset.code + "']"); pre.style.display = pre.style.display === "none" ? "block" : "none"; });
-  $("figPrev").onclick = async () => {
+  if ($("figPrev")) $("figPrev").onclick = async () => {
     const p = readForm($("figform")); window._figParams = Object.assign({}, p, cur_p._edit ? { _edit: cur_p._edit } : {});
     $("figprev").innerHTML = "<div class='hint'>미리보기 생성 중…</div>";
     const r = await fetch("/api/ms/figure/preview", { method: "POST", body: JSON.stringify({ params: p }) });
     const svg = await r.text(); const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
     $("figprev").innerHTML = "<div class='fig'><img src='" + url + "'><div class='cap hint'>미리보기 (저장 안 됨)</div></div>";
   };
-  $("figMake").onclick = async () => {
+  if ($("figMake")) $("figMake").onclick = async () => {
     if (busy) return; busy = true;
     const p = readForm($("figform"));
     $("figprog").innerHTML = "<div class='prog'><span>도식 생성·렌더 중</span>" + pbarHtml(0.1, 0) + "<span class='eta'>~10초</span></div>";
