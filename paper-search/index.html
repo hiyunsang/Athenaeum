@@ -31,7 +31,7 @@
   .jrow .go { color: var(--accent); font-size: 12px; white-space: nowrap; }
   .jpend { color: var(--text-2); line-height: 1.6; }
   /* 수집(다운로드 감시) 패널: 진행 중 패널과 같은 꼴 */
-  #intakePanel { position: absolute; left: var(--s4); top: 52px; width: 560px; max-height: 70vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 6px 20px #0002; z-index: 7; padding: var(--s2) var(--s3) var(--s3); font-size: 12px; }
+  #intakePanel { position: absolute; left: var(--s4); top: 52px; width: 640px; max-height: 70vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 6px 20px #0002; z-index: 7; padding: var(--s2) var(--s3) var(--s3); font-size: 12px; }
   #intakeBtn.live::before { content: "●"; color: var(--green); margin-right: 4px; font-size: 9px; vertical-align: 1px; }
   #intakeBtn.paused::before { content: "●"; color: var(--amber); margin-right: 4px; font-size: 9px; vertical-align: 1px; }
   .irow { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
@@ -40,6 +40,11 @@
   .irow.done .im { color: var(--text); } .irow.done .ik { color: var(--green); }
   .irow.dup .ik { color: var(--amber); } .irow.fail .ik, .irow.locked .ik { color: var(--red); } .irow.skip .im { color: var(--text-3); }
   .irow .ik { white-space: nowrap; font-weight: 600; }
+  .iset { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .iset summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
+  .iset label { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; margin: 6px 0; font-size: 12px; color: var(--text-2); }
+  .iset input, .iset textarea { width: 100%; font-size: 12px; box-sizing: border-box; } .iset textarea { font-family: var(--font-mono, monospace); line-height: 1.5; }
+  .iset .ro { color: var(--text-3); word-break: break-all; }
   .jpend b { color: var(--text); font-weight: 600; }
   #chips { padding: var(--s1) var(--s4) 0; display: flex; flex-wrap: wrap; gap: var(--s1); min-height: 6px; }
   #layout { display: flex; }
@@ -161,20 +166,52 @@ function renderIntake() {
   intakeBtn.className = "toggle act " + (d.alive ? (d.enabled ? "live" : "paused") : "");
   intakeBtn.textContent = "수집" + (d.today.done ? " · 오늘 " + d.today.done + "편" : "");
   if (intakePanel.style.display === "none") return;
+  // 위쪽(상태·기록)은 10초마다 다시 그리고, 아래 설정 폼은 편집 중일 수 있으니 비어 있을 때만 그린다
+  if (!intakePanel.querySelector("#intakeMain"))
+    intakePanel.innerHTML = "<div id='intakeMain'></div><details id='intakeSet' class='iset'><summary>설정 · 감시 폴더 / 검사 주기 / 저널 약어</summary><div id='intakeSetBody'></div></details>";
   const last = d.last_scan ? Math.round((Date.now() / 1000 - d.last_scan)) + "초 전 검사" : "아직 검사 전";
   const state = d.waiting_lock ? "⚠ 예전 수집 프로그램이 따로 돌고 있어 대기 중 (그 프로그램을 끄면 이어서 감시)" : d.alive ? (d.enabled ? "감시 중 · " + last : "일시 정지") : (d.error || "시작 중…");
-  intakePanel.innerHTML =
+  intakePanel.querySelector("#intakeMain").innerHTML =
     "<div class='sec' style='display:flex;gap:8px;align-items:baseline'><b>논문 수집</b><span class='hint'>" + escH(state) + "</span><span style='margin-left:auto'></span>" +
-    "<button class='btn act' data-op='" + (d.enabled ? "pause" : "resume") + "'>" + (d.enabled ? "일시 정지" : "재개") + "</button><button class='btn act' data-op='scan'>지금 검사</button><button class='btn act' data-op='open_watch'>다운로드 폴더</button><button class='btn act' data-op='open_log'>기록 파일</button></div>" +
+    "<button class='btn act' data-op='" + (d.enabled ? "pause" : "resume") + "'>" + (d.enabled ? "일시 정지" : "재개") + "</button><button class='btn act' data-op='scan'>지금 검사</button><button class='btn act' data-op='open_watch'>다운로드 폴더</button><button class='btn act' data-op='open_log' title='" + escH(d.log_path || "") + "'>기록 파일</button></div>" +
     "<div class='hint' style='margin:2px 0 6px'>" + escH(d.watch) + " → " + escH(d.target) + " · " + d.interval + "초마다 · 오늘 정리 " + d.today.done + " · 중복 " + d.today.dup + " · 건너뜀 " + d.today.skip + (d.today.fail ? " · 실패 " + d.today.fail : "") + "</div>" +
     (d.error ? "<div class='hint' style='color:var(--red)'>오류: " + escH(d.error) + "</div>" : "") +
     (d.events.filter(e => e.kind !== "skip" || d.events.length < 30).slice(0, 60).map(e => {
       const m = e.msg.replace(/^정리 완료: |^건너뜀 \([^)]*\): |^재다운로드 \([^)]*\) -> 중복사본: /, "");
-      return "<div class='irow " + e.kind + "'><span class='it'>" + new Date(e.t * 1000).toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }) + "</span><span class='ik'>" + (INTAKE_KO[e.kind] || "") + "</span><span class='im'>" + escH(m) + "</span></div>";
+      const dt = new Date(e.t * 1000), today = new Date().toDateString() === dt.toDateString();
+      const ts = (today ? "" : (dt.getMonth() + 1) + "/" + dt.getDate() + " ") + dt.toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" });
+      return "<div class='irow " + e.kind + "'><span class='it'>" + ts + "</span><span class='ik'>" + (INTAKE_KO[e.kind] || "") + "</span><span class='im'>" + escH(m) + "</span></div>";
     }).join("") || "<div class='hint'>아직 기록이 없습니다. PDF 를 다운로드 폴더에 넣으면 몇 초 안에 정리됩니다.</div>");
-  intakePanel.querAll = null;
-  intakePanel.querySelectorAll("[data-op]").forEach(b => b.onclick = async () => { intakeData = await (await fetch("/api/intake", { method: "POST", body: JSON.stringify({ op: b.dataset.op }) })).json(); renderIntake(); });
+  intakePanel.querySelectorAll("#intakeMain [data-op]").forEach(b => b.onclick = async () => { intakeData = await postIntake({ op: b.dataset.op }); renderIntake(); });
+  const sb = intakePanel.querySelector("#intakeSetBody");
+  if (!sb.innerHTML && d.config) renderIntakeSettings(sb, d.config);
 }
+function renderIntakeSettings(sb, c) {
+  const abbr = Object.entries(c.저널약어 || {}).map(([k, v]) => k + " = " + v).join("\n");
+  sb.innerHTML =
+    "<label>감시 폴더<input id='iWatch' value='" + escH(c.감시폴더 || "") + "' spellcheck='false'></label>" +
+    "<label>보관 폴더<span class='ro'>" + escH(c.논문폴더 || "") + " <span class='hint'>(Athenaeum 보관소 · 고정)</span></span></label>" +
+    "<label>주제 폴더<input id='iTree' value='" + escH(c.주제폴더 || "") + "' placeholder='비워 두면 사용 안 함' spellcheck='false'></label>" +
+    "<div class='hint' style='margin:-2px 0 4px 104px'>주제 폴더 트리에 진짜 PDF 를 넣으면 보관소로 옮기고 그 자리에 바로가기를 남깁니다.</div>" +
+    "<label>검사 주기<span><input id='iInt' type='number' min='1' max='300' value='" + (c.검사주기_초 || 3) + "' style='width:72px'> 초마다 다운로드 폴더를 봅니다</span></label>" +
+    "<label>제목 길이<span><input id='iMax' type='number' min='40' max='200' value='" + (c.제목최대길이 || 140) + "' style='width:72px'> 자까지 파일명에 넣습니다</span></label>" +
+    "<label style='align-items:start'>저널 약어<textarea id='iAbbr' rows='7' spellcheck='false'>" + escH(abbr) + "</textarea></label>" +
+    "<div class='hint' style='margin:-2px 0 4px 104px'>한 줄에 「저널 이름 = 약어」. 목록에 없는 저널은 이니셜로 자동(Journal of Manufacturing Science and Engineering → JMSE), 한 단어 저널은 그대로(WEAR).</div>" +
+    "<div style='display:flex;gap:8px;align-items:center;margin-top:6px'><button class='btn act pri' id='iSave'>저장</button><button class='btn act' id='iOpenCfg'>설정 파일 열기</button><span id='iMsg' class='hint'></span></div>";
+  sb.querySelector("#iOpenCfg").onclick = () => postIntake({ op: "open_config" });
+  sb.querySelector("#iSave").onclick = async () => {
+    const map = {};
+    sb.querySelector("#iAbbr").value.split("\n").forEach(l => { const k = l.indexOf("="); if (k > 0) map[l.slice(0, k).trim()] = l.slice(k + 1).trim(); });
+    const r = await postIntake({ op: "config", config: {
+      감시폴더: sb.querySelector("#iWatch").value, 주제폴더: sb.querySelector("#iTree").value,
+      검사주기_초: sb.querySelector("#iInt").value, 제목최대길이: sb.querySelector("#iMax").value, 저널약어: map } });
+    const msg = sb.querySelector("#iMsg");
+    if (r.errors && r.errors.length) { msg.style.color = "var(--red)"; msg.textContent = r.errors.join(" / "); return; }
+    intakeData = r; sb.innerHTML = ""; renderIntake();
+    const m2 = intakePanel.querySelector("#iMsg"); if (m2) { m2.style.color = "var(--green)"; m2.textContent = "저장됨 · 바로 반영됩니다"; }
+  };
+}
+async function postIntake(b) { return (await fetch("/api/intake", { method: "POST", body: JSON.stringify(b) })).json(); }
 async function pollIntake() { try { intakeData = await (await fetch("/api/intake")).json(); renderIntake(); } catch (e) {} }
 intakeBtn.onclick = e => { e.preventDefault(); intakePanel.style.display = intakePanel.style.display === "none" ? "block" : "none"; renderIntake(); };
 document.addEventListener("click", e => { if (intakePanel.style.display !== "none" && !intakePanel.contains(e.target) && e.target !== intakeBtn) intakePanel.style.display = "none"; });

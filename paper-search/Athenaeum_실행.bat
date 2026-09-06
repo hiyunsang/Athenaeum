@@ -1,4 +1,6 @@
 @echo off
+rem Athenaeum (paper intake / search / read / manuscript) - starts the server without a window and opens the browser as an app window.
+rem If the server is already running, only the window opens.
 start "" "C:\Users\PC1\AppData\Local\Programs\Python\Python38\pythonw.exe" "C:\Users\PC1\Documents\MAENG_paper\paper-search\server.py"
 timeout /t 1 >nul
 where chrome >nul 2>nul

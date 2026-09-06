@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""논문 라벨 검색 로컬 서버. 논문검색_실행.bat 으로 실행."""
+"""Athenaeum 로컬 서버 (논문 수집·검색·읽기·원고). Athenaeum_실행.bat 또는 시작프로그램의 Athenaeum_시작.vbs 로 실행."""
 import html as html_mod
 import json
 import os
@@ -16,6 +16,7 @@ from urllib.parse import urlparse, parse_qs
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 import rules
+import intake   # 논문 수집 (다운로드 폴더 감시 → Crossref → 보관). 예전 paper-organizer 를 이 폴더로 합친 것
 
 ARCHIVE = r"C:\Users\PC1\Documents\MAENG_paper\논문모음"
 PORT = 8770
@@ -853,11 +854,9 @@ def _run_map(name, ext=None):
         title = tags.get(name, {}).get("title") or parse_name(name)["title"]
         # PDF에서 DOI를 뽑아 검색 대신 직접 조회 (검색 API 속도 제한 회피)
         try:
-            sys.path.insert(0, os.path.join(os.path.dirname(BASE), "paper-organizer"))
-            import paper_organizer as po
-            cands, _ = po.extract_doi_candidates(os.path.join(ARCHIVE, name))
+            cands, _ = intake.extract_doi_candidates(os.path.join(ARCHIVE, name))
             for c in cands[:2]:
-                for v in po.doi_variants(c):
+                for v in intake.doi_variants(c):
                     if v not in dois:
                         dois.append(v)
         except Exception:
@@ -1515,19 +1514,13 @@ def _refresh_new_papers():
             pass
     if new_files:
         new_titles = {}
-        try:
-            # paper-organizer는 이 폴더와 같은 부모 폴더 안에 있음
-            sys.path.insert(0, os.path.join(os.path.dirname(BASE), "paper-organizer"))
-            import paper_organizer as po
-            for f in new_files:
-                try:
-                    meta = po.resolve_meta(os.path.join(ARCHIVE, f))
-                    if meta and meta.get("title"):
-                        new_titles[f] = meta["title"]
-                except Exception:
-                    pass
-        except ImportError:
-            pass
+        for f in new_files:
+            try:
+                meta = intake.resolve_meta(os.path.join(ARCHIVE, f))   # 수집 모듈의 DOI→Crossref 조회를 같이 쓴다
+                if meta and meta.get("title"):
+                    new_titles[f] = meta["title"]
+            except Exception:
+                pass
         groups = load_json(LABELS_PATH, {})
         for f in new_files:
             title = new_titles.get(f) or parse_name(f)["title"]
@@ -1576,102 +1569,9 @@ def _refresh_new_papers():
 
 
 # ---------- 논문 수집 (다운로드 폴더 감시 → Crossref → 이름 바꿔 보관) ----------
-# 예전엔 paper-organizer\paper_organizer.py 를 따로 띄웠다. 이제 그 모듈을 그대로 불러 서버 안 스레드로 돌린다.
-import collections, socket
-ORGANIZER_DIR = os.path.join(os.path.dirname(BASE), "paper-organizer")
-_intake = {"enabled": True, "alive": False, "waiting_lock": False, "events": collections.deque(maxlen=300),
-           "last_scan": 0, "error": "", "watch": "", "target": "", "interval": 3, "started": 0}
-
-
-def _intake_kind(msg):
-    for k, v in (("정리 완료", "done"), ("재다운로드", "dup"), ("건너뜀", "skip"), ("포기", "fail"), ("열려 있어", "locked"),
-                 ("재시도", "retry"), ("감시 시작", "start"), ("바로가기", "link"), ("설정", "config")):
-        if k in msg:
-            return v
-    return "info"
-
-
-def _intake_thread():
-    try:
-        sys.path.insert(0, ORGANIZER_DIR)
-        import paper_organizer as po
-    except Exception as e:
-        _intake["error"] = "수집 모듈을 불러올 수 없습니다: %s" % e
-        return
-    orig_log = po.log
-
-    def log2(msg):
-        orig_log(msg)
-        _intake["events"].appendleft({"t": time.time(), "msg": msg, "kind": _intake_kind(msg)})
-    po.log = log2
-    # 예전 독립 실행 프로그램과 같은 잠금 포트를 잡아 두 개가 동시에 파일을 옮기는 사고를 막는다
-    lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    while True:
-        try:
-            lock.bind(("127.0.0.1", po.SINGLE_INSTANCE_PORT)); break
-        except OSError:
-            _intake["waiting_lock"] = True
-            time.sleep(15)
-    _intake["waiting_lock"] = False
-    cfg = po.Config()
-    # 건너뛴 파일(논문 아님·포기)은 파일로 기억해 서버를 다시 켤 때마다 다운로드 폴더 수백 개를 다시 훑지 않게 한다
-    skip_path = os.path.join(ORGANIZER_DIR, "건너뜀기록.json")
-    skip_cache = load_json(skip_path, {})
-    skipped = set()
-    for pth, sig in list(skip_cache.items()):
-        try:
-            st = os.stat(pth)
-            if [int(st.st_size), int(st.st_mtime)] == sig:
-                skipped.add(pth)
-            else:
-                del skip_cache[pth]
-        except OSError:
-            del skip_cache[pth]
-    state = {"skipped": skipped, "retries": {}, "size_history": {}, "cooldown": {}}
-    try:
-        state["hash_index"] = po.build_hash_index(cfg.target_dir)
-    except Exception:
-        state["hash_index"] = {}
-
-    def save_skips():
-        changed = False
-        for pth in list(state["skipped"]):
-            if pth not in skip_cache:
-                try:
-                    st = os.stat(pth); skip_cache[pth] = [int(st.st_size), int(st.st_mtime)]; changed = True
-                except OSError:
-                    pass
-        if changed:
-            try: save_json(skip_path, skip_cache)
-            except Exception: pass
-    _intake.update(alive=True, started=time.time(), watch=cfg.watch_dir, target=cfg.target_dir, interval=cfg.interval)
-    log2("감시 시작 (Athenaeum 안에서): %s  ->  %s" % (cfg.watch_dir, cfg.target_dir))
-    while True:
-        try:
-            if _intake["enabled"]:
-                cfg.reload_if_changed()
-                _intake.update(watch=cfg.watch_dir, target=cfg.target_dir, interval=cfg.interval)
-                po.scan_once(cfg, state["skipped"], state["retries"], state["size_history"], state["hash_index"], state["cooldown"])
-                po.scan_tree_once(cfg, state["size_history"], state["hash_index"], state["cooldown"])
-                save_skips()
-                _intake["last_scan"] = time.time(); _intake["error"] = ""
-        except Exception as e:
-            _intake["error"] = str(e)[:200]
-        time.sleep(max(1, _intake.get("interval", 3)) if _intake["enabled"] else 2)
-
-
-def intake_view():
-    ev = list(_intake["events"])
-    day0 = time.time() - (time.time() - time.timezone) % 86400   # 오늘 0시 (로컬)
-    today = [e for e in ev if e["t"] >= day0]
-    return {"enabled": _intake["enabled"], "alive": _intake["alive"], "waiting_lock": _intake["waiting_lock"], "error": _intake["error"],
-            "watch": _intake["watch"], "target": _intake["target"], "interval": _intake["interval"], "last_scan": _intake["last_scan"],
-            "today": {"done": sum(1 for e in today if e["kind"] == "done"), "dup": sum(1 for e in today if e["kind"] == "dup"),
-                      "skip": sum(1 for e in today if e["kind"] == "skip"), "fail": sum(1 for e in today if e["kind"] == "fail")},
-            "events": ev[:120], "log_path": os.path.join(ORGANIZER_DIR, "정리기록.txt")}
-
-
-threading.Thread(target=_intake_thread, daemon=True).start()
+# 예전의 별도 프로그램(paper-organizer)을 intake.py 로 합쳤다. 서버 안 스레드로 돌고, 홈 화면 '수집' 패널이 상태·설정을 다룬다.
+intake.init(load_json=load_json, save_json=save_json, archive=ARCHIVE)
+intake.start()
 
 
 # ---------- 원고(작성) 모듈 ----------
@@ -1701,7 +1601,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/ms" or url.path.startswith("/api/ms") or url.path.startswith("/fig/"):
             return ms.handle_get(self, url)
         if url.path == "/api/intake":
-            return self._send(200, intake_view())
+            return self._send(200, intake.view())
         if url.path in ("/", "/index.html"):
             with open(os.path.join(BASE, "index.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -2043,20 +1943,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/ms"):
             return ms.handle_post(self, body)
         if self.path == "/api/intake":
-            op = body.get("op")
-            if op == "pause":
-                _intake["enabled"] = False
-            elif op == "resume":
-                _intake["enabled"] = True
-            elif op == "open_log":
-                try: os.startfile(os.path.join(ORGANIZER_DIR, "정리기록.txt"))
-                except Exception: pass
-            elif op == "open_watch":
-                try: os.startfile(_intake["watch"] or os.path.expanduser("~/Downloads"))
-                except Exception: pass
-            elif op == "scan":
-                _intake["enabled"] = True; _intake["last_scan"] = 0   # 다음 주기에 바로 돈다 (3초 안)
-            return self._send(200, intake_view())
+            return self._send(200, intake.control(body))
         if self.path == "/api/read_ping":
             # 읽기 화면의 30초 신호 {file, kind, pos(0~1), sec}
             name = os.path.basename(body.get("file", ""))

@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-논문 자동 정리 프로그램 (MAENG Lab)
+Athenaeum 논문 수집 모듈  (예전 이름: paper-organizer, 논문 자동 정리 프로그램 — 2026-09-06 에 하나로 합침)
 
-다운로드 폴더를 감시하다가 새 PDF가 생기면:
-  1. PDF 첫 페이지들에서 DOI를 찾고
-  2. Crossref API로 제목/저자/연도/저널을 조회한 뒤
-  3. "연도_저널약어_저자_제목.pdf" 로 이름을 바꿔 논문폴더로 옮긴다.
+다운로드 폴더를 지켜보다가 새 PDF가 생기면:
+  1. PDF 앞쪽 페이지에서 DOI를 찾고
+  2. Crossref(무료 논문 정보 사이트)로 제목·저자·연도·저널을 조회한 뒤
+  3. "연도_저널약어_저자_제목.pdf" 로 이름을 바꿔 논문모음(보관소)으로 옮긴다.
+주제 폴더(바탕화면 논문주제 트리)에 진짜 PDF가 들어오면 보관소로 옮기고 그 자리에 바로가기(.lnk)를 남긴다.
+DOI를 못 찾은 PDF(견적서·강의자료 등 논문이 아닌 파일)는 절대 건드리지 않는다. 파일을 지우는 일도 없다.
 
-DOI를 못 찾은 PDF(논문이 아닌 파일 등)는 건드리지 않는다.
-설정은 같은 폴더의 config.json 에서 바꿀 수 있다 (저장하면 자동 반영).
+server.py 가 init() → start() 로 서버 안 스레드에서 돌리고,
+홈 화면의 '수집' 패널이 view() / control() 로 상태를 보고 설정을 바꾼다.
+  설정: paper-search\\수집설정.json   (수집 패널에서 편집. 파일을 직접 고쳐 저장해도 자동 반영)
+  기록: MAENG_paper\\수집\\수집기록.txt (모든 처리 내역), 건너뜀기록.json (논문 아님으로 판정한 파일 - 재시작 때 다시 안 훑게)
+혼자 돌려 보기(시험용):  python intake.py --once
 """
 
+import collections
 import hashlib
 import html
 import json
@@ -19,6 +25,7 @@ import re
 import shutil
 import socket
 import sys
+import threading
 import time
 import unicodedata
 
@@ -30,11 +37,16 @@ try:
 except ImportError:
     win32com = None
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-LOG_PATH = os.path.join(BASE_DIR, "정리기록.txt")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))        # paper-search
+ROOT = os.path.dirname(BASE_DIR)                              # MAENG_paper
+CONFIG_PATH = os.path.join(BASE_DIR, "수집설정.json")
+DATA_DIR = os.path.join(ROOT, "수집")
+LOG_PATH = os.path.join(DATA_DIR, "수집기록.txt")
+SKIP_PATH = os.path.join(DATA_DIR, "건너뜀기록.json")
+DEFAULT_ARCHIVE = os.path.join(ROOT, "논문모음")
+LEGACY_DIR = os.path.join(ROOT, "paper-organizer")           # 합치기 전 폴더 (남아 있으면 설정·기록을 옮겨 온다)
 
-# 중복 실행 방지용 포트 (이미 실행 중이면 두 번째 실행은 조용히 종료)
+# 중복 실행 방지용 포트 (예전 독립 프로그램과 같은 번호 - 둘이 동시에 파일을 옮기는 사고를 막는다)
 SINGLE_INSTANCE_PORT = 47653
 
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+")
@@ -43,6 +55,8 @@ DOI_JOIN_RE = re.compile(r"10\.\d{4,9}/(?:[-._;()/:A-Za-z0-9]|\n(?=[-._;()/:A-Za
 
 # 저널명 약어 자동 생성용 (이니셜 방식: 단어 첫 글자, 예: JMSE)
 STOPWORDS = {"of", "the", "and", "in", "on", "for", "a", "an", "de", "la", "&", "amp"}
+
+_listeners = []   # log() 가 부르는 함수들 (서버가 화면용 이벤트를 받아 간다)
 
 
 def log(msg):
@@ -53,13 +67,46 @@ def log(msg):
         except OSError:
             pass
     try:
+        os.makedirs(DATA_DIR, exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except OSError:
         pass
+    for fn in list(_listeners):
+        try:
+            fn(msg)
+        except Exception:
+            pass
+
+
+def migrate_legacy():
+    """합치기 전 paper-organizer 폴더가 남아 있으면 설정·기록·건너뜀 목록을 새 자리로 가져온다 (한 번만)."""
+    if not os.path.isdir(LEGACY_DIR):
+        return
+    os.makedirs(DATA_DIR, exist_ok=True)
+    old_cfg = os.path.join(LEGACY_DIR, "config.json")
+    if os.path.isfile(old_cfg) and not os.path.isfile(CONFIG_PATH):
+        shutil.copy2(old_cfg, CONFIG_PATH)
+    old_log = os.path.join(LEGACY_DIR, "정리기록.txt")
+    if os.path.isfile(old_log):
+        try:
+            with open(old_log, encoding="utf-8", errors="ignore") as src, open(LOG_PATH, "a", encoding="utf-8") as dst:
+                shutil.copyfileobj(src, dst)
+            os.remove(old_log)
+        except OSError:
+            pass
+    old_skip = os.path.join(LEGACY_DIR, "건너뜀기록.json")
+    if os.path.isfile(old_skip) and not os.path.isfile(SKIP_PATH):
+        try:
+            shutil.move(old_skip, SKIP_PATH)
+        except OSError:
+            pass
 
 
 class Config:
+    # 화면에서 고칠 수 있는 항목과 검사 규칙
+    EDITABLE = ("감시폴더", "주제폴더", "검사주기_초", "제목최대길이", "저널약어")
+
     def __init__(self):
         self.mtime = 0
         self.data = {}
@@ -87,7 +134,7 @@ class Config:
 
     @property
     def target_dir(self):
-        return self.data.get("논문폴더", os.path.join(BASE_DIR, "논문"))
+        return self.data.get("논문폴더", DEFAULT_ARCHIVE)
 
     @property
     def interval(self):
@@ -107,6 +154,73 @@ class Config:
     @property
     def tree_dir(self):
         return self.data.get("주제폴더", "")
+
+    def public(self):
+        """화면에 보여 줄 설정 값 (없는 항목은 기본값으로 채워서)."""
+        return {"감시폴더": self.watch_dir, "논문폴더": self.target_dir, "주제폴더": self.tree_dir,
+                "검사주기_초": self.interval, "제목최대길이": self.title_max,
+                "저널약어": dict(self.data.get("저널약어", {}))}
+
+    def update(self, changes):
+        """홈 화면에서 바꾼 설정을 검사해 파일에 쓴다. 문제가 있으면 오류 문장 목록을 돌려주고 아무것도 바꾸지 않는다."""
+        errs, data = [], dict(self.data)
+        if "감시폴더" in changes:
+            p = os.path.normpath(str(changes["감시폴더"]).strip())
+            if not os.path.isdir(p):
+                errs.append("감시 폴더가 없습니다: %s" % p)
+            else:
+                data["감시폴더"] = p
+        if "주제폴더" in changes:
+            p = str(changes["주제폴더"]).strip()
+            p = os.path.normpath(p) if p else ""
+            if p and not os.path.isdir(p):
+                errs.append("주제 폴더가 없습니다: %s" % p)
+            else:
+                data["주제폴더"] = p
+        if "검사주기_초" in changes:
+            try:
+                v = int(changes["검사주기_초"])
+                if not 1 <= v <= 300:
+                    raise ValueError
+                data["검사주기_초"] = v
+            except (TypeError, ValueError):
+                errs.append("검사 주기는 1~300 초 사이의 정수여야 합니다")
+        if "제목최대길이" in changes:
+            try:
+                v = int(changes["제목최대길이"])
+                if not 40 <= v <= 200:
+                    raise ValueError
+                data["제목최대길이"] = v
+            except (TypeError, ValueError):
+                errs.append("제목 최대 길이는 40~200 사이여야 합니다")
+        if "저널약어" in changes:
+            m = changes["저널약어"]
+            if not isinstance(m, dict):
+                errs.append("저널 약어 형식이 잘못되었습니다")
+            else:
+                clean = {}
+                for k, v in m.items():
+                    k, v = str(k).strip(), str(v).strip()
+                    if k and v:
+                        if re.search(r'[\\/:*?"<>|]', v):
+                            errs.append("약어에 파일명에 못 쓰는 문자가 있습니다: %s" % v)
+                        clean[k] = v
+                data["저널약어"] = clean
+        if errs:
+            return errs
+        if "감시폴더" in data and "논문폴더" in data and os.path.normcase(data["감시폴더"]) == os.path.normcase(data["논문폴더"]):
+            return ["감시 폴더와 보관 폴더가 같으면 안 됩니다"]
+        tmp = CONFIG_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, CONFIG_PATH)
+        self.data = data
+        try:
+            self.mtime = os.path.getmtime(CONFIG_PATH)
+        except OSError:
+            pass
+        log("설정 저장: 감시 {} · 주기 {}초 · 저널약어 {}개".format(self.watch_dir, self.interval, len(data.get("저널약어", {}))))
+        return []
 
 
 def normalize_journal(name):
@@ -201,7 +315,7 @@ def title_matches(title, page_text):
 def fetch_metadata(doi):
     r = requests.get(
         "https://api.crossref.org/works/" + doi,
-        headers={"User-Agent": "paper-organizer/1.0"},
+        headers={"User-Agent": "athenaeum-intake/1.0"},
         timeout=15,
     )
     r.raise_for_status()
@@ -236,7 +350,7 @@ def search_by_filename(pdf_path, page_text):
     r = requests.get(
         "https://api.crossref.org/works",
         params={"query.bibliographic": " ".join(words), "rows": "3"},
-        headers={"User-Agent": "paper-organizer/1.0"},
+        headers={"User-Agent": "athenaeum-intake/1.0"},
         timeout=20,
     )
     r.raise_for_status()
@@ -249,9 +363,9 @@ def search_by_filename(pdf_path, page_text):
 
 # 파일명에 문제를 일으키는 특수문자 → 일반 문자 (바로가기 생성/타 프로그램 호환)
 CHAR_FOLD = {
-    "–": "-", "—": "-", "‒": "-", "‑": "-", "−": "-",
-    "'": "'", "'": "'", "‚": "'", "ʼ": "'", "′": "'",
-    """: "'", """: "'", "„": "'", "…": "...", "·": "-",
+    "–": "-", "—": "-", "‒": "-", "‑": "-", "−": "-",      # 여러 종류의 대시 → 하이픈
+    "‘": "'", "’": "'", "‚": "'", "ʼ": "'", "′": "'",      # 굽은 작은따옴표·프라임 → '
+    "“": "'", "”": "'", "„": "'", "…": "...", "·": "-",      # 굽은 큰따옴표 → ' (큰따옴표는 파일명에 못 씀), 말줄임표, 가운뎃점
     "ı": "i", "ø": "o", "Ø": "O", "ł": "l", "Ł": "L",
     "đ": "d", "Đ": "D", "ß": "ss", "æ": "ae", "Æ": "Ae",
     "œ": "oe", "Œ": "Oe", "ð": "d", "þ": "th",
@@ -316,7 +430,7 @@ def unique_path(directory, filename):
 
 
 def resolve_meta(pdf_path):
-    """PDF에서 DOI를 찾아 서지정보를 얻는다. 실패하면 None."""
+    """PDF에서 DOI를 찾아 서지정보를 얻는다. 실패하면 None. (서버의 라벨링·관련맵도 이 함수를 같이 쓴다)"""
     candidates, page_text = extract_doi_candidates(pdf_path)
     if not candidates:
         return None
@@ -501,25 +615,212 @@ def scan_once(cfg, skipped, retries, size_history, hash_index, cooldown):
                 log("잠시 후 재시도 ({}회째 실패): {} - {}".format(count, name, e))
 
 
+# ====================== 서버 안에서 돌리기 (Athenaeum 홈 화면 '수집' 패널) ======================
+
+_state = {"enabled": True, "alive": False, "waiting_lock": False, "error": "", "last_scan": 0, "started": 0,
+          "events": collections.deque(maxlen=400)}
+_cfg = None
+_lock_sock = None
+
+
+def _kind(msg):
+    for k, v in (("정리 완료", "done"), ("재다운로드", "dup"), ("건너뜀", "skip"), ("포기", "fail"), ("열려 있어", "locked"),
+                 ("재시도", "retry"), ("감시 시작", "start"), ("바로가기", "link"), ("설정", "config")):
+        if k in msg:
+            return v
+    return "info"
+
+
+def _push(msg, t=None):
+    _state["events"].appendleft({"t": t or time.time(), "msg": msg, "kind": _kind(msg)})
+
+
+_LOG_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\] (.*)$")
+
+
+def _backfill_events(n=120):
+    """서버를 다시 켜도 패널이 비지 않게, 기록 파일의 마지막 n 줄을 이벤트로 되살린다."""
+    try:
+        with open(LOG_PATH, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 200000))
+            lines = f.read().decode("utf-8", "ignore").splitlines()[-n:]
+    except OSError:
+        return
+    for line in lines:
+        m = _LOG_LINE.match(line)
+        if not m:
+            continue
+        try:
+            t = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"))
+        except ValueError:
+            continue
+        _push(m.group(2), t)
+
+
+def init(load_json=None, save_json=None, archive=None):
+    """server.py 가 부른다. 보관소 경로를 서버와 같은 값으로 맞춘다."""
+    global DEFAULT_ARCHIVE, _cfg
+    if archive:
+        DEFAULT_ARCHIVE = archive
+    migrate_legacy()
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if not os.path.isfile(CONFIG_PATH):
+        # 설정 파일이 없으면 기본값으로 만들어 둔다 (화면에서 고칠 수 있게)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump({"감시폴더": os.path.expanduser("~/Downloads"), "논문폴더": DEFAULT_ARCHIVE, "주제폴더": "",
+                       "검사주기_초": 3, "제목최대길이": 140, "저널약어": {}}, f, ensure_ascii=False, indent=2)
+    _cfg = Config()
+    _listeners.append(_push)
+    _backfill_events()
+
+
+def start():
+    """감시 스레드 시작 (init 다음에)."""
+    threading.Thread(target=_run, name="intake", daemon=True).start()
+
+
+def _load_skips():
+    """건너뛴 파일(논문 아님·포기) 목록을 파일에서 되살린다. 크기·수정시각이 그대로인 것만."""
+    try:
+        with open(SKIP_PATH, encoding="utf-8") as f:
+            cache = json.load(f)
+    except (OSError, ValueError):
+        cache = {}
+    skipped = set()
+    for pth, sig in list(cache.items()):
+        try:
+            st = os.stat(pth)
+            if [int(st.st_size), int(st.st_mtime)] == sig:
+                skipped.add(pth)
+            else:
+                del cache[pth]
+        except OSError:
+            del cache[pth]
+    return skipped, cache
+
+
+def _save_skips(skipped, cache):
+    changed = False
+    for pth in list(skipped):
+        if pth not in cache:
+            try:
+                st = os.stat(pth)
+                cache[pth] = [int(st.st_size), int(st.st_mtime)]
+                changed = True
+            except OSError:
+                pass
+    if changed:
+        try:
+            tmp = SKIP_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cache, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, SKIP_PATH)
+        except OSError:
+            pass
+
+
+def _run():
+    global _lock_sock
+    cfg = _cfg or Config()
+    # 예전 독립 실행 프로그램(또는 서버 두 개)이 같은 폴더를 건드리지 않게 포트 하나를 잠금으로 쥔다
+    _lock_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    while True:
+        try:
+            _lock_sock.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
+            break
+        except OSError:
+            _state["waiting_lock"] = True
+            time.sleep(15)
+    _state["waiting_lock"] = False
+    skipped, skip_cache = _load_skips()
+    state = {"skipped": skipped, "retries": {}, "size_history": {}, "cooldown": {}}
+    try:
+        state["hash_index"] = build_hash_index(cfg.target_dir)
+    except Exception:
+        state["hash_index"] = {}
+    _state.update(alive=True, started=time.time())
+    log("감시 시작 (Athenaeum 안에서): {}  ->  {}".format(cfg.watch_dir, cfg.target_dir))
+    while True:
+        try:
+            if _state["enabled"]:
+                cfg.reload_if_changed()
+                scan_once(cfg, state["skipped"], state["retries"], state["size_history"], state["hash_index"], state["cooldown"])
+                scan_tree_once(cfg, state["size_history"], state["hash_index"], state["cooldown"])
+                _save_skips(state["skipped"], skip_cache)
+                _state["last_scan"] = time.time()
+                _state["error"] = ""
+        except Exception as e:
+            _state["error"] = str(e)[:200]
+        time.sleep(cfg.interval if _state["enabled"] else 2)
+
+
+def view():
+    """홈 화면 '수집' 패널이 10초마다 가져가는 상태."""
+    cfg = _cfg or Config()
+    ev = list(_state["events"])
+    day0 = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))   # 오늘 0시 (로컬)
+    today = [e for e in ev if e["t"] >= day0]
+    return {"enabled": _state["enabled"], "alive": _state["alive"], "waiting_lock": _state["waiting_lock"],
+            "error": _state["error"], "last_scan": _state["last_scan"],
+            "watch": cfg.watch_dir, "target": cfg.target_dir, "interval": cfg.interval,
+            "config": cfg.public(), "config_path": CONFIG_PATH, "log_path": LOG_PATH,
+            "today": {k: sum(1 for e in today if e["kind"] == k) for k in ("done", "dup", "skip", "fail")},
+            "events": ev[:150]}
+
+
+def control(body):
+    """패널의 버튼: pause / resume / scan / open_log / open_watch / open_config / config(설정 저장)."""
+    op = body.get("op")
+    out_errs = []
+    if op == "pause":
+        _state["enabled"] = False
+    elif op == "resume":
+        _state["enabled"] = True
+    elif op == "scan":
+        _state["enabled"] = True
+        _state["last_scan"] = 0   # 다음 주기에 바로 돈다 (몇 초 안)
+    elif op == "open_log":
+        try:
+            os.startfile(LOG_PATH)
+        except OSError:
+            pass
+    elif op == "open_watch":
+        try:
+            os.startfile((_cfg or Config()).watch_dir)
+        except OSError:
+            pass
+    elif op == "open_config":
+        try:
+            os.startfile(CONFIG_PATH)
+        except OSError:
+            pass
+    elif op == "config":
+        cfg = _cfg or Config()
+        changes = body.get("config") or {}
+        out_errs = cfg.update({k: v for k, v in changes.items() if k in Config.EDITABLE})
+    v = view()
+    v["errors"] = out_errs
+    return v
+
+
+# ====================== 혼자 돌리기 (시험용) ======================
+
 def main():
-    # 이미 실행 중인지 확인 (중복 실행이면 파일을 서로 옮기려다 꼬이므로 종료)
     lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         lock.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
     except OSError:
         if sys.stdout:
-            print("이미 실행 중입니다. 이 창은 닫아도 됩니다.")
+            print("이미 실행 중입니다 (Athenaeum 서버가 감시하고 있음). 이 창은 닫아도 됩니다.")
         return
-
-    cfg = Config()
+    init()
+    cfg = _cfg
     once = "--once" in sys.argv
-    skipped = set()      # DOI 없음 등으로 이번 실행에서 건너뛴 파일
-    retries = {}         # 일시적 오류(인터넷 등) 재시도 횟수
-    size_history = {}    # 다운로드 완료 판정용 파일 크기 기록
-    hash_index = build_hash_index(cfg.target_dir)  # 보관소 내용 지문 (중복 판별용)
-    cooldown = {}        # 열려 있는 파일 등 - 다음 시도 시각
-
-    log("감시 시작: {}  ->  {}".format(cfg.watch_dir, cfg.target_dir))
+    skipped, _cache = _load_skips()
+    retries, size_history, cooldown = {}, {}, {}
+    hash_index = build_hash_index(cfg.target_dir)
+    log("감시 시작 (단독 실행): {}  ->  {}".format(cfg.watch_dir, cfg.target_dir))
     if once:
         scan_once(cfg, skipped, retries, size_history, hash_index, cooldown)  # 크기 기록
         scan_tree_once(cfg, size_history, hash_index, cooldown)
@@ -528,7 +829,6 @@ def main():
         scan_tree_once(cfg, size_history, hash_index, cooldown)
         log("1회 정리 완료.")
         return
-
     while True:
         cfg.reload_if_changed()
         scan_once(cfg, skipped, retries, size_history, hash_index, cooldown)
