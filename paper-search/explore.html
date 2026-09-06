@@ -115,6 +115,7 @@ const main = document.getElementById("main"), info = document.getElementById("in
 mountUiControls("header");   // 글꼴 크기 · 다크 모드 (ui.js)
 const smartbox = document.getElementById("smartbox"), plainbox = document.getElementById("plainbox");
 const polling = {}, stages = {};
+let rowSeq = 0; const rowIndex = {};   // 화면 번호 → 논문 (Claude 대화에서 [n] 으로 가리킴). 복원(restore) 이 먼저 돌므로 맨 위에 선언
 
 // 탐색 상태 저장/복원: 홈으로 갔다가 돌아와도 결과가 그대로 남도록
 const STATE_KEY = "explore_state_v1";
@@ -255,7 +256,6 @@ function openPaper(r) {
   else if (r.doi) window.open(r.doi);
 }
 
-let rowSeq = 0; const rowIndex = {};   // 화면 번호 → 논문 (Claude 대화에서 [n] 으로 가리킴)
 function renderRow(r) {
   const row = document.createElement("div");
   row.className = "row" + (r.owned ? " owned" : "");
