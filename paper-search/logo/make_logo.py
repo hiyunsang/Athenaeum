@@ -100,8 +100,9 @@ def disc_svg(color, bg, simple=False):
 BODY_CX = (80 + 338) / 2.0   # 마크 글자 몸통(세리프 포함)의 가로 중심. 스와시(→380)는 빼고 글자만 정중앙에 놓는다 (사용자 결정 2026-09-06)
 
 
-def alone_svg(color, scale=1.3, simple=False):
-    """확정 아이콘: 배경 없이 A 만, 글자 몸통을 정사각 캔버스 정중앙에. simple=True 는 16px 용 굵은 A."""
+def alone_svg(color, scale=1.14, simple=False):
+    """확정 아이콘: 배경 없이 A 만, 글자 몸통을 정사각 캔버스 정중앙에. simple=True 는 16px 용 굵은 A.
+    scale 1.14 = 몸통을 중앙에 둔 채 스와시 끝(x=380)이 캔버스 밖으로 잘리지 않는 최대 크기."""
     if simple:
         body = "<path fill='%s' d='%s'/>" % (color, bold_A_d()); cx = 202
     else:
