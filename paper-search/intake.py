@@ -141,7 +141,9 @@ class Config:
 
     @property
     def watch_dir(self):
-        return self.data.get("감시폴더", os.path.expanduser("~/Downloads"))
+        # 설정 파일이 다른 컴퓨터에서 왔거나 폴더가 없으면 이 사용자의 다운로드 폴더로 (배포 대비)
+        p = self.data.get("감시폴더") or ""
+        return p if p and os.path.isdir(p) else os.path.expanduser("~/Downloads")
 
     @property
     def target_dir(self):
@@ -164,7 +166,8 @@ class Config:
 
     @property
     def tree_dir(self):
-        return self.data.get("주제폴더", "")
+        p = self.data.get("주제폴더", "") or ""
+        return p if os.path.isdir(p) else ""   # 없는 폴더(다른 컴퓨터의 경로)는 무시
 
     def public(self):
         """화면에 보여 줄 설정 값 (없는 항목은 기본값으로 채워서)."""
@@ -179,7 +182,7 @@ class Config:
             raw = str(changes["감시폴더"]).strip()
             p = os.path.normpath(raw) if raw else ""
             if not raw or not os.path.isabs(p):
-                errs.append("감시 폴더는 전체 경로로 적어 주세요 (예: C:%sUsers%sPC1%sDownloads)" % ((os.sep,) * 3))
+                errs.append("감시 폴더는 전체 경로로 적어 주세요 (예: %s)" % os.path.expanduser("~/Downloads"))
             elif not os.path.isdir(p):
                 errs.append("감시 폴더가 없습니다: %s" % p)
             else:

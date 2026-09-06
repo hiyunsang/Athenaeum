@@ -2492,6 +2492,8 @@ def main():
         probe.close()
         return  # 이미 실행 중
     probe.close()
+    for d in (ARCHIVE, GEN_DIR, MAPS_DIR, NOTES_DIR):   # 처음 실행(새 컴퓨터)이면 데이터 폴더를 만들어 둔다
+        os.makedirs(d, exist_ok=True)
     threading.Thread(target=refresh_new_papers, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 

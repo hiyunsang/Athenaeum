@@ -10,8 +10,9 @@ import rules
 import win32com.client
 from pypdf import PdfReader
 
-TREE = r"C:\Users\PC1\Desktop\MAENG\논문주제"
-ARCHIVE = r"C:\Users\PC1\Documents\MAENG_paper"
+# (초기 1회용 스크립트) 주제 트리 폴더는 인자로: python seed_tags.py "<주제 트리 폴더>"
+TREE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser("~"), "Desktop", "논문주제")
+ARCHIVE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # 트리 폴더명 -> 확정 라벨 (경로의 모든 폴더가 누적 적용됨)

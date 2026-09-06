@@ -1,4 +1,4 @@
-import sys; sys.path.insert(0, r'C:\Users\PC1\Documents\MAENG_paper\paper-search')
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from schematic.lib import *
 import math
 

@@ -24,6 +24,19 @@
 - [Claude Code CLI](https://claude.com/claude-code) 설치 후 `claude` 로그인 (요약·번역·검토·도식은 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
 - Microsoft Edge (도식 PNG 렌더링에 headless 로 사용)
 
+## 다른 컴퓨터에서 쓰기 (설치)
+
+1. 이 저장소를 내려받습니다 (Code → Download ZIP, 또는 `git clone`). 폴더 이름은 자유입니다. 그 폴더 안에 `논문모음`(PDF 보관소) 등 데이터 폴더가 첫 실행 때 만들어집니다.
+2. Python 3.8 이상을 설치할 때 **Add to PATH** 를 켭니다. 그다음 터미널에서
+   ```
+   pip install -r paper-search\requirements.txt
+   ```
+3. [Claude Code](https://claude.com/claude-code) 를 설치하고 터미널에서 `claude` → `/login` 으로 한 번 로그인합니다. (요약·번역·검토는 이 로그인의 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
+4. `paper-search\Athenaeum_실행.bat` 을 더블클릭하면 브라우저에 화면이 뜹니다. 홈 위쪽 **수집** 패널에서 감시 폴더(기본: 내 다운로드 폴더)를 확인하고, **라벨 체계 설정 ↗** 에서 내 분야에 맞는 체계를 Claude 에게 제안받아 적용합니다.
+5. 다운로드 폴더에 논문 PDF 를 받으면 자동으로 이름이 정리되어 `논문모음` 으로 들어오고, 라벨이 자동으로 붙습니다.
+
+알아둘 것: Windows 전용입니다(바로가기·PPT·Edge 사용). `labels.json` 은 기계가공 분야 예시 체계이고, `tags.json` 에는 원작자의 라벨 데이터가 들어 있지만 내 `논문모음` 에 없는 논문은 무시되므로 지워도 되고 두어도 됩니다.
+
 ## 실행
 
 ```

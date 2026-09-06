@@ -12,13 +12,13 @@ import threading
 import urllib.request
 
 sys.stdout.reconfigure(errors="replace")
-sys.path.insert(0, r"C:\Users\PC1\Documents\MAENG_paper\paper-search")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import server as sv
 import rules
 
 BASE = "http://localhost:8770"
 groups = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "labels.json"), encoding="utf-8"))
-texts = json.load(open(r"C:\Users\PC1\Documents\MAENG_paper\paper-search\text_index.json", encoding="utf-8"))
+texts = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "text_index.json"), encoding="utf-8"))
 papers = json.load(urllib.request.urlopen(BASE + "/api/data"))["papers"]
 
 lock = threading.Lock()
