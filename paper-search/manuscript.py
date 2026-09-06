@@ -897,6 +897,175 @@ def export_figure(doc, fig_id, scale=3):
 
 
 # ---------- HTTP ----------
+
+# ---------- 교수님·공저자 피드백 (워드 주석) 논의 ----------
+def _norm_ws(s):
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
+def _tokens(s):
+    """비교용 낱말 열: 소문자, 글자·숫자만 (기호·띄어쓰기 차이를 무시)."""
+    return " ".join(re.findall(r"[^\W_]+", (s or "").lower()))
+
+
+def _comment_node(doc, c):
+    """주석이 달린 구절(anchor)이 들어 있는 절을 찾는다. 못 찾으면 None (그림·표·전체에 대한 지적).
+    1) 구절 그대로 포함  2) 절 제목에 달린 주석  3) 낱말 4개 창(window)이 가장 많이 맞는 절 (주석 후 문장이 조금 고쳐진 경우)"""
+    a = _norm_ws(c.get("anchor", "")).lower()
+    if len(a) < 6:
+        return None
+    outline = doc.get("outline", [])
+    for probe in (a[:80], a[:30]):
+        for key in ("draft", "draft_en"):
+            for n in outline:
+                if probe in _norm_ws(n.get(key, "")).lower():
+                    return n
+    at = _tokens(a)
+    for n in outline:
+        ht = _tokens(n.get("heading"))
+        if len(at) >= 8 and (at in ht or (len(ht) >= 8 and ht in at)):
+            return n
+    words = at.split()
+    if len(words) < 4:
+        return None
+    wins = [" ".join(words[i:i + 4]) for i in range(len(words) - 3)]
+    best, best_hits = None, 0
+    for n in outline:
+        body = _tokens((n.get("draft") or "") + " " + (n.get("draft_en") or ""))
+        hits = sum(1 for w in wins if w in body)
+        if hits > best_hits:
+            best, best_hits = n, hits
+    if best is not None and best_hits >= max(1, int(len(wins) * 0.3)):
+        return best
+    return None
+
+
+def _comment_threads(doc):
+    """같은 구절에 연달아 달린 주석(지적 → 학생 답변)을 한 묶음으로."""
+    threads, prev = [], None
+    for c in doc.get("comments", []):
+        a = _norm_ws(c.get("anchor"))
+        if threads and prev is not None and a and a == _norm_ws(prev.get("anchor")):
+            threads[-1].append(c)
+        else:
+            threads.append([c])
+        prev = c
+    return threads
+
+
+def _comment_by_id(doc, cid):
+    for c in doc.get("comments", []):
+        if str(c.get("id")) == str(cid):
+            return c
+    return None
+
+
+def _feedback_context(doc, c):
+    node = _comment_node(doc, c)
+    para = (node.get("draft") or node.get("draft_en") or "") if node else ""
+    same = [x for x in doc.get("comments", []) if x is not c and _norm_ws(x.get("anchor")) and _norm_ws(x.get("anchor")) == _norm_ws(c.get("anchor"))]
+    lines = ["논문 제목: %s" % doc.get("title", ""), "투고 저널: %s" % (doc.get("meta", {}).get("journal") or "미정")]
+    if node:
+        lines.append("절: %s" % node.get("heading", ""))
+    lines += ["", "[주석이 달린 구절]", _norm_ws(c.get("anchor")) or "(구절 표시 없음 - 그림·표·전체에 대한 지적일 수 있음)",
+              "", "[해당 문단 전체]", para[:4000] or "(문단을 찾지 못함)",
+              "", "[주석] %s (%s): %s" % (c.get("author"), c.get("date"), _norm_ws(c.get("text")))]
+    for x in same:
+        lines.append("[같은 구절의 다른 주석] %s (%s): %s" % (x.get("author"), x.get("date"), _norm_ws(x.get("text"))))
+    return "\n".join(lines), node
+
+
+def _thread_text(c, n=8):
+    return "\n".join("[%s] %s" % ("나" if m.get("role") == "user" else "Claude", m.get("text", "")) for m in c.get("thread", [])[-n:])
+
+
+def discuss_feedback(doc, cid, question=""):
+    """주석 하나를 놓고 Claude 와 논의. 첫 번에는 뜻·대응 방안·필요한 것·답변 초안, 그 뒤로는 질문에 답. 한국어."""
+    c = _comment_by_id(doc, cid)
+    if not c:
+        return {"error": "주석을 찾지 못했습니다"}
+    ctx, node = _feedback_context(doc, c)
+    thread = c.setdefault("thread", [])
+    hist = _thread_text(c)
+    cards = _cards_text(doc, node) if node else ""
+    if not thread and not question:
+        ask = ("이 주석을 처음 검토한다. 네 항목을 한국어로 쓰고, 각 항목은 줄 첫머리에 **뜻**, **대응 방안**, **필요한 것**, **답변 초안** 이라고 표시해라.\n"
+               "- 뜻: 교수님이 요구하는 것이 무엇인지, 문단 문맥과 연결해 한두 문장.\n"
+               "- 대응 방안: 2~3가지를 번호로. 각각 어떻게 고치는지 구체적으로, 마지막에 어느 쪽을 권하는지.\n"
+               "- 필요한 것: 추가 실험·데이터·확인·문헌 중 무엇이 필요한지. 없으면 '없음'.\n"
+               "- 답변 초안: 교수님께 드릴 답변 1~2문장 (한국어 존댓말).\n"
+               "원고가 영어라도 답은 한국어로. 문단을 다시 쓰지는 마라 (그건 별도 기능이다).")
+    else:
+        ask = "지금까지의 논의를 이어서 아래 질문에 한국어로 답하라. 문장 예시가 필요하면 원고의 언어로 들어도 된다.\n[질문]\n" + (question or "계속 논의해 주세요.")
+    prompt = ("당신은 기계가공 분야 논문 지도교수의 피드백을 학생과 함께 검토하는 공저자다. 솔직하고 구체적으로, 군말 없이.\n\n" +
+              ctx + (("\n\n[이 문단의 근거 카드]\n" + cards) if cards else "") +
+              (("\n\n[지금까지의 논의]\n" + hist) if hist else "") + "\n\n" + ask)
+    out = (cfg["claude"](prompt, timeout=300) or "").strip()
+    if not out:
+        return {"error": "Claude 응답이 없습니다"}
+    if question:
+        thread.append({"role": "user", "text": question, "t": time.time()})
+    thread.append({"role": "claude", "text": out, "t": time.time()})
+    c["node"] = node["id"] if node else None
+    save_ms(doc)
+    return {"text": out, "node": c["node"], "thread": thread}
+
+
+def revise_for_feedback(doc, cid, note=""):
+    """주석을 반영해 해당 문단을 고쳐 본다. 원고 언어로 문단만. 없는 데이터는 표시만 한다."""
+    c = _comment_by_id(doc, cid)
+    if not c:
+        return {"error": "주석을 찾지 못했습니다"}
+    ctx, node = _feedback_context(doc, c)
+    if not node:
+        return {"error": "이 주석이 달린 문단을 찾지 못했습니다 (그림·표에 대한 지적일 수 있습니다)"}
+    key = "draft" if node.get("draft") else "draft_en"
+    para = node.get(key, "")
+    lang_en = doc.get("meta", {}).get("lang") == "en" or (para and sum(1 for ch in para if ord(ch) < 128) > len(para) * 0.8)
+    hist = _thread_text(c, 6)
+    prompt = ("당신은 기계가공 분야 국제 저널 논문의 공저자다. 아래 주석을 반영해 '해당 문단 전체'를 고쳐 써라.\n"
+              "규칙:\n- 문단은 %s로. 지적과 무관한 문장은 최대한 그대로 둔다.\n"
+              "- 원고에 없는 수치·결과를 지어내지 마라. 필요한 데이터가 없으면 그 자리에 %s 처럼 표시한다.\n"
+              "- 논의에서 정해진 방향이 있으면 그것을 따른다. 카드 번호 [cN] 이 있으면 그대로 둔다.\n- 고친 문단만 출력. 설명·제목·따옴표 금지.\n\n"
+              % ("영어 학술 문체" if lang_en else "한국어 학술 문체",
+                 "(DATA NEEDED: repetitions per condition)" if lang_en else "(데이터 필요: 조건별 반복 수)")
+              + ctx + (("\n\n[논의 요약]\n" + hist) if hist else "") + (("\n\n[추가 지시]\n" + note) if note else ""))
+    out = (cfg["claude"](prompt, timeout=300) or "").strip()
+    out = re.sub(r"^```[a-z]*\n|\n```$", "", out).strip()
+    if not out:
+        return {"error": "Claude 응답이 없습니다"}
+    return {"text": out, "node": node["id"], "key": key, "before": para}
+
+
+def feedback_plan(doc):
+    """주석 전체를 주제별로 묶어 우선순위·작업 종류를 매긴 처리 계획 (JSON)."""
+    cs = doc.get("comments", [])
+    if not cs:
+        return {"error": "주석이 없습니다"}
+    items = []
+    for c in cs:
+        n = _comment_node(doc, c)
+        items.append("#%s %s (%s)%s: %s%s" % (c.get("id"), c.get("author"), c.get("date"), (" [절: %s]" % n["heading"]) if n else "",
+                                            _norm_ws(c.get("text"))[:400], (" ← 구절: “%s”" % _norm_ws(c.get("anchor"))[:80]) if c.get("anchor") else ""))
+    prompt = ("당신은 기계가공 분야 논문 지도교수의 피드백을 정리하는 공저자다. 아래 워드 주석들을 읽고 JSON 으로만 답하라:\n"
+              "{\"themes\": [{\"title\": \"주제 (한국어, 8자 이내)\", \"ids\": [\"주석 번호\"], \"kind\": \"데이터 추가|실험 필요|문장 수정|그림·표 수정|구조|확인 질문\", "
+              "\"priority\": 1, \"what\": \"무엇을 어떻게 할지 한두 문장 (한국어)\"}], \"first\": \"가장 먼저 할 일 한 문장\", \"note\": \"주석 사이의 연관·모순이 있으면 한두 문장, 없으면 빈 문자열\"}\n"
+              "규칙: 학생 본인의 답변 주석은 원 지적과 같은 주제로 묶고 kind 는 원 지적 기준. priority 는 1(먼저)~3. 최대 8개 주제. 모든 주석 번호가 어느 주제에든 들어가야 한다.\n\n"
+              "논문 제목: %s\n\n[주석]\n%s" % (doc.get("title", ""), "\n".join(items)))
+    r = cfg["claude_json"](prompt, timeout=300) or {"themes": [], "first": "", "note": "정리 실패 (응답 없음)"}
+    doc["feedback_plan"] = {"t": time.time(), "result": r}
+    save_ms(doc)
+    return r
+
+
+def feedback_view(doc):
+    out = []
+    for grp in _comment_threads(doc):
+        n = _comment_node(doc, grp[0])
+        out.append({"node": n["id"] if n else None, "heading": n["heading"] if n else "", "items": grp})
+    return {"threads": out, "plan": doc.get("feedback_plan")}
+
+
 def _q(url, k, d=""):
     return urllib.parse.parse_qs(url.query).get(k, [d])[0]
 
@@ -979,6 +1148,18 @@ def handle_post(h, body):
                 return h._send(200, full_review(doc))
             text = claude_paragraph(doc, body.get("node"), mode)
             return h._send(200, {"text": text})
+        if p == "/api/ms/feedback":
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            op = body.get("op")
+            if op == "discuss":
+                return h._send(200, discuss_feedback(doc, body.get("cid"), body.get("question", "")))
+            if op == "revise":
+                return h._send(200, revise_for_feedback(doc, body.get("cid"), body.get("note", "")))
+            if op == "plan":
+                return h._send(200, feedback_plan(doc))
+            return h._send(200, feedback_view(doc))
         if p == "/api/ms/idea":
             doc = load_ms(body.get("id"))
             return h._send(200, idea_review(doc, body.get("question", "")))

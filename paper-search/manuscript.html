@@ -50,6 +50,19 @@
   .card .t { margin-top: 2px; color: var(--text); }
   .card .src { color: var(--text-3); font-style: italic; margin-top: 2px; font-family: var(--font-serif); }
   .card .acts { margin-top: 2px; margin-left: -8px; }
+  /* 피드백(워드 주석) 카드 */
+  .card.fb { border-left-color: var(--amber); }
+  .card.fb.done { opacity: .55; }
+  .card.fb .t.reply { margin-left: 12px; color: var(--text-2); border-left: 2px solid var(--line-2); padding-left: 8px; }
+  .card.fb .go { color: var(--text-quiet); text-decoration: none; } .card.fb .go:hover { color: var(--accent); }
+  .fbmsg { margin: 6px 0; padding: 7px 9px; border-radius: 6px; font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.6; white-space: pre-wrap; }
+  .fbmsg.user { background: var(--bg); color: var(--text-2); } .fbmsg.claude { background: var(--accent-bg, #e9eefb); }
+  .fbmsg b { color: var(--text); }
+  .fbq { display: flex; gap: 6px; margin-top: 6px; } .fbq input { flex: 1; font-size: 12px; }
+  .fbReply { width: 100%; margin-top: 6px; font-size: 12px; min-height: 28px; resize: none; overflow: hidden; box-sizing: border-box; }
+  .fbprop { margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--amber); border-radius: 6px; font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.6; white-space: pre-wrap; }
+  .fbtheme { padding: 6px 9px; border-left: 3px solid var(--amber); margin: 4px 0; font-size: 12.5px; line-height: 1.5; background: var(--surface); }
+  .fbtheme .k { color: var(--text-3); font-size: 11px; margin-left: 6px; }
   .card.dim { opacity: .55; }
   .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; }
   .tabs div { padding: 8px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; }
@@ -136,7 +149,7 @@
   </div>
   <div id="center"><div id="empty">원고를 고르거나 새로 만드세요.<br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
-    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="notes">주석</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
     <div class="tab on" id="tab-cards"></div>
     <div class="tab" id="tab-figs"></div>
     <div class="tab" id="tab-check"></div>
@@ -298,6 +311,7 @@ function renderDocMode() {
       "<textarea class='para' data-p='" + n.id + "' placeholder='" + (lang === "en" ? "영문 없음 - 문단 모드에서 영문화 →" : "여기에 쓰세요") + "'>" + esc(n[key] || "") + "</textarea>" +
       "<div class='pm'><span class='wcn'>" + wc(n[key]) + " 단어</span><span>카드 " + (n.cards || []).length + "</span><span class='st " + (n.status || "") + "'></span>" +
       (n.review && n.review.result && (n.review.result.issues || []).length ? "<span style='color:var(--amber)'>검토 지적 " + n.review.result.issues.length + "</span>" : "") +
+      (commentsFor(n.id).length ? "<span style='color:var(--amber)'>피드백 " + commentsFor(n.id).length + "</span>" : "") +
       "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
   $("docLang").onchange = e => { localStorage.setItem("ms_doclang", e.target.value); renderDocMode(); };
   autogrow($("docTitle")); $("docTitle").oninput = () => { f.title = $("docTitle").value.replace(/\n/g, " "); doc.title = f.title; save(); $("msSel").options[$("msSel").selectedIndex].text = f.title; };
@@ -327,7 +341,7 @@ function renderEditor() {
     "<button class='btn pri' data-m='draft'>초안 쓰기</button><button class='btn' data-m='rewrite'>다시 쓰기</button><button class='btn' data-m='shorten'>줄이기</button><button class='btn' data-m='plain'>쉬운 말로</button><button class='btn' data-m='english'>영문화 →</button>" +
     "<span style='margin-left:auto'></span><select id='status' style='border-color:transparent;font-size:12px;color:var(--text-2)'><option value='todo'" + (n.status === "todo" ? " selected" : "") + ">할 일</option><option value='drafted'" + (n.status === "drafted" ? " selected" : "") + ">초안 있음</option><option value='done'" + (n.status === "done" ? " selected" : "") + ">완료</option></select></div>" +
     "<div id='cprog'></div><textarea id='draft' placeholder='직접 쓰거나 「초안 쓰기」로 시작. 근거 표시 [c3] 는 내보낼 때 인용 번호로 바뀝니다.'>" + esc(n.draft) + "</textarea>" +
-    "<div class='ctl' style='padding:4px 0;margin-left:-8px;align-items:center'><button class='btn' id='revPara' title='이 문단만 심사자 눈으로 검토'>이 문단 검토</button><button class='btn' id='evidBtn' title='내 논문 데이터베이스(번역 문장)에서 이 주장의 근거 문장을 찾습니다'>내 논문에서 근거 찾기</button>" +
+    "<div class='ctl' style='padding:4px 0;margin-left:-8px;align-items:center'>" + (commentsFor(n.id).length ? "<button class='btn' id='fbBtn' style='color:var(--amber)' title='이 문단에 달린 교수님·공저자 주석 보기'>피드백 " + commentsFor(n.id).length + "</button>" : "") + "<button class='btn' id='revPara' title='이 문단만 심사자 눈으로 검토'>이 문단 검토</button><button class='btn' id='evidBtn' title='내 논문 데이터베이스(번역 문장)에서 이 주장의 근거 문장을 찾습니다'>내 논문에서 근거 찾기</button>" +
     "<label class='hint' style='margin-left:auto;cursor:pointer'><input type='checkbox' id='autoRev'" + (localStorage.getItem("ms_autorev") === "1" ? " checked" : "") + "> 쓰다가 멈추면 자동 검토</label></div>" +
     "<div id='revbox'>" + reviewHtml(n.review) + "</div><div id='evidbox'></div>" +
     "<label class='f'>영문 (한국어 초안에서 영문화)</label><textarea id='draftEn' placeholder='「영문화 →」를 누르면 용어집을 지켜 옮깁니다.'>" + esc(n.draft_en) + "</textarea>";
@@ -337,6 +351,7 @@ function renderEditor() {
   $("status").onchange = e => { n.status = e.target.value; save(); renderTree(); };
   ed.querySelectorAll("[data-m]").forEach(b => b.onclick = () => runClaude(b.dataset.m));
   $("revPara").onclick = () => reviewPara(n);
+  if ($("fbBtn")) $("fbBtn").onclick = () => { const c = commentsFor(n.id)[0]; switchTab("notes"); fbOpen = String(c.id); renderNotes(); const card = document.querySelector(".card.fb[data-cid='" + c.id + "']"); if (card) card.scrollIntoView({ block: "start" }); };
   $("evidBtn").onclick = () => findEvidence(n);
   $("autoRev").onchange = e => localStorage.setItem("ms_autorev", e.target.checked ? "1" : "0");
   // 쓰다가 멈추면(30초) 바뀐 게 있을 때만 자동 검토 (토글 켠 경우)
@@ -485,11 +500,111 @@ function checkHtml(r) {
   }
   return h;
 }
+// ---------- 피드백 (워드 주석) 논의 ----------
+const normWs = t => String(t || "").replace(/\s+/g, " ").trim();
+const tokStr = t => (String(t || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).join(" ");
+function commentNode(c) {   // 서버 _comment_node 와 같은 규칙: 그대로 포함 → 절 제목 → 낱말 4개 창 유사 일치
+  const a = normWs(c.anchor).toLowerCase(); if (a.length < 6) return null;
+  for (const probe of [a.slice(0, 80), a.slice(0, 30)])
+    for (const n of doc.outline) if (normWs(n.draft).toLowerCase().includes(probe) || normWs(n.draft_en).toLowerCase().includes(probe)) return n;
+  const at = tokStr(a);
+  for (const n of doc.outline) { const ht = tokStr(n.heading); if (at.length >= 8 && (ht.includes(at) || (ht.length >= 8 && at.includes(ht)))) return n; }
+  const words = at.split(" "); if (words.length < 4) return null;
+  const wins = []; for (let i = 0; i + 4 <= words.length; i++) wins.push(words.slice(i, i + 4).join(" "));
+  let best = null, bestHits = 0;
+  for (const n of doc.outline) { const body = tokStr((n.draft || "") + " " + (n.draft_en || "")); const hits = wins.filter(w => body.includes(w)).length; if (hits > bestHits) { best = n; bestHits = hits; } }
+  return best && bestHits >= Math.max(1, Math.floor(wins.length * 0.3)) ? best : null;
+}
+function commentThreads() {
+  const out = []; let prev = null;
+  (doc.comments || []).forEach(c => { const a = normWs(c.anchor); if (out.length && prev && a && a === normWs(prev.anchor)) out[out.length - 1].push(c); else out.push([c]); prev = c; });
+  return out;
+}
+function commentsFor(nid) { return (doc.comments || []).filter(c => { const n = commentNode(c); return n && n.id === nid; }); }
+const cById = id => (doc.comments || []).find(c => String(c.id) === String(id));
+let fbOpen = null, fbProposal = null;   // 펼쳐진 논의 카드 / 고쳐 본 문단 제안
+const fbFmt = t => esc(t).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+function planHtml(pl) {
+  const th = [...(pl.themes || [])].sort((a, b) => (a.priority || 9) - (b.priority || 9));
+  return "<div style='margin:4px 0 10px'>" + (pl.first ? "<div class='hint' style='margin-bottom:4px'>먼저: " + esc(pl.first) + "</div>" : "") +
+    th.map(t => "<div class='fbtheme'><b>" + (t.priority ? "P" + t.priority + " · " : "") + esc(t.title) + "</b><span class='k'>" + esc(t.kind || "") + " · #" + (t.ids || []).join(", #") + "</span><div>" + esc(t.what || "") + "</div></div>").join("") +
+    (pl.note ? "<div class='hint' style='margin-top:4px'>" + esc(pl.note) + "</div>" : "") + "</div>";
+}
+function threadHtml(c) {
+  let h = "<div style='margin-top:6px'>" + (c.thread || []).map(m => "<div class='fbmsg " + m.role + "'>" + (m.role === "user" ? "<b>나:</b> " : "") + fbFmt(m.text) + "</div>").join("");
+  if (fbProposal && String(fbProposal.cid) === String(c.id))
+    h += "<div class='fbprop'><div class='hint' style='margin-bottom:4px'>고쳐 본 문단 (" + (fbProposal.key === "draft_en" ? "영문" : "초안") + ") · 반영하면 지금 문단을 덮어씁니다</div>" + esc(fbProposal.text) +
+      "<div class='acts' style='margin-top:6px'><button class='btn pri' data-apply='" + esc(c.id) + "'>초안에 반영</button><button class='btn' data-dismiss='" + esc(c.id) + "'>닫기</button></div></div>";
+  h += "<div class='fbq'><input id='fbQ-" + esc(c.id) + "' placeholder='이어서 질문·지시 (예: 2번 방안으로 가면 어떤 문장이 필요해?)'><button class='btn' data-ask='" + esc(c.id) + "'>보내기</button></div></div>";
+  return h;
+}
 function renderNotes() {
   const el = $("tab-notes"); if (!doc) { el.innerHTML = ""; return; }
-  const cs = doc.comments || [];
-  el.innerHTML = "<div class='sec'>공저자 주석 " + cs.length + "개 <span class='hint' style='font-weight:400'>워드에서 가져옴 · 읽기 전용</span></div>" +
-    (cs.map(c => "<div class='card' style='border-left-color:var(--amber)'><div class='m'><b>" + esc(c.author) + "</b><span>" + esc(c.date) + "</span></div>" + (c.anchor ? "<div class='src'>“" + esc(c.anchor) + "”</div>" : "") + "<div class='t'>" + esc(c.text) + "</div></div>").join("") || "<div class='hint'>주석이 없습니다.</div>");
+  const cs = doc.comments || []; const open = cs.filter(c => c.status !== "done").length;
+  const plan = doc.feedback_plan && doc.feedback_plan.result;
+  let h = "<div class='sec' style='display:flex;gap:8px;align-items:baseline'>피드백 " + cs.length + "개 <span class='hint' style='font-weight:400'>미해결 " + open + " · 워드 주석에서 가져옴</span><span style='margin-left:auto'></span>" +
+    (cs.length ? "<button class='btn' id='fbPlan' title='주석 전체를 주제별로 묶어 우선순위와 할 일을 정리합니다 (~1분)'>" + (plan ? "다시 정리" : "전체 정리") + "</button>" : "") + "</div>";
+  if (plan) h += planHtml(plan);
+  if (!cs.length) h += "<div class='hint'>워드 원고를 가져오면 교수님·공저자 주석이 여기에 옵니다.</div>";
+  h += commentThreads().map(grp => {
+    const c0 = grp[0]; const n = commentNode(c0); const done = grp.every(c => c.status === "done");
+    return "<div class='card fb" + (done ? " done" : "") + "' data-cid='" + esc(c0.id) + "'>" +
+      "<div class='m'><b>" + esc(c0.author) + "</b><span>" + esc(c0.date) + "</span>" + (n ? "<a href='#' class='go' data-go='" + n.id + "' title='이 절로 이동'>" + esc(n.heading) + " →</a>" : "<span title='구절이 없어 절을 못 찾음 (그림·표·전체 지적)'>절 미확인</span>") +
+      "<span style='margin-left:auto'></span><label class='hint' style='cursor:pointer'><input type='checkbox' class='fbDone' data-cid='" + esc(c0.id) + "'" + (done ? " checked" : "") + "> 해결</label></div>" +
+      (c0.anchor ? "<div class='src'>“" + esc(normWs(c0.anchor)) + "”</div>" : "") +
+      grp.map((c, i) => "<div class='t" + (i ? " reply" : "") + "'>" + (i ? "<b>" + esc(c.author) + ":</b> " : "") + esc(normWs(c.text)) + "</div>").join("") +
+      "<div class='acts'><button class='btn' data-discuss='" + esc(c0.id) + "'>" + ((c0.thread || []).length ? (fbOpen === c0.id ? "논의 접기" : "논의 보기 (" + c0.thread.length + ")") : "논의") + "</button>" +
+      (n ? "<button class='btn' data-revise='" + esc(c0.id) + "' title='이 지적을 반영해 문단을 고쳐 본 안을 만듭니다 (~30초)'>문단 고쳐 보기</button>" : "") + "</div>" +
+      (fbOpen === c0.id ? threadHtml(c0) : "") +
+      "<textarea class='fbReply' data-cid='" + esc(c0.id) + "' rows='1' placeholder='교수님께 드릴 답변 메모 (내보내기 때 함께 정리)'>" + esc(c0.reply || "") + "</textarea></div>";
+  }).join("");
+  el.innerHTML = h;
+  const pb = $("fbPlan"); if (pb) pb.onclick = fbPlanRun;
+  el.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; renderTree(); renderEditor(); });
+  el.querySelectorAll(".fbDone").forEach(cb => cb.onchange = () => { (commentThreads().find(g => String(g[0].id) === cb.dataset.cid) || []).forEach(c => c.status = cb.checked ? "done" : "open"); save(); renderNotes(); });
+  el.querySelectorAll("[data-discuss]").forEach(b => b.onclick = () => { const id = b.dataset.discuss, c = cById(id); if ((c.thread || []).length) { fbOpen = fbOpen === id ? null : id; renderNotes(); } else fbDiscuss(id, ""); });
+  el.querySelectorAll("[data-revise]").forEach(b => b.onclick = () => fbRevise(b.dataset.revise));
+  el.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { const inp = $("fbQ-" + b.dataset.ask); if (inp && inp.value.trim()) fbDiscuss(b.dataset.ask, inp.value.trim()); });
+  el.querySelectorAll(".fbq input").forEach(inp => inp.onkeydown = e => { if (e.key === "Enter" && inp.value.trim()) fbDiscuss(inp.id.slice(4), inp.value.trim()); });
+  el.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => {
+    const nn = node(fbProposal.node); if (!nn) return;
+    if (!confirm("지금 문단을 고쳐 본 안으로 덮어씁니다. 계속할까요? (이전 글은 판 이력에 남습니다)")) return;
+    nn[fbProposal.key] = fbProposal.text; if (nn.status === "todo") nn.status = "drafted"; fbProposal = null; save(true); renderAll();
+  });
+  el.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => { fbProposal = null; renderNotes(); });
+  el.querySelectorAll(".fbReply").forEach(t => { autogrow(t); t.oninput = () => { cById(t.dataset.cid).reply = t.value; save(); }; });
+}
+function fbBusy(id, label, sec) {
+  const card = document.querySelector(".card.fb[data-cid='" + id + "']"); if (!card) return () => {};
+  const acts = card.querySelector(".acts"); const old = acts.innerHTML;
+  acts.innerHTML = "<div class='prog'><span>" + label + "</span>" + pbarHtml(0.05, 0) + "<span class='eta'>~" + sec + "초</span></div>";
+  const t0 = Date.now(); const tm = setInterval(() => { const b = acts.querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / (sec * 1200)) * 100) + "%"; }, 800);
+  return () => { clearInterval(tm); if (acts.isConnected) acts.innerHTML = old; };
+}
+async function fbDiscuss(id, question) {
+  if (busy) return; busy = true;
+  const done = fbBusy(id, question ? "답 생각 중" : "주석 뜻·대응 방안 정리 중", 40);
+  const r = await api("/api/ms/feedback", { id: doc.id, op: "discuss", cid: id, question });
+  busy = false; done();
+  if (r.error) { alert("⚠ " + r.error); return; }
+  const c = cById(id); c.thread = r.thread; c.node = r.node; fbOpen = id; renderNotes();
+  const inp = $("fbQ-" + id); if (inp) inp.focus();
+}
+async function fbRevise(id) {
+  if (busy) return; busy = true;
+  const done = fbBusy(id, "지적을 반영해 문단 고치는 중", 35);
+  const r = await api("/api/ms/feedback", { id: doc.id, op: "revise", cid: id });
+  busy = false; done();
+  if (r.error) { alert("⚠ " + r.error); return; }
+  fbProposal = { cid: id, ...r }; fbOpen = id; renderNotes();
+}
+async function fbPlanRun() {
+  if (busy) return; busy = true;
+  const pb = $("fbPlan"); pb.disabled = true; pb.textContent = "정리 중…";
+  const r = await api("/api/ms/feedback", { id: doc.id, op: "plan" });
+  busy = false;
+  if (r.error) { alert("⚠ " + r.error); renderNotes(); return; }
+  doc.feedback_plan = { t: Date.now() / 1000, result: r }; renderNotes();
 }
 function renderCards() {
   const el = $("tab-cards");
