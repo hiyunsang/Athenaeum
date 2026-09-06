@@ -900,8 +900,8 @@ async function doAction(act) {
       sc = sc / Math.sqrt(30 + et.length);
       if (sc > bestScore) { bestScore = sc; best = el; }
     });
-    if (best && other === "translation") { const sp = best.querySelector(".sent[data-s]"); if (sp) locateBySentId(sp.dataset.s); }   // 번역본 문단의 첫 문장으로 PDF 도 이동
     if (best) { best.scrollIntoView({ block: "center" }); best.classList.add("flash"); setTimeout(() => best.classList.remove("flash"), 2500); status((other === "summary" ? "요약" : "번역본") + "에서 가장 비슷한 부분으로 이동"); }
+    if (best && other === "translation") { const sp = best.querySelector(".sent[data-s]"); if (sp) setTimeout(() => locateBySentId(sp.dataset.s), 50); }   // 번역본 문단의 첫 문장으로 PDF 도 이동 (상태 문구는 PDF 안내로)
   } else if (act === "note") {
     const t = prompt("메모 (선택 구절이 함께 저장되고 본문에 표시가 남습니다):", "");
     if (t === null) return;
