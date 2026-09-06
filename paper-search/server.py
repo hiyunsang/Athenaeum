@@ -15,6 +15,8 @@ from urllib.parse import urlparse, parse_qs
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
+import logging
+logging.getLogger("pypdf").setLevel(logging.ERROR)   # pypdf 의 글꼴 인코딩 경고(fontTools 관련)는 동작에 영향 없음
 import rules
 import intake   # 논문 수집 (다운로드 폴더 감시 → Crossref → 보관). 예전 paper-organizer 를 이 폴더로 합친 것
 
@@ -750,7 +752,10 @@ def _inside(bb, box, frac=0.6):
 
 def pdf_blocks(name):
     """페이지별 문단 목록. 각 문단 = {t, bbox, size, chars, in_fig, col} (읽기 순서로 정렬)"""
-    import fitz
+    try:
+        import pymupdf as fitz   # PyMuPDF 1.24+ 의 새 이름 (옛 이름 fitz 는 경고를 찍음)
+    except ImportError:
+        import fitz
     doc = fitz.open(os.path.join(ARCHIVE, name))
     pages = []
     for page in doc:
@@ -831,7 +836,10 @@ def pdf_body_and_asides(name):
     def _eq_render(pi, bbox, path, col=0, two_col=False):
         """수식 자리를 그림으로. 가로는 그 단(column) 전체 폭으로 잘라 좌변·식 번호까지 담고, 세로는 블록 높이에 여유 3pt"""
         nonlocal eq_doc
-        import fitz
+        try:
+            import pymupdf as fitz   # PyMuPDF 1.24+ 의 새 이름 (옛 이름 fitz 는 경고를 찍음)
+        except ImportError:
+            import fitz
         if eq_doc is None:
             eq_doc = fitz.open(os.path.join(ARCHIVE, name))
         page = eq_doc[pi]

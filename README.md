@@ -26,7 +26,12 @@
 - [Claude Code CLI](https://claude.com/claude-code) 설치 후 `claude` 로그인 (요약·번역·검토·도식은 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
 - Microsoft Edge (도식 PNG 렌더링에 headless 로 사용)
 
-## 다른 컴퓨터에서 쓰기 (설치)
+## 가장 쉬운 설치: 포터블판 (파이썬 없이)
+
+[Releases](https://github.com/hiyunsang/Athenaeum/releases) 에서 `Athenaeum-portable-*.zip`(약 100MB) 을 받아 원하는 곳에 풀고 **`Athenaeum 실행.bat`** 을 더블클릭하면 끝입니다. 파이썬과 필요한 패키지가 `python\` 폴더에 들어 있어 따로 설치할 것이 없습니다. 단 하나, 요약·번역·검토에 쓰는 [Claude Code](https://claude.com/claude-code) 는 설치하고 `claude` → `/login` 으로 한 번 로그인해야 합니다.
+논문·요약·번역·원고는 모두 그 폴더 안(`논문모음`, `번역`, `원고` …)에 저장되므로 폴더를 통째로 옮기거나 백업하면 됩니다. 포터블판은 `python tools\make_release.py` 로 만듭니다.
+
+## 직접 설치 (파이썬이 있는 경우)
 
 1. 이 저장소를 내려받습니다 (Code → Download ZIP, 또는 `git clone`). 폴더 이름은 자유입니다. 그 폴더 안에 `논문모음`(PDF 보관소) 등 데이터 폴더가 첫 실행 때 만들어집니다.
 2. Python 3.8 이상을 설치할 때 **Add to PATH** 를 켭니다. 그다음 터미널에서
