@@ -2036,6 +2036,31 @@ class Handler(BaseHTTPRequestHandler):
                 return
             res = locate_in_pdf(name, passage)
             self._send(200, res or {"error": "원문 위치를 찾지 못했습니다"})
+        elif self.path == "/api/explore_chat":
+            # 탐색 화면의 Claude 대화: 지금 화면의 검색 결과(번호 매긴 목록)를 맥락으로 질문에 답한다 (Opus)
+            question = (body.get("question") or "").strip()
+            if not question:
+                self._send(400, {"error": "질문이 없습니다"})
+                return
+            items = body.get("items") or []
+            listing = "\n".join("[%s] (%s) %s%s — %s%s%s" % (
+                it.get("n"), it.get("year") or "?", (it.get("title") or "")[:140], " ★보유" if it.get("owned") else "",
+                (it.get("author") or "?"), (" · " + it["venue"]) if it.get("venue") else "", (" · 피인용 %s" % it["cit"]) if it.get("cit") is not None else "")
+                + ((" :: " + (it.get("abstract") or "")[:280]) if it.get("abstract") else "") for it in items[:80])
+            hist = "\n".join("[%s] %s" % ("나" if m.get("role") == "user" else "Claude", (m.get("text") or "")[:1500]) for m in (body.get("history") or [])[-8:])
+            prompt = ("당신은 기계가공·재료 분야 문헌 조사를 함께하는 공저자다. 사용자가 논문 검색 화면에서 아래 결과를 보며 묻는다.\n"
+                      "규칙: 한국어로, 군말 없이 구체적으로. 논문을 언급할 때는 반드시 목록 번호를 [12] 처럼 붙여라 (화면에서 그 논문으로 이동한다). "
+                      "목록에 없는 논문을 아는 척하지 마라 (있으면 '목록 밖'이라고 밝히고 제목·저자·연도만). "
+                      "★보유 는 사용자가 이미 PDF 를 가진 논문이다. 검색어를 제안할 때는 '검색어:' 로 시작하는 줄에 영어 2~4 단어 조합으로 써라.\n\n"
+                      "[검색어] %s\n[조사 의도] %s\n\n[화면의 논문 목록: 번호 (연도) 제목 — 저자 · 저널 · 피인용 :: 초록]\n%s\n\n%s[질문]\n%s"
+                      % (body.get("q") or "", body.get("intent") or "(스마트 탐색 없음)", listing or "(결과 없음)",
+                         ("[지금까지의 대화]\n" + hist + "\n\n") if hist else "", question))
+            try:
+                answer = _claude(prompt, timeout=300).strip()
+            except Exception as e:
+                self._send(200, {"error": str(e)[:300]})
+                return
+            self._send(200, {"answer": answer})
         elif self.path == "/api/smart":
             q = (body.get("q") or "").strip()
             year = str(body.get("year") or "")
