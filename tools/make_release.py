@@ -74,7 +74,7 @@ def main():
             for d in list(dirs):
                 if d == "tests":
                     shutil.rmtree(os.path.join(dirpath, d), ignore_errors=True); dirs.remove(d)
-    r = run([pyexe, "-c", "import fitz, pypdf, requests, win32com.client, numpy, scipy; print(fitz.__doc__.split()[1], pypdf.__version__, numpy.__version__, scipy.__version__)"])
+    r = run([pyexe, "-c", "import pymupdf, pypdf, requests, win32com.client, numpy, scipy, fontTools; print(pymupdf.__doc__.split()[1], pypdf.__version__, numpy.__version__, scipy.__version__)"])
     log("packages ok: " + r.stdout.strip())
 
     # 3) 프로그램 파일
