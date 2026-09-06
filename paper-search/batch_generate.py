@@ -79,7 +79,7 @@ def run_one(name, kind, label, force=False):
                 log("[%s] 3시간 초과, 건너뜀: %s" % (label, name[:60])); return False
 
 
-def worker(kind, names, label, force=False, workers=3):
+def worker(kind, names, label, force=False, workers=5):
     """논문 여러 편을 동시에 처리(기본 3편). 구간 병렬은 서버가 8개로 묶어 두므로 총 동시 호출은 8개를 넘지 않는다."""
     lock = threading.Lock()
     state = {"i": 0, "ok": 0}

@@ -30,7 +30,7 @@ _refreshing = threading.Event()
 # 요약/전문번역 (claude 명령줄 = 구독 토큰 사용, API 키 불필요)
 GEN_DIR = os.path.join(os.path.dirname(ARCHIVE), "번역")
 _jobs = {}  # (파일명, 종류) -> {"status": "running"|"error", "error": str}
-_gen_sem = threading.BoundedSemaphore(3)  # 동시 생성 3개까지, 나머지는 자동 대기
+_gen_sem = threading.BoundedSemaphore(5)  # 동시 생성 3개까지, 나머지는 자동 대기
 _map_sem = threading.BoundedSemaphore(1)  # 맵은 한 번에 하나 (OpenAlex 속도 제한 보호)
 
 def paper_header(name):
@@ -1130,7 +1130,7 @@ GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 �
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
-_chunk_sem = threading.BoundedSemaphore(8)  # 전체 동시 Claude 호출 8개 (구간 병렬 처리)
+_chunk_sem = threading.BoundedSemaphore(12)  # 전체 동시 Claude 호출 8개 (구간 병렬 처리)
 
 
 # 머리부 구간(제목·저자·초록·키워드·목차·약어) 전용 규칙
