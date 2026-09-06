@@ -5,8 +5,9 @@ Athenaeum 로고 생성기 (2026-09-06 확정안: 헤어라인 왼 다리 + 두�
 python make_logo.py  →  이 폴더에
   mark.svg / mark-ink.svg   투명 배경 마크 (헤더·인쇄용)
   lockup.svg                마크 + 가는 줄 + 자간 넓힌 ATHENAEUM (홈 화면 첫 인상용)
-  favicon.svg               잉크 원판 위 골드 마크 (브라우저 탭)
+  favicon.svg               배경 없는 골드 A, 글자 몸통이 정중앙 (브라우저 탭) — 사용자가 원판/네모 대신 투명을 선택
   icon-16/32/48/180/192/256/512.png, athenaeum.ico   (16px 은 스와시가 뭉개지므로 굵은 로마체 A 로 대체)
+  icon-disc.svg             참고용: 잉크 원판 버전
 글꼴 없이 전부 경로(path)로 그려서 어디서나 같은 모양. ATHENAEUM 글자만 Georgia(윈도·맥·iOS 기본 탑재).
 """
 import io, os
@@ -96,6 +97,20 @@ def disc_svg(color, bg, simple=False):
             "<g transform='translate(%s,%s) scale(%s)'>%s</g></svg>") % (bg, tx, ty, scale, body)
 
 
+BODY_CX = (80 + 338) / 2.0   # 마크 글자 몸통(세리프 포함)의 가로 중심. 스와시(→380)는 빼고 글자만 정중앙에 놓는다 (사용자 결정 2026-09-06)
+
+
+def alone_svg(color, scale=1.3, simple=False):
+    """확정 아이콘: 배경 없이 A 만, 글자 몸통을 정사각 캔버스 정중앙에. simple=True 는 16px 용 굵은 A."""
+    if simple:
+        body = "<path fill='%s' d='%s'/>" % (color, bold_A_d()); cx = 202
+    else:
+        a, s = mark_d()
+        body = "<path fill='%s' d='%s'/><path fill='%s' d='%s'/>" % (color, a, color, s); cx = BODY_CX
+    return ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'>"
+            "<g transform='translate(%.1f,%.1f) scale(%.3f)'>%s</g></svg>") % (200 - cx * scale, 200 - 200 * scale, scale, body)
+
+
 def write(name, text):
     io.open(os.path.join(HERE, name), "w", encoding="utf-8").write(text)
 
@@ -114,11 +129,13 @@ def main():
     write("mark-ink.svg", mark_svg(INK))
     write("lockup.svg", lockup_svg(GOLD, INK))
     write("lockup-dark.svg", lockup_svg(GOLD, "#f2efe6"))
-    write("favicon.svg", disc_svg(GOLD, INK))
+    # 아이콘: 배경 없는 골드 A (글자 몸통 정중앙). 원판 버전은 disc_svg 로 남겨 둠(미사용)
+    write("favicon.svg", alone_svg(GOLD))
+    write("icon-disc.svg", disc_svg(GOLD, INK))
     for n in (32, 48, 180, 192, 256, 512):
-        render_png(disc_svg(GOLD, INK), n, "icon-%d.png" % n)
-    render_png(disc_svg(GOLD, INK, simple=True), 16, "icon-16.png")
-    render_png(disc_svg(GOLD, INK, simple=True), 24, "icon-24.png")
+        render_png(alone_svg(GOLD), n, "icon-%d.png" % n)
+    render_png(alone_svg(GOLD, 1.35, simple=True), 16, "icon-16.png")
+    render_png(alone_svg(GOLD, 1.35, simple=True), 24, "icon-24.png")
     try:
         from PIL import Image
         imgs = {n: Image.open(os.path.join(HERE, "icon-%d.png" % n)).convert("RGBA") for n in (16, 24, 32, 48, 256)}
