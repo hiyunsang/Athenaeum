@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 hiyunsang (Athenaeum)
+Copyright (c) 2026 hiyunsang
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,8 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-Bundled third-party components keep their own licenses:
-- Pretendard font (paper-search/fonts) - SIL Open Font License 1.1 (see Pretendard-LICENSE.txt)
-- Python and the packages listed in paper-search/requirements.txt (portable release only) - their respective licenses

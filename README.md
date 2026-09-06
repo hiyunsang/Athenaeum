@@ -75,4 +75,5 @@ MAENG_paper\                ← 저장소 루트 (이름은 자유)
 
 ## 라이선스
 
-MIT License. 자유롭게 쓰고 고치고 나눌 수 있습니다. 저작권 표시만 남겨 주세요. 글꼴 Pretendard 는 SIL OFL 1.1 입니다.
+MIT License. 자유롭게 쓰고 고치고 나눌 수 있습니다. 저작권 표시만 남겨 주세요.
+함께 담긴 것들은 각자의 라이선스를 따릅니다: Pretendard 글꼴(SIL OFL 1.1, `paper-search/fonts/Pretendard-LICENSE.txt`), 포터블판의 Python 과 `requirements.txt` 패키지들.
