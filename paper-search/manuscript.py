@@ -860,7 +860,12 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
         spec = fig["source"].get("spec") or {}
         ref_paths = ref_paths or [os.path.join(ref_dir, r) for r in fig["source"].get("refs", []) if os.path.isfile(os.path.join(ref_dir, r))]
     log = []
-    code, svg, log = gen.generate(spec or {}, ref_paths, prev_script=prev, feedback=feedback, log=log)
+    # 같은 분야의 최근 그림 스크립트를 출발점으로 (백지 설계보다 훨씬 빠르고 스타일도 이어짐)
+    dom = (spec or {}).get("domain")
+    prior = [f["source"].get("script") for f in sorted(doc["figures"], key=lambda f: -(f.get("t") or 0))
+             if f.get("source", {}).get("type") == "claude" and f["source"].get("script") and (not dom or f["source"].get("spec", {}).get("domain") == dom)
+             and f["id"] != (fig or {}).get("id")]
+    code, svg, log = gen.generate(spec or {}, ref_paths, prev_script=prev, feedback=feedback, log=log, prior_scripts=prior)
     if not fig:
         fig = {"id": _next_id(doc["figures"], "f"), "num": len(doc["figures"]) + 1, "caption": "", "caption_en": "", "source": {}}
         doc["figures"].append(fig)

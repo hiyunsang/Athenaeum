@@ -114,10 +114,48 @@ def svg_size(svg, default=(900, 700)):
     return (int(m.group(1)), int(m.group(2))) if m else default
 
 
-def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None):
+TEMPLATE_DIR = os.path.join(BASE, "schematic", "templates")
+
+
+def find_seed(spec, prior_scripts=()):
+    """첫 생성을 백지에서 하지 않게: 같은 분야의 최근 그림 스크립트 → 없으면 분야 틀(templates/<domain>.py).
+    (백지 설계 7분 vs 기존 코드 고치기 30초 — 시간 차이의 대부분이 여기서 난다)"""
+    for sc in prior_scripts:
+        if sc and "from schematic.lib import" in sc:
+            return sc, "같은 분야의 최근 그림"
+    p = os.path.join(TEMPLATE_DIR, "%s.py" % spec.get("domain", "general"))
+    if os.path.isfile(p):
+        return io.open(p, encoding="utf-8").read(), "분야 틀"
+    p = os.path.join(TEMPLATE_DIR, "general.py")
+    if os.path.isfile(p):
+        return io.open(p, encoding="utf-8").read(), "일반 틀"
+    return None, None
+
+
+def save_template(spec, code):
+    """분야 틀이 아직 없으면 성공한 스크립트를 틀로 저장 (다음부터 그 분야는 이 코드에서 시작)"""
+    try:
+        os.makedirs(TEMPLATE_DIR, exist_ok=True)
+        p = os.path.join(TEMPLATE_DIR, "%s.py" % spec.get("domain", "general"))
+        if not os.path.isfile(p):
+            io.open(p, "w", encoding="utf-8").write(code)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None, prior_scripts=()):
     """설명(+참고 그림, +이전 스크립트/수정 요청) → (script, svg, 시도 기록). 실행 오류는 최대 2번 Claude 에 되먹여 고친다."""
     log = log if log is not None else []
     ref_dirs = [os.path.dirname(p) for p in ref_images]
+    if not prev_script and not feedback:
+        seed, why = find_seed(spec, prior_scripts)
+        if seed:
+            prev_script = seed
+            feedback = ("아래 [이전 스크립트]는 출발점(틀)이다. 구조와 함수 사용법은 그대로 살리되, [그림 설명]에 맞게 형상·부품·라벨·수치를 바꿔 "
+                        "새 그림을 완성하라. 설명에 없는 요소는 빼고 필요한 요소는 더하라.")
+            log.append("출발점: " + why)
     prompt = build_prompt(spec, ref_images, prev_script, feedback)
     t0 = time.time()
     raw = _claude(prompt, ref_dirs)
@@ -127,6 +165,8 @@ def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None):
         ok, res = run_script(code)
         if ok:
             log.append("실행 성공 (시도 %d)" % (attempt + 1))
+            if save_template(spec, code):
+                log.append("이 분야의 시작 틀로 저장")
             return code, res, log
         log.append("실행 오류 (시도 %d): %s" % (attempt + 1, res.strip().splitlines()[-1][:160] if res.strip() else "?"))
         if attempt == 2:
