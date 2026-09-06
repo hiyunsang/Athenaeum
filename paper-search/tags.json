@@ -3241,5 +3241,57 @@
   "suggested": [],
   "rejected": [],
   "title": "Influence of grain morphology on the chip formation mechanisms of wrought and laser powder bed fusion (LPBF) fabricated alloy 718"
+ },
+ "1987_IJHMT_Voller_A fixed grid numerical modelling methodology for convection-diffusion mushy region phase-change problems.pdf": {
+  "labels": [
+   "Phase transformation",
+   "Thermal effect",
+   "Analytical model"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "A fixed grid numerical modelling methodology for convection-diffusion mushy region phase-change problems"
+ },
+ "2002_IJMTM_Carrilero_A SEM and EDS insight into the BUL and BUE differences in the turning processes of AA2024 Al-Cu alloy.pdf": {
+  "labels": [
+   "Aluminum",
+   "Heat-treated",
+   "Turning",
+   "BUE",
+   "Built-up layer",
+   "Tool wear",
+   "Adhesion",
+   "SEM",
+   "EDS"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "A SEM and EDS insight into the BUL and BUE differences in the turning processes of AA2024 Al–Cu alloy"
+ },
+ "2002_JMP_Wang_Cryogenic Machining of Tantalum.pdf": {
+  "labels": [
+   "Tantalum",
+   "Turning",
+   "Cryogenic",
+   "Difficult-to-cut",
+   "Tool wear",
+   "Thermal effect"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Cryogenic Machining of Tantalum"
+ },
+ "2018_PCIRP_Olsson_Surface roughness and sub-surface deformation measurements in machining of niobium.pdf": {
+  "labels": [
+   "Turning",
+   "BUE",
+   "Burr",
+   "Adhesion",
+   "Surface defect",
+   "Subsurface damage"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Surface roughness and sub-surface deformation measurements in machining of niobium"
  }
 }
