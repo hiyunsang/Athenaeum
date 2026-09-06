@@ -960,15 +960,43 @@ def _comment_by_id(doc, cid):
     return None
 
 
+def _anchor_paragraph(node, key, anchor):
+    """절 본문(빈 줄로 나뉜 문단들) 중 주석 구절이 든 문단의 (번호, 본문). 못 찾으면 (-1, 절 전체)."""
+    text = node.get(key) or ""
+    paras = [x for x in re.split(r"\n\s*\n", text) if x.strip()]
+    a = _norm_ws(anchor).lower()
+    if len(paras) <= 1 or len(a) < 6:
+        return -1, text
+    for probe in (a[:80], a[:30]):
+        for i, ptxt in enumerate(paras):
+            if probe in _norm_ws(ptxt).lower():
+                return i, ptxt
+    words = _tokens(a).split()
+    if len(words) >= 4:
+        wins = [" ".join(words[i:i + 4]) for i in range(len(words) - 3)]
+        best, best_hits = -1, 0
+        for i, ptxt in enumerate(paras):
+            body = _tokens(ptxt)
+            hits = sum(1 for w in wins if w in body)
+            if hits > best_hits:
+                best, best_hits = i, hits
+        if best >= 0 and best_hits >= max(1, int(len(wins) * 0.3)):
+            return best, paras[best]
+    return -1, text
+
+
 def _feedback_context(doc, c):
     node = _comment_node(doc, c)
-    para = (node.get("draft") or node.get("draft_en") or "") if node else ""
+    para = ""
+    if node:
+        key = "draft" if node.get("draft") else "draft_en"
+        _, para = _anchor_paragraph(node, key, c.get("anchor", ""))
     same = [x for x in doc.get("comments", []) if x is not c and _norm_ws(x.get("anchor")) and _norm_ws(x.get("anchor")) == _norm_ws(c.get("anchor"))]
     lines = ["논문 제목: %s" % doc.get("title", ""), "투고 저널: %s" % (doc.get("meta", {}).get("journal") or "미정")]
     if node:
         lines.append("절: %s" % node.get("heading", ""))
     lines += ["", "[주석이 달린 구절]", _norm_ws(c.get("anchor")) or "(구절 표시 없음 - 그림·표·전체에 대한 지적일 수 있음)",
-              "", "[해당 문단 전체]", para[:4000] or "(문단을 찾지 못함)",
+              "", "[해당 문단]", para[:4000] or "(문단을 찾지 못함)",
               "", "[주석] %s (%s): %s" % (c.get("author"), c.get("date"), _norm_ws(c.get("text")))]
     for x in same:
         lines.append("[같은 구절의 다른 주석] %s (%s): %s" % (x.get("author"), x.get("date"), _norm_ws(x.get("text"))))
@@ -1020,21 +1048,26 @@ def revise_for_feedback(doc, cid, note=""):
     if not node:
         return {"error": "이 주석이 달린 문단을 찾지 못했습니다 (그림·표에 대한 지적일 수 있습니다)"}
     key = "draft" if node.get("draft") else "draft_en"
-    para = node.get(key, "")
-    lang_en = doc.get("meta", {}).get("lang") == "en" or (para and sum(1 for ch in para if ord(ch) < 128) > len(para) * 0.8)
+    pidx, para = _anchor_paragraph(node, key, c.get("anchor", ""))
+    whole = node.get(key, "")
+    lang_en = doc.get("meta", {}).get("lang") == "en" or (bool(para) and sum(1 for ch in para if ord(ch) < 128) > len(para) * 0.8)
     hist = _thread_text(c, 6)
-    prompt = ("당신은 기계가공 분야 국제 저널 논문의 공저자다. 아래 주석을 반영해 '해당 문단 전체'를 고쳐 써라.\n"
-              "규칙:\n- 문단은 %s로. 지적과 무관한 문장은 최대한 그대로 둔다.\n"
+    prompt = ("당신은 기계가공 분야 국제 저널 논문의 공저자다. 아래 주석을 반영해 '[해당 문단]' 하나를 고쳐 써라.\n"
+              "규칙:\n- 문단은 %s로. 지적과 무관한 문장은 그대로 둔다. [해당 문단] 만 다루고 절의 다른 문단은 쓰지 마라.\n"
               "- 원고에 없는 수치·결과를 지어내지 마라. 필요한 데이터가 없으면 그 자리에 %s 처럼 표시한다.\n"
+              "- 지적과 무관한 수치는 절대 바꾸지 마라. 수치가 서로 안 맞는 것을 발견하면 고치지 말고 문단 끝에 %s 처럼 한 줄로만 적어라.\n"
               "- 논의에서 정해진 방향이 있으면 그것을 따른다. 카드 번호 [cN] 이 있으면 그대로 둔다.\n- 고친 문단만 출력. 설명·제목·따옴표 금지.\n\n"
               % ("영어 학술 문체" if lang_en else "한국어 학술 문체",
-                 "(DATA NEEDED: repetitions per condition)" if lang_en else "(데이터 필요: 조건별 반복 수)")
-              + ctx + (("\n\n[논의 요약]\n" + hist) if hist else "") + (("\n\n[추가 지시]\n" + note) if note else ""))
+                 "(DATA NEEDED: repetitions per condition)" if lang_en else "(데이터 필요: 조건별 반복 수)",
+                 "(CHECK: 104 µm vs 0.8h₀ inconsistent)" if lang_en else "(확인: 104 µm 와 0.8h₀ 가 서로 안 맞음)")
+              + ctx + (("\n\n[절의 나머지 문단 - 참고만, 다시 쓰지 말 것]\n" + whole[:3000]) if pidx >= 0 else "")
+              + (("\n\n[논의 요약]\n" + hist) if hist else "") + (("\n\n[추가 지시]\n" + note) if note else ""))
     out = (cfg["claude"](prompt, timeout=300) or "").strip()
     out = re.sub(r"^```[a-z]*\n|\n```$", "", out).strip()
     if not out:
         return {"error": "Claude 응답이 없습니다"}
-    return {"text": out, "node": node["id"], "key": key, "before": para}
+    # before = 바꿔 넣을 대상 문단 (절 전체가 아님). 화면은 이 문단만 치환한다.
+    return {"text": out, "node": node["id"], "key": key, "before": para, "para_index": pidx, "partial": pidx >= 0}
 
 
 def feedback_plan(doc):

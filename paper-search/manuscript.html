@@ -533,7 +533,7 @@ function planHtml(pl) {
 function threadHtml(c) {
   let h = "<div style='margin-top:6px'>" + (c.thread || []).map(m => "<div class='fbmsg " + m.role + "'>" + (m.role === "user" ? "<b>나:</b> " : "") + fbFmt(m.text) + "</div>").join("");
   if (fbProposal && String(fbProposal.cid) === String(c.id))
-    h += "<div class='fbprop'><div class='hint' style='margin-bottom:4px'>고쳐 본 문단 (" + (fbProposal.key === "draft_en" ? "영문" : "초안") + ") · 반영하면 지금 문단을 덮어씁니다</div>" + esc(fbProposal.text) +
+    h += "<div class='fbprop'><div class='hint' style='margin-bottom:4px'>고쳐 본 문단 (" + (fbProposal.key === "draft_en" ? "영문" : "초안") + ") · " + (fbProposal.partial ? "반영하면 지적이 달린 그 문단만 바뀝니다" : "반영하면 이 절의 글 전체가 바뀝니다") + "</div>" + esc(fbProposal.text) +
       "<div class='acts' style='margin-top:6px'><button class='btn pri' data-apply='" + esc(c.id) + "'>초안에 반영</button><button class='btn' data-dismiss='" + esc(c.id) + "'>닫기</button></div></div>";
   h += "<div class='fbq'><input id='fbQ-" + esc(c.id) + "' placeholder='이어서 질문·지시 (예: 2번 방안으로 가면 어떤 문장이 필요해?)'><button class='btn' data-ask='" + esc(c.id) + "'>보내기</button></div></div>";
   return h;
@@ -568,8 +568,17 @@ function renderNotes() {
   el.querySelectorAll(".fbq input").forEach(inp => inp.onkeydown = e => { if (e.key === "Enter" && inp.value.trim()) fbDiscuss(inp.id.slice(4), inp.value.trim()); });
   el.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => {
     const nn = node(fbProposal.node); if (!nn) return;
-    if (!confirm("지금 문단을 고쳐 본 안으로 덮어씁니다. 계속할까요? (이전 글은 판 이력에 남습니다)")) return;
-    nn[fbProposal.key] = fbProposal.text; if (nn.status === "todo") nn.status = "drafted"; fbProposal = null; save(true); renderAll();
+    const cur0 = nn[fbProposal.key] || "";
+    if (fbProposal.partial) {
+      // 절 안의 그 문단만 바꿔 넣는다. (사이에 문단이 고쳐져 못 찾으면 전체 덮어쓰기 대신 중단)
+      if (!cur0.includes(fbProposal.before)) { alert("그 사이 문단이 바뀌어 자리를 찾지 못했습니다. 「문단 고쳐 보기」를 다시 눌러 주세요."); return; }
+      if (!confirm("지적이 달린 문단 하나를 고쳐 본 안으로 바꿉니다. 절의 다른 문단은 그대로입니다. 계속할까요?")) return;
+      nn[fbProposal.key] = cur0.replace(fbProposal.before, fbProposal.text);
+    } else {
+      if (!confirm("이 절의 글 전체를 고쳐 본 안으로 덮어씁니다. 계속할까요? (이전 글은 판 이력에 남습니다)")) return;
+      nn[fbProposal.key] = fbProposal.text;
+    }
+    if (nn.status === "todo") nn.status = "drafted"; fbProposal = null; save(true); renderAll();
   });
   el.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => { fbProposal = null; renderNotes(); });
   el.querySelectorAll(".fbReply").forEach(t => { autogrow(t); t.oninput = () => { cById(t.dataset.cid).reply = t.value; save(); }; });
