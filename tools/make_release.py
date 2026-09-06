@@ -95,9 +95,11 @@ def main():
     for f in ("README.md", "Athenaeum 사용법.md", "LICENSE", "LICENSE.md", "LICENSE.txt"):
         if os.path.exists(os.path.join(ROOT, f)):
             shutil.copy2(os.path.join(ROOT, f), os.path.join(OUT, f))
-    # 4) 맨 위 실행 파일
-    io.open(os.path.join(OUT, "Athenaeum 실행.bat"), "w", encoding="utf-8", newline="\r\n").write(
-        '@echo off\r\ncall "%~dp0paper-search\\Athenaeum_실행.bat"\r\n')
+    # 4) 맨 위 실행 파일. 배치 파일은 시스템 코드페이지로 읽히므로 내용은 ASCII 만 (한글 파일명을 안에 적으면 다른 컴퓨터에서 못 찾음).
+    #    안쪽 bat 을 ASCII 이름 run.bat 으로도 복사해 두고 그것을 부른다.
+    shutil.copy2(os.path.join(dst_src, "Athenaeum_실행.bat"), os.path.join(dst_src, "run.bat"))
+    with open(os.path.join(OUT, "Athenaeum 실행.bat"), "wb") as f:
+        f.write(b'@echo off\r\nrem Athenaeum launcher (portable). Calls paper-search\\run.bat (ASCII name so any code page works).\r\ncall "%~dp0paper-search\\run.bat"\r\n')
     io.open(os.path.join(OUT, "처음 읽어 주세요.txt"), "w", encoding="utf-8-sig").write(
         "Athenaeum 포터블판\n\n"
         "1. Claude Code 를 설치하고 터미널에서  claude  →  /login  으로 한 번 로그인하세요 (요약·번역·검토가 이 로그인을 씁니다).\n"
