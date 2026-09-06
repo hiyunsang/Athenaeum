@@ -461,11 +461,58 @@ def unique_path(directory, filename):
         n += 1
 
 
+PII_RE = re.compile(r"(S\d{16})")   # Elsevier 파일명 1-s2.0-S1526612502701382-main.pdf 의 PII
+
+
+def pii_dois(pdf_path):
+    """DOI 가 본문에 인쇄되지 않은 옛 Elsevier 논문: 파일명의 PII 로 DOI 를 추정하고 Crossref alternative-id 로도 찾는다."""
+    m = PII_RE.search(os.path.basename(pdf_path))
+    if not m:
+        return []
+    pii = m.group(1)
+    out = ["10.1016/%s-%s(%s)%s-%s" % (pii[:5], pii[5:9], pii[9:11], pii[11:16], pii[16])]   # S1526-6125(02)70138-2 꼴
+    try:
+        r = requests.get("https://api.crossref.org/works", params={"filter": "alternative-id:" + pii, "rows": "2"},
+                         headers={"User-Agent": "athenaeum-intake/1.0"}, timeout=20)
+        if r.status_code == 200:
+            for it in r.json()["message"].get("items", []):
+                if it.get("DOI") and it["DOI"] not in out:
+                    out.append(it["DOI"])
+    except requests.RequestException:
+        pass
+    return out
+
+
+def search_by_text(page_text):
+    """최후 수단 2: 첫 쪽 본문(초록 앞부분)의 문장으로 Crossref 검색 후 제목 대조. 파일명이 1-s2.0-… 처럼 무의미할 때."""
+    words = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", page_text[:3000])
+    if len(words) < 25:
+        return None
+    # 앞쪽 40 낱말 (초록 첫 두 문장 정도) 로 검색
+    q = " ".join(words[:40])
+    try:
+        r = requests.get("https://api.crossref.org/works", params={"query.bibliographic": q, "rows": "3"},
+                         headers={"User-Agent": "athenaeum-intake/1.0"}, timeout=25)
+        r.raise_for_status()
+    except requests.RequestException:
+        return None
+    for item in r.json()["message"].get("items", []):
+        meta = parse_message(item)
+        if meta["title"] and title_matches(meta["title"], page_text):
+            return meta
+    return None
+
+
 def resolve_meta(pdf_path):
-    """PDF에서 DOI를 찾아 서지정보를 얻는다. 실패하면 None. (서버의 라벨링·관련맵도 이 함수를 같이 쓴다)"""
+    """PDF에서 DOI를 찾아 서지정보를 얻는다. 실패하면 None. (서버의 라벨링·관련맵도 이 함수를 같이 쓴다)
+    순서: 본문 DOI → 파일명 PII(Elsevier) → 파일명 낱말 검색 → 첫 쪽 문장 검색. 모두 제목 대조를 통과해야 채택."""
     candidates, page_text = extract_doi_candidates(pdf_path)
     if not candidates:
-        return None
+        candidates = pii_dois(pdf_path)
+    if not candidates:
+        if not page_text.strip():
+            return None   # 글자가 없는 스캔본: 검색할 실마리가 없음
+        return search_by_filename(pdf_path, page_text) or search_by_text(page_text)
     meta = None
     attempts = 0
     for doi in candidates:
@@ -482,8 +529,8 @@ def resolve_meta(pdf_path):
         if meta:
             break
     if meta is None:
-        # DOI 경로가 다 실패했을 때만 파일명 검색 시도 (DOI가 있는 문서 = 논문일 확률 높음)
-        meta = search_by_filename(pdf_path, page_text)
+        # DOI 경로가 다 실패했을 때만 파일명·본문 검색 시도 (DOI가 있는 문서 = 논문일 확률 높음)
+        meta = search_by_filename(pdf_path, page_text) or search_by_text(page_text)
     return meta
 
 
@@ -650,7 +697,8 @@ def scan_once(cfg, skipped, retries, size_history, hash_index, cooldown):
 # ====================== 서버 안에서 돌리기 (Athenaeum 홈 화면 '수집' 패널) ======================
 
 _state = {"enabled": True, "alive": False, "waiting_lock": False, "error": "", "last_scan": 0, "started": 0,
-          "events": collections.deque(maxlen=400)}
+          "events": collections.deque(maxlen=400), "skipped_n": 0}
+_watch = {"skipped": set(), "skip_cache": {}, "retries": {}, "size_history": {}, "cooldown": {}, "hash_index": {}, "reset_skips": False}
 _cfg = None
 _lock_sock = None
 
@@ -789,7 +837,8 @@ def _run():
             time.sleep(15)
     _state["waiting_lock"] = False
     skipped, skip_cache = _load_skips()
-    state = {"skipped": skipped, "retries": {}, "size_history": {}, "cooldown": {}}
+    state = _watch
+    state["skipped"], state["skip_cache"] = skipped, skip_cache
     try:
         state["hash_index"] = build_hash_index(cfg.target_dir)
     except Exception:
@@ -799,12 +848,23 @@ def _run():
     while True:
         try:
             cfg.reload_if_changed()   # 정지 중에도 파일 편집은 바로 반영 (화면의 설정 폼이 옛 값을 보이지 않게)
+            if state["reset_skips"]:
+                # '건너뛴 파일 다시 검사': 논문 아님으로 판정했던 파일들을 잊고 다음 훑기에서 다시 본다 (새 규칙이 생겼을 때)
+                state["reset_skips"] = False
+                state["skipped"].clear(); state["skip_cache"].clear(); state["retries"].clear(); state["cooldown"].clear()
+                try:
+                    if os.path.exists(SKIP_PATH):
+                        os.remove(SKIP_PATH)
+                except OSError:
+                    pass
+                log("건너뛴 파일 목록을 지우고 다운로드 폴더를 다시 검사합니다")
             if _state["enabled"]:
                 scan_once(cfg, state["skipped"], state["retries"], state["size_history"], state["hash_index"], state["cooldown"])
                 scan_tree_once(cfg, state["size_history"], state["hash_index"], state["cooldown"])
-                _save_skips(state["skipped"], skip_cache)
+                _save_skips(state["skipped"], state["skip_cache"])
                 _state["last_scan"] = time.time()
                 _state["error"] = ""
+                _state["skipped_n"] = len(state["skipped"])
         except Exception as e:
             _state["error"] = str(e)[:200]
         try:
@@ -830,7 +890,7 @@ def view():
             "watch": cfg.watch_dir, "target": cfg.target_dir, "interval": cfg.interval,
             "config": cfg.public(), "config_path": CONFIG_PATH, "log_path": LOG_PATH,
             "today": {k: _today[k] for k in ("done", "dup", "skip", "fail")},
-            "events": ev[:150]}
+            "skipped_n": _state.get("skipped_n", 0), "events": ev[:150]}
 
 
 def control(body):
@@ -846,6 +906,10 @@ def control(body):
     elif op == "scan":
         _state["enabled"] = True
         _wake.set()   # 감시 스레드를 바로 깨워 즉시 한 번 돈다
+    elif op == "retry_skipped":
+        _watch["reset_skips"] = True
+        _state["enabled"] = True
+        _wake.set()
     elif op == "open_log":
         try:
             os.startfile(LOG_PATH)

@@ -178,7 +178,7 @@ function renderIntake() {
   const state = d.waiting_lock ? "⚠ 예전 수집 프로그램이 따로 돌고 있어 대기 중 (그 프로그램을 끄면 이어서 감시)" : d.alive ? (d.enabled ? "감시 중 · " + last : "일시 정지") : (d.error || "시작 중…");
   intakePanel.querySelector("#intakeMain").innerHTML =
     "<div class='sec' style='display:flex;gap:8px;align-items:baseline'><b>논문 수집</b><span class='hint'>" + escH(state) + "</span><span style='margin-left:auto'></span>" +
-    "<button class='btn act' data-op='" + (d.enabled ? "pause" : "resume") + "'>" + (d.enabled ? "일시 정지" : "재개") + "</button><button class='btn act' data-op='scan'>지금 검사</button><button class='btn act' data-op='open_watch'>다운로드 폴더</button><button class='btn act' data-op='open_log' title='" + escH(d.log_path || "") + "'>기록 파일</button></div>" +
+    "<button class='btn act' data-op='" + (d.enabled ? "pause" : "resume") + "'>" + (d.enabled ? "일시 정지" : "재개") + "</button><button class='btn act' data-op='scan'>지금 검사</button><button class='btn act' data-op='retry_skipped' title='논문이 아니라고 판정해 건너뛴 파일(" + (d.skipped_n || 0) + "개)을 잊고 다시 검사합니다. 판정 규칙이 새로 생겼을 때'>건너뛴 파일 다시 검사</button><button class='btn act' data-op='open_watch'>다운로드 폴더</button><button class='btn act' data-op='open_log' title='" + escH(d.log_path || "") + "'>기록 파일</button></div>" +
     "<div class='hint' style='margin:2px 0 6px'>" + escH(d.watch) + " → " + escH(d.target) + " · " + d.interval + "초마다 · 오늘 정리 " + d.today.done + " · 중복 " + d.today.dup + " · 건너뜀 " + d.today.skip + (d.today.fail ? " · 실패 " + d.today.fail : "") + "</div>" +
     (d.error ? "<div class='hint' style='color:var(--red)'>오류: " + escH(d.error) + "</div>" : "") +
     (d.events.filter(e => e.kind !== "skip" || d.events.length < 30).slice(0, 60).map(e => {
