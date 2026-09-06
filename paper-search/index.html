@@ -44,6 +44,11 @@
   .irow.done .im { color: var(--text); } .irow.done .ik { color: var(--green); }
   .irow.dup .ik { color: var(--amber); } .irow.fail .ik, .irow.locked .ik { color: var(--red); } .irow.skip .im { color: var(--text-3); }
   .irow .ik { white-space: nowrap; font-weight: 600; }
+  /* 라벨 체계 편집 */
+  .taxbar { display: flex; gap: 8px; align-items: baseline; padding: 6px var(--s3) 2px; font-size: 11px; flex-wrap: wrap; }
+  .tx { color: var(--text-quiet); cursor: pointer; font-size: 11px; margin-left: 6px; white-space: nowrap; } .tx:hover { color: var(--accent); text-decoration: underline; }
+  .group h3 .tx, .mparent .tx { font-weight: 400; }
+  .newdot { color: var(--amber); font-size: 8px; margin-left: 4px; vertical-align: 1px; font-style: normal; }
   .iset { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
   .iset summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
   .iset label { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; margin: 6px 0; font-size: 12px; color: var(--text-2); }
@@ -357,11 +362,28 @@ function render() {
     ? cur.length
     : cur.filter(p => paperLabels(p).includes(lb)).length;
 
-  for (const [gname, labels] of Object.entries(groups)) {
+  const tx = document.createElement("div"); tx.className = "taxbar";
+  tx.innerHTML = "<span class='tx' id='taxToggle'>" + (editTax ? "체계 편집 끝내기" : "체계 편집") + "</span>" + (editTax ? "<span class='tx' id='taxAddGroup'>+ 묶음</span>" : "") +
+    (Object.keys(taxMeta().새라벨 || {}).length ? "<span class='hint' style='padding:0'>· 자동 추가된 라벨 " + Object.keys(taxMeta().새라벨).length + "개 <i class='newdot'>●</i>" + (editTax ? " <span class='tx' id='taxForget'>표시 지우기</span>" : "") + "</span>" : "");
+  side.appendChild(tx);
+  tx.querySelector("#taxToggle").onclick = () => { editTax = !editTax; render(); };
+  const ag = tx.querySelector("#taxAddGroup"); if (ag) ag.onclick = async () => { const n = askName("새 묶음 이름 (예: 코팅, 윤활):", ""); if (n) await taxOp({ op: "add_group", group: n }); };
+  const fg = tx.querySelector("#taxForget"); if (fg) fg.onclick = () => taxOp({ op: "forget_new" });
+  const gl = labelGroups(); const fixed = taxMeta().고정 || [];
+  for (const [gi, [gname, labels]] of gl.entries()) {
     const g = document.createElement("div"); g.className = "group";
     const h = document.createElement("h3"); h.textContent = gname; g.appendChild(h);
-    if (gname === "재료") {
-      const assigned = new Set(MATERIAL_TREE.flatMap(treeLeaves));
+    if (editTax && !fixed.includes(gname)) {
+      h.appendChild(taxBtn("+라벨", "이 묶음에 라벨 추가", async () => { const n = askName("추가할 라벨 (영어, 예: Copper):", ""); if (n) await taxOp({ op: "add_label", group: gname, label: n }); }));
+      h.appendChild(taxBtn("+분류", "접히는 하위 분류 추가 (예: 금속)", async () => { const n = askName("하위 분류 이름:", ""); if (n) await taxOp({ op: "add_subgroup", group: gname, name: n }); }));
+      h.appendChild(taxBtn("이름", "묶음 이름 바꾸기", async () => { const n = askName("새 묶음 이름:", gname); if (n && n !== gname) await taxOp({ op: "rename_group", group: gname, new: n }); }));
+      if (gi > 0) h.appendChild(taxBtn("↑", "위로", () => { const o = gl.map(x => x[0]); [o[gi - 1], o[gi]] = [o[gi], o[gi - 1]]; taxOp({ op: "reorder_groups", order: o }); }));
+      if (gi < gl.length - 1) h.appendChild(taxBtn("↓", "아래로", () => { const o = gl.map(x => x[0]); [o[gi + 1], o[gi]] = [o[gi], o[gi + 1]]; taxOp({ op: "reorder_groups", order: o }); }));
+      if (!labels.length) h.appendChild(taxBtn("✕", "빈 묶음 삭제", () => taxOp({ op: "delete_group", group: gname })));
+    } else if (editTax) { const f = document.createElement("span"); f.className = "hint"; f.style.padding = "0 0 0 6px"; f.textContent = "고정"; h.appendChild(f); }
+    const tree = (taxMeta().트리 || {})[gname];
+    if (tree && tree.length) {
+      const assigned = new Set(tree.flatMap(treeLeaves));
       const extras = labels.filter(lb => !assigned.has(lb));
       const known = new Set(labels.concat(extras));
       const renderNode = (node, depth) => {
@@ -376,17 +398,23 @@ function render() {
         const leaves = kids.flatMap(treeLeaves).filter(k => known.has(k));
         if (!leaves.length) return;
         const pcount = cur.filter(p => leaves.some(k => paperLabels(p).includes(k))).length;
-        const open = matOpen[node.name] || leaves.some(k => selected.includes(k));
+        const open = editTax || matOpen[gname + "/" + node.name] || leaves.some(k => selected.includes(k));
         const ph = document.createElement("div");
         ph.className = "mparent";
         ph.style.marginLeft = (depth * 16) + "px";
         ph.innerHTML = "<span>" + (open ? "▾ " : "▸ ") + node.name + "</span><span class='n'>" + pcount + "</span>";
-        ph.onclick = () => { matOpen[node.name] = !open; render(); };
+        if (editTax) {
+          ph.appendChild(taxBtn("+라벨", "이 분류에 라벨 추가", async () => { const n = askName("'" + node.name + "' 에 추가할 라벨:", ""); if (n) await taxOp({ op: "add_label", group: gname, label: n, parent: node.name }); }));
+          ph.appendChild(taxBtn("+분류", "이 분류 아래 하위 분류", async () => { const n = askName("하위 분류 이름:", ""); if (n) await taxOp({ op: "add_subgroup", group: gname, name: n, parent: node.name }); }));
+          ph.appendChild(taxBtn("이름", "분류 이름 바꾸기", async () => { const n = askName("새 이름:", node.name); if (n && n !== node.name) await taxOp({ op: "rename_subgroup", group: gname, name: node.name, new: n }); }));
+          ph.appendChild(taxBtn("✕", "분류만 없애기 (라벨은 위로 올라감)", () => taxOp({ op: "delete_subgroup", group: gname, name: node.name })));
+        }
+        ph.onclick = () => { if (editTax) return; matOpen[gname + "/" + node.name] = !open; render(); };
         g.appendChild(ph);
         if (open) for (const k of kids) renderNode(k, depth + 1);
       };
-      for (const node of MATERIAL_TREE) renderNode(node, 0);
-      for (const lb of extras) renderNode(lb, 0);  // 아직 분류 안 된 새 재료
+      for (const node of tree) renderNode(node, 0);
+      for (const lb of extras) renderNode(lb, 0);  // 아직 분류 안 된 라벨 (Claude 가 새로 추가한 것 등)
     } else {
       for (const lb of labels) g.appendChild(labelRow(lb, cnt(lb)));
     }
@@ -446,17 +474,19 @@ function render() {
 const polling = {};
 const stages = {};
 
-// 재료 라벨의 계층 분류 (문자열 = 라벨, {name, kids} = 접히는 분류. 몇 단이든 가능)
-// 여기 없는 새 재료 라벨은 자동으로 '기타'에 들어감
-const MATERIAL_TREE = [
-  { name: "금속", kids: ["Aluminum", "Al6061", "Copper", "Titanium", "Ti6Al4V", "Steel",
-    "AISI 1045", "Stainless steel", "SUS304", "Nickel-based alloy", "Inconel 718", "Tantalum"] },
-  { name: "세라믹", kids: [
-      { name: "Soft-brittle", kids: ["Soft-brittle", "ZnSe", "KDP", "CaF2", "Germanium"] },
-      "Silicon", "Sapphire", "Glass", "Ceramic"] },
-  "Composite"
-];
-let matOpen = {};
+// 라벨 체계는 labels.json 에서 온다. 묶음별 하위 분류 트리는 groups["_체계"].트리 (문자열 = 라벨, {name, kids} = 접히는 분류, 몇 단이든).
+// 트리에 없는 라벨은 묶음 맨 아래에 그대로 놓인다. 사이드바 '체계 편집' 으로 묶음·분류·라벨을 고칠 수 있고, Claude 가 새 재료 등을 만나면 알아서 추가한다.
+const labelGroups = () => Object.entries(groups).filter(([g, v]) => !g.startsWith("_") && Array.isArray(v));
+const taxMeta = () => groups["_체계"] || { 고정: ["유형"], 트리: {}, 새라벨: {} };
+let matOpen = {}, editTax = false;
+async function taxOp(body) {
+  const r = await (await fetch("/api/labels", { method: "POST", body: JSON.stringify(body) })).json();
+  if (r.groups) groups = r.groups;
+  render();
+}
+const isNewLabel = lb => { const n = (taxMeta().새라벨 || {})[lb]; return n && (Date.now() / 1000 - n.t) < 14 * 86400 ? n : null; };
+const askName = (msg, v) => { const t = prompt(msg, v || ""); return t === null ? null : t.trim(); };
+function taxBtn(txt, title, fn) { const b = document.createElement("span"); b.className = "tx"; b.textContent = txt; b.title = title; b.onclick = e => { e.stopPropagation(); fn(); }; return b; }
 
 function treeLeaves(node) {
   return typeof node === "string" ? [node] : node.kids.flatMap(treeLeaves);
@@ -465,8 +495,15 @@ function treeLeaves(node) {
 function labelRow(lb, cnt) {
   const el = document.createElement("div");
   el.className = "lbl" + (selected.includes(lb) ? " on" : "") + (cnt === 0 ? " zero" : "");
-  el.innerHTML = "<span>" + lb + "</span><span class='n'>" + cnt + "</span>";
+  const nw = isNewLabel(lb);
+  el.innerHTML = "<span>" + lb + (nw ? "<i class='newdot' title='" + (nw.paper ? "Claude 가 자동 추가 · " + nw.paper.replace(/'/g, "") : "새 라벨") + "'>●</i>" : "") + "</span><span class='n'>" + cnt + "</span>";
+  if (editTax) {
+    el.appendChild(taxBtn("이동", "다른 묶음/분류로 옮기기", async () => { const to = askName("옮길 묶음 (하위 분류는 '재료/금속' 처럼):", ""); if (!to) return; const [g, parent] = to.split("/").map(x => x.trim()); await taxOp({ op: "move_label", label: lb, group: g, parent: parent || "" }); }));
+    el.appendChild(taxBtn("이름", "라벨 이름 바꾸기 (모든 논문에 반영)", async () => { const nn = askName("새 이름:", lb); if (nn && nn !== lb) await taxOp({ op: "rename_label", label: lb, new: nn }); }));
+    el.appendChild(taxBtn("✕", "라벨 삭제 (논문에서도 떼어짐)", async () => { const n = papers.filter(p => paperLabels(p).includes(lb)).length; if (confirm("라벨 '" + lb + "' 을 체계에서 지우고 논문 " + n + "편에서 뗍니다. 계속?")) await taxOp({ op: "delete_label", label: lb }); }));
+  }
   el.onclick = () => {
+    if (editTax) return;
     if (selected.includes(lb)) selected = selected.filter(v => v !== lb);
     else if (cnt > 0) selected.push(lb);
     else return;
@@ -680,7 +717,7 @@ function renderDrawer() {
   const hint = document.createElement("div"); hint.className = "hint";
   hint.textContent = "클릭: 라벨 켜고 끄기 · 노란 점선(제안)은 클릭하면 확정, ✕로 제거";
   d.appendChild(hint);
-  for (const [gname, labels] of Object.entries(groups)) {
+  for (const [gname, labels] of labelGroups()) {
     const g = document.createElement("div"); g.className = "group";
     const h3 = document.createElement("h3"); h3.textContent = gname; g.appendChild(h3);
     for (const lb of labels) {
@@ -716,8 +753,8 @@ function renderDrawer() {
     inp.onkeydown = async (e) => {
       if (e.key !== "Enter" || !inp.value.trim()) return;
       const label = inp.value.trim();
-      await fetch("/api/labels", { method: "POST", body: JSON.stringify({ group: gname, label }) });
-      if (!groups[gname].includes(label)) groups[gname].push(label);
+      const rr = await (await fetch("/api/labels", { method: "POST", body: JSON.stringify({ op: "add_label", group: gname, label }) })).json();
+      if (rr.groups) groups = rr.groups; else if (!groups[gname].includes(label)) groups[gname].push(label);
       p.labels.push(label);
       await saveTags(p); render();
     };

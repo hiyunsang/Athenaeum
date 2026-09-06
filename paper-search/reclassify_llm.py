@@ -6,7 +6,7 @@
 - 사용자가 거부(rejected)한 라벨은 절대 다시 안 붙임
 서버(localhost:8770)가 켜져 있어야 함. 결과는 API로 저장.
 """
-import json
+import json, os
 import sys
 import threading
 import urllib.request
@@ -17,7 +17,7 @@ import server as sv
 import rules
 
 BASE = "http://localhost:8770"
-groups = json.load(open(r"C:\Users\PC1\Documents\MAENG_paper\paper-search\labels.json", encoding="utf-8"))
+groups = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "labels.json"), encoding="utf-8"))
 texts = json.load(open(r"C:\Users\PC1\Documents\MAENG_paper\paper-search\text_index.json", encoding="utf-8"))
 papers = json.load(urllib.request.urlopen(BASE + "/api/data"))["papers"]
 

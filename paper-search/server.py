@@ -18,10 +18,197 @@ sys.path.insert(0, BASE)
 import rules
 import intake   # 논문 수집 (다운로드 폴더 감시 → Crossref → 보관). 예전 paper-organizer 를 이 폴더로 합친 것
 
-ARCHIVE = r"C:\Users\PC1\Documents\MAENG_paper\논문모음"
+ARCHIVE = os.path.join(os.path.dirname(BASE), "논문모음")   # 저장소 루트\논문모음 (배포용: 어느 폴더에 두어도 동작)
 PORT = 8770
 TAGS_PATH = os.path.join(BASE, "tags.json")
 LABELS_PATH = os.path.join(BASE, "labels.json")
+LABEL_META_KEY = "_체계"   # labels.json 의 예약 키: {"고정": [편집 불가 묶음], "트리": {묶음: [라벨 | {"name", "kids"}]}, "새라벨": {라벨: {t, group, parent, paper}}}
+
+
+def label_groups(groups):
+    """labels.json 에서 실제 라벨 묶음만 (예약 키 제외). 순서 유지."""
+    return {g: ls for g, ls in groups.items() if not g.startswith("_") and isinstance(ls, list)}
+
+
+def label_meta(groups):
+    m = groups.get(LABEL_META_KEY)
+    if not isinstance(m, dict):
+        m = {}
+    m.setdefault("고정", ["유형"]); m.setdefault("트리", {}); m.setdefault("새라벨", {})
+    groups[LABEL_META_KEY] = m
+    return m
+
+
+def _tree_find(tree, name):
+    for node in tree:
+        if isinstance(node, dict):
+            if node.get("name") == name:
+                return node
+            hit = _tree_find(node.get("kids", []), name)
+            if hit:
+                return hit
+    return None
+
+
+def _tree_remove_label(tree, label):
+    """트리에서 라벨(문자열)을 모두 지운다."""
+    i = 0
+    while i < len(tree):
+        node = tree[i]
+        if isinstance(node, dict):
+            _tree_remove_label(node.setdefault("kids", []), label); i += 1
+        elif node == label:
+            tree.pop(i)
+        else:
+            i += 1
+
+
+def _tree_names(tree):
+    out = []
+    for node in tree:
+        if isinstance(node, dict):
+            out.append(node.get("name", "")); out += _tree_names(node.get("kids", []))
+    return out
+
+
+def apply_new_labels(items, paper=""):
+    """Claude 가 제안한 새 라벨을 검사해 체계에 넣는다 (묶음이 있어야 하고, 고정 묶음은 제외, 최대 2개). 채택된 라벨 이름 목록."""
+    out = []
+    if not items:
+        return out
+    with _lock:
+        groups = load_json(LABELS_PATH, {}); meta = label_meta(groups); real = label_groups(groups)
+        existing = {l.lower(): l for ls in real.values() for l in ls}
+        changed = False
+        for it in items[:2]:
+            if not isinstance(it, dict):
+                continue
+            name = re.sub(r"\s+", " ", str(it.get("label", ""))).strip(" .,;")
+            g = str(it.get("group", "")).strip(); parent = str(it.get("parent") or "").strip()
+            if not name or len(name) > 30 or not re.match(r"^[A-Za-z0-9][A-Za-z0-9 \-/+.()]*$", name):
+                continue
+            if g not in real or g in meta["고정"]:
+                continue
+            if name.lower() in existing:
+                out.append(existing[name.lower()]); continue
+            groups[g].append(name)
+            tree = meta["트리"].setdefault(g, [])
+            node = _tree_find(tree, parent) if parent else None
+            if node is not None:
+                node.setdefault("kids", []).append(name)
+            meta["새라벨"][name] = {"t": time.time(), "group": g, "parent": parent if node is not None else "", "paper": (paper or "")[:80]}
+            existing[name.lower()] = name; out.append(name); changed = True
+        if changed:
+            save_json(LABELS_PATH, groups)
+    return out
+
+
+def edit_labels(body):
+    """라벨 체계 편집 (홈 사이드바 '체계 편집'). op 없으면 예전 방식(묶음에 라벨 추가). 바뀐 labels.json 전체를 돌려준다."""
+    op = body.get("op") or "add_label"
+    with _lock:
+        groups = load_json(LABELS_PATH, {}); meta = label_meta(groups); real = label_groups(groups)
+        tags = None
+
+        def load_tags():
+            return load_json(TAGS_PATH, {})
+
+        def rename_in_tags(old, new):
+            t = load_tags(); n = 0
+            for e in t.values():
+                for k in ("labels", "suggested", "rejected"):
+                    if old in e.get(k, []):
+                        e[k] = [new if x == old else x for x in e[k]] if new else [x for x in e[k] if x != old]; n += 1
+            save_json(TAGS_PATH, t); return n
+
+        g = (body.get("group") or "").strip(); label = (body.get("label") or "").strip(); parent = (body.get("parent") or "").strip()
+        if op == "add_label":
+            if g in real and label and label not in real[g]:
+                groups[g].append(label)
+                if parent:
+                    node = _tree_find(meta["트리"].setdefault(g, []), parent)
+                    if node is not None:
+                        node.setdefault("kids", []).append(label)
+        elif op == "rename_label":
+            new = (body.get("new") or "").strip()
+            if label and new and new != label:
+                for gg, ls in real.items():
+                    groups[gg] = [new if x == label else x for x in ls]
+                for tr in meta["트리"].values():
+                    def ren(tree):
+                        for i, node in enumerate(tree):
+                            if isinstance(node, dict): ren(node.get("kids", []))
+                            elif node == label: tree[i] = new
+                    ren(tr)
+                if label in meta["새라벨"]:
+                    meta["새라벨"][new] = meta["새라벨"].pop(label)
+                rename_in_tags(label, new)
+        elif op == "delete_label":
+            if label:
+                for gg, ls in real.items():
+                    groups[gg] = [x for x in ls if x != label]
+                for tr in meta["트리"].values():
+                    _tree_remove_label(tr, label)
+                meta["새라벨"].pop(label, None)
+                rename_in_tags(label, None)
+        elif op == "move_label":
+            if label and g in real and g not in meta["고정"]:
+                for gg, ls in real.items():
+                    groups[gg] = [x for x in ls if x != label]
+                for tr in meta["트리"].values():
+                    _tree_remove_label(tr, label)
+                groups[g].append(label)
+                if parent:
+                    node = _tree_find(meta["트리"].setdefault(g, []), parent)
+                    if node is not None:
+                        node.setdefault("kids", []).append(label)
+        elif op == "add_group":
+            if g and g not in groups and not g.startswith("_"):
+                groups[g] = []
+        elif op == "rename_group":
+            new = (body.get("new") or "").strip()
+            if g in real and new and new not in groups and not new.startswith("_"):
+                groups = {(new if k == g else k): v for k, v in groups.items()}
+                meta = label_meta(groups)
+                if g in meta["트리"]:
+                    meta["트리"][new] = meta["트리"].pop(g)
+                meta["고정"] = [new if x == g else x for x in meta["고정"]]
+                for v in meta["새라벨"].values():
+                    if v.get("group") == g: v["group"] = new
+        elif op == "delete_group":
+            if g in real and g not in meta["고정"] and not real[g]:
+                groups.pop(g, None); meta["트리"].pop(g, None)
+        elif op == "reorder_groups":
+            order = [x for x in (body.get("order") or []) if x in real]
+            rest = [x for x in real if x not in order]
+            new_groups = {k: groups[k] for k in order + rest}
+            new_groups[LABEL_META_KEY] = meta
+            groups = new_groups
+        elif op == "add_subgroup":
+            name = (body.get("name") or "").strip()
+            if g in real and name and name not in _tree_names(meta["트리"].setdefault(g, [])):
+                tree = meta["트리"][g]
+                node = _tree_find(tree, parent) if parent else None
+                (node.setdefault("kids", []) if node is not None else tree).append({"name": name, "kids": []})
+        elif op == "rename_subgroup":
+            name = (body.get("name") or "").strip(); new = (body.get("new") or "").strip()
+            node = _tree_find(meta["트리"].get(g, []), name) if g in real else None
+            if node is not None and new:
+                node["name"] = new
+        elif op == "delete_subgroup":
+            name = (body.get("name") or "").strip()
+            def lift(tree):
+                for i, node in enumerate(tree):
+                    if isinstance(node, dict):
+                        if node.get("name") == name:
+                            tree[i:i + 1] = node.get("kids", []); return True
+                        if lift(node.get("kids", [])): return True
+                return False
+            if g in real: lift(meta["트리"].setdefault(g, []))
+        elif op == "forget_new":
+            meta["새라벨"] = {}
+        save_json(LABELS_PATH, groups)
+    return groups
 TEXTS_PATH = os.path.join(BASE, "text_index.json")
 _lock = threading.Lock()
 _texts_cache = None
@@ -756,11 +943,14 @@ def classify_with_claude(title, kw, front, groups):
     exe = find_claude()
     if not exe:
         return None
+    real = label_groups(groups); meta = label_meta(dict(groups))
     lines = []
-    for g, ls in groups.items():
+    for g, ls in real.items():
         anno = [l + (" (주의: " + LABEL_NOTES[l] + ")" if l in LABEL_NOTES else "") for l in ls]
-        lines.append("[" + g + "] " + ", ".join(anno))
+        subs = _tree_names(meta["트리"].get(g, []))
+        lines.append("[" + g + "]" + ((" (하위 분류: " + ", ".join(subs) + ")") if subs else "") + " " + ", ".join(anno))
     catalog = "\n".join(lines)
+    editable = [g for g in real if g not in meta["고정"]]
     prompt = (
         "당신은 기계가공(machining) 분야 논문 분류 전문가다. 아래 논문에 붙일 라벨을 "
         "카탈로그에서 고르라.\n\n규칙:\n"
@@ -770,7 +960,10 @@ def classify_with_claude(title, kw, front, groups):
         "- 서론에서 언급만 한 주제, 비교 대상으로 스친 재료·방법은 절대 넣지 않는다.\n"
         "- 재료 라벨은 논문이 실제로 가공/해석한 재료만. 여러 재료를 모두 실험했다면 모두 포함.\n"
         "- 각 라벨의 (주의: ...) 조건을 반드시 지켜라.\n"
-        "- 답은 JSON 한 줄만: {\"labels\": [{\"label\": \"...\", \"evidence\": \"본문 근거 구절\"}]}\n\n"
+        "- 카탈로그에 없지만 이 논문의 '핵심 대상'인 것(실제로 가공·해석한 재료, 실제로 쓴 공정·방법, 주된 현상)이 있으면 new 에 제안하라. "
+        "조건: 구체적 개념(예: Copper, Inconel 625, Laser-assisted machining), 카탈로그 라벨의 동의어·상위개념·표기 변형이 아닐 것, 영어 단수 Title Case, 최대 2개, "
+        "group 은 " + "/".join(editable) + " 중 하나, parent 는 그 묶음의 하위 분류 이름(있을 때만). 확신이 없으면 제안하지 마라.\n"
+        "- 답은 JSON 한 줄만: {\"labels\": [{\"label\": \"...\", \"evidence\": \"본문 근거 구절\"}], \"new\": [{\"label\": \"...\", \"group\": \"...\", \"parent\": \"\", \"evidence\": \"...\"}]}\n\n"
         "[라벨 카탈로그]\n" + catalog + "\n\n"
         "[논문 제목] " + title + "\n"
         "[저자 키워드] " + (kw or "(없음)") + "\n"
@@ -781,12 +974,17 @@ def classify_with_claude(title, kw, front, groups):
                            input=prompt.encode("utf-8"),
                            capture_output=True, timeout=240, **_no_window())
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
-        items = json.loads(m.group(0))["labels"]
-        valid = set(sum(groups.values(), []))
+        data = json.loads(m.group(0))
+        items = data.get("labels", [])
+        valid = set(sum(real.values(), []))
         picked = []
         for it in items:
             name = it.get("label") if isinstance(it, dict) else it
             if name in valid and name not in picked:
+                picked.append(name)
+        # 새 라벨 제안 → 체계에 추가하고 이 논문에도 붙임 (사용자 결정 2026-09-06: 구리처럼 없던 재료가 나오면 알아서 금속 아래 생기게)
+        for name in apply_new_labels(data.get("new") or [], title):
+            if name not in picked:
                 picked.append(name)
         return picked if picked else None
     except Exception:
@@ -1526,6 +1724,7 @@ def _refresh_new_papers():
             title = new_titles.get(f) or parse_name(f)["title"]
             text = texts.get(f, "")
             # 1순위: Claude가 실제 주제를 판정 / 실패 시 규칙 기반으로 폴백
+            groups = load_json(LABELS_PATH, {})   # 앞 논문 분류가 새 라벨을 추가했을 수 있음
             picked = classify_with_claude(title, rules.keyword_section(text), text[:6000], groups)
             if picked is not None:
                 entry = {"labels": picked, "suggested": [], "rejected": []}
@@ -2118,14 +2317,8 @@ class Handler(BaseHTTPRequestHandler):
                 save_json(TAGS_PATH, tags)
             self._send(200, {"ok": True})
         elif self.path == "/api/labels":
-            group = body.get("group", "")
-            label = (body.get("label") or "").strip()
-            with _lock:
-                groups = load_json(LABELS_PATH, {})
-                if group in groups and label and label not in groups[group]:
-                    groups[group].append(label)
-                    save_json(LABELS_PATH, groups)
-            self._send(200, {"ok": True})
+            # 라벨 체계 편집: op = add_label(기본) | rename_label | delete_label | move_label | add_group | rename_group | delete_group | reorder_groups | add_subgroup | rename_subgroup | delete_subgroup | forget_new
+            self._send(200, {"ok": True, "groups": edit_labels(body)})
         else:
             self._send(404, {"error": "not found"})
 

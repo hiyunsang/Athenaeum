@@ -92,5 +92,52 @@
   "Phase transformation",
   "Material separation",
   "Recrystallization"
- ]
+ ],
+ "_체계": {
+  "고정": [
+   "유형"
+  ],
+  "트리": {
+   "재료": [
+    {
+     "name": "금속",
+     "kids": [
+      "Aluminum",
+      "Al6061",
+      "Copper",
+      "Titanium",
+      "Ti6Al4V",
+      "Steel",
+      "AISI 1045",
+      "Stainless steel",
+      "SUS304",
+      "Nickel-based alloy",
+      "Inconel 718",
+      "Tantalum"
+     ]
+    },
+    {
+     "name": "세라믹",
+     "kids": [
+      {
+       "name": "Soft-brittle",
+       "kids": [
+        "Soft-brittle",
+        "ZnSe",
+        "KDP",
+        "CaF2",
+        "Germanium"
+       ]
+      },
+      "Silicon",
+      "Sapphire",
+      "Glass",
+      "Ceramic"
+     ]
+    },
+    "Composite"
+   ]
+  },
+  "새라벨": {}
+ }
 }
