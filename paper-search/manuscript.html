@@ -83,6 +83,27 @@
   .fbig img { max-width: 100%; max-height: 66vh; object-fit: contain; display: block; }
   .fmeta { display: flex; gap: var(--s3); align-items: baseline; font-size: 12px; color: var(--text-3); margin: var(--s2) 0; flex-wrap: wrap; }
   .fmeta .ctl { margin-left: auto; padding: 0; }
+  /* 원고 모드: 절 제목과 문단이 위에서 아래로 이어지는 큰 편집 화면 (워드처럼 펼쳐 놓고 쓰기) */
+  header > *, header .btn, #modeSeg button { white-space: nowrap; flex-shrink: 0; }
+  header #msSel { flex: 0 1 320px; min-width: 120px; }
+  #modeSeg { display: inline-flex; gap: 0; margin-left: var(--s2); }
+  #modeSeg button.on { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  .docmode .sec-h { font-family: var(--font-serif); font-size: 19px; font-weight: 700; margin: 26px 0 4px; color: var(--text); }
+  .docmode .sec-h.l2 { font-size: 16px; margin-top: 18px; }
+  .docmode .sec-h input.inl { font: inherit; color: var(--text); border-bottom-color: transparent; }
+  .docmode .sec-h input.inl:hover, .docmode .sec-h input.inl:focus { border-bottom-color: var(--line-2); }
+  .docmode textarea.para { width: 100%; border: 0; border-left: 2px solid transparent; border-radius: 0; padding: 4px 10px; font-size: calc(15px * var(--ms-scale, 1)); line-height: 1.85; resize: none; overflow: hidden; background: transparent; min-height: 40px; }
+  .docmode textarea.para:focus { border-left-color: var(--accent); background: var(--sel-bg); outline: none; }
+  .docmode .pm { display: flex; gap: 12px; font-size: 11px; color: var(--text-3); padding: 2px 10px 0; opacity: .55; align-items: center; }
+  .docmode .dsec:hover .pm, .docmode .dsec:focus-within .pm { opacity: 1; }
+  .docmode .pm .st { width: 7px; height: 7px; border-radius: 4px; background: var(--line-2); display: inline-block; }
+  .docmode .pm .st.drafted { background: var(--amber); } .docmode .pm .st.done { background: var(--green); }
+  .docmode .pm a { color: var(--text-quiet); } .docmode .pm a:hover { color: var(--accent); }
+  /* 집중 쓰기: 개요·서랍 숨김, 글만 가운데 */
+  body.focus #outline, body.focus #drawer { display: none; }
+  body.focus #center { padding: 28px 0 80px; }
+  body.focus #editor { max-width: 880px; margin: 0 auto; padding: 0 var(--s4); }
+  #draft { min-height: 420px; overflow: hidden; }
   input.inl:focus { outline: none; border-bottom-color: var(--accent); }
 </style>
 <script src="/ui.js"></script>
@@ -96,6 +117,8 @@
   <button class="btn" id="importMs" title="워드(.docx) 원고를 가져와 개요·문단·그림·참고문헌·주석으로 나눕니다">워드 가져오기</button>
   <input type="file" id="importFile" accept=".docx" style="display:none">
   <select id="journalSel" title="투고 저널 (규격 점검·머리부 생성에 반영)"><option value="">저널 선택…</option><option value="JMPT">JMPT (Elsevier)</option></select>
+  <span id="modeSeg"><button class="btn" data-m="para" onclick="setMode('para')" title="주장·근거 카드·초안·검토를 문단 하나씩">문단 모드</button><button class="btn" data-m="doc" onclick="setMode('doc')" title="전체 원고를 펼쳐 놓고 이어서 쓰기">원고 모드</button></span>
+  <button class="btn" id="focusBtn" onclick="toggleFocus()" title="개요·서랍을 숨기고 글에만 집중 (다시 누르면 복귀)">집중</button>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
   <span class="sp" id="saveState"></span>
@@ -238,7 +261,55 @@ $("reviewBtn").onclick = async () => {
 };
 
 // ---------- 가운데: 문단 편집 ----------
+// ---------- 원고 모드 (전체 연속 편집) ----------
+let msMode = localStorage.getItem("ms_mode") || "para";
+function setMode(m) {
+  msMode = m; localStorage.setItem("ms_mode", m);
+  document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  if (doc) { if (m === "doc" && activeTab() === "figs") switchTab("cards"); renderEditor(); }
+}
+function toggleFocus() { const on = document.body.classList.toggle("focus"); localStorage.setItem("ms_focus", on ? "1" : "0"); $("focusBtn").classList.toggle("pri", on); setTimeout(refitAll, 30); }
+function autogrow(el) {
+  if (!el) return;
+  // 숨은 탭·접힌 창에서는 폭이 0으로 잡혀 한 글자씩 줄바꿈된 엉뚱한 높이가 나오므로 폭이 있을 때만 맞춘다
+  const fit = () => { if (el.clientWidth < 80) return; el.style.height = "auto"; el.style.height = (el.scrollHeight + 6) + "px"; };
+  el._fit = fit; el.addEventListener("input", fit); requestAnimationFrame(fit); setTimeout(fit, 50);
+}
+function refitAll() { document.querySelectorAll("textarea").forEach(t => t._fit && t._fit()); }
+window.addEventListener("resize", refitAll);
+document.addEventListener("visibilitychange", () => setTimeout(refitAll, 50));
+new MutationObserver(() => setTimeout(refitAll, 30)).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme", "class"] });
+const wc = s => (s || "").trim() ? s.trim().split(/\s+/).length : 0;
+function renderDocMode() {
+  const ed = $("editor");
+  const lang = localStorage.getItem("ms_doclang") || "ko", key = lang === "en" ? "draft_en" : "draft";
+  const f = doc.front = doc.front || { title: "", authors: "", abstract: "", keywords: [], highlights: [] };
+  const total = doc.outline.reduce((a, n) => a + wc(n[key]), 0);
+  ed.innerHTML = "<div class='docmode'>" +
+    "<div class='crumb' style='display:flex;gap:12px;align-items:baseline;flex-wrap:wrap'><span>원고 모드 · " + total.toLocaleString() + " 단어</span>" +
+    "<select id='docLang' style='border-color:transparent;font-size:12px;color:var(--text-2);background:transparent'><option value='ko'" + (lang === "ko" ? " selected" : "") + ">한국어 초안</option><option value='en'" + (lang === "en" ? " selected" : "") + ">영문</option></select>" +
+    "<span class='hint'>문단을 눌러 바로 고칩니다. 근거 카드·검토·초안 생성은 문단 아래 「문단 모드 →」</span></div>" +
+    "<textarea class='para' id='docTitle' rows='1' placeholder='제목' style='font-family:var(--font-serif);font-size:24px;font-weight:600;color:var(--text);margin:6px 0 4px;line-height:1.3;padding-left:0;border-left:0'>" + esc(f.title || doc.title) + "</textarea>" +
+    "<div class='sec-h'>" + (lang === "en" ? "Abstract" : "초록") + "</div><textarea class='para' data-front='abstract' placeholder='초록'>" + esc(f.abstract || "") + "</textarea>" +
+    doc.outline.map(n => "<div class='dsec' data-n='" + n.id + "'><div class='sec-h" + (n.level === 2 ? " l2" : "") + "'><input class='inl hd' data-h='" + n.id + "' value='" + esc(n.heading) + "'></div>" +
+      "<textarea class='para' data-p='" + n.id + "' placeholder='" + (lang === "en" ? "영문 없음 - 문단 모드에서 영문화 →" : "여기에 쓰세요") + "'>" + esc(n[key] || "") + "</textarea>" +
+      "<div class='pm'><span class='wcn'>" + wc(n[key]) + " 단어</span><span>카드 " + (n.cards || []).length + "</span><span class='st " + (n.status || "") + "'></span>" +
+      (n.review && n.review.result && (n.review.result.issues || []).length ? "<span style='color:var(--amber)'>검토 지적 " + n.review.result.issues.length + "</span>" : "") +
+      "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
+  $("docLang").onchange = e => { localStorage.setItem("ms_doclang", e.target.value); renderDocMode(); };
+  autogrow($("docTitle")); $("docTitle").oninput = () => { f.title = $("docTitle").value.replace(/\n/g, " "); doc.title = f.title; save(); $("msSel").options[$("msSel").selectedIndex].text = f.title; };
+  ed.querySelectorAll("textarea[data-front]").forEach(t => { autogrow(t); t.oninput = () => { f[t.dataset.front] = t.value; save(); }; });
+  ed.querySelectorAll("textarea[data-p]").forEach(t => {
+    autogrow(t);
+    t.oninput = () => { const n = node(t.dataset.p); n[key] = t.value; if (key === "draft" && n.status === "todo" && t.value.trim()) n.status = "drafted"; save(); t.closest(".dsec").querySelector(".wcn").textContent = wc(t.value) + " 단어"; };
+    t.onfocus = () => { if (cur !== t.dataset.p) { cur = t.dataset.p; renderTree(); } };
+  });
+  ed.querySelectorAll("input[data-h]").forEach(i => i.oninput = () => { node(i.dataset.h).heading = i.value; save(); renderTree(); });
+  ed.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; setMode("para"); });
+  const secEl = cur && ed.querySelector(".dsec[data-n='" + cur + "']"); if (secEl && cur !== (doc.outline[0] || {}).id) secEl.scrollIntoView({ block: "start" });
+}
 function renderEditor() {
+  if (msMode === "doc" && cur !== "front") return renderDocMode();
   if (cur === "front") return renderFront();
   const n = node(cur);
   const ed = $("editor");
@@ -259,6 +330,7 @@ function renderEditor() {
     "<label class='f'>영문 (한국어 초안에서 영문화)</label><textarea id='draftEn' placeholder='「영문화 →」를 누르면 용어집을 지켜 옮깁니다.'>" + esc(n.draft_en) + "</textarea>";
   const bind = (id, key, cb) => { const el = $(id); el.oninput = () => { n[key] = el.value; save(); if (cb) cb(); }; };
   bind("headIn", "heading", renderTree); bind("claim", "claim"); bind("draft", "draft"); bind("draftEn", "draft_en");
+  autogrow($("draft")); autogrow($("draftEn"));   // 내용만큼 늘어나는 칸
   $("status").onchange = e => { n.status = e.target.value; save(); renderTree(); };
   ed.querySelectorAll("[data-m]").forEach(b => b.onclick = () => runClaude(b.dataset.m));
   $("revPara").onclick = () => reviewPara(n);
@@ -577,6 +649,8 @@ function renderOut() {
   $("openFolder").onclick = () => api("/api/ms/open_folder", {});
 }
 
+document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.m === msMode));
+if (localStorage.getItem("ms_focus") === "1") { document.body.classList.add("focus"); $("focusBtn").classList.add("pri"); }
 loadList();
 </script>
 </body>
