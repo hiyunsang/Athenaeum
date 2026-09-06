@@ -8,9 +8,9 @@
 <style>
   header { display: flex; align-items: center; gap: var(--s3); min-height: 44px; padding: 0 var(--s4); background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
   /* 워드마크: 세리프 이탤릭 */
-  header h1 { margin: 0 var(--s4) 0 0; line-height: 1; }
+  header h1 { margin: 0 var(--s4) 0 0; display: flex; line-height: 0; }   /* 묶음 높이 = 마크 높이 (글자 줄 상자가 높이에 끼지 않게) */
   /* 워드마크: 글자 밑선을 마크 A 의 발에 맞춘다 (스와시가 위로 뻗어 상자 중심에 맞추면 글자가 떠 보임) */
-  header h1 .brand { display: inline-flex; align-items: baseline; gap: 10px; text-decoration: none; color: var(--text); font-family: var(--font-serif); font-size: 23px; font-weight: 400; letter-spacing: .13em; padding-right: .05em; line-height: 1; }
+  header h1 .brand { display: inline-flex; align-items: baseline; gap: 10px; text-decoration: none; color: var(--text); font-family: var(--font-serif); font-size: 23px; font-weight: 400; letter-spacing: .13em; padding-right: .05em; line-height: 0; }   /* 글자 줄 상자 높이 0: 밑선만 마크의 발에 맞추고 높이는 마크가 정한다 */
   header h1 .brand-mark { height: 34px; width: auto; display: inline-block; vertical-align: baseline; }
   header { min-height: 50px; }
   header input[type=text] { width: 280px; background: var(--bg); border-color: transparent; padding: 5px 10px; }
