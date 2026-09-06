@@ -417,7 +417,8 @@ function renderFigs() {
   el.querySelectorAll("[data-hi]").forEach(b => b.onclick = async () => { b.textContent = "렌더 중…"; const r = await api("/api/ms/figure/export", { id: doc.id, fig: b.dataset.hi, scale: 3 }); b.textContent = "고해상도 PNG"; if (r.error) alert("⚠ " + r.error); else { alert("저장됨:\n" + r.path); } });
   const fc = $("figCancel"); if (fc) fc.onclick = () => { window._figParams = {}; renderFigs(); };
   // --- 말로 만드는 도식 ---
-  const readSpec = () => ({ description: $("gDesc").value.trim(), domain: $("gDomain").value, complexity: $("gComplex").value, style: $("gStyle").value, size: $("gSize").value, lang: $("gLang").value });
+  const readSpec = () => ({ description: $("gDesc").value.trim(), domain: $("gDomain").value, complexity: $("gComplex").value, style: $("gStyle").value, size: $("gSize").value, lang: $("gLang").value,
+    model: (typeof uiGet === "function" ? uiGet("fig_model") : "opus") });   // 환경설정의 '도식 코드 모델'
   ["gDesc", "gDomain", "gComplex", "gStyle", "gSize", "gLang"].forEach(id => $(id).onchange = () => { window._gSpec = readSpec(); });
   $("gDesc").oninput = () => { window._gSpec = readSpec(); };
   $("gRefs").onchange = async e => {

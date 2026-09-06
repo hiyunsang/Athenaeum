@@ -40,7 +40,7 @@ function animateBars(root) {
 
 // ---------- 환경설정 (모든 화면 공통, localStorage 에 기억) ----------
 // 항목: 테마(시스템/밝게/어둡게) · 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 · 원고 자동 검토
-const UI_DEFAULTS = { ui_theme: "system", ui_scale_read: 1, ui_scale_ms: 1, ui_width: 760, ui_lh: 1.8, ms_autorev: "0" };
+const UI_DEFAULTS = { ui_theme: "system", ui_scale_read: 1, ui_scale_ms: 1, ui_width: 760, ui_lh: 1.8, ms_autorev: "0", fig_model: "opus" };
 function uiGet(k) {
   try {
     let v = localStorage.getItem(k);
@@ -86,6 +86,7 @@ function openSettings() {
     row("읽기 폭", range("ui_width", 560, 9999, 40), "본문 한 줄 길이. 오른쪽 끝 = 전체 폭") +
     row("줄 간격", range("ui_lh", 1.4, 2.4, 0.1), "요약·번역 본문") +
     row("원고 자동 검토", "<label class='uswitch'><input type='checkbox' data-k='ms_autorev'> 쓰다가 30초 멈추면 Claude가 그 문단을 검토</label>", "토큰이 듭니다. 기본은 꺼짐") +
+    row("도식 코드 모델", "<select data-k='fig_model'><option value='opus'>Opus (꼼꼼함, 5~7분)</option><option value='sonnet'>Sonnet (빠름, 약 2분)</option></select>", "말로 만드는 도식의 그리기 코드를 쓰는 모델. 요약·번역·검토는 항상 Opus") +
     "<div class='ufoot'><button class='ureset' onclick='resetSettings()'>기본값으로</button></div>" +
     "</div></div>";
   document.body.insertAdjacentHTML("beforeend", html);

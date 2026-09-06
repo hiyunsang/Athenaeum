@@ -73,11 +73,11 @@ def build_prompt(spec, ref_images=(), prev_script=None, feedback=None, error=Non
     return head + rules + refs + body + "[schematic.lib API]\n" + api
 
 
-def _claude(prompt, ref_dirs=(), timeout=600):
+def _claude(prompt, ref_dirs=(), timeout=600, model="opus"):
     exe = cfg.get("claude_exe")
     if not exe:
         raise RuntimeError("claude 명령을 찾을 수 없습니다")
-    args = [exe, "-p", "--model", "opus", "--output-format", "text"]
+    args = [exe, "-p", "--model", model if model in ("opus", "sonnet") else "opus", "--output-format", "text"]
     if ref_dirs:
         args += ["--allowedTools", "Read"]
         for d in sorted(set(ref_dirs)):
@@ -157,10 +157,11 @@ def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None, pri
                         "새 그림을 완성하라. 설명에 없는 요소는 빼고 필요한 요소는 더하라.")
             log.append("출발점: " + why)
     prompt = build_prompt(spec, ref_images, prev_script, feedback)
+    model = (spec or {}).get("model") or "opus"          # 도식 코드 작성 모델 (환경설정에서 선택)
     t0 = time.time()
-    raw = _claude(prompt, ref_dirs)
+    raw = _claude(prompt, ref_dirs, model=model)
     code = extract_script(raw)
-    log.append("Claude 응답 %.0f초, 코드 %d줄" % (time.time() - t0, code.count("\n") + 1))
+    log.append("Claude(%s) 응답 %.0f초, 코드 %d줄" % (model, time.time() - t0, code.count("\n") + 1))
     for attempt in range(3):
         ok, res = run_script(code)
         if ok:
@@ -172,7 +173,7 @@ def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None, pri
         if attempt == 2:
             break
         t0 = time.time()
-        raw = _claude(build_prompt(spec, ref_images, code, feedback, error=res), ref_dirs)
+        raw = _claude(build_prompt(spec, ref_images, code, feedback, error=res), ref_dirs, model=model)
         code = extract_script(raw)
         log.append("고친 코드 받음 %.0f초" % (time.time() - t0))
     raise RuntimeError("스크립트 실행 실패: " + res.strip().splitlines()[-1][:200] if res.strip() else "알 수 없는 오류")
