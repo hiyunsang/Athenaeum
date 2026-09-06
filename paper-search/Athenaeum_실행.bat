@@ -1,21 +1,26 @@
 @echo off
 rem Athenaeum - starts the local server without a console window and opens the app window.
-rem Works from any folder: uses this .bat's own folder (%~dp0). If the server is already running, only the window opens.
+rem Uses the bundled python\ (portable release) if present, otherwise pythonw/pyw on PATH. Works from any folder (%~dp0).
 setlocal
 set "HERE=%~dp0"
+if exist "%HERE%..\python\pythonw.exe" (
+  start "" "%HERE%..\python\pythonw.exe" "%HERE%server.py"
+  goto open
+)
 where pythonw >nul 2>nul
 if %errorlevel%==0 (
   start "" pythonw "%HERE%server.py"
-) else (
-  where pyw >nul 2>nul
-  if %errorlevel%==0 (
-    start "" pyw -3 "%HERE%server.py"
-  ) else (
-    echo Python 3 (pythonw) was not found on PATH. Install Python 3.8+ from python.org and check "Add to PATH".
-    pause
-    exit /b 1
-  )
+  goto open
 )
+where pyw >nul 2>nul
+if %errorlevel%==0 (
+  start "" pyw -3 "%HERE%server.py"
+  goto open
+)
+echo Python 3 was not found. Use the portable release (python folder included) or install Python 3.8+ with "Add to PATH".
+pause
+exit /b 1
+:open
 timeout /t 2 >nul
 where chrome >nul 2>nul
 if %errorlevel%==0 (

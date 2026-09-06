@@ -147,7 +147,7 @@ class Config:
 
     @property
     def target_dir(self):
-        return _forced_archive or self.data.get("논문폴더", DEFAULT_ARCHIVE)
+        return _forced_archive or (self.data.get("논문폴더") or DEFAULT_ARCHIVE)   # 빈 값(배포판 기본)이면 저장소의 논문모음
 
     @property
     def interval(self):

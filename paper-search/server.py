@@ -19,7 +19,7 @@ import rules
 import intake   # 논문 수집 (다운로드 폴더 감시 → Crossref → 보관). 예전 paper-organizer 를 이 폴더로 합친 것
 
 ARCHIVE = os.path.join(os.path.dirname(BASE), "논문모음")   # 저장소 루트\논문모음 (배포용: 어느 폴더에 두어도 동작)
-PORT = 8770
+PORT = int(os.environ.get("ATHENAEUM_PORT", "8770"))   # 시험용으로 다른 포트에 띄울 때: set ATHENAEUM_PORT=8790
 TAGS_PATH = os.path.join(BASE, "tags.json")
 LABELS_PATH = os.path.join(BASE, "labels.json")
 LABEL_META_KEY = "_체계"   # labels.json 의 예약 키: {"고정": [편집 불가 묶음], "트리": {묶음: [라벨 | {"name", "kids"}]}, "새라벨": {라벨: {t, group, parent, paper}}}
