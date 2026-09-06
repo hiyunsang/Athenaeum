@@ -73,6 +73,16 @@
   .gl div { break-inside: avoid; padding: 1px 0; color: var(--text-2); }
   .gl div b { color: var(--text); font-weight: 500; }
   input.inl { border: 0; border-bottom: 1px dashed var(--line-2); font: inherit; background: transparent; width: 100%; padding: 2px 0; }
+  /* 그림 작업대 (그림 탭일 때 가운데 영역): 큰 미리보기 + 썸네일 띠 + 수정 요청 */
+  .fstrip { display: flex; gap: var(--s2); overflow-x: auto; padding: var(--s1) 0 var(--s2); border-bottom: 1px solid var(--line); margin-bottom: var(--s3); }
+  .fthumb { flex: none; width: 92px; cursor: pointer; border: 2px solid transparent; padding: 2px; }
+  .fthumb img { width: 100%; height: 64px; object-fit: contain; background: #fff; display: block; border: 1px solid var(--line); }
+  .fthumb .fn { font-size: 11px; color: var(--text-3); text-align: center; margin-top: 2px; }
+  .fthumb.sel { border-color: var(--accent); }
+  .fbig { background: #fff; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; min-height: 320px; max-height: 66vh; }
+  .fbig img { max-width: 100%; max-height: 66vh; object-fit: contain; display: block; }
+  .fmeta { display: flex; gap: var(--s3); align-items: baseline; font-size: 12px; color: var(--text-3); margin: var(--s2) 0; flex-wrap: wrap; }
+  .fmeta .ctl { margin-left: auto; padding: 0; }
   input.inl:focus { outline: none; border-bottom-color: var(--accent); }
 </style>
 <script src="/ui.js"></script>
@@ -175,7 +185,7 @@ function renderTree() {
   const frontOk = f.abstract && (f.highlights || []).length;
   $("tree").innerHTML = "<div class='node l1" + (cur === "front" ? " sel" : "") + "' data-id='front'><span class='st " + (frontOk ? "done" : (f.abstract ? "drafted" : "")) + "'></span><span class='h' style='font-family:var(--font)'>머리부 · 제목·초록·키워드·하이라이트</span></div>" +
     doc.outline.map(n => "<div class='node l" + n.level + (n.id === cur ? " sel" : "") + "' data-id='" + n.id + "'><span class='st " + (n.status || "") + "'></span><span class='h'>" + esc(n.heading || "(제목 없음)") + "</span><span class='n'>" + (n.cards || []).length + "</span></div>").join("");
-  $("tree").querySelectorAll(".node").forEach(el => el.onclick = () => { cur = el.dataset.id; renderTree(); renderEditor(); });
+  $("tree").querySelectorAll(".node").forEach(el => el.onclick = () => { cur = el.dataset.id; if (activeTab() === "figs") switchTab("cards"); renderTree(); renderEditor(); });
 }
 function renderFront() {
   const f = doc.front, ed = $("editor");
@@ -324,7 +334,50 @@ async function runClaude(mode) {
 }
 
 // ---------- 서랍 ----------
-document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x === t)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + t.dataset.t)); });
+const activeTab = () => (document.querySelector(".tabs div.on") || {}).dataset ? document.querySelector(".tabs div.on").dataset.t : "cards";
+function switchTab(name) { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x.dataset.t === name)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name)); }
+document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => {
+  switchTab(t.dataset.t);
+  // 그림 탭이면 가운데를 그림 작업대로, 다른 탭이면 문단 편집으로
+  if (doc) { if (t.dataset.t === "figs") renderFigWorkspace(); else renderEditor(); }
+});
+
+// ---------- 그림 작업대 (가운데 넓은 영역) ----------
+let figView = null;
+async function refineFigure(figId, feedback, host) {
+  if (busy) return; busy = true;
+  const prog = document.createElement("div"); prog.innerHTML = "<div class='prog'><span>수정 중 · Claude 가 그리기 코드를 고칩니다</span>" + pbarHtml(0.03, 0) + "<span class='eta'>~1분</span></div>";
+  host.appendChild(prog);
+  const t0 = Date.now(); const tm = setInterval(() => { const b = prog.querySelector(".pbar i"); if (b) b.style.width = (Math.min(0.95, (Date.now() - t0) / 90000) * 100) + "%"; }, 1000);
+  const r = await api("/api/ms/figure/generate", { id: doc.id, fig: figId, feedback });
+  clearInterval(tm); busy = false;
+  if (r.error) { prog.innerHTML = "<div class='hint'>⚠ " + esc(r.error) + "</div>"; return; }
+  doc = await api("/api/ms?id=" + encodeURIComponent(doc.id)); figView = r.id; renderFigs(); renderFigWorkspace();
+}
+function renderFigWorkspace() {
+  const ed = $("editor"); if (!doc) return;
+  const figs = doc.figures || [];
+  if (!figs.some(f => f.id === figView)) figView = (figs[0] || {}).id || null;
+  const f = figs.find(x => x.id === figView);
+  ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>그림 작업대 · " + figs.length + "장 <span class='hint'>· 오른쪽 그림 탭에서 새 도식 만들기 · 썸네일을 눌러 고를 것</span></div>" +
+    "<div class='fstrip'>" + figs.map(x => "<div class='fthumb" + (x.id === figView ? " sel" : "") + "' data-fv='" + x.id + "'>" + (x.png ? "<img src='/fig/" + x.png + "?t=" + (x.t || 0) + "'>" : "<div style='height:64px;border:1px solid var(--line)'></div>") + "<div class='fn'>Fig. " + x.num + "</div></div>").join("") + "</div>" +
+    (!f ? "<div class='hint'>그림이 없습니다. 오른쪽 그림 탭에서 「도식 만들기」로 시작하거나 워드에서 가져오세요.</div>" :
+      "<div class='fbig'>" + (f.png ? "<img src='/fig/" + f.png + "?t=" + (f.t || 0) + "'>" : "<div class='hint'>이미지 없음</div>") + "</div>" +
+      "<div class='fmeta'><b>Fig. " + f.num + "</b>" + (f.w ? "<span>" + f.w + "×" + f.h + " px</span>" : "") + "<span>" + (f.source && f.source.type === "claude" ? "말로 만든 도식" + ((f.source.history || []).length ? " · 수정 " + f.source.history.length + "회" : "") : f.source && f.source.type === "schematic" ? "빠른 틀(수치)" : f.source && f.source.type === "docx" ? "워드에서 가져옴" : "") + "</span>" +
+      "<div class='ctl'>" + (f.svg ? "<a class='btn' href='/fig/" + f.svg + "' target='_blank'>SVG 열기</a>" : "") + "<button class='btn' id='wHi'>고해상도 PNG</button>" + (f.source && f.source.type === "claude" ? "<button class='btn' id='wCode'>코드 보기</button>" : "") + "<button class='btn warn' id='wDel'>삭제</button></div></div>" +
+      "<label class='f'>캡션 (한국어)</label><textarea id='wCap' rows='2'>" + esc(f.caption || "") + "</textarea>" +
+      "<label class='f'>Caption (English)</label><textarea id='wCapEn' rows='2' style='font-family:var(--font-serif)'>" + esc(f.caption_en || "") + "</textarea>" +
+      (f.source && f.source.type === "claude" ? "<label class='f'>수정 요청 <span class='hint' style='font-weight:400'>말로 쓰면 코드를 고쳐 다시 그립니다 (~1분)</span></label><textarea id='wFb' rows='3' placeholder='예: 화살표를 더 굵게, 라벨을 영어로, 칩을 더 길게, 공구를 오른쏙으로'></textarea>" +
+        "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='wRefine'>이렇게 고쳐 줘</button></div><div id='wProg'></div><pre id='wCodeBox' style='display:none;font-size:11px;white-space:pre-wrap;max-height:300px;overflow:auto;background:var(--bg);padding:8px'>" + esc(f.source.script || "") + "</pre>" : ""));
+  ed.querySelectorAll("[data-fv]").forEach(t => t.onclick = () => { figView = t.dataset.fv; renderFigWorkspace(); });
+  if (!f) return;
+  $("wCap").oninput = () => { f.caption = $("wCap").value; save(); };
+  $("wCapEn").oninput = () => { f.caption_en = $("wCapEn").value; save(); };
+  $("wHi").onclick = async () => { $("wHi").textContent = "렌더 중…"; const r = await api("/api/ms/figure/export", { id: doc.id, fig: f.id, scale: 3 }); $("wHi").textContent = "고해상도 PNG"; alert(r.error ? "⚠ " + r.error : "저장됨:\n" + r.path); };
+  $("wDel").onclick = () => { if (!confirm("Fig. " + f.num + " 삭제?")) return; doc.figures = doc.figures.filter(x => x.id !== f.id); doc.figures.forEach((x, i) => x.num = i + 1); save(true); figView = null; renderFigs(); renderFigWorkspace(); };
+  const wc = $("wCode"); if (wc) wc.onclick = () => { const b = $("wCodeBox"); b.style.display = b.style.display === "none" ? "block" : "none"; };
+  const wr = $("wRefine"); if (wr) wr.onclick = () => { const fb = $("wFb").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } refineFigure(f.id, fb, $("wProg")); };
+}
 function renderDrawer() { renderCards(); renderFigs(); renderCheck(); renderNotes(); renderIdea(); renderEn(); renderOut(); }
 function issuesHtml(list) { return (list || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + esc(i.text) + "</div>").join("") || "<div class='hint'>문제 없음</div>"; }
 function renderCheck() {
@@ -410,6 +463,7 @@ function renderFigs() {
     "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='gMake'>그림 만들기 (1~3분)</button></div><div id='gprog'></div>" +
     "<div class='sec'>빠른 틀 <span class='hint' style='font-weight:400'>선삭 변형 구역 (수치 폼)</span></div><div id='figform'>" + figForm(cur_p) + "</div>" +
     "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='figMake'>" + (cur_p._edit ? "이 수치로 다시 만들기" : "그림 만들기") + "</button><button class='btn' id='figPrev'>미리보기</button>" + (cur_p._edit ? "<button class='btn' id='figCancel'>취소</button>" : "") + "</div><div id='figprog'></div><div id='figprev'></div>";
+  el.querySelectorAll(".fig img").forEach(img => { img.style.cursor = "zoom-in"; img.title = "가운데 작업대에 크게 보기"; img.onclick = () => { figView = img.closest(".fig").dataset.f; renderFigWorkspace(); }; });
   el.querySelectorAll("[data-cap]").forEach(i => i.oninput = () => { doc.figures.find(f => f.id === i.dataset.cap).caption = i.value; save(); });
   el.querySelectorAll("[data-capen]").forEach(i => i.oninput = () => { doc.figures.find(f => f.id === i.dataset.capen).caption_en = i.value; save(); });
   el.querySelectorAll("[data-delf]").forEach(b => b.onclick = () => { if (!confirm("그림 삭제?")) return; doc.figures = doc.figures.filter(f => f.id !== b.dataset.delf); doc.figures.forEach((f, i) => f.num = i + 1); save(); renderFigs(); });
@@ -444,7 +498,7 @@ function renderFigs() {
     clearInterval(tm); busy = false;
     if (r.error) { prog.innerHTML = "<div class='hint'>⚠ " + esc(r.error) + "</div>"; return; }
     doc = await api("/api/ms?id=" + encodeURIComponent(doc.id)); if (!figId) { window._gRefs = []; } renderFigs();
-    const nb = el.querySelector(".fig[data-f='" + r.id + "']"); if (nb) nb.scrollIntoView({ block: "start" });
+    figView = r.id; renderFigWorkspace();   // 새 그림은 가운데 작업대에 크게
   }
   $("gMake").onclick = () => genFigure(null, null);
   el.querySelectorAll("[data-refine]").forEach(b => b.onclick = () => { const fb = el.querySelector("textarea[data-fb='" + b.dataset.refine + "']").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } genFigure(b.dataset.refine, fb); });
