@@ -20,7 +20,7 @@
 ## 필요한 것
 
 - Windows 10/11, Python 3.8 이상
-- Python 패키지: `pymupdf`, `pypdf`, `requests`, `pywin32` (바로가기·PPT 처리)
+- Python 패키지: `pymupdf`, `pypdf`, `requests`, `pywin32`, `numpy`, `scipy` — `pip install -r paper-search\requirements.txt`
 - [Claude Code CLI](https://claude.com/claude-code) 설치 후 `claude` 로그인 (요약·번역·검토·도식은 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
 - Microsoft Edge (도식 PNG 렌더링에 headless 로 사용)
 
@@ -42,7 +42,8 @@
 ```
 paper-search\Athenaeum_실행.bat
 ```
-서버가 `http://localhost:8770` 에 뜨고 브라우저가 앱 창으로 열립니다. 시작프로그램에 `Athenaeum_시작.vbs` 를 넣으면 부팅 때 자동 실행됩니다.
+서버가 `http://localhost:8770` 에 뜨고 브라우저가 앱 창으로 열립니다.
+부팅 때 자동으로 서버를 켜려면 `paper-search\Athenaeum_시작.vbs` 의 **바로가기**를 시작프로그램 폴더(`Win+R` → `shell:startup`)에 넣습니다. 창 없이 조용히 돕니다.
 
 ## 폴더
 
