@@ -78,9 +78,9 @@
 </head>
 <body>
 <header>
-  <a href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
+  <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>논문 탐색</h1>
-  <a href="/">← 내 논문 검색으로</a>
+  <a href="/" id="backHome" target="_top">← 내 논문 검색으로</a>
   <input id="q" placeholder="주제 키워드 (영어)  예: tantalum machining, built-up edge in situ">
   <select id="year">
     <option value="">전체 연도</option>
@@ -320,7 +320,8 @@ function mapButton(r) {
 // 홈 화면 안의 분할 패널로 열렸으면 '내 논문 검색으로' 링크는 불필요
 if (window.self !== window.top) {
   document.body.classList.add("embedded");  // 분할창 안: 배경을 연한 회색으로 (CSS body.embedded)
-  const back = document.querySelector("header a[href='/']");
+  // 분할창 안에서는 '내 논문 검색으로' 가 필요 없다 (로고 링크와 헷갈리지 않게 id 로 지정 — 예전엔 첫 a[href='/'] 를 숨겨 로고가 숨고 이 링크가 남는 버그가 있었음)
+  const back = document.getElementById("backHome");
   if (back) back.style.display = "none";
 }
 // ---------- Claude(Opus)와 이야기: 화면의 결과 목록이 맥락 ----------
