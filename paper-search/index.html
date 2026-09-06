@@ -262,6 +262,7 @@ function metaMatch(p, words) {
 const barState = {};       // 작업별 마지막 진행 막대 비율 (다시 그릴 때 이어서 차오르게)
 let clsInfo = null;        // 서버가 새 논문을 분류 중이면 {n, start}
 
+window.addEventListener("focus", () => { if (document.visibilityState === "visible") loadData().then(render).catch(() => {}); });   // 라벨 체계 창에서 고친 뒤 돌아오면 반영
 async function loadData() {
   const r = await fetch("/api/data");
   const d = await r.json();
@@ -363,12 +364,10 @@ function render() {
     : cur.filter(p => paperLabels(p).includes(lb)).length;
 
   const tx = document.createElement("div"); tx.className = "taxbar";
-  tx.innerHTML = "<span class='tx' id='taxToggle'>" + (editTax ? "체계 편집 끝내기" : "체계 편집") + "</span>" + (editTax ? "<span class='tx' id='taxAddGroup'>+ 묶음</span>" : "") +
-    (Object.keys(taxMeta().새라벨 || {}).length ? "<span class='hint' style='padding:0'>· 자동 추가된 라벨 " + Object.keys(taxMeta().새라벨).length + "개 <i class='newdot'>●</i>" + (editTax ? " <span class='tx' id='taxForget'>표시 지우기</span>" : "") + "</span>" : "");
+  tx.innerHTML = "<span class='tx' id='taxOpen' title='묶음·분류·라벨을 따로 창에서 고치고, Claude 에게 체계 설계를 맡길 수 있습니다'>라벨 체계 설정 ↗</span>" +
+    (Object.keys(taxMeta().새라벨 || {}).length ? "<span class='hint' style='padding:0'>· 자동 추가 " + Object.keys(taxMeta().새라벨).length + "개 <i class='newdot'>●</i></span>" : "");
   side.appendChild(tx);
-  tx.querySelector("#taxToggle").onclick = () => { editTax = !editTax; render(); };
-  const ag = tx.querySelector("#taxAddGroup"); if (ag) ag.onclick = async () => { const n = askName("새 묶음 이름 (예: 코팅, 윤활):", ""); if (n) await taxOp({ op: "add_group", group: n }); };
-  const fg = tx.querySelector("#taxForget"); if (fg) fg.onclick = () => taxOp({ op: "forget_new" });
+  tx.querySelector("#taxOpen").onclick = () => window.open("/labels", "athenaeum_labels", "width=980,height=860");
   const gl = labelGroups(); const fixed = taxMeta().고정 || [];
   for (const [gi, [gname, labels]] of gl.entries()) {
     const g = document.createElement("div"); g.className = "group";
@@ -478,7 +477,7 @@ const stages = {};
 // 트리에 없는 라벨은 묶음 맨 아래에 그대로 놓인다. 사이드바 '체계 편집' 으로 묶음·분류·라벨을 고칠 수 있고, Claude 가 새 재료 등을 만나면 알아서 추가한다.
 const labelGroups = () => Object.entries(groups).filter(([g, v]) => !g.startsWith("_") && Array.isArray(v));
 const taxMeta = () => groups["_체계"] || { 고정: ["유형"], 트리: {}, 새라벨: {} };
-let matOpen = {}, editTax = false;
+let matOpen = {}; const editTax = false;   // 체계 편집은 /labels 창에서 (사이드바 인라인 편집은 복잡해서 제거)
 async function taxOp(body) {
   const r = await (await fetch("/api/labels", { method: "POST", body: JSON.stringify(body) })).json();
   if (r.groups) groups = r.groups;

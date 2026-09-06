@@ -103,6 +103,148 @@ def apply_new_labels(items, paper=""):
     return out
 
 
+def label_counts():
+    """라벨별 논문 수 (확정 라벨 기준)."""
+    tags = load_json(TAGS_PATH, {}); have = set(archive_pdfs()); c = {}
+    for f, e in tags.items():
+        if f in have:
+            for l in e.get("labels", []):
+                c[l] = c.get(l, 0) + 1
+    return c, len(have)
+
+
+def propose_taxonomy(field="", use_titles=True, n_groups=6, keep_existing=True):
+    """Claude 가 분야 설명 + 내 논문 제목들을 보고 라벨 체계(묶음 → 하위 분류 → 라벨)를 제안. 유형 묶음은 제외."""
+    groups = load_json(LABELS_PATH, {}); meta = label_meta(groups); real = label_groups(groups)
+    titles = []
+    if use_titles:
+        tags = load_json(TAGS_PATH, {})
+        for f in archive_pdfs():
+            t = (tags.get(f, {}).get("title") or parse_name(f)["title"] or "").strip()
+            if t:
+                titles.append(t[:140])
+    titles = titles[:300]
+    existing = "\n".join("[%s] %s" % (g, ", ".join(ls)) for g, ls in real.items() if g not in meta["고정"])
+    n_groups = max(3, min(10, int(n_groups or 6)))
+    prompt = ("당신은 학술 문헌 분류 체계를 설계하는 사서다. 한 연구자의 논문 서재를 라벨로 검색할 수 있게, 묶음(큰 제목) → 하위 분류(선택) → 라벨의 체계를 설계하라.\n"
+              "규칙:\n- 묶음은 %d개 안팎, 이름은 한국어 2~8자 (예: 재료, 공정·규모, 현상, 방법, 대상 생물, 기술). '유형'(Review 등)과 '저널'은 따로 관리하므로 만들지 마라.\n"
+              "- 라벨은 영어 Title Case, 2~4 단어 이내, 검색에 쓰이는 구체적 개념. 묶음마다 6~25개. 서로 겹치는 뜻의 라벨은 하나로.\n"
+              "- 라벨이 많은 묶음은 하위 분류(예: 금속/세라믹)로 나눠라. 하위 분류 이름은 한국어.\n"
+              "- 논문 제목 목록이 있으면 실제로 나오는 개념을 우선하고, 그 분야에서 앞으로 나올 만한 개념도 조금 보태라.\n"
+              "%s"
+              "- JSON 한 줄만: {\"groups\": [{\"name\": \"...\", \"why\": \"이 묶음의 뜻 한 줄\", \"subgroups\": [{\"name\": \"...\", \"labels\": [\"...\"]}], \"labels\": [\"하위 분류에 안 넣는 라벨\"]}], \"note\": \"설계 요지 한두 문장(한국어)\"}\n\n"
+              % (n_groups, ("- 아래 '지금 체계'의 라벨 이름과 뜻이 같으면 표기를 그대로 써라 (논문에 이미 붙어 있음).\n" if keep_existing and existing else ""))
+              + ("[분야·관심사]\n" + field.strip() + "\n\n" if field.strip() else "")
+              + (("[지금 체계]\n" + existing + "\n\n") if keep_existing and existing else "")
+              + (("[논문 제목 %d편]\n" % len(titles) + "\n".join(titles)) if titles else "(논문 제목 없음 - 분야 설명만으로 설계)"))
+    r = ask_claude_json(prompt, timeout=300)
+    if not r or not isinstance(r.get("groups"), list):
+        return None
+    clean = []
+    for g in r["groups"]:
+        if not isinstance(g, dict) or not str(g.get("name", "")).strip():
+            continue
+        name = str(g["name"]).strip()[:12]
+        if name in meta["고정"] or name.startswith("_"):
+            continue
+        subs = []
+        for sg in g.get("subgroups") or []:
+            if isinstance(sg, dict) and str(sg.get("name", "")).strip():
+                subs.append({"name": str(sg["name"]).strip()[:20], "labels": [str(x).strip()[:30] for x in (sg.get("labels") or []) if str(x).strip()]})
+        clean.append({"name": name, "why": str(g.get("why", ""))[:80], "subgroups": subs, "labels": [str(x).strip()[:30] for x in (g.get("labels") or []) if str(x).strip()]})
+    return {"groups": clean, "note": str(r.get("note", ""))[:200]} if clean else None
+
+
+def apply_taxonomy(proposal, mode="merge"):
+    """제안된 체계를 적용. replace: 고정 묶음(유형)만 남기고 교체 + 논문의 옛 라벨 정리. merge: 없는 묶음·분류·라벨만 추가."""
+    with _lock:
+        groups = load_json(LABELS_PATH, {}); meta = label_meta(groups); real = label_groups(groups)
+        if mode == "replace":
+            new = {g: real[g] for g in meta["고정"] if g in real}
+            tree = {g: meta["트리"][g] for g in meta["고정"] if g in meta["트리"]}
+        else:
+            new = dict(real); tree = dict(meta["트리"])
+        for g in proposal.get("groups", []):
+            gname = g["name"]
+            if gname in meta["고정"]:
+                continue
+            new.setdefault(gname, []); tree.setdefault(gname, [])
+            have = {x.lower() for x in new[gname]}
+            for sg in g.get("subgroups", []):
+                node = _tree_find(tree[gname], sg["name"])
+                if node is None:
+                    node = {"name": sg["name"], "kids": []}; tree[gname].append(node)
+                for l in sg.get("labels", []):
+                    if l.lower() not in have:
+                        new[gname].append(l); have.add(l.lower())
+                    if l not in node["kids"] and l not in tree[gname]:
+                        node.setdefault("kids", []).append(l)
+            for l in g.get("labels", []):
+                if l.lower() not in have:
+                    new[gname].append(l); have.add(l.lower())
+        out = dict(new)
+        out[LABEL_META_KEY] = {"고정": meta["고정"], "트리": {k: v for k, v in tree.items() if v}, "새라벨": {} if mode == "replace" else meta["새라벨"]}
+        save_json(LABELS_PATH, out)
+        if mode == "replace":
+            valid = set(sum(label_groups(out).values(), []))
+            tags = load_json(TAGS_PATH, {})
+            for e in tags.values():
+                e["labels"] = [l for l in e.get("labels", []) if l in valid]
+                e["suggested"] = [l for l in e.get("suggested", []) if l in valid]
+            save_json(TAGS_PATH, tags)
+    return out
+
+
+_reclass = {"running": False, "done": 0, "total": 0, "failed": 0, "current": ""}
+
+
+def reclassify_all():
+    """모든 논문을 현재 체계로 다시 분류 (3편 동시). 사용자가 끈 라벨(rejected)은 다시 붙이지 않음."""
+    if _reclass["running"]:
+        return False
+    files = archive_pdfs()
+    _reclass.update(running=True, done=0, total=len(files), failed=0, current="")
+
+    def work(q):
+        while True:
+            try:
+                f = q.pop()
+            except IndexError:
+                return
+            _reclass["current"] = f
+            try:
+                with _lock:
+                    tags = load_json(TAGS_PATH, {})
+                e = tags.get(f, {})
+                title = e.get("title") or parse_name(f)["title"]
+                text = (_texts_cache or load_json(TEXTS_PATH, {})).get(f, "")
+                groups = load_json(LABELS_PATH, {})
+                picked = classify_with_claude(title, rules.keyword_section(text), text[:6000], groups)
+                with _lock:
+                    tags = load_json(TAGS_PATH, {})
+                    cur = tags.setdefault(f, {"labels": [], "suggested": [], "rejected": [], "title": title})
+                    if picked is not None:
+                        rej = set(cur.get("rejected", []))
+                        cur["labels"] = [l for l in picked if l not in rej]
+                        cur["suggested"] = [l for l in cur.get("suggested", []) if l not in cur["labels"] and l not in rej]
+                        cur.pop("claude_tries", None)
+                    else:
+                        _reclass["failed"] += 1
+                    save_json(TAGS_PATH, tags)
+            except Exception:
+                _reclass["failed"] += 1
+            _reclass["done"] += 1
+
+    def run():
+        q = list(reversed(files))
+        ts = [threading.Thread(target=work, args=(q,), daemon=True) for _ in range(3)]
+        for t in ts: t.start()
+        for t in ts: t.join()
+        _reclass.update(running=False, current="")
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
 def edit_labels(body):
     """라벨 체계 편집 (홈 사이드바 '체계 편집'). op 없으면 예전 방식(묶음에 라벨 추가). 바뀐 labels.json 전체를 돌려준다."""
     op = body.get("op") or "add_label"
@@ -1804,6 +1946,12 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.html"):
             with open(os.path.join(BASE, "index.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/labels":
+            with open(os.path.join(BASE, "labels.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/api/labels":
+            counts, n = label_counts()
+            self._send(200, {"groups": load_json(LABELS_PATH, {}), "counts": counts, "papers": n, "reclass": dict(_reclass)})
         elif url.path == "/api/data":
             with _lock:
                 tags = load_json(TAGS_PATH, {})
@@ -2317,7 +2465,22 @@ class Handler(BaseHTTPRequestHandler):
                 save_json(TAGS_PATH, tags)
             self._send(200, {"ok": True})
         elif self.path == "/api/labels":
-            # 라벨 체계 편집: op = add_label(기본) | rename_label | delete_label | move_label | add_group | rename_group | delete_group | reorder_groups | add_subgroup | rename_subgroup | delete_subgroup | forget_new
+            # 라벨 체계: 편집 op(add_label 기본 | rename/delete/move_label | add/rename/delete_group | reorder_groups | add/rename/delete_subgroup | forget_new)
+            # + propose(Claude 체계 제안) | apply_proposal(mode replace/merge) | reclassify_all
+            op = body.get("op") or "add_label"
+            if op == "propose":
+                try:
+                    prop = propose_taxonomy(body.get("field", ""), body.get("use_titles", True), body.get("n_groups", 6), body.get("keep_existing", True))
+                except Exception as e:
+                    return self._send(200, {"error": str(e)[:300]})
+                return self._send(200, {"proposal": prop} if prop else {"error": "Claude 가 체계를 만들지 못했습니다 (로그인·사용량 확인 후 다시)"})
+            if op == "apply_proposal":
+                prop = body.get("proposal") or {}
+                if not prop.get("groups"):
+                    return self._send(400, {"error": "제안이 비어 있습니다"})
+                return self._send(200, {"ok": True, "groups": apply_taxonomy(prop, body.get("mode", "merge"))})
+            if op == "reclassify_all":
+                return self._send(200, {"ok": reclassify_all(), "reclass": dict(_reclass)})
             self._send(200, {"ok": True, "groups": edit_labels(body)})
         else:
             self._send(404, {"error": "not found"})

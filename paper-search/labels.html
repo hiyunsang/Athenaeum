@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>라벨 체계 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  header { display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header .brand-mark { height: 24px; display: block; }
+  header h1 { font-size: 14px; font-weight: 600; }
+  header .hint { padding: 0; }
+  #wrap { max-width: 980px; margin: 0 auto; padding: var(--s4) var(--s4) var(--s8); }
+  .box { background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .box h2 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .box .hint { padding: 0; line-height: 1.6; }
+  textarea { width: 100%; box-sizing: border-box; font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .row label { font-size: 12px; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; }
+  .btn.pri { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .prog { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+  .prog .bar { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; } .prog .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .6s; }
+  /* 체계 트리 */
+  .grp { border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; background: var(--panel); }
+  .grp > .gh { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .grp > .gh b { font-size: 14px; } .grp.fixed > .gh b::after { content: " · 고정"; font-weight: 400; color: var(--text-3); font-size: 11px; }
+  .gbody { padding: 6px 12px 10px; }
+  .sub { margin: 6px 0 4px 0; padding-left: 12px; border-left: 2px solid var(--line-2); }
+  .sub > .sh { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); padding: 3px 0; }
+  .lbls { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+  .lb { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line-2); border-radius: 14px; padding: 2px 4px 2px 10px; font-size: 12.5px; background: var(--surface); }
+  .lb .n { color: var(--text-3); font-size: 11px; } .lb .newdot { color: var(--amber); font-size: 8px; }
+  .ic { color: var(--text-quiet); cursor: pointer; font-size: 12px; padding: 0 4px; border-radius: 4px; } .ic:hover { color: var(--accent); background: var(--hover); }
+  .ic.del:hover { color: var(--red); }
+  .addrow { display: flex; gap: 6px; margin-top: 4px; } .addrow input { font-size: 12px; width: 180px; }
+  .prop .grp { background: var(--surface); }
+  .muted { color: var(--text-3); }
+  #propBox { display: none; }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
+  <h1>라벨 체계</h1>
+  <span class="hint">왼쪽 목록의 묶음·분류·라벨을 여기서 고칩니다. 저장은 즉시, 홈 화면은 돌아가면 새로 읽습니다.</span>
+  <span style="margin-left:auto"></span><span id="uiCtlHost"></span>
+</header>
+<div id="wrap">
+
+  <div class="box">
+    <h2>Claude에게 체계 설계 맡기기</h2>
+    <div class="hint">분야가 다르면 묶음(큰 제목)부터 달라야 합니다. 내 논문 제목들을 보고 Claude가 묶음 → 하위 분류 → 라벨을 제안합니다. 제안을 보고 바꾸거나 합칠지 정합니다. 「유형」(Review 등)은 그대로 둡니다.</div>
+    <textarea id="field" rows="2" placeholder="분야·관심사를 한두 줄 (비워도 됩니다. 예: 생명공학 - 세포배양, 유전자 편집, 바이오리액터 / 기계가공 - 절삭, 구성인선, 표면 결함)"></textarea>
+    <div class="row">
+      <label><input type="checkbox" id="useTitles" checked> 내 논문 제목 <span id="nTitles">…</span>편 참고</label>
+      <label>묶음 수 <select id="nGroups"><option>4</option><option>5</option><option selected>6</option><option>7</option><option>8</option></select></label>
+      <label><input type="checkbox" id="keepExisting" checked> 지금 쓰는 라벨 이름은 되도록 유지</label>
+      <button class="btn pri" id="propose">제안 받기 (Opus, ~1분)</button>
+      <span id="propMsg" class="hint"></span>
+    </div>
+    <div id="propBox">
+      <div class="hint" style="margin:10px 0 4px"><b>제안된 체계</b> · <span id="propNote"></span></div>
+      <div id="propTree" class="prop"></div>
+      <div class="row">
+        <button class="btn pri" id="applyReplace" title="유형 묶음만 남기고 나머지를 제안대로 바꿉니다. 논문의 옛 라벨은 새 체계에 없으면 떨어지므로 곧바로 전체 다시 분류를 권합니다">이 체계로 바꾸기</button>
+        <button class="btn" id="applyMerge" title="지금 체계에 없는 묶음·분류·라벨만 더합니다">지금 체계에 합치기</button>
+        <button class="btn" id="applyCancel">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div style="display:flex;align-items:baseline;gap:10px"><h2 style="flex:1">현재 체계</h2><span class="hint" id="stat"></span><button class="btn" id="addGroup">+ 묶음</button></div>
+    <div class="hint">이름을 누르면 바꿉니다. ✕ 는 삭제(라벨은 논문에서도 떼어짐), ⇄ 는 다른 묶음·분류로 이동, ＋ 는 그 안에 라벨·분류 추가. 노란 점 ● 은 최근 2주 안에 Claude가 자동으로 추가한 라벨.</div>
+    <div id="tree"></div>
+  </div>
+
+  <div class="box">
+    <h2>분류</h2>
+    <div class="hint">새 논문은 들어올 때 Claude가 이 체계로 자동 분류하고, 체계에 없는 핵심 재료·공정이 나오면 알맞은 묶음 아래에 새 라벨을 만들어 붙입니다. 체계를 크게 바꿨을 때는 전체를 한 번 다시 분류하세요 (논문당 20~40초, 3편 동시).</div>
+    <div class="row"><button class="btn" id="reclass">전체 논문 다시 분류</button><span class="hint" id="reMsg"></span></div>
+    <div class="prog" id="reProg" style="display:none"><span id="reTxt"></span><div class="bar"><i id="reBar"></i></div></div>
+  </div>
+</div>
+<script>
+mountUiControls("header");
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let data = null;   // {groups, counts, papers}
+const meta = () => data.groups["_체계"] || { 고정: ["유형"], 트리: {}, 새라벨: {} };
+const realGroups = () => Object.entries(data.groups).filter(([g, v]) => !g.startsWith("_") && Array.isArray(v));
+const isNew = lb => { const n = (meta().새라벨 || {})[lb]; return n && (Date.now() / 1000 - n.t) < 14 * 86400; };
+const ask = (msg, v) => { const t = prompt(msg, v || ""); return t === null ? null : t.trim(); };
+
+async function op(body) {
+  const r = await (await fetch("/api/labels", { method: "POST", body: JSON.stringify(body) })).json();
+  if (r.error) { alert("⚠ " + r.error); return r; }
+  await load(); return r;
+}
+async function load() {
+  data = await (await fetch("/api/labels")).json();
+  $("nTitles").textContent = data.papers;
+  $("stat").textContent = "묶음 " + realGroups().length + " · 라벨 " + realGroups().reduce((a, [, v]) => a + v.length, 0) + " · 논문 " + data.papers + "편";
+  renderTree(); pollReclass();
+}
+const ic = (t, title, cls, fn) => { const s = document.createElement("span"); s.className = "ic " + (cls || ""); s.textContent = t; s.title = title; s.onclick = e => { e.stopPropagation(); fn(); }; return s; };
+function labelChip(lb, gname) {
+  const el = document.createElement("span"); el.className = "lb";
+  el.innerHTML = "<span class='nm'>" + esc(lb) + "</span>" + (isNew(lb) ? "<span class='newdot' title='Claude 자동 추가'>●</span>" : "") + "<span class='n'>" + (data.counts[lb] || 0) + "</span>";
+  el.querySelector(".nm").style.cursor = "text"; el.querySelector(".nm").title = "이름 바꾸기";
+  el.querySelector(".nm").onclick = async () => { const nn = ask("라벨 이름 (모든 논문에 반영):", lb); if (nn && nn !== lb) await op({ op: "rename_label", label: lb, new: nn }); };
+  el.appendChild(ic("⇄", "다른 묶음·분류로 이동", "", async () => { const to = ask("옮길 곳 (묶음 또는 묶음/분류, 예: 재료/금속):", gname); if (!to) return; const [g, parent] = to.split("/").map(x => x.trim()); await op({ op: "move_label", label: lb, group: g, parent: parent || "" }); }));
+  el.appendChild(ic("✕", "라벨 삭제 (논문 " + (data.counts[lb] || 0) + "편에서 떼어짐)", "del", async () => { if (confirm("라벨 '" + lb + "' 을 지우고 논문 " + (data.counts[lb] || 0) + "편에서 뗍니다. 계속?")) await op({ op: "delete_label", label: lb }); }));
+  return el;
+}
+function addRow(placeholder, fn) {
+  const d = document.createElement("div"); d.className = "addrow";
+  const i = document.createElement("input"); i.placeholder = placeholder; const b = document.createElement("button"); b.className = "btn"; b.textContent = "추가";
+  const go = () => { const v = i.value.trim(); if (v) fn(v); }; b.onclick = go; i.onkeydown = e => { if (e.key === "Enter") go(); };
+  d.appendChild(i); d.appendChild(b); return d;
+}
+function renderTree() {
+  const root = $("tree"); root.innerHTML = "";
+  const gl = realGroups(), fixed = meta().고정 || [];
+  gl.forEach(([gname, labels], gi) => {
+    const box = document.createElement("div"); box.className = "grp" + (fixed.includes(gname) ? " fixed" : "");
+    const gh = document.createElement("div"); gh.className = "gh";
+    const b = document.createElement("b"); b.textContent = gname; b.style.cursor = "text"; b.title = "묶음 이름 바꾸기";
+    if (!fixed.includes(gname)) b.onclick = async () => { const nn = ask("묶음 이름:", gname); if (nn && nn !== gname) await op({ op: "rename_group", group: gname, new: nn }); };
+    gh.appendChild(b);
+    const cnt = document.createElement("span"); cnt.className = "muted"; cnt.style.fontSize = "12px"; cnt.textContent = labels.length + "개 라벨"; gh.appendChild(cnt);
+    const sp = document.createElement("span"); sp.style.marginLeft = "auto"; gh.appendChild(sp);
+    if (!fixed.includes(gname)) {
+      if (gi > 0) gh.appendChild(ic("↑", "위로", "", () => { const o = gl.map(x => x[0]); [o[gi - 1], o[gi]] = [o[gi], o[gi - 1]]; op({ op: "reorder_groups", order: o }); }));
+      if (gi < gl.length - 1) gh.appendChild(ic("↓", "아래로", "", () => { const o = gl.map(x => x[0]); [o[gi + 1], o[gi]] = [o[gi], o[gi + 1]]; op({ op: "reorder_groups", order: o }); }));
+      gh.appendChild(ic("＋분류", "접히는 하위 분류 추가 (예: 금속)", "", async () => { const n = ask("하위 분류 이름:"); if (n) await op({ op: "add_subgroup", group: gname, name: n }); }));
+      if (!labels.length) gh.appendChild(ic("✕", "빈 묶음 삭제", "del", () => op({ op: "delete_group", group: gname })));
+    }
+    box.appendChild(gh);
+    const body = document.createElement("div"); body.className = "gbody";
+    const tree = (meta().트리 || {})[gname] || [];
+    const leaves = node => typeof node === "string" ? [node] : (node.kids || []).flatMap(leaves);
+    const inTree = new Set(tree.flatMap(leaves));
+    const renderNode = (node, parentEl, parentName) => {
+      if (typeof node === "string") return;
+      const sub = document.createElement("div"); sub.className = "sub";
+      const sh = document.createElement("div"); sh.className = "sh";
+      const nm = document.createElement("span"); nm.textContent = node.name; nm.style.cursor = "text"; nm.title = "분류 이름 바꾸기";
+      nm.onclick = async () => { const nn = ask("분류 이름:", node.name); if (nn && nn !== node.name) await op({ op: "rename_subgroup", group: gname, name: node.name, new: nn }); };
+      sh.appendChild(nm);
+      const kidsLabels = (node.kids || []).filter(k => typeof k === "string" && labels.includes(k));
+      const c2 = document.createElement("span"); c2.className = "muted"; c2.style.fontWeight = "400"; c2.textContent = leaves(node).filter(k => labels.includes(k)).length + "개"; sh.appendChild(c2);
+      const sp2 = document.createElement("span"); sp2.style.marginLeft = "auto"; sh.appendChild(sp2);
+      sh.appendChild(ic("＋분류", "이 분류 아래 하위 분류", "", async () => { const n = ask("'" + node.name + "' 아래 분류 이름:"); if (n) await op({ op: "add_subgroup", group: gname, name: n, parent: node.name }); }));
+      sh.appendChild(ic("✕", "분류만 없애기 (라벨은 위로 올라감)", "del", () => op({ op: "delete_subgroup", group: gname, name: node.name })));
+      sub.appendChild(sh);
+      const ll = document.createElement("div"); ll.className = "lbls"; kidsLabels.forEach(k => ll.appendChild(labelChip(k, gname + "/" + node.name))); sub.appendChild(ll);
+      sub.appendChild(addRow("+ 라벨 (영어)", v => op({ op: "add_label", group: gname, label: v, parent: node.name })));
+      (node.kids || []).forEach(k => renderNode(k, sub, node.name));
+      parentEl.appendChild(sub);
+    };
+    tree.forEach(n => renderNode(n, body, ""));
+    const rest = labels.filter(l => !inTree.has(l));
+    if (rest.length || !tree.length) { const ll = document.createElement("div"); ll.className = "lbls"; rest.forEach(l => ll.appendChild(labelChip(l, gname))); body.appendChild(ll); }
+    if (!fixed.includes(gname)) body.appendChild(addRow("+ 라벨 (영어, 예: Copper)", v => op({ op: "add_label", group: gname, label: v })));
+    box.appendChild(body); root.appendChild(box);
+  });
+}
+$("addGroup").onclick = async () => { const n = ask("새 묶음 이름 (예: 코팅, 윤활, 세포 종류):"); if (n) await op({ op: "add_group", group: n }); };
+
+// ---- Claude 체계 제안 ----
+let proposal = null;
+function propTreeHtml(p) {
+  return (p.groups || []).map(g => "<div class='grp'><div class='gh'><b>" + esc(g.name) + "</b><span class='muted' style='font-size:12px'>" + esc(g.why || "") + "</span></div><div class='gbody'>" +
+    (g.subgroups || []).map(sg => "<div class='sub'><div class='sh'>" + esc(sg.name) + "</div><div class='lbls'>" + (sg.labels || []).map(l => "<span class='lb'>" + esc(l) + "</span>").join("") + "</div></div>").join("") +
+    ((g.labels || []).length ? "<div class='lbls'>" + g.labels.map(l => "<span class='lb'>" + esc(l) + "</span>").join("") + "</div>" : "") + "</div></div>").join("");
+}
+$("propose").onclick = async () => {
+  const b = $("propose"); b.disabled = true; $("propMsg").textContent = "Claude가 논문 제목을 읽고 체계를 짜는 중… (~1분)";
+  const r = await (await fetch("/api/labels", { method: "POST", body: JSON.stringify({ op: "propose", field: $("field").value.trim(), use_titles: $("useTitles").checked, n_groups: +$("nGroups").value, keep_existing: $("keepExisting").checked }) })).json();
+  b.disabled = false;
+  if (r.error || !r.proposal) { $("propMsg").textContent = "⚠ " + (r.error || "제안을 받지 못했습니다"); return; }
+  proposal = r.proposal; $("propMsg").textContent = "";
+  $("propNote").textContent = (proposal.note || "") + " · 묶음 " + (proposal.groups || []).length + "개";
+  $("propTree").innerHTML = propTreeHtml(proposal); $("propBox").style.display = "block"; $("propBox").scrollIntoView({ block: "start", behavior: "smooth" });
+};
+$("applyCancel").onclick = () => { proposal = null; $("propBox").style.display = "none"; };
+$("applyMerge").onclick = async () => { if (!proposal) return; await op({ op: "apply_proposal", mode: "merge", proposal }); $("propBox").style.display = "none"; };
+$("applyReplace").onclick = async () => {
+  if (!proposal) return;
+  if (!confirm("「유형」만 남기고 나머지 묶음·분류·라벨을 제안대로 바꿉니다.\n새 체계에 없는 옛 라벨은 논문에서 떨어집니다. 이어서 전체 논문을 다시 분류할까요? (취소하면 체계만 바뀜)")) {
+    if (!confirm("체계만 바꿀까요?")) return;
+    await op({ op: "apply_proposal", mode: "replace", proposal }); $("propBox").style.display = "none"; return;
+  }
+  await op({ op: "apply_proposal", mode: "replace", proposal }); $("propBox").style.display = "none";
+  startReclass();
+};
+
+// ---- 전체 다시 분류 ----
+async function startReclass() {
+  const r = await (await fetch("/api/labels", { method: "POST", body: JSON.stringify({ op: "reclassify_all" }) })).json();
+  if (r.error) { alert("⚠ " + r.error); return; }
+  pollReclass();
+}
+$("reclass").onclick = () => { if (confirm("논문 " + data.papers + "편을 Claude로 다시 분류합니다 (한 편 20~40초, 3편 동시 → 약 " + Math.ceil(data.papers * 30 / 3 / 60) + "분). 사용자가 직접 끈 라벨은 다시 붙지 않습니다. 시작할까요?")) startReclass(); };
+let reTimer = null;
+async function pollReclass() {
+  const s = (await (await fetch("/api/labels?status=1")).json()).reclass || {};
+  const prog = $("reProg");
+  if (s.running) {
+    prog.style.display = ""; $("reclass").disabled = true;
+    $("reTxt").textContent = "다시 분류 중 " + s.done + "/" + s.total + (s.current ? " · " + s.current.slice(0, 40) : "");
+    $("reBar").style.width = Math.round(100 * s.done / Math.max(1, s.total)) + "%";
+    if (!reTimer) reTimer = setInterval(pollReclass, 4000);
+  } else {
+    $("reclass").disabled = false;
+    if (reTimer) { clearInterval(reTimer); reTimer = null; await load(); }
+    if (s.total) { prog.style.display = ""; $("reTxt").textContent = "마지막 분류: " + s.done + "/" + s.total + "편 완료" + (s.failed ? " · 실패 " + s.failed : ""); $("reBar").style.width = "100%"; }
+  }
+}
+load();
+</script>
+</body>
+</html>
