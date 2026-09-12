@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>단어장 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  header { display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header .brand-mark { height: 24px; display: block; }
+  header h1 { font-size: 14px; font-weight: 600; }
+  header .hint { padding: 0; }
+  .tabs { display: flex; gap: 2px; margin-left: var(--s3); }
+  .tabs button { background: none; border: 0; padding: 6px 12px; font-size: 13px; color: var(--text-quiet); cursor: pointer; border-radius: var(--r) var(--r) 0 0; }
+  .tabs button.on { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  #wrap { max-width: 1000px; margin: 0 auto; padding: var(--s4) var(--s4) var(--s8); }
+  .pane { display: none; } .pane.on { display: block; }
+  .box { background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .box h2 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .box .hint { padding: 0; line-height: 1.6; }
+  textarea, input[type=text] { width: 100%; box-sizing: border-box; font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .row label { font-size: 12px; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; }
+  .row input[type=text] { width: 150px; }
+  .btn.pri { background: var(--accent); color: #fff; border-color: var(--accent); }
+  /* 목록 */
+  .w { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); align-items: start; }
+  .w:hover { background: var(--hover); }
+  .w .t { font-weight: 600; font-size: 14px; } .w .t .pos { font-weight: 400; font-size: 11px; color: var(--text-3); margin-left: 5px; }
+  .w .g { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+  .w .m { font-size: 13px; } .w .m .ed { border: 0; border-bottom: 1px solid transparent; background: none; width: 100%; font: inherit; color: inherit; }
+  .w .m .ed:hover, .w .m .ed:focus { border-bottom-color: var(--line-2); outline: none; }
+  .w .ex { font-size: 12px; color: var(--text-2); margin-top: 3px; line-height: 1.5; border-left: 2px solid var(--line-2); padding-left: 7px; }
+  .w .ex i { color: var(--text-3); }
+  .w .src { font-size: 11px; color: var(--text-3); }
+  .w .acts { display: flex; gap: 4px; align-items: center; }
+  .ic { color: var(--text-quiet); cursor: pointer; font-size: 12px; padding: 2px 5px; border-radius: 4px; } .ic:hover { color: var(--accent); background: var(--hover); } .ic.del:hover { color: var(--red); }
+  .chip { font-size: 11px; color: var(--text-3); border: 1px solid var(--line-2); border-radius: 10px; padding: 1px 7px; }
+  .chip.known { color: var(--green); border-color: var(--green); }
+  #filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; font-size: 12px; }
+  #filters select, #filters input { font-size: 12px; } #q { width: 160px; }
+  /* 훑어보기 */
+  #card { min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; cursor: pointer; user-select: none; padding: 20px; }
+  #card .term { font-size: 30px; font-family: var(--font-serif); }
+  #card .mean { font-size: 20px; color: var(--accent); }
+  #card .sub { font-size: 13px; color: var(--text-2); line-height: 1.7; max-width: 640px; }
+  #card .tip { font-size: 12px; color: var(--text-3); }
+  .prog { height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; margin: 4px 0 10px; } .prog i { display: block; height: 100%; background: var(--accent); }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  ol.guide { margin: 6px 0 0 18px; padding: 0; font-size: 13px; line-height: 1.8; color: var(--text-2); } ol.guide b { color: var(--text); }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
+  <h1>단어장</h1>
+  <div class="tabs">
+    <button data-p="list" class="on">목록</button><button data-p="add">담기</button><button data-p="review">훑어보기</button><button data-p="export">Anki 로 내보내기</button>
+  </div>
+  <span class="hint" id="stat"></span>
+  <span style="margin-left:auto"></span><span id="uiCtlHost"></span>
+</header>
+<div id="wrap">
+
+  <div class="pane on" id="pane-list">
+    <div class="box">
+      <div id="filters">
+        <input type="text" id="q" placeholder="단어·뜻 검색">
+        <select id="fDeck"><option value="">모든 묶음</option></select>
+        <select id="fSrc"><option value="">담은 곳 전체</option><option value="paper">논문에서</option><option value="list">목록에서</option></select>
+        <select id="fSt"><option value="">상태 전체</option><option value="new">아직</option><option value="known">알아요</option></select>
+        <select id="fSort"><option value="new">최근 담은 순</option><option value="term">가나다·알파벳순</option><option value="deck">묶음순</option></select>
+        <span style="margin-left:auto"></span><span class="hint" id="cnt"></span>
+      </div>
+      <div id="list"></div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-add">
+    <div class="box">
+      <h2>단어 목록 붙여 넣기</h2>
+      <div class="hint">한 줄에 하나씩. 뜻을 같이 적으려면 <code>단어 - 뜻</code>, <code>단어(탭)뜻</code>, <code>단어,뜻</code> 중 아무 꼴이나 됩니다. 뜻을 비우면 Claude 가 채웁니다(40개씩, 1분 안팎).</div>
+      <textarea id="bulk" rows="9" placeholder="chip formation&#10;stagnation zone - 정체 영역&#10;work hardening&#10;ductile-brittle transition"></textarea>
+      <div class="row">
+        <label>묶음 <input type="text" id="bDeck" value="시험단어" list="deckList"></label>
+        <label>태그 <input type="text" id="bTags" placeholder="쉼표로 구분 (선택)"></label>
+        <label><input type="checkbox" id="bAsk" checked> 빈 뜻은 Claude 가 채우기</label>
+        <button class="btn pri" id="bGo">담기</button>
+        <span class="hint" id="bMsg"></span>
+      </div>
+      <datalist id="deckList"></datalist>
+    </div>
+    <div class="box">
+      <h2>논문에서 담기</h2>
+      <div class="hint">읽기 화면에서 모르는 말을 드래그하고 <b>단어</b>를 누르면 뜻·그 논문의 예문(영어와 번역)·출처가 자동으로 붙어 여기에 쌓입니다. 같은 단어를 다른 논문에서 또 담으면 예문만 더해집니다(최대 5개).</div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-review">
+    <div class="box">
+      <div class="row" style="margin:0 0 6px">
+        <label>묶음 <select id="rDeck"><option value="">전체</option></select></label>
+        <label><input type="checkbox" id="rOnlyNew" checked> 아직 못 외운 것만</label>
+        <label><input type="checkbox" id="rShuffle" checked> 섞기</label>
+        <button class="btn" id="rStart">시작</button>
+        <span class="hint">간격 반복은 Anki 가 합니다. 여기서는 방금 담은 것을 훑어보고 아는 것만 표시합니다.</span>
+      </div>
+      <div class="prog"><i id="rBar" style="width:0"></i></div>
+      <div id="card"><div class="tip">시작을 누르세요</div></div>
+      <div class="row" id="rBtns" style="justify-content:center;display:none">
+        <button class="btn" id="rAgain">모르겠어요 (1)</button>
+        <button class="btn pri" id="rKnown">알아요 (2)</button>
+        <button class="btn" id="rSkip">건너뛰기 (3)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-export">
+    <div class="box">
+      <h2>Anki 파일 만들기</h2>
+      <div class="row">
+        <label>방식 <select id="eMode">
+          <option value="basic">간단 — 앞면 단어 / 뒷면 뜻·예문·출처 (설정 필요 없음)</option>
+          <option value="fields">자세히 — 단어·뜻·예문·출처를 각각 다른 칸으로 (노트 유형 한 번 만들기)</option>
+        </select></label>
+      </div>
+      <div class="row">
+        <label>Anki 덱 이름 <input type="text" id="eDeck" value="Athenaeum"></label>
+        <label>묶음 <select id="eSel"><option value="">전체</option></select></label>
+        <label>범위 <select id="eOnly"><option value="all">전체</option><option value="new">아직 못 외운 것만</option><option value="paper">논문에서 담은 것만</option><option value="list">목록에서 담은 것만</option></select></label>
+        <button class="btn pri" id="eGo">파일 만들기</button>
+        <span class="hint" id="eMsg"></span>
+      </div>
+      <div id="eResult"></div>
+    </div>
+    <div class="box">
+      <h2>Anki 에서 가져오는 법</h2>
+      <ol class="guide">
+        <li>Anki 를 열고 위쪽 <b>파일 → 가져오기</b>에서 방금 만든 <code>.txt</code> 파일을 고릅니다.</li>
+        <li>간단 방식이면 그대로 <b>가져오기</b>를 누르면 됩니다. 덱·탭 구분·HTML 설정이 파일 안에 적혀 있어 Anki 가 알아서 맞춥니다.</li>
+        <li>자세히 방식이면 처음 한 번만 노트 유형을 만듭니다. <b>도구 → 노트 유형 관리 → 추가 → Basic 복제</b>로 <code>Athenaeum 단어</code>를 만들고, 칸을 <code>단어 · 뜻 · 영어설명 · 예문 · 예문번역 · 출처</code> 여섯 개로 맞춥니다.</li>
+        <li>같은 파일을 또 가져와도 첫 칸(단어)이 같으면 Anki 가 덮어씁니다. 단어가 늘 때마다 다시 내보내 가져오면 됩니다.</li>
+        <li>폰에서 보려면 Anki 에서 <b>동기화</b>를 누르고 AnkiWeb 계정으로 로그인합니다. 안드로이드는 AnkiDroid(무료), 아이폰은 AnkiMobile(유료) 또는 폰 브라우저로 <code>ankiweb.net</code>에 접속하면 됩니다.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+mountUiControls("header");
+let data = { words: [], decks: [] };
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : undefined);
+  return r.json();
+}
+async function load() {
+  data = await api("/api/vocab");
+  const decks = data.decks.filter(Boolean);
+  for (const [id, first] of [["fDeck", "모든 묶음"], ["rDeck", "전체"], ["eSel", "전체"]])
+    $(id).innerHTML = "<option value=''>" + first + "</option>" + decks.map(d => "<option>" + esc(d) + "</option>").join("");
+  $("deckList").innerHTML = decks.map(d => "<option value='" + esc(d) + "'>").join("");
+  const known = data.words.filter(w => w.status === "known").length;
+  $("stat").textContent = "단어 " + data.words.length + "개 · 알아요 " + known + " · 논문에서 " + data.words.filter(w => w.source === "paper").length;
+  renderList();
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === "pane-" + b.dataset.p));
+});
+
+// ---------- 목록 ----------
+function filtered() {
+  const q = $("q").value.trim().toLowerCase(), dk = $("fDeck").value, sc = $("fSrc").value, st = $("fSt").value;
+  let ws = data.words.filter(w =>
+    (!dk || w.deck === dk) && (!sc || w.source === sc) && (!st || (st === "known" ? w.status === "known" : w.status !== "known")) &&
+    (!q || (w.term + " " + (w.meaning || "") + " " + (w.gloss_en || "")).toLowerCase().includes(q)));
+  const mode = $("fSort").value;
+  ws.sort(mode === "term" ? (a, b) => a.term.localeCompare(b.term)
+    : mode === "deck" ? (a, b) => (a.deck || "").localeCompare(b.deck || "") || a.term.localeCompare(b.term)
+    : (a, b) => (b.t || 0) - (a.t || 0));
+  return ws;
+}
+function renderList() {
+  const ws = filtered();
+  $("cnt").textContent = ws.length + "개";
+  $("list").innerHTML = ws.map(w => {
+    const ex = (w.examples || [])[0];
+    return "<div class='w' data-id='" + w.id + "'>" +
+      "<div><div class='t'>" + esc(w.term) + (w.pos ? "<span class='pos'>" + esc(w.pos) + "</span>" : "") + "</div>" +
+      (w.gloss_en ? "<div class='g'>" + esc(w.gloss_en) + "</div>" : "") +
+      (ex ? "<div class='ex'><i>" + esc((ex.en || "").slice(0, 180)) + "</i>" + (ex.ko ? "<br>" + esc(ex.ko.slice(0, 180)) : "") +
+        (ex.title ? "<div class='src'>" + esc(ex.title.slice(0, 70)) + (ex.page ? " p." + ex.page : "") + (ex.file ? " · <a href='/view?file=" + encodeURIComponent(ex.file) + "&kind=translation" + (ex.sent ? "&sent=" + ex.sent : "") + "' target='_blank'>원문</a>" : "") + "</div>" : "") + "</div>" : "") +
+      "</div>" +
+      "<div class='m'><input class='ed' data-m='" + w.id + "' value='" + esc(w.meaning || "") + "' placeholder='뜻'>" +
+      (w.note ? "<div class='g'>" + esc(w.note) + "</div>" : "") + "</div>" +
+      "<div class='acts'><span class='chip" + (w.status === "known" ? " known" : "") + "' data-k='" + w.id + "' title='알아요 표시 바꾸기'>" + (w.status === "known" ? "알아요" : "아직") + "</span>" +
+      "<span class='chip'>" + esc(w.deck || "") + "</span>" +
+      "<span class='ic' data-mv='" + w.id + "' title='묶음 옮기기'>⇄</span>" +
+      "<span class='ic del' data-d='" + w.id + "' title='삭제'>✕</span></div></div>";
+  }).join("") || "<div class='hint' style='padding:20px;text-align:center'>단어가 없습니다. 「담기」에서 목록을 붙여 넣거나, 읽기 화면에서 드래그 → 단어.</div>";
+  $("list").querySelectorAll("[data-m]").forEach(i => {
+    i.onchange = async () => { await api("/api/vocab/edit", { id: i.dataset.m, meaning: i.value }); const w = data.words.find(x => x.id === i.dataset.m); if (w) w.meaning = i.value; };
+  });
+  $("list").querySelectorAll("[data-k]").forEach(c => c.onclick = async () => {
+    const w = data.words.find(x => x.id === c.dataset.k);
+    const st = w.status === "known" ? "new" : "known";
+    await api("/api/vocab/edit", { id: w.id, status: st }); w.status = st; renderList(); load();
+  });
+  $("list").querySelectorAll("[data-mv]").forEach(c => c.onclick = async () => {
+    const w = data.words.find(x => x.id === c.dataset.mv);
+    const d = prompt("옮길 묶음 이름:", w.deck || ""); if (d === null) return;
+    await api("/api/vocab/edit", { id: w.id, deck: d.trim() }); load();
+  });
+  $("list").querySelectorAll("[data-d]").forEach(c => c.onclick = async () => {
+    const w = data.words.find(x => x.id === c.dataset.d);
+    if (!confirm("'" + w.term + "' 을 지울까요?")) return;
+    await api("/api/vocab/edit", { op: "delete", ids: [w.id] }); load();
+  });
+}
+["q", "fDeck", "fSrc", "fSt", "fSort"].forEach(id => { $(id).oninput = renderList; $(id).onchange = renderList; });
+
+// ---------- 담기 ----------
+$("bGo").onclick = async () => {
+  const text = $("bulk").value.trim();
+  if (!text) { $("bMsg").textContent = "단어를 붙여 넣어 주세요"; return; }
+  const n = text.split("\n").filter(x => x.trim()).length;
+  $("bGo").disabled = true; $("bMsg").textContent = "담는 중… " + ($("bAsk").checked ? "(Claude 가 뜻을 채웁니다, " + Math.ceil(n / 40) + "분 안팎)" : "");
+  const r = await api("/api/vocab/bulk", { text, deck: $("bDeck").value.trim(), tags: $("bTags").value, ask_claude: $("bAsk").checked });
+  $("bGo").disabled = false;
+  if (r.error) { $("bMsg").textContent = "⚠ " + r.error; return; }
+  $("bMsg").textContent = "담았습니다: " + r.added + "개" + (r.skipped ? " (이미 있던 " + r.skipped + "개는 건너뜀)" : "");
+  $("bulk").value = ""; load();
+};
+
+// ---------- 훑어보기 ----------
+let queue = [], qi = 0, shown = false;
+$("rStart").onclick = () => {
+  const dk = $("rDeck").value;
+  queue = data.words.filter(w => (!dk || w.deck === dk) && (!$("rOnlyNew").checked || w.status !== "known"));
+  if ($("rShuffle").checked) queue.sort(() => Math.random() - 0.5);
+  qi = 0; shown = false;
+  if (!queue.length) { $("card").innerHTML = "<div class='tip'>볼 단어가 없습니다</div>"; $("rBtns").style.display = "none"; return; }
+  $("rBtns").style.display = "flex"; showCard();
+};
+function showCard() {
+  if (qi >= queue.length) {
+    $("card").innerHTML = "<div class='term'>끝</div><div class='tip'>" + queue.length + "개를 봤습니다</div>";
+    $("rBtns").style.display = "none"; $("rBar").style.width = "100%"; load(); return;
+  }
+  const w = queue[qi];
+  $("rBar").style.width = Math.round(100 * qi / queue.length) + "%";
+  const ex = (w.examples || [])[0];
+  $("card").innerHTML = "<div class='term'>" + esc(w.term) + "</div>" + (shown
+    ? "<div class='mean'>" + esc(w.meaning || "(뜻 없음)") + "</div>" +
+      (w.gloss_en ? "<div class='sub'>" + esc(w.gloss_en) + "</div>" : "") +
+      (ex ? "<div class='sub'><i>" + esc((ex.en || "").slice(0, 220)) + "</i>" + (ex.ko ? "<br>" + esc(ex.ko.slice(0, 220)) : "") + "</div>" : "")
+    : "<div class='tip'>누르면 뜻이 보입니다 (스페이스)</div>");
+}
+$("card").onclick = () => { if (qi < queue.length) { shown = !shown; showCard(); } };
+async function answer(st) {
+  const w = queue[qi];
+  if (st) { await api("/api/vocab/edit", { id: w.id, status: st }); const o = data.words.find(x => x.id === w.id); if (o) o.status = st; }
+  qi++; shown = false; showCard();
+}
+$("rKnown").onclick = () => answer("known");
+$("rAgain").onclick = () => answer("new");
+$("rSkip").onclick = () => answer(null);
+document.addEventListener("keydown", e => {
+  if (!document.getElementById("pane-review").classList.contains("on") || $("rBtns").style.display === "none") return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (e.code === "Space") { e.preventDefault(); shown = !shown; showCard(); }
+  if (e.key === "1") answer("new"); if (e.key === "2") answer("known"); if (e.key === "3") answer(null);
+});
+
+// ---------- 내보내기 ----------
+$("eGo").onclick = async () => {
+  $("eGo").disabled = true; $("eMsg").textContent = "만드는 중…";
+  const r = await api("/api/vocab/export", { mode: $("eMode").value, deck_name: $("eDeck").value.trim() || "Athenaeum",
+    decks: $("eSel").value ? [$("eSel").value] : [], only: $("eOnly").value });
+  $("eGo").disabled = false;
+  if (r.error) { $("eMsg").textContent = "⚠ " + r.error; return; }
+  $("eMsg").textContent = "";
+  $("eResult").innerHTML = "<div class='hint' style='margin-top:8px'><b>" + esc(r.name) + "</b> · 단어 " + r.n + "개 만들었습니다.</div>" +
+    "<div class='row'><a class='btn pri' href='/api/vocab/file?name=" + encodeURIComponent(r.name) + "' download='" + esc(r.name) + "'>파일 내려받기</a>" +
+    "<button class='btn' id='eOpen'>폴더 열기</button><span class='hint'>" + esc(r.path) + "</span></div>";
+  $("eOpen").onclick = () => api("/api/vocab/open_folder", {});
+};
+load();
+</script>
+</body>
+</html>

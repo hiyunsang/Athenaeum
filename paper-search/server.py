@@ -1949,6 +1949,11 @@ import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search)
 
+# ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------
+import vocab
+vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
+           claude=_claude, claude_json=ask_claude_json)
+
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
@@ -1969,6 +1974,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/ms" or url.path.startswith("/api/ms") or url.path.startswith("/fig/"):
             return ms.handle_get(self, url)
+        if url.path == "/vocab" or url.path.startswith("/api/vocab"):
+            return vocab.handle_get(self, url)
         if url.path == "/api/intake":
             return self._send(200, intake.view())
         if url.path in ("/", "/index.html"):
@@ -2334,6 +2341,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/ms"):
             return ms.handle_post(self, body)
+        if self.path.startswith("/api/vocab"):
+            return vocab.handle_post(self, body)
         if self.path == "/api/intake":
             return self._send(200, intake.control(body))
         if self.path == "/api/read_ping":
