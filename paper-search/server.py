@@ -787,8 +787,28 @@ def pdf_blocks(name):
                     linfo.append((txt, float(ln["bbox"][0]), tuple(ln["bbox"])))
             if not linfo:
                 continue
-            # 저널 PDF 는 문단 첫 줄을 들여쓴다: 블록 안에서 들여쓴 줄(앞 줄이 문장부호로 끝남)을 새 문단의 시작으로 본다
+            # 일부 PDF(옛 Elsevier 등)는 낱말 하나하나를 따로 line 으로 준다. 그대로 두면 낱말마다
+            # '들여쓴 줄'로 보여 문장마다 문단이 끊긴다 → 같은 줄(같은 baseline, 오른쪽으로 이어짐)을 먼저 합친다
+            merged = []
+            for txt, x0, bb in linfo:
+                if merged:
+                    pt, px0, pbb = merged[-1]
+                    if abs(bb[1] - pbb[1]) <= 2.0 and bb[0] >= pbb[2] - 2.0:
+                        merged[-1] = (pt + txt, px0, (pbb[0], min(pbb[1], bb[1]), bb[2], max(pbb[3], bb[3])))
+                        continue
+                merged.append((txt, x0, bb))
+            linfo = merged
+            # 저널 PDF 는 문단 첫 줄을 들여쓴다: 블록 안에서 들여쓴 줄(앞 줄이 문장부호로 끝남)을 새 문단의 시작으로 본다.
+            # 기준은 최솟값이 아니라 '가장 흔한 왼쪽 끝'(줄 하나가 튀어나와도 흔들리지 않게)
+            lefts = {}
+            for _, x0, _ in linfo:
+                k = round(x0)
+                lefts[k] = lefts.get(k, 0) + 1
             bx0 = min(x0 for _, x0, _ in linfo)
+            if lefts:
+                common = max(lefts.items(), key=lambda kv: (kv[1], -kv[0]))[0]
+                if common - bx0 <= 3:      # 가장 흔한 왼쪽이 최소와 거의 같을 때만 신뢰 (아니면 조각난 블록)
+                    bx0 = common
             groups = [[linfo[0]]]
             for prev, cur in zip(linfo, linfo[1:]):
                 if cur[1] - bx0 > 9 and re.search(r"[.!?:]\s*$", prev[0]):
