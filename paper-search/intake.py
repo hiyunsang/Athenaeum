@@ -372,7 +372,17 @@ def parse_message(msg):
             break
 
     journal = html.unescape((msg.get("container-title") or [""])[0])
-    return {"title": title, "author": family, "year": year, "journal": journal}
+    return {"title": title, "author": family, "year": year, "journal": journal, "type": msg.get("type", "")}
+
+
+# Crossref 가 돌려준 기록이 '논문 한 편'인지. 저널 자체(type=journal)·호·권·시리즈 기록은 제목이 저널 이름 한 단어라
+# 제목 대조를 통과해 버린다 (2026-09-14: MDPI PDF 의 '10.3390/lubricants' 가 저널 기록으로 잡혀 0000_ETC_Unknown_Lubricants.pdf 로 정리됨).
+ARTICLE_TYPES = {"journal-article", "proceedings-article", "book-chapter", "posted-content", "report",
+                 "dissertation", "monograph", "book", "reference-entry", "other", ""}
+
+
+def is_article_record(meta):
+    return meta.get("type", "") in ARTICLE_TYPES and bool(meta.get("year"))
 
 
 def search_by_filename(pdf_path, page_text):
@@ -391,7 +401,7 @@ def search_by_filename(pdf_path, page_text):
     r.raise_for_status()
     for item in r.json()["message"].get("items", []):
         meta = parse_message(item)
-        if meta["title"] and title_matches(meta["title"], page_text):
+        if meta["title"] and is_article_record(meta) and title_matches(meta["title"], page_text):
             return meta
     return None
 
@@ -501,7 +511,7 @@ def search_by_text(page_text):
         return None
     for item in r.json()["message"].get("items", []):
         meta = parse_message(item)
-        if meta["title"] and title_matches(meta["title"], page_text):
+        if meta["title"] and is_article_record(meta) and title_matches(meta["title"], page_text):
             return meta
     return None
 
@@ -528,7 +538,7 @@ def resolve_meta(pdf_path):
                 m = fetch_metadata(variant)
             except requests.HTTPError:
                 continue  # 등록 안 된 DOI (추출 찌꺼기 등) - 다음 후보 시도
-            if m["title"] and title_matches(m["title"], page_text):
+            if m["title"] and is_article_record(m) and title_matches(m["title"], page_text):
                 meta = m
         if meta:
             break
