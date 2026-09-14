@@ -90,7 +90,8 @@ def _sentence_of(fname, sent_id, fallback=""):
     if sent_id:
         try:
             md = io.open(os.path.join(cfg["GEN_DIR"], stem + ".번역.md"), encoding="utf-8").read()
-            m = re.search(r"\[s%s\]\s*([^\[\n]{3,}?)(?=\s*\[s\d+\]|\n|$)" % re.escape(str(sent_id)), md)
+            # 다음 [sN] 표식 앞까지. 문장 안의 인용 괄호([12] 등)에서 끊기지 않게 '[' 자체는 허용
+            m = re.search(r"\[s%s\]\s*((?:(?!\[s\d+\])[^\n]){3,}?)(?=\s*\[s\d+\]|\n|$)" % re.escape(str(sent_id)), md)
             if m:
                 ko = m.group(1).strip()
         except Exception:
