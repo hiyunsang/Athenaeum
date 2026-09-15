@@ -103,15 +103,19 @@ def main():
     # 삭제 도우미: 뒤에서 도는 서버를 끄고 시작프로그램·바탕화면 바로가기를 지운다 (데이터는 안 지움). 폴더를 그냥 지우려면 서버가 파일을 잡고 있어 안 지워진다는 사용자 보고(2026-09-15)
     with open(os.path.join(OUT, "Athenaeum 삭제.bat"), "wb") as f:
         f.write(b'@echo off\r\nrem Athenaeum uninstall helper (portable). Stops the server and removes shortcuts; your data stays. Calls paper-search\\uninstall.bat.\r\ncall "%~dp0paper-search\\uninstall.bat" %*\r\n')
+    # 설치 도우미: 기능 안내 → Claude Code 설치·로그인 확인(없으면 설치 창) → 바탕화면 바로가기(아이콘) → 자동 시작(선택) → 실행
+    with open(os.path.join(OUT, "Athenaeum 설치.bat"), "wb") as f:
+        f.write(b'@echo off\r\nrem Athenaeum setup helper (portable): desktop shortcut, Claude Code check, optional autostart. Calls paper-search\\setup.bat.\r\ncall "%~dp0paper-search\\setup.bat" %*\r\n')
     io.open(os.path.join(OUT, "처음 읽어 주세요.txt"), "w", encoding="utf-8-sig").write(
         "Athenaeum 포터블판\n\n"
-        "1. Claude Code 를 설치하고 터미널에서  claude  →  /login  으로 한 번 로그인하세요 (요약·번역·검토가 이 로그인을 씁니다).\n"
-        "   https://claude.com/claude-code\n"
-        "   순서가 바뀌어도 됩니다 - Athenaeum 을 먼저 켰다면 홈 화면에 'Claude Code 가 설치되어 있지 않습니다' 안내가 뜨고, 설치·로그인이 끝나면 재시작 없이 저절로 사라집니다.\n"
-        "2. 'Athenaeum 실행.bat' 을 더블클릭하세요. 브라우저에 화면이 뜹니다. 파이썬은 이 폴더 안에 들어 있어 따로 설치할 것이 없습니다.\n"
+        "1. 'Athenaeum 설치.bat' 을 더블클릭하세요. 창이 하나 뜨고 차례로 물어봅니다:\n"
+        "   기능 안내 → Claude Code 가 설치·로그인돼 있는지 확인(없으면 설치 창을 열어 줌) → 바탕화면에 'Athenaeum' 아이콘 → 부팅 때 자동 시작(선택) → 바로 실행.\n"
+        "   파이썬은 이 폴더 안에 들어 있어 따로 설치할 것이 없습니다.\n"
+        "2. 그다음부터는 바탕화면의 Athenaeum 아이콘(또는 'Athenaeum 실행.bat')을 더블클릭하면 됩니다. 브라우저에 앱 창이 뜹니다.\n"
         "3. 홈 위쪽 '수집' 패널에서 감시 폴더(기본: 내 다운로드 폴더)를 확인하고, '라벨 체계 설정 ↗' 에서 내 분야 체계를 Claude 에게 제안받아 적용하세요.\n"
         "4. 논문 PDF 는 이 폴더 안 '논문모음' 에 모이고, 요약·번역·메모·원고도 이 폴더 안에 저장됩니다. 폴더를 통째로 옮겨도 됩니다.\n\n"
-        "부팅 때 자동 시작: paper-search\\Athenaeum_시작.vbs 의 바로가기를 시작프로그램 폴더(Win+R → shell:startup)에 넣으세요.\n"
+        "Claude Code 는 요약·번역·검토에 꼭 필요합니다 (내 Claude 구독 사용량을 씀, API 키 없음). https://claude.com/claude-code\n"
+        "   나중에 설치해도 됩니다 - 홈 화면에 '설치되어 있지 않습니다' 안내가 뜨고, 설치·로그인이 끝나면 재시작 없이 저절로 사라집니다.\n"
         "지우고 싶을 때: 'Athenaeum 삭제.bat' 을 먼저 실행하세요 - 뒤에서 도는 서버를 끄고 자동 시작·바탕화면 바로가기를 지웁니다 (논문·번역·원고는 그대로 둡니다).\n"
         "   그다음 이 폴더를 통째로 지우면 됩니다. 서버가 켜진 채로는 폴더가 지워지지 않습니다.\n"
         "자세한 사용법: Athenaeum 사용법.md\n")

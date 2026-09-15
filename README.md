@@ -28,7 +28,8 @@
 
 ## 가장 쉬운 설치: 포터블판 (파이썬 없이)
 
-[Releases](https://github.com/hiyunsang/Athenaeum/releases) 에서 `Athenaeum-portable-*.zip`(약 100MB) 을 받아 원하는 곳에 풀고 **`Athenaeum 실행.bat`** 을 더블클릭하면 끝입니다. 파이썬과 필요한 패키지가 `python\` 폴더에 들어 있어 따로 설치할 것이 없습니다. 단 하나, 요약·번역·검토에 쓰는 [Claude Code](https://claude.com/claude-code) 는 설치하고 `claude` → `/login` 으로 한 번 로그인해야 합니다. 순서는 상관없습니다 — Athenaeum 을 먼저 켰으면 홈에 "Claude Code 가 설치되어 있지 않습니다" 안내가 뜨고, 설치·로그인이 끝나면 재시작 없이 사라집니다.
+[Releases](https://github.com/hiyunsang/Athenaeum/releases) 에서 `Athenaeum-portable-*.zip`(약 100MB) 을 받아 원하는 곳에 풀고 **`Athenaeum 설치.bat`** 을 더블클릭합니다. 창이 뜨고 차례로 — 기능 안내 → [Claude Code](https://claude.com/claude-code) 설치·로그인 확인(없으면 설치 창을 열어 줌) → 바탕화면에 Athenaeum 아이콘 → 부팅 때 자동 시작(선택) → 바로 실행 — 을 해 줍니다. 파이썬과 필요한 패키지는 `python\` 폴더에 들어 있어 따로 설치할 것이 없습니다. 그다음부터는 바탕화면 아이콘(또는 `Athenaeum 실행.bat`)으로 엽니다.
+요약·번역·검토에 쓰는 Claude Code 는 나중에 설치해도 됩니다 — 홈에 "Claude Code 가 설치되어 있지 않습니다" 안내가 뜨고, 설치·로그인이 끝나면 재시작 없이 사라집니다.
 논문·요약·번역·원고는 모두 그 폴더 안(`논문모음`, `번역`, `원고` …)에 저장되므로 폴더를 통째로 옮기거나 백업하면 됩니다. 포터블판은 `python tools\make_release.py` 로 만듭니다.
 **지우려면** `Athenaeum 삭제.bat` 을 먼저 실행합니다 — 뒤에서 도는 서버를 끄고 시작프로그램·바탕화면 바로가기를 지웁니다(데이터는 그대로). 그다음 폴더를 통째로 지우면 됩니다. 서버가 켜진 채로는 폴더가 지워지지 않습니다.
 
