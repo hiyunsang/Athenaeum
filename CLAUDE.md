@@ -120,6 +120,7 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 
 ### 라벨
 새 논문은 들어올 때 `classify_with_claude` 가 분류하고, 카탈로그에 없는 핵심 재료·공정은 `apply_new_labels` 가 알맞은 묶음·하위 분류 아래 새 라벨로 추가한다(검사: 존재하는 묶음, 고정 묶음 제외, 영문 30자, 최대 2개). 체계 편집·Claude 체계 제안·전체 재분류는 `/labels` 창.
+- **배포판은 빈 체계**(고정 묶음 `유형` 만)로 나간다 — 원작자의 기계가공 체계를 남에게 주지 않는다. 빈 체계인 동안(`catalog_is_initial`)은 새 논문에 Claude 분류를 걸지 않는다(제목만 기록). 논문이 10편 이상이면 홈에 "체계를 만들자" 권유(`catalog_nudge` → `/api/data.catalog_nudge`), 체계를 적용하거나 전체 재분류를 하면 그때 편수를 `_체계.분류기준편수` 에 적고, 그보다 `max(10, 기준/2)` 편 이상 늘면 "다시 분류" 권유. 홈의 "나중에" 는 `_체계.알림보류편수`.
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다
@@ -143,6 +144,7 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 
 - 기능 단위로 커밋, 메시지는 한국어로 **무엇을 왜** 바꿨는지. 커밋 후 `git push origin main`
 - 저장소는 **공개**다. 개인 데이터(논문·요약·번역·메모·원고·단어장·수집 기록·`인수인계.md`)는 절대 커밋하지 않는다(.gitignore 확인)
-- 포터블 ZIP 사용자는 코드가 그 시점에 얼어 있다 → 중요한 수정 후엔 `make_release.py` 로 새 ZIP 을 만들고 GitHub Releases 에 새 태그(`v0.9.1` 식)로 올린다(웹에서, gh CLI 없음)
+- 포터블 ZIP 사용자는 코드가 그 시점에 얼어 있다 → 중요한 수정 후엔 `paper-search\VERSION` 을 올리고 `make_release.py` 로 새 ZIP 을 만들어 GitHub Releases 에 새 태그(`v0.9.2` 식)로 올린다(웹에서, gh CLI 없음). ZIP 은 **풀어서 `Athenaeum 설치.bat --test <폴더>`·실행·삭제 bat 을 실제로 돌려 본 뒤** 배포
+- 포터블판 맨 위 bat 3개: `설치`(setup.py — 기능 안내·기존 설치 업데이트/정리·Claude Code 확인·바탕화면 아이콘·자동 시작) · `실행` · `삭제`(uninstall.bat — 서버 끄고 바로가기 제거, 데이터는 안 지움). 설치 도우미의 업데이트는 기존 폴더의 프로그램 파일(paper-search 의 데이터 파일 제외·python·맨 위 bat)만 바꾸고, `.git` 이 있는 폴더(개발용)는 건드리지 않는다. 설치 기록은 `%APPDATA%\Athenaeum\install.json`
 - 코드를 바꿔도 **이미 만든 요약·번역은 그대로**다. 필요하면 읽기 화면 ↻ 다시 생성 또는 `batch_generate.py` 로 재생성
 - 라이선스 MIT

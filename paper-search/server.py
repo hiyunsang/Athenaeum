@@ -41,6 +41,28 @@ def label_meta(groups):
     return m
 
 
+def catalog_is_initial(groups):
+    """라벨 체계가 아직 안 만들어진 상태 — 고정 묶음(유형) 밖에 라벨이 하나도 없음.
+    배포판은 빈 체계로 나간다(원작자의 기계가공 체계를 남에게 강요하지 않기 위해). 이 상태에서는 새 논문에 Claude 분류를 걸지 않고,
+    논문이 10편쯤 모이면 홈에서 '라벨 체계 설정 ↗' 로 Claude 에게 체계 설계를 맡기라고 권한다."""
+    meta = label_meta(groups)
+    return not any(v for g, v in label_groups(groups).items() if g not in meta["고정"])
+
+
+def catalog_nudge(groups, n):
+    """홈 화면의 체계 권유. initial: 빈 체계 + 논문 10편 이상 / grow: 체계를 만들거나 전체 재분류한 시점(분류기준편수)보다
+    max(10, 기준/2) 편 이상 늘었을 때. '나중에' 를 누르면(알림보류편수) 그 편수부터 같은 폭만큼 더 늘어야 다시 권한다."""
+    meta = label_meta(groups)
+    later = int(meta.get("알림보류편수", 0) or 0)
+    if catalog_is_initial(groups):
+        return {"kind": "initial", "n": n} if n >= 10 and n - later >= 10 else None
+    base = meta.get("분류기준편수")
+    if base is None:
+        return None
+    base = int(base); step = max(10, base // 2)
+    return {"kind": "grow", "n": n, "base": base} if n - base >= step and n - later >= step else None
+
+
 def _tree_find(tree, name):
     for node in tree:
         if isinstance(node, dict):
@@ -185,7 +207,8 @@ def apply_taxonomy(proposal, mode="merge"):
                 if l.lower() not in have:
                     new[gname].append(l); have.add(l.lower())
         out = dict(new)
-        out[LABEL_META_KEY] = {"고정": meta["고정"], "트리": {k: v for k, v in tree.items() if v}, "새라벨": {} if mode == "replace" else meta["새라벨"]}
+        out[LABEL_META_KEY] = {"고정": meta["고정"], "트리": {k: v for k, v in tree.items() if v}, "새라벨": {} if mode == "replace" else meta["새라벨"],
+                               "분류기준편수": len(archive_pdfs())}   # 홈의 '다시 분류' 권유는 여기서부터 늘어난 만큼으로 판단
         save_json(LABELS_PATH, out)
         if mode == "replace":
             valid = set(sum(label_groups(out).values(), []))
@@ -206,6 +229,10 @@ def reclassify_all():
         return False
     files = archive_pdfs()
     _reclass.update(running=True, done=0, total=len(files), failed=0, current="")
+    with _lock:
+        g = load_json(LABELS_PATH, {}); m = label_meta(g)
+        m["분류기준편수"] = len(files); m.pop("알림보류편수", None)
+        save_json(LABELS_PATH, g)
 
     def work(q):
         while True:
@@ -1933,11 +1960,22 @@ def _refresh_new_papers():
             except Exception:
                 pass
         groups = load_json(LABELS_PATH, {})
+        initial = catalog_is_initial(groups)   # 체계가 아직 없으면 분류할 라벨도 없다 → Claude 를 부르지 않고 제목만 적어 둠 (체계를 만든 뒤 '전체 논문 다시 분류')
         for f in new_files:
             title = new_titles.get(f) or parse_name(f)["title"]
             text = texts.get(f, "")
             # 1순위: Claude가 실제 주제를 판정 / 실패 시 규칙 기반으로 폴백
             groups = load_json(LABELS_PATH, {})   # 앞 논문 분류가 새 라벨을 추가했을 수 있음
+            if initial:
+                entry = {"labels": [], "suggested": [], "rejected": []}
+                if f in new_titles:
+                    entry["title"] = new_titles[f]
+                with _lock:
+                    tags = load_json(TAGS_PATH, {})
+                    if f not in tags:
+                        tags[f] = entry
+                        save_json(TAGS_PATH, tags)
+                continue
             picked = classify_with_claude(title, rules.keyword_section(text), text[:6000], groups)
             if picked is not None:
                 entry = {"labels": picked, "suggested": [], "rejected": []}
@@ -1956,6 +1994,8 @@ def _refresh_new_papers():
         tags = load_json(TAGS_PATH, {})
     have = set(archive_pdfs())
     retry = [f for f, e in tags.items() if 0 < e.get("claude_tries", 0) < 3 and not e.get("rejected") and f in have][:3]
+    if retry and catalog_is_initial(load_json(LABELS_PATH, {})):
+        retry = []
     if retry:
         groups = load_json(LABELS_PATH, {})
         for f in retry:
@@ -2072,8 +2112,14 @@ class Handler(BaseHTTPRequestHandler):
                     meta["jobs"] = jobs
                 papers.append(meta)
             # classifying: 백그라운드 Claude 분류 진행 중 → 화면이 잠시 뒤 다시 받아 라벨을 채움
-            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {}), "classifying": classifying, "classifying_n": classifying_n,
-                             "claude": bool(find_claude())})   # 홈 화면이 Claude Code 미설치 안내를 띄우는 데 씀
+            with _lock:
+                groups_now = load_json(LABELS_PATH, {})
+                if not catalog_is_initial(groups_now) and label_meta(groups_now).get("분류기준편수") is None:
+                    label_meta(groups_now)["분류기준편수"] = len(papers)   # 기준이 없던 기존 설치: 지금 편수를 기준으로 삼는다
+                    save_json(LABELS_PATH, groups_now)
+            self._send(200, {"papers": papers, "groups": groups_now, "classifying": classifying, "classifying_n": classifying_n,
+                             "claude": bool(find_claude()),                       # 홈 화면이 Claude Code 미설치 안내를 띄우는 데 씀
+                             "catalog_nudge": catalog_nudge(groups_now, len(papers))})   # 체계 만들기 / 다시 분류 권유
         elif url.path == "/api/claude":
             p = find_claude()
             self._send(200, {"found": bool(p), "path": p or "", "message": "" if p else CLAUDE_MISSING_MSG})
@@ -2565,6 +2611,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "groups": apply_taxonomy(prop, body.get("mode", "merge"))})
             if op == "reclassify_all":
                 return self._send(200, {"ok": reclassify_all(), "reclass": dict(_reclass)})
+            if op == "nudge_later":   # 홈의 체계 권유를 '나중에' — 지금 편수를 적어 두고 같은 폭만큼 더 늘면 다시 권한다
+                with _lock:
+                    g = load_json(LABELS_PATH, {}); label_meta(g)["알림보류편수"] = len(archive_pdfs()); save_json(LABELS_PATH, g)
+                return self._send(200, {"ok": True})
             self._send(200, {"ok": True, "groups": edit_labels(body)})
         else:
             self._send(404, {"error": "not found"})

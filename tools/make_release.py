@@ -83,10 +83,10 @@ def main():
         return [n for n in names if n in EXCLUDE_DIRS or n in EXCLUDE_FILES or n.endswith(".pyc")]
     shutil.copytree(SRC, dst_src, ignore=ignore)
     io.open(os.path.join(dst_src, "tags.json"), "w", encoding="utf-8").write("{}\n")          # 라벨 데이터는 받는 사람의 것으로 새로
-    lp = os.path.join(dst_src, "labels.json"); g = json.load(io.open(lp, encoding="utf-8"))
-    if isinstance(g.get("_체계"), dict):
-        g["_체계"]["새라벨"] = {}
-    io.open(lp, "w", encoding="utf-8").write(json.dumps(g, ensure_ascii=False, indent=1))
+    # 라벨 체계는 빈 채로 나간다(고정 묶음 '유형' 만). 원작자의 기계가공 체계를 남에게 주지 않고, 논문이 10편쯤 모이면
+    # 홈 화면이 'Claude 에게 체계 설계 맡기기' 를 권한다 (server.catalog_nudge). 빈 체계인 동안은 새 논문에 Claude 분류를 걸지 않는다.
+    lp = os.path.join(dst_src, "labels.json")
+    io.open(lp, "w", encoding="utf-8").write(json.dumps({"유형": ["Review"], "_체계": {"고정": ["유형"], "트리": {}, "새라벨": {}}}, ensure_ascii=False, indent=1))
     cfgp = os.path.join(dst_src, "수집설정.json")
     if os.path.exists(cfgp):   # 내 컴퓨터 경로 대신 기본값 (감시 폴더는 첫 실행 때 그 사용자의 다운로드 폴더로 잡힘)
         c = json.load(io.open(cfgp, encoding="utf-8"))
