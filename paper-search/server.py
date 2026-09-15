@@ -427,12 +427,53 @@ def gen_path(name, kind):
     return os.path.join(GEN_DIR, "{}.{}.md".format(stem, "요약" if kind == "summary" else "번역"))
 
 
+def _registry_path():
+    """레지스트리에 저장된 사용자·시스템 PATH (지금 프로세스가 물려받은 PATH 와 다를 수 있다).
+    서버가 켜진 뒤에 Claude Code 를 설치하면 새 PATH 는 이 프로세스 환경에 반영되지 않으므로 여기서 다시 읽는다."""
+    if os.name != "nt":
+        return ""
+    out = []
+    try:
+        import winreg
+        for root, key in ((winreg.HKEY_CURRENT_USER, r"Environment"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    v, _ = winreg.QueryValueEx(k, "Path")
+                    out.append(os.path.expandvars(v))
+            except OSError:
+                pass
+    except Exception:
+        pass
+    return os.pathsep.join(out)
+
+
 def find_claude():
-    for c in ("claude", "claude.cmd", "claude.exe"):
+    """claude 실행 파일 경로. 순서: 지금 PATH → Claude Code 가 설치하는 알려진 폴더 → 레지스트리의 최신 PATH.
+    서버 실행 중에 Claude Code 를 설치해도 재시작 없이 찾도록 매번 다시 찾는다 (포터블판 사용자 보고, 2026-09-15)."""
+    names = ("claude", "claude.cmd", "claude.exe")
+    for c in names:
         p = shutil.which(c)
         if p:
             return p
+    if os.name == "nt":
+        home = os.path.expanduser("~")
+        known = [os.path.join(home, ".local", "bin"),                                   # 네이티브 설치판
+                 os.path.join(os.environ.get("APPDATA", ""), "npm"),                    # npm -g 설치판
+                 os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "claude")]
+        extra = os.pathsep.join(d for d in known if d and os.path.isdir(d))
+        for path in (extra, _registry_path()):
+            if not path:
+                continue
+            for c in names:
+                p = shutil.which(c, path=path)
+                if p:
+                    return p
     return None
+
+
+CLAUDE_MISSING_MSG = ("Claude Code 가 설치되어 있지 않거나 claude 명령을 찾을 수 없습니다. "
+                      "https://claude.com/claude-code 에서 설치한 뒤 터미널에서 claude → /login 으로 로그인하세요. 설치 후 재시작은 필요 없습니다")
 
 
 def _no_window():
@@ -1245,7 +1286,7 @@ def _run_generation(name, kind):
     if len(text.strip()) < 500:
         raise RuntimeError("이 PDF는 글자를 추출할 수 없습니다 (스캔본인 듯)")
     if not find_claude():
-        raise RuntimeError("claude 명령을 찾을 수 없습니다 (Claude Code 설치 확인)")
+        raise RuntimeError(CLAUDE_MISSING_MSG)
     out = generate_document(name, kind, text)
     os.makedirs(GEN_DIR, exist_ok=True)
     with open(gen_path(name, kind), "w", encoding="utf-8") as f:
@@ -1255,6 +1296,8 @@ def _run_generation(name, kind):
 def _claude(prompt, timeout=900):
     """claude -p 실행. 실패 시 원인이 담긴 RuntimeError."""
     exe = find_claude()
+    if not exe:
+        raise RuntimeError(CLAUDE_MISSING_MSG)
     r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                        input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
     out = r.stdout.decode("utf-8", "replace").strip()
@@ -2029,7 +2072,11 @@ class Handler(BaseHTTPRequestHandler):
                     meta["jobs"] = jobs
                 papers.append(meta)
             # classifying: 백그라운드 Claude 분류 진행 중 → 화면이 잠시 뒤 다시 받아 라벨을 채움
-            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {}), "classifying": classifying, "classifying_n": classifying_n})
+            self._send(200, {"papers": papers, "groups": load_json(LABELS_PATH, {}), "classifying": classifying, "classifying_n": classifying_n,
+                             "claude": bool(find_claude())})   # 홈 화면이 Claude Code 미설치 안내를 띄우는 데 씀
+        elif url.path == "/api/claude":
+            p = find_claude()
+            self._send(200, {"found": bool(p), "path": p or "", "message": "" if p else CLAUDE_MISSING_MSG})
         elif url.path == "/view":
             with open(os.path.join(BASE, "reader.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
