@@ -592,12 +592,38 @@ def openalex_boolean(expr, year="", per_page=100):
     for it in d.get("results", []):
         n = mapper._node(it, set(), 0, None)
         n.pop("_refs", None)
+        n["_refs"] = [mapper.wid(x) for x in (it.get("referenced_works") or [])]   # 결과 맵의 인용 관계용 (결과에 실을 때 뺀다)
         inv = it.get("abstract_inverted_index") or {}
         ws = sorted((p, w) for w, ps in inv.items() for p in ps)
         n["abstract"] = " ".join(w for _, w in ws)[:500]
         n["rel"] = it.get("relevance_score") or 0
         out.append(n)
     return out, d.get("meta", {}).get("count", 0)
+
+
+def results_map(groups):
+    """선별된 논문들의 맵: 소주제(색)·피인용(크기)·인용 관계(선). 유사도 = 서지결합(공통 참고문헌) + 직접 인용."""
+    import math
+    sel = [(gi, it) for gi, g in enumerate(groups) for it in g["items"]]
+    ids = [it["id"] for _, it in sel]
+    refs = [set(it.get("_refs") or []) for _, it in sel]
+    n = len(sel)
+    sims = [[0.0] * n for _ in range(n)]
+    edges = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            cite = ids[j] in refs[i] or ids[i] in refs[j]
+            coup = len(refs[i] & refs[j]) / math.sqrt(len(refs[i]) * len(refs[j])) if refs[i] and refs[j] else 0.0
+            s = min(1.0, coup * 2 + (0.6 if cite else 0))
+            sims[i][j] = sims[j][i] = round(s, 3)
+            if cite:
+                edges.append([i, j, 2])
+            elif coup >= 0.15:
+                edges.append([i, j, 1])
+    nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
+              "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
+              "hits": it.get("hits", [])} for gi, it in sel]
+    return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups]}
 
 
 def _bool_group(terms):
@@ -743,9 +769,12 @@ def _run_smart(q, year, key, plan=None):
     else:
         groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 검색 순서대로 표시", "items": items}]
         excluded = 0
+    rmap = results_map(groups)
+    for n in items:
+        n.pop("_refs", None)
     _jobs[key] = {"status": "done", "result": {
         "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
-        "queries": queries, "groups": groups, "excluded": excluded, "candidates": len(items)}}
+        "queries": queries, "groups": groups, "excluded": excluded, "candidates": len(items), "map": rmap}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")

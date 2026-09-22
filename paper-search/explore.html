@@ -50,6 +50,16 @@
   .plan .qs span[title] { cursor: help; }
   .plan .rerun { margin-top: var(--s1); }
   .meta .hit { color: var(--accent); }   /* 선택 개념 중 이 논문이 해당하는 것 (LPBF, DSS …) */
+  .vbar { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 12px 0; font-size: 12px; color: var(--text-2); }
+  .vbar .act { padding: 2px 6px; }
+  .vbar .act.on { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  .mapwrap { position: relative; margin: var(--s2) 12px 0; border: 1px solid var(--line); background: var(--surface); }
+  .mapwrap canvas { display: block; width: 100%; height: auto; }
+  .maptip { position: absolute; max-width: 320px; background: var(--text); color: var(--surface); font-size: 12px; line-height: 1.5; padding: 6px 9px; border-radius: var(--r); pointer-events: none; z-index: 3; }
+  .maptip .hint { color: var(--line-2); padding: 0; text-align: left; line-height: inherit; }
+  .maplegend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: var(--s1) 12px var(--s2); font-size: 12px; color: var(--text-2); }
+  .maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .maplegend .hint { padding: 0; text-align: left; line-height: inherit; width: 100%; }
   .plan .qs .qn { color: var(--text-3); font-size: 11px; margin-left: 3px; }
   .plan b { color: var(--text); }
   .plan .qs span { display: inline; color: var(--text-2); }
@@ -185,10 +195,11 @@ function renderPlain(d, withSmart) {
 function renderPlainRows(d) { for (const r of d.results) plainbox.appendChild(renderRow(r)); chatCtx(); }
 
 let smartTimer = null;
-function smartProgressBox() {
+function smartProgressBox(rerun) {
   const prog = document.createElement("div"); prog.className = "plan";
-  prog.innerHTML = "<div class='prog'><b>스마트 탐색</b><span id='sstage'>시작…</span>" + pbarHtml(0.02, 0, "wide") +
-    "<span class='eta' id='seta'></span></div><div class='hint' style='margin-top:4px'>아래 기본 결과는 바로 보실 수 있습니다</div>";
+  prog.innerHTML = "<div class='prog'><b>" + (rerun ? "다시 검색" : "스마트 탐색") + "</b><span id='sstage'>시작…</span>" + pbarHtml(0.02, 0, "wide") +
+    "<span class='eta' id='seta'></span></div><div class='hint' style='margin-top:4px'>" +
+    (rerun ? "고친 검색 계획으로 OpenAlex 검색 → Claude 선별·분류 순서로 진행합니다. 끝나면 이 자리에 새 결과가 뜹니다" : "아래 기본 결과는 바로 보실 수 있습니다") + "</div>";
   prog._phase = { a: 0, t: Date.now() };
   smartbox.appendChild(prog);
   return prog;
@@ -223,7 +234,7 @@ function pollSmart(key, prog) {
 
 async function smartSearch(q, plan) {
   const year = document.getElementById("year").value;
-  const prog = smartProgressBox();
+  const prog = smartProgressBox(!!plan);
   const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify(plan ? { q, year, plan } : { q, year }) })).json();
   if (!start.key) { prog.innerHTML = "⚠ 스마트 탐색 시작 실패: " + (start.error || ""); return; }
   saveState({ smartKey: start.key });
@@ -274,17 +285,36 @@ function renderSmart(r) {
         terms: x.querySelector(".terms").value.split(",").map(t => t.trim()).filter(Boolean) })).filter(c => c.terms.length);
       const exclude = ex.querySelector(".exclude").value.split(",").map(t => t.trim()).filter(Boolean);
       if (!concepts.length) return;
+      smartbox.innerHTML = ""; window.scrollTo(0, 0);
+      info.textContent = "고친 검색 계획으로 다시 검색 중…";
       smartSearch(document.getElementById("q").value.trim() || r.intent, { intent: r.intent, concepts, exclude });
     };
     box.appendChild(rerun); plan.appendChild(box);
   }
   smartbox.appendChild(plan);
+  // 보기 전환: 목록 / 맵 (맵 = 소주제 색, 피인용 크기, 인용·공통참고문헌 선)
+  const vbar = document.createElement("div"); vbar.className = "vbar";
+  vbar.innerHTML = "<span>보기</span><a href='#' class='act' data-v='list'>목록</a><a href='#' class='act' data-v='map'>맵</a><span class='hint' id='vhint'></span>";
+  smartbox.appendChild(vbar);
+  const list = document.createElement("div"); list.id = "rlist";
   for (const g of r.groups) {
     const h = document.createElement("div"); h.className = "ghead";
     h.innerHTML = "<b>" + g.name + "</b> <span>" + g.items.length + "편 · " + g.why + "</span>";
-    smartbox.appendChild(h);
-    for (const it of g.items) smartbox.appendChild(renderRow(it));
+    list.appendChild(h);
+    for (const it of g.items) list.appendChild(renderRow(it));
   }
+  smartbox.appendChild(list);
+  const mapBox = document.createElement("div"); mapBox.id = "rmap"; mapBox.hidden = true; smartbox.appendChild(mapBox);
+  let mapReady = false;
+  const setView = (v) => {
+    list.hidden = v === "map"; mapBox.hidden = v !== "map";
+    vbar.querySelectorAll("[data-v]").forEach(a => a.classList.toggle("on", a.dataset.v === v));
+    try { localStorage.setItem("explore_view", v); } catch (e) {}
+    if (v === "map" && !mapReady && r.map) { mapReady = true; renderResultMap(r.map, mapBox); }
+  };
+  vbar.querySelectorAll("[data-v]").forEach(a => a.onclick = (e) => { e.preventDefault(); setView(a.dataset.v); });
+  let pref = "list"; try { pref = localStorage.getItem("explore_view") || "list"; } catch (e) {}
+  setView(r.map ? pref : "list");
   chatCtx();
   // 기본 결과는 아래에 접어두기 (클릭하면 펼침)
   const tog = document.createElement("div"); tog.className = "ghead"; tog.style.cursor = "pointer";
@@ -293,6 +323,86 @@ function renderSmart(r) {
   tog.onclick = () => { const open = savedPlain.style.display === "none"; savedPlain.style.display = open ? "" : "none";
     tog.querySelector("b").textContent = (open ? "▾" : "▸") + " 기본 검색 결과 보기"; };
   smartbox.appendChild(tog);
+}
+
+// ---------- 결과 맵 ----------
+// 노드 = 논문(크기 = 피인용, 색 = 소주제), 선 = 직접 인용(진하게) 또는 공통 참고문헌이 많음(연하게). 보유 논문은 파란 테두리, Review 는 점선 테두리.
+// 배치: 유사도(서지결합+인용)가 높을수록 가깝게 + 같은 소주제끼리 모이게.
+const MAP_COLORS = ["#4f6fc9", "#c9822f", "#3f9a6b", "#b04f78", "#7a6bb8", "#8a8a2f", "#c0574a", "#3f8fa8"];
+function cssVar(name, fb) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
+function renderResultMap(m, host) {
+  host.innerHTML = "";
+  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
+  const W = Math.max(600, host.clientWidth || smartbox.clientWidth || 900), H = 560;
+  const wrap = document.createElement("div"); wrap.className = "mapwrap";
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; wrap.appendChild(cv);
+  const tip = document.createElement("div"); tip.className = "maptip"; tip.hidden = true; wrap.appendChild(tip);
+  host.appendChild(wrap);
+  const legend = document.createElement("div"); legend.className = "maplegend";
+  legend.innerHTML = m.groups.map((g, gi) => "<span><i style='background:" + MAP_COLORS[gi % MAP_COLORS.length] + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
+    "<span class='hint'>원 크기 = 피인용 · 진한 선 = 직접 인용 · 연한 선 = 공통 참고문헌 · 파란 테두리 = 보유 · 점선 = Review · 클릭 = 열기</span>";
+  host.appendChild(legend);
+  if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
+  // 초기 배치: 소주제별 원 둘레
+  const G = m.groups.length || 1, centers = [];
+  for (let gi = 0; gi < G; gi++) { const a = gi / G * Math.PI * 2; centers.push([W / 2 + Math.cos(a) * W * 0.28, H / 2 + Math.sin(a) * H * 0.3]); }
+  nodes.forEach(n => { const c = centers[n.g % G]; n.x = c[0] + (Math.random() - 0.5) * 120; n.y = c[1] + (Math.random() - 0.5) * 120; });
+  const sims = m.sims, DMIN = 70, DMAX = 520;
+  for (let step = 0; step < 700; step++) {
+    const lr = 0.10 * (1 - step / 800);
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        let dx = b.x - a.x, dy = b.y - a.y; const dd = Math.sqrt(dx * dx + dy * dy) + 0.01; dx /= dd; dy /= dd;
+        const s = Math.max(sims[i][j] || 0, a.g === b.g ? 0.25 : 0);   // 같은 소주제면 최소한의 끌림
+        const ideal = DMIN + Math.pow(1 - s, 2.2) * (DMAX - DMIN);
+        const f = (dd - ideal) * (0.03 + s * 1.5) * lr;
+        a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
+        const mind = a.r + b.r + 14;
+        if (dd < mind) { const push = (mind - dd) * 0.4; a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; }
+      }
+      const c = centers[a.g % G]; a.x += (c[0] - a.x) * 0.004; a.y += (c[1] - a.y) * 0.004;   // 소주제 중심으로 약하게
+    }
+  }
+  // 화면에 맞추기
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const mg = 50, sc = Math.min((W - mg * 2) / Math.max(1, x1 - x0), (H - mg * 2 - 16) / Math.max(1, y1 - y0), 1.5);
+  nodes.forEach(n => { n.x = mg + (n.x - x0) * sc; n.y = mg + 8 + (n.y - y0) * sc; });
+  const ctx = cv.getContext("2d"), accent = cssVar("--accent", "#1f4fd1"), textCol = cssVar("--text", "#1c1c1a"), bg = cssVar("--surface", "#fff");
+  let hovered = null;
+  const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, 12);
+  function draw() {
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    for (const [i, j, w] of m.edges) {
+      const act = hovered && (nodes[i] === hovered || nodes[j] === hovered);
+      ctx.strokeStyle = act ? accent : (w === 2 ? "rgba(90,90,90,0.45)" : "rgba(120,120,120,0.16)");
+      ctx.lineWidth = act ? 1.8 : (w === 2 ? 1.2 : 1);
+      ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+    }
+    for (const n of nodes) {
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r + (n === hovered ? 3 : 0), 0, 7);
+      ctx.fillStyle = MAP_COLORS[n.g % MAP_COLORS.length]; ctx.fill();
+      ctx.setLineDash(n.review ? [3, 3] : []);
+      ctx.lineWidth = n.owned ? 3 : 1.2; ctx.strokeStyle = n.owned ? accent : bg; ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.font = "11px Pretendard, 'Malgun Gothic', sans-serif"; ctx.fillStyle = textCol; ctx.textAlign = "center";
+    for (const n of nodes) if (n === hovered || top.includes(n) || n.owned) ctx.fillText((n.author || "") + " " + (n.year || ""), n.x, n.y + n.r + 12);
+  }
+  const at = (x, y) => { for (let i = nodes.length - 1; i >= 0; i--) { const n = nodes[i], dx = x - n.x, dy = y - n.y; if (dx * dx + dy * dy <= (n.r + 4) * (n.r + 4)) return n; } return null; };
+  cv.onmousemove = (e) => {
+    const rc = cv.getBoundingClientRect(), n = at(e.clientX - rc.left, e.clientY - rc.top);
+    if (n !== hovered) { hovered = n; draw(); }
+    if (n) {
+      tip.hidden = false; tip.style.left = Math.min(e.clientX - rc.left + 14, W - 330) + "px"; tip.style.top = (e.clientY - rc.top + 14) + "px";
+      tip.innerHTML = "<b>" + escH(n.title) + "</b><br>" + escH(n.author || "?") + " · " + (n.year || "?") + (n.venue ? " · " + escH(n.venue) : "") + " · 피인용 " + n.cit +
+        (n.review ? " · Review" : "") + (n.hits && n.hits.length ? " · " + escH(n.hits.join(", ")) : "") + "<br><span class='hint'>" + escH(m.groups[n.g] || "") + (n.owned ? " · 보유 — 클릭하면 PDF" : " · 클릭하면 논문 페이지") + "</span>";
+      cv.style.cursor = "pointer";
+    } else { tip.hidden = true; cv.style.cursor = "default"; }
+  };
+  cv.onmouseleave = () => { tip.hidden = true; if (hovered) { hovered = null; draw(); } };
+  cv.onclick = (e) => { const rc = cv.getBoundingClientRect(), n = at(e.clientX - rc.left, e.clientY - rc.top); if (n) openPaper(n); };
+  draw();
 }
 
 function openPaper(r) {
