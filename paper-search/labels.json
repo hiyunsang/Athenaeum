@@ -24,7 +24,10 @@
   "Ti6Al4V",
   "Inconel 718",
   "SUS304",
-  "AISI 1045"
+  "AISI 1045",
+  "AISI 4340",
+  "Titanium Aluminide",
+  "AlSi10Mg"
  ],
  "재료 상태·구조": [
   "Single crystal",
@@ -48,7 +51,9 @@
   "Nano-cutting",
   "Ultra-precision machining",
   "Cryogenic",
-  "Textured tool"
+  "Textured tool",
+  "Diamond-Like Carbon Coating",
+  "Selective Laser Melting"
  ],
  "현상": [
   "BUE",
@@ -64,7 +69,10 @@
   "Tool wear",
   "Adhesion",
   "Friction",
-  "Subsurface damage"
+  "Subsurface damage",
+  "Minimum Uncut Chip Thickness",
+  "Residual Stress",
+  "Surface Topography"
  ],
  "방법": [
   "In-situ",
@@ -80,7 +88,8 @@
   "Molecular dynamics",
   "Analytical model",
   "Classical theory",
-  "Machine learning"
+  "Machine learning",
+  "Digital Twin"
  ],
  "메커니즘": [
   "Strain hardening",
@@ -113,7 +122,10 @@
       "SUS304",
       "Nickel-based alloy",
       "Inconel 718",
-      "Tantalum"
+      "Tantalum",
+      "AISI 4340",
+      "Titanium Aluminide",
+      "AlSi10Mg"
      ]
     },
     {
@@ -136,8 +148,67 @@
      ]
     },
     "Composite"
-   ]
+   ],
+   "공정·규모": [],
+   "현상": [],
+   "방법": []
   },
-  "새라벨": {}
+  "새라벨": {
+   "Diamond-Like Carbon Coating": {
+    "t": 1789048408.080466,
+    "group": "공정·규모",
+    "parent": "",
+    "paper": "Tribological analysis and performance of a DLC coating on tungsten carbide micro"
+   },
+   "Minimum Uncut Chip Thickness": {
+    "t": 1789048408.080466,
+    "group": "현상",
+    "parent": "",
+    "paper": "Tribological analysis and performance of a DLC coating on tungsten carbide micro"
+   },
+   "Residual Stress": {
+    "t": 1789371739.2014663,
+    "group": "현상",
+    "parent": "",
+    "paper": "In-Situ Calibrated Modeling of Residual Stresses Induced in Machining under Vari"
+   },
+   "AISI 4340": {
+    "t": 1789371739.2014663,
+    "group": "재료",
+    "parent": "금속",
+    "paper": "In-Situ Calibrated Modeling of Residual Stresses Induced in Machining under Vari"
+   },
+   "Titanium Aluminide": {
+    "t": 1789371766.785603,
+    "group": "재료",
+    "parent": "금속",
+    "paper": "In-Situ Calibrated Digital Process Twin Models for Resource Efficient Manufactur"
+   },
+   "Digital Twin": {
+    "t": 1789371766.785603,
+    "group": "방법",
+    "parent": "",
+    "paper": "In-Situ Calibrated Digital Process Twin Models for Resource Efficient Manufactur"
+   },
+   "AlSi10Mg": {
+    "t": 1790046269.9317648,
+    "group": "재료",
+    "parent": "금속",
+    "paper": "Influence of anisotropy of additively manufactured AlSi10Mg parts on chip format"
+   },
+   "Selective Laser Melting": {
+    "t": 1790046269.9317648,
+    "group": "공정·규모",
+    "parent": "",
+    "paper": "Influence of anisotropy of additively manufactured AlSi10Mg parts on chip format"
+   },
+   "Surface Topography": {
+    "t": 1790046290.3745818,
+    "group": "현상",
+    "parent": "",
+    "paper": "Anisotropy effect of additively manufactured Ti6Al4V titanium alloy on surface q"
+   }
+  },
+  "분류기준편수": 196
  }
 }

@@ -63,12 +63,6 @@
   ],
   "rejected": []
  },
- "1999_CGC_Unknown_Editorial.pdf": {
-  "labels": [],
-  "suggested": [],
-  "rejected": [],
-  "title": "Editorial"
- },
  "2000_IJMTM_Ozel_Determination of workpiece flow stress and friction at the chip-tool contact.pdf": {
   "labels": [
    "Steel",
@@ -3293,5 +3287,88 @@
   "suggested": [],
   "rejected": [],
   "title": "Surface roughness and sub-surface deformation measurements in machining of niobium"
+ },
+ "2021_AMT_Campos Rubio_Tribological analysis and performance of a DLC coating on tungsten carbide micro-tools to use at tantalum precision machining.pdf": {
+  "labels": [
+   "Tantalum",
+   "Micro-machining",
+   "Ultra-precision machining",
+   "Milling",
+   "Sliding",
+   "Friction",
+   "Tool wear",
+   "Adhesion",
+   "Diamond-Like Carbon Coating",
+   "Minimum Uncut Chip Thickness"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Tribological analysis and performance of a DLC coating on tungsten carbide micro-tools to use at tantalum precision machining"
+ },
+ "2021_LUBRICANTS_Schoop_In-Situ Calibrated Modeling of Residual Stresses Induced in Machining under Various Cooling and Lubricating Environments.pdf": {
+  "labels": [
+   "Ti6Al4V",
+   "Titanium",
+   "Steel",
+   "Orthogonal cutting",
+   "Cryogenic",
+   "In-situ",
+   "Analytical model",
+   "Friction",
+   "Thermal effect",
+   "Residual Stress",
+   "AISI 4340"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "In-Situ Calibrated Modeling of Residual Stresses Induced in Machining under Various Cooling and Lubricating Environments"
+ },
+ "2022_JMSE_Adeniji_In-Situ Calibrated Digital Process Twin Models for Resource Efficient Manufacturing.pdf": {
+  "labels": [
+   "Titanium",
+   "In-situ",
+   "High-speed imaging",
+   "Machine learning",
+   "Surface defect",
+   "Subsurface damage",
+   "Fracture",
+   "Titanium Aluminide",
+   "Digital Twin"
+  ],
+  "suggested": [],
+  "rejected": []
+ },
+ "2019_PCIRP_Segebade_Influence of anisotropy of additively manufactured AlSi10Mg parts on chip formation during orthogonal cutting.pdf": {
+  "labels": [
+   "Aluminum",
+   "Additive manufactured",
+   "Anisotropic",
+   "Orthogonal cutting",
+   "Chip formation",
+   "Shear localization",
+   "FEM",
+   "AlSi10Mg",
+   "Selective Laser Melting"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Influence of anisotropy of additively manufactured AlSi10Mg parts on chip formation during orthogonal cutting"
+ },
+ "2021_PE_Lizzul_Anisotropy effect of additively manufactured Ti6Al4V titanium alloy on surface quality after milling.pdf": {
+  "labels": [
+   "Ti6Al4V",
+   "Titanium",
+   "Additive manufactured",
+   "Selective Laser Melting",
+   "Anisotropic",
+   "Heat-treated",
+   "Milling",
+   "Burr",
+   "Chip formation",
+   "Surface Topography"
+  ],
+  "suggested": [],
+  "rejected": [],
+  "title": "Anisotropy effect of additively manufactured Ti6Al4V titanium alloy on surface quality after milling"
  }
 }
