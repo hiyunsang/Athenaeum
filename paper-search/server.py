@@ -654,12 +654,21 @@ def results_map(groups, with_cocitation=True):
             cocit = cc / math.sqrt(ci * cj) if cc and ci and cj else 0.0
             s = min(1.0, coup * 2 + cocit * 1.5 + (0.6 if cite else 0))
             sims[i][j] = sims[j][i] = round(s, 3)
+            # 선 종류: 2 직접 인용 · 3 동시인용 · 1 공통 참고문헌 · 0 (아래) 가장 비슷한 이웃. 넷째 값 = 유사도 (선 굵기·진하기)
             if cite:
-                edges.append([i, j, 2])
-            elif cc >= 3 and cocit >= 0.2:
-                edges.append([i, j, 3])   # 동시인용
-            elif coup >= 0.15:
-                edges.append([i, j, 1])
+                edges.append([i, j, 2, sims[i][j]])
+            elif cc >= 2 and cocit >= 0.15:
+                edges.append([i, j, 3, sims[i][j]])
+            elif coup >= 0.08:
+                edges.append([i, j, 1, sims[i][j]])
+    # 선이 거의 없는 맵이 되지 않게: 노드마다 가장 비슷한 이웃 3개까지는 약한 선으로 잇는다 (관련맵의 '상위 4개' 와 같은 생각)
+    have = {(e[0], e[1]) for e in edges}
+    for i in range(n):
+        near = sorted(((sims[i][j], j) for j in range(n) if j != i and sims[i][j] > 0.03), reverse=True)[:3]
+        for s_, j in near:
+            key = (min(i, j), max(i, j))
+            if key not in have:
+                have.add(key); edges.append([key[0], key[1], 0, s_])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
               "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
               "hits": it.get("hits", [])} for gi, it in sel]
