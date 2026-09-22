@@ -2439,8 +2439,15 @@ class Handler(BaseHTTPRequestHandler):
                 params["sort"] = "cited_by_count:desc"
             elif sort == "recent":
                 params["sort"] = "publication_year:desc"
+            relaxed = False
             try:
                 d = mapper._get(mapper.API + "/works", params)
+                # 단어를 전부 AND 로 묶어 5편도 안 나오면, OpenAlex 자체 관련도 검색(search 만)으로 느슨하게 다시 찾는다
+                if (d.get("meta", {}).get("count", 0) or 0) < 5 and len(q_clean.split()) > 2 and not re.search(r"(AND|OR|NOT)|\"", q_clean):
+                    loose = dict(params); loose["filter"] = ",".join(filters[1:]) if len(filters) > 1 else ""
+                    if not loose["filter"]:
+                        loose.pop("filter")
+                    d = mapper._get(mapper.API + "/works", loose); relaxed = True
             except Exception as e:
                 self._send(200, {"error": str(e)[:200], "results": []})
                 return
@@ -2478,7 +2485,7 @@ class Handler(BaseHTTPRequestHandler):
                     "recent": lambda x: (x["strict"], x["year"]),
                     }.get(sort, lambda x: (x["strict"], x["rel"]))
             results.sort(key=keyf, reverse=True)
-            self._send(200, {"results": results, "total": d.get("meta", {}).get("count", 0),
+            self._send(200, {"relaxed": relaxed, "results": results, "total": d.get("meta", {}).get("count", 0),
                              "words": words})
         elif url.path == "/api/smart_status":
             k = parse_qs(url.query).get("key", [""])[0]

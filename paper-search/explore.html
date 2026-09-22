@@ -136,16 +136,27 @@ function saveState(patch) {
   try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); } catch (e) {}
 }
 
+// 한국어가 섞였거나 문장처럼 길면 기본 검색(영어 단어 AND)으로는 못 찾는다 → 스마트 탐색(Claude 검색 계획)으로
+function needsSmart(q) { return /[가-힣]/.test(q) || q.split(/\s+/).length >= 6; }
+
 async function search() {
   const q = document.getElementById("q").value.trim();
   if (!q) return;
-  const smart = document.getElementById("smart").checked;
+  const smartBox = document.getElementById("smart");
+  const korean = /[가-힣]/.test(q);
+  if (needsSmart(q) && !smartBox.checked) smartBox.checked = true;   // 말로 적은 검색은 스마트 탐색이 필요
+  const smart = smartBox.checked;
   smartbox.innerHTML = "";
   plainbox.style.display = "";      // 이전 검색에서 접혀 있었으면 다시 펼침
   if (smartTimer) { clearInterval(smartTimer); smartTimer = null; }
   saveState({ q, year: document.getElementById("year").value, sort: document.getElementById("sort").value,
               smart, plain: null, smartKey: null, smartResult: null });
   if (smart) smartSearch(q);        // 백그라운드로 시작 (기다리지 않음)
+  if (korean) {                     // 한국어는 OpenAlex 기본 검색이 안 되므로 안내만
+    plainbox.innerHTML = "<div class='hint'>한국어·문장 검색은 스마트 탐색이 Claude 로 검색 계획을 세워 찾습니다 (1~2분). 기본 검색은 영어 키워드만 됩니다.</div>";
+    info.textContent = "스마트 탐색 준비 중…";
+    return;
+  }
   await plainSearch(q, smart);      // 기본 검색은 즉시 표시
 }
 
@@ -163,7 +174,7 @@ function renderPlain(d, withSmart) {
   plainbox.innerHTML = ""; if (!smartbox.querySelector(".row")) { rowSeq = 0; for (const k in rowIndex) delete rowIndex[k]; }
   const owned = d.results.filter(r => r.owned).length;
   info.textContent = "기본 " + d.results.length + "편 (전체 " + (d.total || 0).toLocaleString() + "편) · 보유 " + owned + "편" +
-    (withSmart ? " · 스마트 결과 준비 중…" : "");
+    (d.relaxed ? " · 단어가 다 들어간 논문이 적어 느슨하게 찾음" : "") + (withSmart ? " · 스마트 결과 준비 중…" : "");
   const h = document.createElement("div"); h.className = "ghead";
   h.innerHTML = "<b>기본 검색 결과</b> <span>입력한 단어 그대로 · 전체 " + (d.total || 0).toLocaleString() +
     "편 중 상위 " + d.results.length + "편 · 보유 " + owned + "편</span>";
