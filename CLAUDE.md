@@ -122,6 +122,9 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 새 논문은 들어올 때 `classify_with_claude` 가 분류하고, 카탈로그에 없는 핵심 재료·공정은 `apply_new_labels` 가 알맞은 묶음·하위 분류 아래 새 라벨로 추가한다(검사: 존재하는 묶음, 고정 묶음 제외, 영문 30자, 최대 2개). 체계 편집·Claude 체계 제안·전체 재분류는 `/labels` 창.
 - **배포판은 빈 체계**(고정 묶음 `유형` 만)로 나간다 — 원작자의 기계가공 체계를 남에게 주지 않는다. 빈 체계인 동안(`catalog_is_initial`)은 새 논문에 Claude 분류를 걸지 않는다(제목만 기록). 논문이 10편 이상이면 홈에 "체계를 만들자" 권유(`catalog_nudge` → `/api/data.catalog_nudge`), 체계를 적용하거나 전체 재분류를 하면 그때 편수를 `_체계.분류기준편수` 에 적고, 그보다 `max(10, 기준/2)` 편 이상 늘면 "다시 분류" 권유. 홈의 "나중에" 는 `_체계.알림보류편수`.
 
+### 탐색 (`_run_smart`)
+말로 적은 주제(한국어 가능) → `plan_search` 가 Claude 로 **검색 계획**(개념 2~5개, 개념마다 영어 동의어·약어 3~8개, 필수/선택, 제외어) → `build_boolean` 이 OpenAlex `title_and_abstract.search` 불리언식 `("built-up edge" OR BUE) AND ("in situ" OR …) NOT (…)` 로 → **검색 사다리**(전체 → 필수만 → 필수 하나씩 뺀 것) 결과를 앞 단계 우선으로 합침(≤150) → Claude 가 필수 개념을 실제로 다루지 않는 것을 제외하고 소주제로 묶으며 선택 개념의 `hits`(LPBF, DSS …)를 붙임. 결과의 `plan` 을 화면에서 고쳐 `POST /api/smart {plan}` 으로 다시 검색(계획 단계 생략). OpenAlex 불리언은 AND/OR/NOT/따옴표/괄호만 되고 와일드카드(`*`)는 400.
+
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다
 - Crossref: User-Agent 지정, 타임아웃

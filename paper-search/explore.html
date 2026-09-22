@@ -41,6 +41,15 @@
   .meta .hint, .row .hint { padding: 0; text-align: inherit; line-height: inherit; }
   .plan { margin: var(--s2) 12px; padding: 10px 12px; background: var(--bg); border-radius: var(--r); font-size: 12px; color: var(--text-2); line-height: 1.6; }
   .plan .hint { padding: 0; line-height: inherit; }
+  .plan .pl { display: grid; grid-template-columns: auto 88px 1fr; gap: var(--s2); align-items: center; padding: 3px 0; border-top: 1px solid var(--line); }
+  .plan .pl:first-of-type { border-top: 0; }
+  .plan .pl label { color: var(--text-2); white-space: nowrap; cursor: pointer; }
+  .plan .pl .nm { font-weight: 600; color: var(--text); }
+  .plan .pl input[type=text] { width: 100%; font: inherit; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); padding: 2px 0; }
+  .plan .pl input[type=text]:focus { outline: 0; border-bottom-color: var(--accent); }
+  .plan .qs span[title] { cursor: help; }
+  .plan .rerun { margin-top: var(--s1); }
+  .meta .hit { color: var(--accent); }   /* 선택 개념 중 이 논문이 해당하는 것 (LPBF, DSS …) */
   .plan .qs .qn { color: var(--text-3); font-size: 11px; margin-left: 3px; }
   .plan b { color: var(--text); }
   .plan .qs span { display: inline; color: var(--text-2); }
@@ -82,7 +91,7 @@
   <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>논문 탐색</h1>
   <a href="/" id="backHome" target="_top">← 내 논문 검색으로</a>
-  <input id="q" placeholder="주제 키워드 (영어)  예: tantalum machining, built-up edge in situ">
+  <input id="q" placeholder="주제를 말로 적어도 됩니다 — 예: BUE 논문인데 in situ 로 본 것, 재료는 탄탈럼 / 이방성 금속 절삭 (LPBF 든 DSS 든) / tantalum machining">
   <select id="year">
     <option value="">전체 연도</option>
     <option value="2020">2020년 이후</option>
@@ -201,10 +210,10 @@ function pollSmart(key, prog) {
   }, 3000);
 }
 
-async function smartSearch(q) {
+async function smartSearch(q, plan) {
   const year = document.getElementById("year").value;
   const prog = smartProgressBox();
-  const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify({ q, year }) })).json();
+  const start = await (await fetch("/api/smart", { method: "POST", body: JSON.stringify(plan ? { q, year, plan } : { q, year }) })).json();
   if (!start.key) { prog.innerHTML = "⚠ 스마트 탐색 시작 실패: " + (start.error || ""); return; }
   saveState({ smartKey: start.key });
   pollSmart(start.key, prog);
@@ -231,10 +240,33 @@ function renderSmart(r) {
   const owned = r.groups.reduce((a, g) => a + g.items.filter(x => x.owned).length, 0);
   info.textContent = "관련 논문 " + total + "편 (후보 " + r.candidates + "편 중 " + r.excluded + "편 제외) · 보유 " + owned + "편";
   const plan = document.createElement("div"); plan.className = "plan";
-  plan.innerHTML = "<b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + r.intent +
-    (r.exclude ? " <span class='hint'>(제외: " + r.exclude + ")</span>" : "") +
-    "<div class='qs'><b>검색어 " + r.queries.length + "개:</b> " +
-    r.queries.map(x => "<span title='OpenAlex 전체 " + x.total + "편'>" + x.q + "<span class='qn'>" + x.total + "</span></span>").join("") + "</div>";
+  plan.innerHTML = "<b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + escH(r.intent) +
+    "<div class='qs'><b>검색 " + r.queries.length + "번:</b> " +
+    r.queries.map(x => "<span title='" + escH(x.expr || x.q) + "'>" + escH(x.q) + "<span class='qn'>" + (x.total === "실패" ? "실패" : x.total + "편") + (x.new ? " · 새로 " + x.new : "") + "</span></span>").join("") + "</div>";
+  if (r.plan && r.plan.concepts) {   // 검색 계획: 개념마다 필수/선택 · 검색어를 고쳐 다시 검색
+    const box = document.createElement("div");
+    box.innerHTML = "<div class='hint' style='margin-top:6px'>검색 계획 — 필수는 모두 들어가야 하고, 선택은 보기 중 하나면 됩니다. 검색어(쉼표로 구분)를 고쳐 다시 검색할 수 있습니다.</div>";
+    for (const c of r.plan.concepts) {
+      const row = document.createElement("div"); row.className = "pl";
+      row.innerHTML = "<label><input type='checkbox' class='req'" + (c.required ? " checked" : "") + "> 필수</label><span class='nm'></span><input type='text' class='terms'>";
+      row.querySelector(".nm").textContent = c.name; row.querySelector(".terms").value = c.terms.join(", ");
+      row.dataset.name = c.name; box.appendChild(row);
+    }
+    const ex = document.createElement("div"); ex.className = "pl";
+    ex.innerHTML = "<span></span><span class='nm'>제외</span><input type='text' class='exclude' placeholder='제외할 말 (영어, 쉼표)'>";
+    ex.querySelector(".exclude").value = (r.plan.exclude || []).join(", "); box.appendChild(ex);
+    const rerun = document.createElement("div"); rerun.className = "rerun";
+    rerun.innerHTML = "<button id='rerunPlan'>이 검색 계획으로 다시 검색</button> <span class='hint'>(Claude 검색 계획 단계는 건너뛰고 검색·선별만 다시)</span>";
+    rerun.querySelector("button").onclick = () => {
+      const concepts = [...box.querySelectorAll(".pl")].filter(x => x.dataset.name).map(x => ({
+        name: x.dataset.name, required: x.querySelector(".req").checked,
+        terms: x.querySelector(".terms").value.split(",").map(t => t.trim()).filter(Boolean) })).filter(c => c.terms.length);
+      const exclude = ex.querySelector(".exclude").value.split(",").map(t => t.trim()).filter(Boolean);
+      if (!concepts.length) return;
+      smartSearch(document.getElementById("q").value.trim() || r.intent, { intent: r.intent, concepts, exclude });
+    };
+    box.appendChild(rerun); plan.appendChild(box);
+  }
   smartbox.appendChild(plan);
   for (const g of r.groups) {
     const h = document.createElement("div"); h.className = "ghead";
@@ -257,6 +289,7 @@ function openPaper(r) {
   else if (r.doi) window.open(r.doi);
 }
 
+function escH(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function renderRow(r) {
   const row = document.createElement("div");
   row.className = "row" + (r.owned ? " owned" : "");
@@ -267,7 +300,9 @@ function renderRow(r) {
   row.appendChild(t);
   const m = document.createElement("div"); m.className = "meta";
   m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · " + r.venue : "") +
-    " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") + (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
+    " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") +
+    ((r.hits && r.hits.length) ? " · <span class='hit'>" + r.hits.map(escH).join(" · ") + "</span>" : "") +
+    (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
   row.appendChild(m);
   if (r.abstract) {
     const a = document.createElement("div"); a.className = "abs"; a.textContent = r.abstract;

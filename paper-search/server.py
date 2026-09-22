@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Athenaeum 로컬 서버 (논문 수집·검색·읽기·원고). Athenaeum_실행.bat 또는 시작프로그램의 Athenaeum_시작.vbs 로 실행."""
+import hashlib
 import html as html_mod
 import json
 import os
@@ -579,8 +580,80 @@ def openalex_search(query, year="", per_page=30):
     return out, d.get("meta", {}).get("count", 0)
 
 
-def _run_smart(q, year, key):
-    """스마트 탐색: Claude 검색어 확장 -> 다중 검색 -> Claude 선별·소주제 분류."""
+def openalex_boolean(expr, year="", per_page=100):
+    """제목+초록 불리언 검색식(AND/OR/NOT/따옴표/괄호 — OpenAlex 가 지원, 와일드카드는 안 됨)으로 검색. (노드 목록, 전체 건수)"""
+    import mapper
+    filters = ["title_and_abstract.search:" + expr.replace(",", " ")]   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다
+    if str(year).isdigit():
+        filters.append("publication_year:>" + str(int(year) - 1))
+    d = mapper._get(mapper.API + "/works", {"filter": ",".join(filters), "per-page": str(per_page),
+                                            "select": mapper.SELECT + ",abstract_inverted_index,relevance_score"})
+    out = []
+    for it in d.get("results", []):
+        n = mapper._node(it, set(), 0, None)
+        n.pop("_refs", None)
+        inv = it.get("abstract_inverted_index") or {}
+        ws = sorted((p, w) for w, ps in inv.items() for p in ps)
+        n["abstract"] = " ".join(w for _, w in ws)[:500]
+        n["rel"] = it.get("relevance_score") or 0
+        out.append(n)
+    return out, d.get("meta", {}).get("count", 0)
+
+
+def _bool_group(terms):
+    """['built-up edge', 'BUE'] → ("built-up edge" OR BUE)"""
+    ts = []
+    for t in terms or []:
+        t = re.sub(r'[",()]', " ", str(t)).strip()
+        t = re.sub(r"\s+", " ", t)
+        if t and t not in ts:
+            ts.append('"%s"' % t if (" " in t or "-" in t) else t)
+    return "(" + " OR ".join(ts) + ")" if ts else ""
+
+
+def build_boolean(concepts, exclude=None):
+    parts = [g for g in (_bool_group(c.get("terms")) for c in concepts) if g]
+    expr = " AND ".join(parts)
+    ex = _bool_group(exclude)
+    return (expr + " NOT " + ex) if (expr and ex) else expr
+
+
+def _clean_plan(plan, q):
+    """Claude 가 준 검색 계획을 검사·정리. 못 쓰면 입력 그대로 한 개념."""
+    cs = []
+    for c in (plan or {}).get("concepts") or []:
+        if not isinstance(c, dict):
+            continue
+        terms = [str(t).strip()[:60] for t in (c.get("terms") or []) if str(t).strip()][:10]
+        if terms:
+            cs.append({"name": str(c.get("name") or terms[0])[:20], "terms": terms, "required": bool(c.get("required", True))})
+    cs = cs[:6]
+    if not cs:
+        cs = [{"name": q[:20], "terms": [q], "required": True}]
+    if not any(c["required"] for c in cs):
+        cs[0]["required"] = True
+    ex = [str(t).strip()[:40] for t in ((plan or {}).get("exclude") or []) if str(t).strip()][:6]
+    return {"intent": str((plan or {}).get("intent") or q)[:200], "concepts": cs, "exclude": ex}
+
+
+def plan_search(q):
+    """말로 적은 주제(한국어·영어)를 개념(필수/선택)·동의어 검색 계획으로."""
+    r = ask_claude_json(
+        "당신은 공학·과학 문헌 조사 전문가다. 사용자가 말로 적은 조사 주제를 학술 DB(OpenAlex, 영어 제목+초록 불리언 검색)용 검색 계획으로 바꿔라.\n"
+        "규칙:\n"
+        "- 주제를 2~5개의 '개념'으로 나눈다. 개념마다 영어 검색어 3~8개: 동의어, 약어와 풀네임 둘 다(BUE 와 built-up edge), 표기 변형(in situ / in-situ), 인접 용어. "
+        "검색어는 1~4단어의 구. 검색은 제목+초록에서 하므로 논문이 실제로 쓸 법한 말로.\n"
+        "- 사용자가 꼭 있어야 한다고 한 것(\"~인데\", \"~한 거\", \"반드시\")은 required=true. \"~든\", \"예를 들면\", \"같은\" 처럼 보기로 든 것들은 하나의 개념으로 묶어 required=false 로 두고 보기들을 그 개념의 검색어로 넣어라 (예: \"LPBF 든 DSS 든\" → 재료 개념, 선택, 검색어에 laser powder bed fusion·LPBF·selective laser melting·duplex stainless steel·DSS).\n"
+        "- 너무 일반적인 말(study, analysis, effect)은 검색어로 쓰지 마라.\n"
+        "- 제외할 맥락이 분명하면 exclude 에 영어 검색어로.\n"
+        "- JSON 한 줄만: {\"intent\": \"조사 의도 한 문장(한국어)\", \"concepts\": [{\"name\": \"개념 이름(한국어, 짧게)\", \"terms\": [\"...\"], \"required\": true}], \"exclude\": [\"...\"]}\n\n"
+        "[사용자 입력] " + q, timeout=180)
+    return _clean_plan(r, q)
+
+
+def _run_smart(q, year, key, plan=None):
+    """스마트 탐색: (Claude 검색 계획 →) 불리언 검색 사다리 → Claude 선별·소주제 분류.
+    사다리: 전체(필수+선택) → 필수만 → 필수 개념 하나씩 뺀 것(3개 이상일 때). 앞 단계에서 찾힌 논문이 우선."""
     import mapper
 
     def stage(s):
@@ -588,59 +661,71 @@ def _run_smart(q, year, key):
         if job and job.get("status") == "running":
             job["stage"] = s
 
-    stage("1/3 검색어 확장 중")
-    plan = ask_claude_json(
-        "당신은 기계가공·재료 분야 문헌 조사 전문가다. 사용자가 조사하려는 주제를 보고, "
-        "학술 DB(OpenAlex, 영어) 검색어를 6~8개 만들어라.\n"
-        "- 동의어·인접 용어·하위 주제·관련 현상까지 폭넓게 (예: 재료명+공정명 조합, 약어, 관련 현상)\n"
-        "- 각 검색어는 2~4개 영어 단어. 제목·초록에 모두 들어가야 하는 단어 조합이다.\n"
-        "- 한국어 입력이면 영어로 바꿔라.\n"
-        "- 이 주제에서 제외해야 할 맥락도 적어라 (예: 임플란트, 커패시터).\n"
-        "- JSON 한 줄만: {\"intent\": \"사용자 의도 한 문장(한국어)\", \"queries\": [\"...\"], "
-        "\"exclude\": \"제외 맥락(한국어)\"}\n\n[사용자 입력] " + q, timeout=180)
-    if not plan or not plan.get("queries"):
-        plan = {"intent": q, "queries": [q], "exclude": ""}
-    queries = [str(x) for x in plan["queries"]][:8]
-    if q not in queries and re.search(r"[A-Za-z]", q):
-        queries.insert(0, q)
+    if plan:
+        plan = _clean_plan(plan, q)
+    else:
+        stage("1/3 검색 계획 만드는 중")
+        plan = plan_search(q)
+    req = [c for c in plan["concepts"] if c["required"]]
+    opt = [c for c in plan["concepts"] if not c["required"]]
+    ladder = []
+    if opt:
+        ladder.append(("전체 (필수+선택)", req + opt, 100))
+    ladder.append(("필수만" if opt else "전체", req, 100))
+    if len(req) >= 3:
+        for i, c in enumerate(req):
+            ladder.append(("'%s' 빼고" % c["name"], req[:i] + req[i + 1:], 40))
 
-    stage("2/3 검색 중 (0/{})".format(len(queries)))
-    merged, counts = {}, {}
-    for i, qq in enumerate(queries):
-        try:
-            res, total = openalex_search(qq, year, per_page=30)
-            counts[qq] = total
-            for n in res:
-                if n["id"] not in merged:
-                    n["from"] = qq
-                    merged[n["id"]] = n
-        except Exception as e:
-            counts[qq] = "실패"
-        stage("2/3 검색 중 ({}/{})".format(i + 1, len(queries)))
+    stage("2/3 검색 중 (0/{})".format(len(ladder)))
+    merged, queries = {}, []
+    for i, (label, concepts, per_page) in enumerate(ladder):
+        expr = build_boolean(concepts, plan["exclude"])
+        total, got = 0, 0
+        if expr:
+            try:
+                res, total = openalex_boolean(expr, year, per_page=per_page)
+                for n in res:
+                    if n["id"] not in merged:
+                        n["tier"] = i
+                        merged[n["id"]] = n
+                        got += 1
+            except Exception as e:
+                total = "실패"
+        queries.append({"q": label, "expr": expr, "total": total, "new": got})
+        stage("2/3 검색 중 ({}/{})".format(i + 1, len(ladder)))
     with _lock:
         tags = load_json(TAGS_PATH, {})
     owned_idx = archive_title_index(tags)
     items = list(merged.values())
     for n in items:
         n["owned"] = owned_idx.get(mapper.norm_title(n["title"])) or ""
-    items.sort(key=lambda n: n["rel"], reverse=True)
-    items = items[:120]
+    items.sort(key=lambda n: (n["tier"], -n["rel"], -n["cit"]))   # 엄격한 검색에서 나온 것 → 관련도 → 피인용
+    items = items[:150]
 
     stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
     listing = "\n".join("[{}] ({}{}) {} :: {}".format(i, n["year"], ", 리뷰" if n.get("review") else "", n["title"][:120], (n["abstract"] or "")[:220])
                         for i, n in enumerate(items))
+    concept_txt = "\n".join("- {} ({}): {}".format(c["name"], "필수" if c["required"] else "선택", ", ".join(c["terms"])) for c in plan["concepts"])
     verdict = ask_claude_json(
-        "당신은 기계가공·재료 분야 문헌 조사 전문가다. 사용자의 조사 의도에 맞는 논문만 골라 "
-        "소주제(연구 동네)별로 묶어라.\n"
-        "[조사 의도] " + plan.get("intent", q) + "\n"
-        "[제외할 맥락] " + (plan.get("exclude") or "없음") + "\n"
-        "규칙:\n- 의도와 무관한 논문(제외 맥락 포함)은 excluded에 번호로 넣어라.\n"
-        "- 관련 논문은 3~7개 소주제로 묶고, 소주제마다 한국어 이름과 한 줄 설명을 붙여라. "
-        "각 소주제 안에서는 중요도 순으로 번호를 나열하라.\n"
-        "- JSON 한 줄만: {\"groups\": [{\"name\": \"...\", \"why\": \"...\", \"items\": [번호...]}], "
-        "\"excluded\": [번호...]}\n\n[논문 목록: 번호 (연도) 제목 :: 초록]\n" + listing, timeout=300)
+        "당신은 문헌 조사 전문가다. 사용자의 조사 의도와 개념 조건에 맞는 논문만 골라 소주제(연구 동네)별로 묶어라.\n"
+        "[조사 의도] " + plan["intent"] + "\n"
+        "[개념 조건]\n" + concept_txt + "\n"
+        "[제외] " + (", ".join(plan["exclude"]) or "없음") + "\n"
+        "규칙:\n- '필수' 개념을 하나라도 실제로 다루지 않는 논문(제목·초록으로 판단), 의도와 무관한 논문, 제외 맥락의 논문은 excluded 에 번호로.\n"
+        "- 관련 논문은 3~7개 소주제로 묶고, 소주제마다 한국어 이름과 한 줄 설명. 각 소주제 안에서는 중요도 순.\n"
+        "- hits: 논문 번호마다 그 논문이 해당하는 '선택' 개념의 검색어(영어, 짧게, 예: LPBF, DSS)를 적어라. 선택 개념이 없으면 빈 객체.\n"
+        "- JSON 한 줄만: {\"groups\": [{\"name\": \"...\", \"why\": \"...\", \"items\": [번호...]}], \"excluded\": [번호...], \"hits\": {\"번호\": [\"...\"]}}\n\n"
+        "[논문 목록: 번호 (연도) 제목 :: 초록]\n" + listing, timeout=300)
     groups = []
     if verdict and verdict.get("groups"):
+        hits = verdict.get("hits") if isinstance(verdict.get("hits"), dict) else {}
+        for k, v in hits.items():
+            try:
+                i = int(k)
+                if 0 <= i < len(items) and isinstance(v, list):
+                    items[i]["hits"] = [str(x)[:30] for x in v][:4]
+            except (ValueError, TypeError):
+                pass
         used = set()
         for g in verdict["groups"]:
             idxs = [i for i in g.get("items", []) if isinstance(i, int) and 0 <= i < len(items) and i not in used]
@@ -654,12 +739,11 @@ def _run_smart(q, year, key):
         if leftover:
             groups.append({"name": "기타 관련", "why": "소주제로 묶이지 않은 관련 논문", "items": leftover})
     else:
-        groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 관련도순으로 표시", "items": items}]
+        groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 검색 순서대로 표시", "items": items}]
         excluded = 0
     _jobs[key] = {"status": "done", "result": {
-        "intent": plan.get("intent", q), "exclude": plan.get("exclude", ""),
-        "queries": [{"q": qq, "total": counts.get(qq, 0)} for qq in queries],
-        "groups": groups, "excluded": excluded, "candidates": len(items)}}
+        "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
+        "queries": queries, "groups": groups, "excluded": excluded, "candidates": len(items)}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
@@ -1175,9 +1259,9 @@ def job_view(job):
     return v
 
 
-def _run_smart_safe(q, year, key):
+def _run_smart_safe(q, year, key, plan=None):
     try:
-        _run_smart(q, year, key)
+        _run_smart(q, year, key, plan)
     except Exception as e:
         _jobs[key] = {"status": "error", "error": str(e)[:200]}
 
@@ -2550,11 +2634,12 @@ class Handler(BaseHTTPRequestHandler):
             if not q:
                 self._send(400, {"error": "검색어가 없습니다"})
                 return
-            key = ("smart:" + q + "|" + year, "smart")
+            plan = body.get("plan") if isinstance(body.get("plan"), dict) else None   # 화면에서 고친 검색 계획으로 다시 검색
+            key = ("smart:" + q + "|" + year + ("|" + hashlib.md5(json.dumps(plan, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:10] if plan else ""), "smart")
             job = _jobs.get(key)
             if not job or job.get("status") == "error":
                 _jobs[key] = {"status": "running", "stage": "시작", "t0": time.time()}
-                threading.Thread(target=_run_smart_safe, args=(q, year, key), daemon=True).start()
+                threading.Thread(target=_run_smart_safe, args=(q, year, key, plan), daemon=True).start()
             self._send(200, {"key": key[0]})
         elif self.path == "/api/generate":
             name = os.path.basename(body.get("file", ""))
