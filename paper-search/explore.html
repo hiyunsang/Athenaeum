@@ -53,6 +53,9 @@
   .vbar { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 12px 0; font-size: 12px; color: var(--text-2); }
   .vbar .act { padding: 2px 6px; }
   .vbar .act.on { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  .mapctl { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 12px 0; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+  .mapctl input[type=range] { width: 160px; }
+  .mapctl #mapctlHint { width: 100%; padding: 0; text-align: left; line-height: 1.5; }
   .mapwrap { position: relative; margin: var(--s2) 12px 0; border: 1px solid var(--line); background: var(--surface); }
   .mapwrap canvas { display: block; width: 100%; height: auto; }
   .maptip { position: absolute; max-width: 320px; background: var(--text); color: var(--surface); font-size: 12px; line-height: 1.5; padding: 6px 9px; border-radius: var(--r); pointer-events: none; z-index: 3; }
@@ -334,6 +337,12 @@ function renderResultMap(m, host) {
   host.innerHTML = "";
   const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
   const W = Math.max(600, host.clientWidth || smartbox.clientWidth || 900), H = 600;
+  // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
+  let cohesion = 0.6; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion")); if (!isNaN(v)) cohesion = v; } catch (e) {}
+  const ctl = document.createElement("div"); ctl.className = "mapctl";
+  ctl.innerHTML = "<span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span>" +
+    "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용·공통 참고문헌 관계만으로 놓아 소주제가 달라도 깊이 관련된 논문이 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다.</span>";
+  const slider = ctl.querySelector("input"); slider.value = cohesion; host.appendChild(ctl);
   const wrap = document.createElement("div"); wrap.className = "mapwrap";
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; wrap.appendChild(cv);
   const tip = document.createElement("div"); tip.className = "maptip"; tip.hidden = true; wrap.appendChild(tip);
@@ -343,39 +352,41 @@ function renderResultMap(m, host) {
     "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 진한 선 = 직접 인용 · 연한 선 = 공통 참고문헌 · 파란 테두리 = 보유 · 점선 = Review · 클릭 = 열기</span>";
   host.appendChild(legend);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
-  // 배치: 소주제별로 멀찍이 떨어진 중심을 두고, 같은 소주제는 강하게 모으고 다른 소주제는 멀리 둔다.
-  // 그 안에서 유사도(서지결합·인용)가 높은 논문끼리 가깝게. 인용선은 군집을 가로질러도 그대로 보인다.
-  const G = m.groups.length || 1, centers = [];
-  const R = Math.min(W, H) * (G <= 2 ? 0.22 : G <= 4 ? 0.3 : 0.36);
-  for (let gi = 0; gi < G; gi++) { const a = -Math.PI / 2 + gi / G * Math.PI * 2; centers.push([W / 2 + Math.cos(a) * R, H / 2 + Math.sin(a) * R * 0.85]); }
-  nodes.forEach(n => { const c = centers[n.g % G]; n.x = c[0] + (Math.random() - 0.5) * 90; n.y = c[1] + (Math.random() - 0.5) * 90; });
-  const sims = m.sims, DMIN = 60, DMAX = 560;
-  for (let step = 0; step < 700; step++) {
-    const lr = 0.10 * (1 - step / 800);
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i];
-      for (let j = i + 1; j < nodes.length; j++) {
-        const b = nodes[j];
-        let dx = b.x - a.x, dy = b.y - a.y; const dd = Math.sqrt(dx * dx + dy * dy) + 0.01; dx /= dd; dy /= dd;
-        const same = a.g === b.g;
-        const s = same ? Math.max(sims[i][j] || 0, 0.55) : Math.min(sims[i][j] || 0, 0.35);   // 같은 군집: 최소 0.55 끌림 / 다른 군집: 인용이 있어도 너무 붙지 않게
-        const ideal = (same ? 0 : 140) + DMIN + Math.pow(1 - s, 2.2) * (DMAX - DMIN);
-        const f = (dd - ideal) * (0.03 + s * 1.5) * lr;
-        a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
-        const mind = a.r + b.r + 14;
-        if (dd < mind) { const push = (mind - dd) * 0.4; a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; }
+  const G = m.groups.length || 1, sims = m.sims, DMIN = 60, DMAX = 560;
+  // 결정적 난수 (같은 결과 → 같은 그림)
+  let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  function layout(c) {
+    const centers = [], R = Math.min(W, H) * (G <= 2 ? 0.22 : G <= 4 ? 0.3 : 0.36) * (0.4 + 0.6 * c);
+    for (let gi = 0; gi < G; gi++) { const a = -Math.PI / 2 + gi / G * Math.PI * 2; centers.push([W / 2 + Math.cos(a) * R, H / 2 + Math.sin(a) * R * 0.85]); }
+    seed = 12345;
+    nodes.forEach(n => { const ce = centers[n.g % G]; n.x = ce[0] + (rnd() - 0.5) * 120; n.y = ce[1] + (rnd() - 0.5) * 120; });
+    const sameFloor = 0.15 + 0.45 * c, crossCap = 1 - 0.7 * c, crossGap = 170 * c, pull = 0.002 + 0.03 * c;
+    for (let step = 0; step < 700; step++) {
+      const lr = 0.10 * (1 - step / 800);
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          let dx = b.x - a.x, dy = b.y - a.y; const dd = Math.sqrt(dx * dx + dy * dy) + 0.01; dx /= dd; dy /= dd;
+          const same = a.g === b.g, s0 = sims[i] && sims[i][j] ? sims[i][j] : 0;
+          const s = same ? Math.max(s0, sameFloor) : Math.min(s0, crossCap);
+          const ideal = (same ? 0 : crossGap) + DMIN + Math.pow(1 - s, 2.2) * (DMAX - DMIN);
+          const f = (dd - ideal) * (0.03 + s * 1.5) * lr;
+          a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
+          const mind = a.r + b.r + 14;
+          if (dd < mind) { const push = (mind - dd) * 0.4; a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; }
+        }
+        const ce = centers[a.g % G]; a.x += (ce[0] - a.x) * pull; a.y += (ce[1] - a.y) * pull;
       }
-      const c = centers[a.g % G]; a.x += (c[0] - a.x) * 0.03; a.y += (c[1] - a.y) * 0.03;   // 소주제 중심으로
     }
+    const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const mg = 64, sc = Math.min((W - mg * 2) / Math.max(1, x1 - x0), (H - mg * 2 - 24) / Math.max(1, y1 - y0), 1.5);
+    nodes.forEach(n => { n.x = mg + (n.x - x0) * sc; n.y = mg + 18 + (n.y - y0) * sc; });
   }
-  // 화면에 맞추기 (군집 배경·이름 자리를 위해 위쪽 여유)
-  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const mg = 64, sc = Math.min((W - mg * 2) / Math.max(1, x1 - x0), (H - mg * 2 - 24) / Math.max(1, y1 - y0), 1.5);
-  nodes.forEach(n => { n.x = mg + (n.x - x0) * sc; n.y = mg + 18 + (n.y - y0) * sc; });
   const ctx = cv.getContext("2d"), accent = cssVar("--accent", "#1f4fd1"), textCol = cssVar("--text", "#1c1c1a"), bg = cssVar("--surface", "#fff");
   let hovered = null;
   const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, 12);
-  // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 모양 (1~2편이면 원·캡슐)
+  // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 모양 (1~2편이면 원·캡슐). 관계대로 놓으면 껍질이 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
   function hull(pts) {
     if (pts.length < 3) return pts;
     pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -399,12 +410,15 @@ function renderResultMap(m, host) {
   }
   function drawGroupLabels() {
     ctx.font = "600 12px Pretendard, 'Malgun Gothic', sans-serif"; ctx.textAlign = "center";
+    const placed = [];
     groupsPts.forEach((ns, gi) => {
       if (!ns.length) return;
       const col = mapColor(gi);
       const cx = ns.reduce((a, n) => a + n.x, 0) / ns.length, topY = Math.min(...ns.map(n => n.y - n.r)) - 30 - Math.max(...ns.map(n => n.r)) * 0.4;
       const label = m.groups[gi] + " · " + ns.length + "편", w = ctx.measureText(label).width + 14;
-      const lx = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, cx)), ly = Math.max(14, topY);
+      let lx = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, cx)), ly = Math.max(14, topY);
+      for (const p of placed) if (Math.abs(p[1] - ly) < 18 && Math.abs(p[0] - lx) < (p[2] + w) / 2) ly = p[1] + 18;   // 이름끼리 겹치면 아래로
+      placed.push([lx, ly, w]);
       ctx.fillStyle = bg; ctx.globalAlpha = 0.85; ctx.fillRect(lx - w / 2, ly - 10, w, 18); ctx.globalAlpha = 1;
       ctx.fillStyle = col; ctx.fillText(label, lx, ly + 4);
     });
@@ -441,7 +455,8 @@ function renderResultMap(m, host) {
   };
   cv.onmouseleave = () => { tip.hidden = true; if (hovered) { hovered = null; draw(); } };
   cv.onclick = (e) => { const rc = cv.getBoundingClientRect(), n = at((e.clientX - rc.left) * (W / rc.width), (e.clientY - rc.top) * (H / rc.height)); if (n) openPaper(n); };
-  draw();
+  slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
+  layout(cohesion); draw();
 }
 
 function openPaper(r) {
