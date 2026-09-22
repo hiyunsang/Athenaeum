@@ -92,6 +92,7 @@
   .row .tags { grid-column: 1 / -1; grid-row: 3; }
   .meta { font-size: 12px; color: var(--text-2); line-height: 1.4; }
   .meta b { color: var(--text-2); font-weight: 600; }
+  .meta .rv { color: var(--amber); font-weight: 600; }   /* 리뷰/총설 논문 (라벨 Review 또는 제목) */
   .title { font-family: var(--font-serif); font-size: 15px; font-weight: 400; line-height: 1.35; color: var(--text); margin: 2px 0 3px; }
   .title span { color: var(--text-2); font-weight: 400; }
   .tags { font-size: 12px; color: var(--text-2); line-height: 1.55; }
@@ -482,7 +483,7 @@ function render() {
       const pos = p.read.pos && p.read.pos[p.read.kind || "summary"];
       readTxt = " · <span class='rd'>읽음 " + fmtWhen(p.read.last) + " · " + fmtDur(p.read.sec) + (pos > 0.02 ? " · " + Math.round(pos * 100) + "%" : "") + "</span>";
     }
-    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-") + addedTxt + readTxt;
+    meta.innerHTML = (p.year || "-") + " · <b>" + (p.journal || "-") + "</b> · " + (p.author || "-") + (p.review ? " · <span class='rv'>리뷰</span>" : "") + addedTxt + readTxt;
     row.appendChild(meta);
     const t = document.createElement("div"); t.className = "title"; t.textContent = p.title;
     if (p.has_notes) { const nb = document.createElement("span"); nb.textContent = " · 메모" + (p.notes_n > 1 ? " " + p.notes_n : ""); nb.title = "메모/질문 기록 있음"; nb.style.fontSize = "12px"; t.appendChild(nb); }

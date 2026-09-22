@@ -26,7 +26,13 @@ HEADERS = {"User-Agent": "maeng-paper-map/1.0"}
 # OpenAlex polite pool: 연락용 이메일을 보내면 요청 우선순위가 높아짐 (사용자 허락받음, 2026-09-02)
 MAILTO = "maenglaboratory@gmail.com"
 SELECT = ("id,doi,display_name,publication_year,cited_by_count,"
-          "referenced_works,authorships,primary_location,keywords")
+          "referenced_works,authorships,primary_location,keywords,type")
+# 리뷰/총설 판정에 쓰는 제목 패턴 (서버의 요약 프롬프트·홈 목록·탐색 결과가 같이 씀)
+REVIEW_RE = re.compile(r"\breview\b|\bsurvey\b|state of the art|state-of-the-art|advances in|perspectives|\boverview\b", re.I)
+
+
+def is_review_title(title):
+    return bool(REVIEW_RE.search(title or ""))
 MAX_NODES = 45
 
 
@@ -155,6 +161,7 @@ def _node(it, refs, inter, owned_file):
         "author": auth,
         "venue": venue[:60],
         "kw": kw,
+        "review": it.get("type") == "review" or is_review_title(it.get("display_name") or ""),   # OpenAlex 분류 또는 제목
         "inter": inter,
         "owned": owned_file or "",
         "_refs": refs,

@@ -503,6 +503,12 @@ CLAUDE_MISSING_MSG = ("Claude Code 가 설치되어 있지 않거나 claude 명�
                       "https://claude.com/claude-code 에서 설치한 뒤 터미널에서 claude → /login 으로 로그인하세요. 설치 후 재시작은 필요 없습니다")
 
 
+def is_review_paper(title, labels=()):
+    """리뷰/총설 논문인가: 라벨 'Review' 또는 제목(review·survey·advances in·…). 요약 프롬프트·홈 목록·탐색이 같이 쓴다."""
+    import mapper
+    return "Review" in (labels or ()) or mapper.is_review_title(title)
+
+
 def _no_window():
     """콘솔 창이 뜨지 않게 하는 subprocess 옵션 (Windows 전용).
     이걸 주지 않으면 claude 를 부를 때마다 검은 cmd 창이 떠서 사용자의 타이핑을 가로챈다."""
@@ -621,7 +627,7 @@ def _run_smart(q, year, key):
     items = items[:120]
 
     stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
-    listing = "\n".join("[{}] ({}) {} :: {}".format(i, n["year"], n["title"][:120], (n["abstract"] or "")[:220])
+    listing = "\n".join("[{}] ({}{}) {} :: {}".format(i, n["year"], ", 리뷰" if n.get("review") else "", n["title"][:120], (n["abstract"] or "")[:220])
                         for i, n in enumerate(items))
     verdict = ask_claude_json(
         "당신은 기계가공·재료 분야 문헌 조사 전문가다. 사용자의 조사 의도에 맞는 논문만 골라 "
@@ -1648,8 +1654,7 @@ def generate_document(name, kind, text):
     with _lock:
         _t = load_json(TAGS_PATH, {}).get(name, {})
     _title = (_t.get("title") or parse_name(name)["title"] or "").lower()
-    mode = "review" if ("Review" in (_t.get("labels", []) + _t.get("suggested", [])) or
-                        re.search(r"\breview\b|\bsurvey\b|state of the art|state-of-the-art|advances in|perspectives|\boverview\b", _title)) else "research"
+    mode = "review" if is_review_paper(_title, _t.get("labels", []) + _t.get("suggested", [])) else "research"
     chunks, has_front = prepare_chunks(text, 14000 if is_sum else 6000)  # 요약은 절 단위로 크게, 번역은 6k  # 머리부(목차·약어)는 통째로 1구간
     n = len(chunks)
     align_table = None
@@ -2057,7 +2062,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/ms" or url.path.startswith("/api/ms") or url.path.startswith("/fig/"):
             return ms.handle_get(self, url)
-        if url.path == "/vocab" or url.path.startswith("/api/vocab"):
+        if url.path in ("/vocab", "/vocab/quiz") or url.path.startswith("/api/vocab"):
             return vocab.handle_get(self, url)
         if url.path == "/api/intake":
             return self._send(200, intake.view())
@@ -2091,6 +2096,7 @@ class Handler(BaseHTTPRequestHandler):
                 if t.get("title"):  # 파일명은 80자로 잘리므로 전체 제목이 있으면 그걸 사용
                     meta["title"] = t["title"]
                 meta.update({"file": f, "labels": t.get("labels", []),
+                             "review": is_review_paper(meta.get("title") or "", t.get("labels", []) + t.get("suggested", [])),   # 목록 메타 줄에 '리뷰' 표시
                              "suggested": t.get("suggested", []),
                              "rejected": t.get("rejected", []),
                              "has_summary": os.path.exists(gen_path(f, "summary")),
@@ -2521,7 +2527,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             items = body.get("items") or []
             listing = "\n".join("[%s] (%s) %s%s — %s%s%s" % (
-                it.get("n"), it.get("year") or "?", (it.get("title") or "")[:140], " ★보유" if it.get("owned") else "",
+                it.get("n"), it.get("year") or "?", (it.get("title") or "")[:140], (" (리뷰)" if it.get("review") else "") + (" ★보유" if it.get("owned") else ""),
                 (it.get("author") or "?"), (" · " + it["venue"]) if it.get("venue") else "", (" · 피인용 %s" % it["cit"]) if it.get("cit") is not None else "")
                 + ((" :: " + (it.get("abstract") or "")[:280]) if it.get("abstract") else "") for it in items[:80])
             hist = "\n".join("[%s] %s" % ("나" if m.get("role") == "user" else "Claude", (m.get("text") or "")[:1500]) for m in (body.get("history") or [])[-8:])

@@ -23,6 +23,7 @@
   body.embedded .plan { background: var(--surface); }
   .title { font-family: var(--font-serif); font-size: 15px; font-weight: 400; line-height: 1.35; color: var(--text); cursor: pointer; margin-bottom: 2px; }
   .title:hover { color: var(--accent); }
+  .meta .rv { color: var(--amber); }   /* 리뷰/총설 (OpenAlex 분류 또는 제목) */
   .meta { font-size: 12px; color: var(--text-2); margin: 1px 0; line-height: 1.4; }
   .meta b { color: var(--text-2); font-weight: 600; }
   .abs { font-size: 12px; color: var(--text-2); line-height: 1.5; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
@@ -266,7 +267,7 @@ function renderRow(r) {
   row.appendChild(t);
   const m = document.createElement("div"); m.className = "meta";
   m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · " + r.venue : "") +
-    " · 피인용 <b>" + r.cit + "</b>" + (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
+    " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>리뷰</b>" : "") + (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
   row.appendChild(m);
   if (r.abstract) {
     const a = document.createElement("div"); a.className = "abs"; a.textContent = r.abstract;
@@ -331,7 +332,7 @@ function chatState() { try { return JSON.parse(localStorage.getItem(CHAT_KEY) ||
 function chatSave(st) { try { localStorage.setItem(CHAT_KEY, JSON.stringify(st)); } catch (e) {} }
 function chatItems() {   // 화면에 보이는 순서대로 번호가 매겨진 논문 목록 (최대 80편)
   return Object.keys(rowIndex).map(Number).sort((a, b) => a - b).slice(0, 80).map(n => { const r = rowIndex[n];
-    return { n, title: r.title, year: r.year, author: r.author, venue: r.venue, cit: r.cit, owned: !!r.owned, abstract: (r.abstract || "").slice(0, 280) }; });
+    return { n, title: r.title, year: r.year, author: r.author, venue: r.venue, cit: r.cit, review: !!r.review, owned: !!r.owned, abstract: (r.abstract || "").slice(0, 280) }; });
 }
 function chatCtx() {
   const st = chatState(), s = loadState() || {}, n = Object.keys(rowIndex).length;
