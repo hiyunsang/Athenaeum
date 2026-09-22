@@ -267,7 +267,7 @@ function renderRow(r) {
   row.appendChild(t);
   const m = document.createElement("div"); m.className = "meta";
   m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · " + r.venue : "") +
-    " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>리뷰</b>" : "") + (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
+    " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") + (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
   row.appendChild(m);
   if (r.abstract) {
     const a = document.createElement("div"); a.className = "abs"; a.textContent = r.abstract;
