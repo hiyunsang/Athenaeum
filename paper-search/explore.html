@@ -62,6 +62,8 @@
   .maptip .hint { color: var(--line-2); padding: 0; text-align: left; line-height: inherit; }
   .maplegend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: var(--s1) 12px var(--s2); font-size: 12px; color: var(--text-2); }
   .maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .maplegend .lg { cursor: pointer; }
+  .maplegend .lg:hover, .maplegend .lg.on { color: var(--text); font-weight: 600; }
   .maplegend .hint { padding: 0; text-align: left; line-height: inherit; width: 100%; }
   .plan .qs .qn { color: var(--text-3); font-size: 11px; margin-left: 3px; }
   .plan b { color: var(--text); }
@@ -346,8 +348,9 @@ function mapColor(gi, name) {   // 소주제 색 (캔버스는 CSS 변수를 못
 function cssVar(name, fb) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
 function renderResultMap(m, host) {
   host.innerHTML = "";
-  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
-  const W = Math.max(600, host.clientWidth || smartbox.clientWidth || 900), H = Math.max(560, Math.min(900, (window.innerHeight || 800) - 250));   // 큰 창이면 더 높게
+  const W = Math.max(420, host.clientWidth || smartbox.clientWidth || 900), H = Math.max(560, Math.min(900, (window.innerHeight || 800) - 250));   // 실제 폭으로, 큰 창이면 더 높게
+  const narrow = W < 700, rs = narrow ? 0.75 : 1;   // 분할창처럼 좁으면 원을 작게, 이름표도 적게
+  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: rs * Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));   // 고배율 화면에서 글자·선이 흐리지 않게
   // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
   let cohesion = 0; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion2")); if (!isNaN(v)) cohesion = v; } catch (e) {}   // 기본 = 관계대로 (소주제는 색으로 이미 구분되므로)
@@ -355,13 +358,14 @@ function renderResultMap(m, host) {
   ctl.innerHTML = "<span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span>" +
     "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓아 소주제가 달라도 깊이 관련된 논문이 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다.</span>";
   const slider = ctl.querySelector("input"); slider.value = cohesion; host.appendChild(ctl);
+  if (narrow) ctl.insertAdjacentHTML("beforeend", "<span class='hint' style='width:100%'>창이 좁습니다 — 헤더의 「새 창으로 ↗」 로 열면 넓게 보입니다. 범례의 소주제에 마우스를 올리면 그 군집만 강조됩니다.</span>");
   const wrap = document.createElement("div"); wrap.className = "mapwrap";
   const cv = document.createElement("canvas"); cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = "100%"; wrap.appendChild(cv);
   const tip = document.createElement("div"); tip.className = "maptip"; tip.hidden = true; wrap.appendChild(tip);
   host.appendChild(wrap);
   const gcolor = (gi) => mapColor(gi, m.groups[gi]);
   const legend = document.createElement("div"); legend.className = "maplegend";
-  legend.innerHTML = m.groups.map((g, gi) => "<span><i style='background:" + gcolor(gi) + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
+  legend.innerHTML = m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
     "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기</span>";
   host.appendChild(legend);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
@@ -404,9 +408,10 @@ function renderResultMap(m, host) {
   const dark = (document.documentElement.getAttribute("data-theme") === "dark") || (() => { const h = /^#([0-9a-f]{6})$/i.exec(bg); if (!h) return false; const v = parseInt(h[1], 16); return ((v >> 16) * 0.299 + ((v >> 8) & 255) * 0.587 + (v & 255) * 0.114) < 128; })();
   const hullAlpha = dark ? 0.26 : 0.15;
   const off = document.createElement("canvas"); off.width = cv.width; off.height = cv.height; const octx = off.getContext("2d"); octx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  let hovered = null;
-  const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, 12);
-  const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, 8);
+  let hovered = null, focusG = null, focusPinned = false;   // 범례에서 고른 소주제 (그 군집만 껍질·이름·선을 또렷이)
+  const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, narrow ? 6 : 12);
+  const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, narrow ? 4 : 8);
+  const inFocus = (n) => focusG === null || n.g === focusG;
   // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 (1편이면 원, 2편이면 캡슐). 오프스크린에 불투명하게 그린 뒤 한 번에 반투명 합성 → 겹침 띠 없음.
   // 관계대로 놓으면 껍질끼리 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
   function hull(pts) {
@@ -422,6 +427,7 @@ function renderResultMap(m, host) {
   function drawHulls() {
     groupsPts.forEach((ns, gi) => {
       if (!ns.length) return;
+      if (focusG !== null ? gi !== focusG : cohesion < 0.5) return;   // 관계대로 배치면 껍질이 겹쳐 어지러우니 강조한 군집만
       const col = gcolor(gi), pad = 30 + Math.max(...ns.map(n => n.r));
       const h = hull(ns.map(n => [n.x, n.y]));
       octx.clearRect(0, 0, W, H); octx.fillStyle = col; octx.strokeStyle = col; octx.lineJoin = "round"; octx.lineCap = "round"; octx.lineWidth = pad * 2;
@@ -435,6 +441,7 @@ function renderResultMap(m, host) {
     const placed = [];
     groupsPts.forEach((ns, gi) => {
       if (!ns.length) return;
+      if (focusG !== null ? gi !== focusG : cohesion < 0.5) return;   // 이름도 껍질과 같은 규칙 (범례에 있으니 화면에선 생략)
       const name = m.groups[gi] || "", count = ns.length + "편";
       ctx.font = "600 13px " + font; const wn = ctx.measureText(name).width;
       ctx.font = "12px " + font; const wc = ctx.measureText(count).width;
@@ -453,7 +460,7 @@ function renderResultMap(m, host) {
   function drawNodeLabels() {
     ctx.font = "11px " + font; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.lineJoin = "round";
     const boxes = [];
-    const cands = nodes.filter(n => n !== hovered && (top.includes(n) || ownedTop.includes(n)));
+    const cands = nodes.filter(n => n !== hovered && inFocus(n) && (top.includes(n) || ownedTop.includes(n)));
     for (const n of cands.concat(hovered ? [hovered] : [])) {
       const t = (n.author || "") + " " + (n.year || ""), w = ctx.measureText(t).width + 4, x = n.x, y = n.y + n.r + 12;
       const box = [x - w / 2, y - 10, x + w / 2, y + 3];
@@ -468,7 +475,8 @@ function renderResultMap(m, host) {
     for (const [i, j, w, s] of m.edges) {
       const act = hovered && (nodes[i] === hovered || nodes[j] === hovered);
       const st = Math.max(0, Math.min(1, s == null ? 0.3 : s));   // 유사도 → 진하기·굵기
-      const base = w === 2 ? 0.35 + st * 0.35 : w === 3 ? 0.28 + st * 0.3 : w === 1 ? 0.14 + st * 0.3 : 0.09 + st * 0.2;
+      let base = w === 2 ? 0.35 + st * 0.35 : w === 3 ? 0.28 + st * 0.3 : w === 1 ? 0.12 + st * 0.25 : 0.05 + st * 0.12;
+      if (focusG !== null && !(inFocus(nodes[i]) && inFocus(nodes[j]))) base *= 0.25;   // 강조 군집 밖의 선은 흐리게
       ctx.strokeStyle = act ? accent : (dark ? "rgba(220,220,215," : "rgba(80,80,76,") + (act ? 1 : base).toFixed(2) + ")";
       ctx.lineWidth = act ? 1.8 : (w === 2 ? 1 + st : w === 0 ? 0.8 : 0.9 + st);
       ctx.setLineDash(w === 3 ? [2, 4] : []);   // 점선 = 동시인용 (남들이 둘을 함께 인용)
@@ -476,10 +484,12 @@ function renderResultMap(m, host) {
       ctx.setLineDash([]);
     }
     for (const n of nodes) {
+      ctx.globalAlpha = inFocus(n) || n === hovered ? 1 : 0.28;   // 강조 군집 밖은 흐리게
       ctx.beginPath(); ctx.arc(n.x, n.y, n.r + (n === hovered ? 3 : 0), 0, 7);
       ctx.fillStyle = gcolor(n.g); ctx.fill();
       ctx.setLineDash(n.review ? [3, 3] : []);
       ctx.lineWidth = n.owned ? 3 : 1.2; ctx.strokeStyle = n.owned ? accent : bg; ctx.stroke(); ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
     }
     drawNodeLabels();
     drawGroupLabels();
@@ -501,6 +511,14 @@ function renderResultMap(m, host) {
   cv.onmouseleave = () => { tip.hidden = true; if (hovered) { hovered = null; draw(); } };
   cv.onclick = (e) => { const rc = cv.getBoundingClientRect(), n = at((e.clientX - rc.left) * (W / rc.width), (e.clientY - rc.top) * (H / rc.height)); if (n) openPaper(n); };
   slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion2", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
+  // 범례: 마우스를 올리면 그 소주제만 강조, 누르면 고정(다시 누르면 해제)
+  legend.querySelectorAll(".lg").forEach(el => {
+    const gi = +el.dataset.g;
+    el.onmouseenter = () => { if (!focusPinned) { focusG = gi; draw(); } };
+    el.onmouseleave = () => { if (!focusPinned) { focusG = null; draw(); } };
+    el.onclick = () => { if (focusPinned && focusG === gi) { focusPinned = false; focusG = null; } else { focusPinned = true; focusG = gi; }
+      legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", focusPinned && +x.dataset.g === focusG)); draw(); };
+  });
   layout(cohesion); draw();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);   // 글꼴이 늦게 오면 다시
 }
