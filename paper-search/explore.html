@@ -306,6 +306,13 @@ function renderSmart(r) {
     list.appendChild(h);
     for (const it of g.items) list.appendChild(renderRow(it));
   }
+  if (r.excluded_items && r.excluded_items.length) {   // Claude 가 뺀 후보 — 접어 두고 필요하면 펼쳐 되살린다
+    const eh = document.createElement("div"); eh.className = "ghead"; eh.style.cursor = "pointer";
+    eh.innerHTML = "<b>▸ 제외된 후보 " + r.excluded_items.length + "편 보기</b> <span>Claude 가 조사 의도·필수 개념과 맞지 않는다고 본 것 — 판단이 빡빡했으면 여기서 찾으세요</span>";
+    const ebox = document.createElement("div"); ebox.hidden = true;
+    eh.onclick = () => { ebox.hidden = !ebox.hidden; eh.querySelector("b").textContent = (ebox.hidden ? "▸" : "▾") + " 제외된 후보 " + r.excluded_items.length + "편 보기"; if (!ebox.childElementCount) for (const it of r.excluded_items) ebox.appendChild(renderRow(it)); };
+    list.appendChild(eh); list.appendChild(ebox);
+  }
   smartbox.appendChild(list);
   const mapBox = document.createElement("div"); mapBox.id = "rmap"; mapBox.hidden = true; smartbox.appendChild(mapBox);
   let mapReady = false;

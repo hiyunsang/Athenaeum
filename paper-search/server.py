@@ -790,6 +790,7 @@ def _run_smart(q, year, key, plan=None):
         "[개념 조건]\n" + concept_txt + "\n"
         "[제외] " + (", ".join(plan["exclude"]) or "없음") + "\n"
         "규칙:\n- '필수' 개념을 하나라도 실제로 다루지 않는 논문(제목·초록으로 판단), 의도와 무관한 논문, 제외 맥락의 논문은 excluded 에 번호로.\n"
+        "- 판단 원칙: 필수 개념을 제목·초록에서 실제로 다루면 포함한다. 확실히 무관하거나 제외 맥락일 때만 excluded. 애매하면 포함하고 소주제 이름에 그 차이를 드러내라 (사용자가 목록에서 거를 수 있다).\n"
         "- 관련 논문은 3~7개 소주제로 묶고, 소주제마다 한국어 이름과 한 줄 설명. 각 소주제 안에서는 중요도 순.\n"
         "- hits: 논문 번호마다 그 논문이 해당하는 '선택' 개념의 검색어(영어, 짧게, 예: LPBF, DSS)를 적어라. 선택 개념이 없으면 빈 객체.\n"
         "- JSON 한 줄만: {\"groups\": [{\"name\": \"...\", \"why\": \"...\", \"items\": [번호...]}], \"excluded\": [번호...], \"hits\": {\"번호\": [\"...\"]}}\n\n"
@@ -811,21 +812,23 @@ def _run_smart(q, year, key, plan=None):
             if idxs:
                 groups.append({"name": g.get("name", ""), "why": g.get("why", ""),
                                "items": [items[i] for i in idxs]})
-        excluded = len([i for i in verdict.get("excluded", []) if isinstance(i, int)])
+        exc_idx = [i for i in verdict.get("excluded", []) if isinstance(i, int) and 0 <= i < len(items) and i not in used]
+        excluded = len(exc_idx)
+        excluded_items = [{k: items[i].get(k) for k in ("id", "doi", "title", "year", "author", "venue", "cit", "owned", "review")} for i in exc_idx]
         leftover = [items[i] for i in range(len(items))
                     if i not in used and i not in set(verdict.get("excluded", []))]
         if leftover:
             groups.append({"name": "기타 관련", "why": "소주제로 묶이지 않은 관련 논문", "items": leftover})
     else:
         groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 검색 순서대로 표시", "items": items}]
-        excluded = 0
+        excluded = 0; excluded_items = []
     stage("마무리: 인용 관계 조사 중")
     rmap = results_map(groups)
     for n in items:
         n.pop("_refs", None)
     _jobs[key] = {"status": "done", "result": {
         "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
-        "queries": queries, "groups": groups, "excluded": excluded, "candidates": len(items), "map": rmap}}
+        "queries": queries, "groups": groups, "excluded": excluded, "excluded_items": excluded_items, "candidates": len(items), "map": rmap}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
