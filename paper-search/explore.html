@@ -310,6 +310,7 @@ function renderSmart(r) {
   const mapBox = document.createElement("div"); mapBox.id = "rmap"; mapBox.hidden = true; smartbox.appendChild(mapBox);
   let mapReady = false;
   const setView = (v) => {
+    if (v === "map" && !r.map) { document.getElementById("vhint").textContent = "이 결과에는 맵이 없습니다 (예전 검색) — 다시 검색하면 만들어집니다"; v = "list"; }
     list.hidden = v === "map"; mapBox.hidden = v !== "map";
     vbar.querySelectorAll("[data-v]").forEach(a => a.classList.toggle("on", a.dataset.v === v));
     try { localStorage.setItem("explore_view", v); } catch (e) {}
@@ -331,25 +332,30 @@ function renderSmart(r) {
 // ---------- 결과 맵 ----------
 // 노드 = 논문(크기 = 피인용, 색 = 소주제), 선 = 직접 인용(진하게) 또는 공통 참고문헌이 많음(연하게). 보유 논문은 파란 테두리, Review 는 점선 테두리.
 // 배치: 유사도(서지결합+인용)가 높을수록 가깝게 + 같은 소주제끼리 모이게.
-function mapColor(gi) { const P = ["#4f6fc9", "#c9822f", "#3f9a6b", "#b04f78", "#7a6bb8", "#8a8a2f", "#c0574a", "#3f8fa8"]; return P[gi % P.length]; }   // 소주제 색 (캔버스는 CSS 변수를 못 씀)
+function mapColor(gi, name) {   // 소주제 색 (캔버스는 CSS 변수를 못 씀). 파랑은 '보유' 테두리(강조색)와 겹쳐 뺌. '기타 관련' 은 진짜 소주제가 아니라 회색
+  if (name === "기타 관련") return "#8c8c87";
+  const P = ["#c9822f", "#3f9a6b", "#b04f78", "#7a6bb8", "#8a8a2f", "#c0574a", "#3f8fa8"]; return P[gi % P.length];
+}
 function cssVar(name, fb) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
 function renderResultMap(m, host) {
   host.innerHTML = "";
   const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
   const W = Math.max(600, host.clientWidth || smartbox.clientWidth || 900), H = 600;
+  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));   // 고배율 화면에서 글자·선이 흐리지 않게
   // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
   let cohesion = 0.6; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion")); if (!isNaN(v)) cohesion = v; } catch (e) {}
   const ctl = document.createElement("div"); ctl.className = "mapctl";
   ctl.innerHTML = "<span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span>" +
-    "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용·공통 참고문헌 관계만으로 놓아 소주제가 달라도 깊이 관련된 논문이 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다.</span>";
+    "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓아 소주제가 달라도 깊이 관련된 논문이 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다.</span>";
   const slider = ctl.querySelector("input"); slider.value = cohesion; host.appendChild(ctl);
   const wrap = document.createElement("div"); wrap.className = "mapwrap";
-  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; wrap.appendChild(cv);
+  const cv = document.createElement("canvas"); cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = "100%"; wrap.appendChild(cv);
   const tip = document.createElement("div"); tip.className = "maptip"; tip.hidden = true; wrap.appendChild(tip);
   host.appendChild(wrap);
+  const gcolor = (gi) => mapColor(gi, m.groups[gi]);
   const legend = document.createElement("div"); legend.className = "maplegend";
-  legend.innerHTML = m.groups.map((g, gi) => "<span><i style='background:" + mapColor(gi) + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
-    "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 진한 선 = 직접 인용 · 연한 선 = 공통 참고문헌 · 파란 테두리 = 보유 · 점선 = Review · 클릭 = 열기</span>";
+  legend.innerHTML = m.groups.map((g, gi) => "<span><i style='background:" + gcolor(gi) + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
+    "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 진한 선 = 직접 인용 · 점선 = 동시인용(남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") · 연한 선 = 공통 참고문헌 · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기</span>";
   host.appendChild(legend);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
   const G = m.groups.length || 1, sims = m.sims, DMIN = 60, DMAX = 560;
@@ -379,14 +385,23 @@ function renderResultMap(m, host) {
         const ce = centers[a.g % G]; a.x += (ce[0] - a.x) * pull; a.y += (ce[1] - a.y) * pull;
       }
     }
+    // 화면에 맞추고 가운데 정렬 (군집 이름 자리를 위해 위쪽 여유)
     const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
     const mg = 64, sc = Math.min((W - mg * 2) / Math.max(1, x1 - x0), (H - mg * 2 - 24) / Math.max(1, y1 - y0), 1.5);
-    nodes.forEach(n => { n.x = mg + (n.x - x0) * sc; n.y = mg + 18 + (n.y - y0) * sc; });
+    const ox = (W - mg * 2 - (x1 - x0) * sc) / 2, oy = (H - mg * 2 - 24 - (y1 - y0) * sc) / 2;
+    nodes.forEach(n => { n.x = mg + ox + (n.x - x0) * sc; n.y = mg + 18 + oy + (n.y - y0) * sc; });
   }
-  const ctx = cv.getContext("2d"), accent = cssVar("--accent", "#1f4fd1"), textCol = cssVar("--text", "#1c1c1a"), bg = cssVar("--surface", "#fff");
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const accent = cssVar("--accent", "#1f4fd1"), textCol = cssVar("--text", "#1c1c1a"), text2 = cssVar("--text-2", "#6b6b66"), bg = cssVar("--surface", "#fff");
+  const font = cssVar("--font", "Pretendard, 'Malgun Gothic', sans-serif");
+  const dark = (document.documentElement.getAttribute("data-theme") === "dark") || (() => { const h = /^#([0-9a-f]{6})$/i.exec(bg); if (!h) return false; const v = parseInt(h[1], 16); return ((v >> 16) * 0.299 + ((v >> 8) & 255) * 0.587 + (v & 255) * 0.114) < 128; })();
+  const hullAlpha = dark ? 0.26 : 0.15;
+  const off = document.createElement("canvas"); off.width = cv.width; off.height = cv.height; const octx = off.getContext("2d"); octx.setTransform(dpr, 0, 0, dpr, 0, 0);
   let hovered = null;
   const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, 12);
-  // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 모양 (1~2편이면 원·캡슐). 관계대로 놓으면 껍질이 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
+  const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, 8);
+  // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 (1편이면 원, 2편이면 캡슐). 오프스크린에 불투명하게 그린 뒤 한 번에 반투명 합성 → 겹침 띠 없음.
+  // 관계대로 놓으면 껍질끼리 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
   function hull(pts) {
     if (pts.length < 3) return pts;
     pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -400,56 +415,77 @@ function renderResultMap(m, host) {
   function drawHulls() {
     groupsPts.forEach((ns, gi) => {
       if (!ns.length) return;
-      const col = mapColor(gi), pad = 30 + Math.max(...ns.map(n => n.r));
+      const col = gcolor(gi), pad = 30 + Math.max(...ns.map(n => n.r));
       const h = hull(ns.map(n => [n.x, n.y]));
-      ctx.save(); ctx.globalAlpha = 0.11; ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.lineWidth = pad * 2;
-      ctx.beginPath(); h.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (h.length > 1) ctx.closePath();
-      ctx.stroke(); if (h.length > 2) ctx.fill();
-      ctx.restore();
+      octx.clearRect(0, 0, W, H); octx.fillStyle = col; octx.strokeStyle = col; octx.lineJoin = "round"; octx.lineCap = "round"; octx.lineWidth = pad * 2;
+      octx.beginPath();
+      if (h.length === 1) { octx.arc(h[0][0], h[0][1], pad, 0, Math.PI * 2); octx.fill(); }
+      else { h.forEach((p, k) => k ? octx.lineTo(p[0], p[1]) : octx.moveTo(p[0], p[1])); octx.closePath(); octx.stroke(); if (h.length > 2) octx.fill(); }
+      ctx.save(); ctx.globalAlpha = hullAlpha; ctx.drawImage(off, 0, 0, W, H); ctx.restore();
     });
   }
   function drawGroupLabels() {
-    ctx.font = "600 12px Pretendard, 'Malgun Gothic', sans-serif"; ctx.textAlign = "center";
     const placed = [];
     groupsPts.forEach((ns, gi) => {
       if (!ns.length) return;
-      const col = mapColor(gi);
+      const name = m.groups[gi] || "", count = ns.length + "편";
+      ctx.font = "600 13px " + font; const wn = ctx.measureText(name).width;
+      ctx.font = "12px " + font; const wc = ctx.measureText(count).width;
+      const w = 14 + wn + 6 + wc + 14;
       const cx = ns.reduce((a, n) => a + n.x, 0) / ns.length, topY = Math.min(...ns.map(n => n.y - n.r)) - 30 - Math.max(...ns.map(n => n.r)) * 0.4;
-      const label = m.groups[gi] + " · " + ns.length + "편", w = ctx.measureText(label).width + 14;
       let lx = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, cx)), ly = Math.max(14, topY);
-      for (const p of placed) if (Math.abs(p[1] - ly) < 18 && Math.abs(p[0] - lx) < (p[2] + w) / 2) ly = p[1] + 18;   // 이름끼리 겹치면 아래로
+      for (const p of placed) if (Math.abs(p[1] - ly) < 20 && Math.abs(p[0] - lx) < (p[2] + w) / 2) ly = p[1] + 20;   // 이름끼리 겹치면 아래로
       placed.push([lx, ly, w]);
-      ctx.fillStyle = bg; ctx.globalAlpha = 0.85; ctx.fillRect(lx - w / 2, ly - 10, w, 18); ctx.globalAlpha = 1;
-      ctx.fillStyle = col; ctx.fillText(label, lx, ly + 4);
+      ctx.fillStyle = bg; ctx.globalAlpha = 0.88; ctx.fillRect(lx - w / 2, ly - 11, w, 20); ctx.globalAlpha = 1;
+      let x = lx - w / 2 + 8;
+      ctx.beginPath(); ctx.arc(x + 4, ly - 1, 4, 0, Math.PI * 2); ctx.fillStyle = gcolor(gi); ctx.fill(); x += 14;   // 색 점 = 범례와 같은 방식
+      ctx.textAlign = "left"; ctx.font = "600 13px " + font; ctx.fillStyle = textCol; ctx.fillText(name, x, ly + 4); x += wn + 6;
+      ctx.font = "12px " + font; ctx.fillStyle = text2; ctx.fillText(count, x, ly + 4);
     });
+  }
+  function drawNodeLabels() {
+    ctx.font = "11px " + font; ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.lineJoin = "round";
+    const boxes = [];
+    const cands = nodes.filter(n => n !== hovered && (top.includes(n) || ownedTop.includes(n)));
+    for (const n of cands.concat(hovered ? [hovered] : [])) {
+      const t = (n.author || "") + " " + (n.year || ""), w = ctx.measureText(t).width + 4, x = n.x, y = n.y + n.r + 12;
+      const box = [x - w / 2, y - 10, x + w / 2, y + 3];
+      if (n !== hovered && boxes.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]))) continue;   // 겹치면 건너뜀 (hover 는 항상)
+      boxes.push(box);
+      ctx.strokeText(t, x, y); ctx.fillStyle = textCol; ctx.fillText(t, x, y);   // 바탕색 후광
+    }
   }
   function draw() {
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     drawHulls();
     for (const [i, j, w] of m.edges) {
       const act = hovered && (nodes[i] === hovered || nodes[j] === hovered);
-      ctx.strokeStyle = act ? accent : (w === 2 ? "rgba(90,90,90,0.45)" : "rgba(120,120,120,0.16)");
+      ctx.strokeStyle = act ? accent : (w === 2 ? "rgba(90,90,90,0.45)" : w === 3 ? "rgba(90,90,90,0.35)" : "rgba(120,120,120,0.16)");
       ctx.lineWidth = act ? 1.8 : (w === 2 ? 1.2 : 1);
+      ctx.setLineDash(w === 3 ? [2, 4] : []);   // 점선 = 동시인용 (남들이 둘을 함께 인용)
       ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+      ctx.setLineDash([]);
     }
     for (const n of nodes) {
       ctx.beginPath(); ctx.arc(n.x, n.y, n.r + (n === hovered ? 3 : 0), 0, 7);
-      ctx.fillStyle = mapColor(n.g); ctx.fill();
+      ctx.fillStyle = gcolor(n.g); ctx.fill();
       ctx.setLineDash(n.review ? [3, 3] : []);
       ctx.lineWidth = n.owned ? 3 : 1.2; ctx.strokeStyle = n.owned ? accent : bg; ctx.stroke(); ctx.setLineDash([]);
     }
-    ctx.font = "11px Pretendard, 'Malgun Gothic', sans-serif"; ctx.fillStyle = textCol; ctx.textAlign = "center";
-    for (const n of nodes) if (n === hovered || top.includes(n) || n.owned) ctx.fillText((n.author || "") + " " + (n.year || ""), n.x, n.y + n.r + 12);
+    drawNodeLabels();
     drawGroupLabels();
   }
   const at = (x, y) => { for (let i = nodes.length - 1; i >= 0; i--) { const n = nodes[i], dx = x - n.x, dy = y - n.y; if (dx * dx + dy * dy <= (n.r + 4) * (n.r + 4)) return n; } return null; };
   cv.onmousemove = (e) => {
-    const rc = cv.getBoundingClientRect(), sx = W / rc.width, sy = H / rc.height, n = at((e.clientX - rc.left) * sx, (e.clientY - rc.top) * sy);
+    const rc = cv.getBoundingClientRect(), sx = W / rc.width, sy = H / rc.height, px = e.clientX - rc.left, py = e.clientY - rc.top, n = at(px * sx, py * sy);
     if (n !== hovered) { hovered = n; draw(); }
     if (n) {
-      tip.hidden = false; tip.style.left = Math.min(e.clientX - rc.left + 14, rc.width - 330) + "px"; tip.style.top = (e.clientY - rc.top + 14) + "px";
       tip.innerHTML = "<b>" + escH(n.title) + "</b><br>" + escH(n.author || "?") + " · " + (n.year || "?") + (n.venue ? " · " + escH(n.venue) : "") + " · 피인용 " + n.cit +
         (n.review ? " · Review" : "") + (n.hits && n.hits.length ? " · " + escH(n.hits.join(", ")) : "") + "<br><span class='hint'>" + escH(m.groups[n.g] || "") + (n.owned ? " · 보유 — 클릭하면 PDF" : " · 클릭하면 논문 페이지") + "</span>";
+      tip.hidden = false;
+      const tw = tip.offsetWidth, th = tip.offsetHeight;   // 넘치면 커서 왼쪽·위로 뒤집기
+      tip.style.left = Math.max(0, (px + 14 + tw > rc.width) ? px - 14 - tw : px + 14) + "px";
+      tip.style.top = Math.max(0, (py + 14 + th > rc.height) ? py - 14 - th : py + 14) + "px";
       cv.style.cursor = "pointer";
     } else { tip.hidden = true; cv.style.cursor = "default"; }
   };
@@ -457,6 +493,7 @@ function renderResultMap(m, host) {
   cv.onclick = (e) => { const rc = cv.getBoundingClientRect(), n = at((e.clientX - rc.left) * (W / rc.width), (e.clientY - rc.top) * (H / rc.height)); if (n) openPaper(n); };
   slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
   layout(cohesion); draw();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);   // 글꼴이 늦게 오면 다시
 }
 
 function openPaper(r) {

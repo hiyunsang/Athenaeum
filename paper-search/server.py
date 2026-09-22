@@ -601,29 +601,70 @@ def openalex_boolean(expr, year="", per_page=100):
     return out, d.get("meta", {}).get("count", 0)
 
 
-def results_map(groups):
-    """선별된 논문들의 맵: 소주제(색)·피인용(크기)·인용 관계(선). 유사도 = 서지결합(공통 참고문헌) + 직접 인용."""
+def cocitation_counts(ids, max_pages=3, batch=40):
+    """결과 논문들을 인용한 논문들(citers)을 묶음으로 받아, 같은 citer 의 참고문헌에 함께 든 쌍을 센다.
+    OpenAlex 의 cites: 필터는 1크레딧/요청(검색의 1/10)이라 40편씩 묶어 200건×최대 3쪽 → 검색 한 번에 요청 수 편. 실패해도 맵은 서지결합만으로 그린다."""
+    import mapper
+    idset = set(ids)
+    pair = {}          # (i_id, j_id) → 함께 인용한 논문 수
+    citers_of = {k: 0 for k in ids}   # 표본 안에서 각 논문을 인용한 논문 수 (정규화용)
+    seen = set()
+    for b in range(0, len(ids), batch):
+        chunk = ids[b:b + batch]
+        for page in range(1, max_pages + 1):
+            try:
+                d = mapper._get(mapper.API + "/works", {"filter": "cites:" + "|".join(chunk), "per-page": "200", "page": str(page),
+                                                        "select": "id,referenced_works"})
+            except Exception:
+                return pair, citers_of, False
+            rows = d.get("results", [])
+            for it in rows:
+                cid = mapper.wid(it.get("id", ""))
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                hit = sorted(k for k in (mapper.wid(x) for x in (it.get("referenced_works") or [])) if k in idset)
+                for k in hit:
+                    citers_of[k] += 1
+                for x in range(len(hit)):
+                    for y in range(x + 1, len(hit)):
+                        pair[(hit[x], hit[y])] = pair.get((hit[x], hit[y]), 0) + 1
+            if len(rows) < 200:
+                break
+    return pair, citers_of, True
+
+
+def results_map(groups, with_cocitation=True):
+    """선별된 논문들의 맵: 소주제(색)·피인용(크기)·인용 관계(선).
+    유사도 = 서지결합(공통 참고문헌, 둘이 같은 곳을 인용) + 동시인용(남들이 둘을 함께 인용) + 직접 인용."""
     import math
     sel = [(gi, it) for gi, g in enumerate(groups) for it in g["items"]]
     ids = [it["id"] for _, it in sel]
     refs = [set(it.get("_refs") or []) for _, it in sel]
     n = len(sel)
+    pair, citers_of, cocit_ok = cocitation_counts(ids) if (with_cocitation and n >= 2) else ({}, {}, False)
     sims = [[0.0] * n for _ in range(n)]
     edges = []
     for i in range(n):
         for j in range(i + 1, n):
             cite = ids[j] in refs[i] or ids[i] in refs[j]
             coup = len(refs[i] & refs[j]) / math.sqrt(len(refs[i]) * len(refs[j])) if refs[i] and refs[j] else 0.0
-            s = min(1.0, coup * 2 + (0.6 if cite else 0))
+            cc = pair.get((min(ids[i], ids[j]), max(ids[i], ids[j])), 0)
+            ci, cj = citers_of.get(ids[i], 0), citers_of.get(ids[j], 0)
+            cocit = cc / math.sqrt(ci * cj) if cc and ci and cj else 0.0
+            s = min(1.0, coup * 2 + cocit * 1.5 + (0.6 if cite else 0))
             sims[i][j] = sims[j][i] = round(s, 3)
             if cite:
                 edges.append([i, j, 2])
+            elif cc >= 3 and cocit >= 0.2:
+                edges.append([i, j, 3])   # 동시인용
             elif coup >= 0.15:
                 edges.append([i, j, 1])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
               "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
               "hits": it.get("hits", [])} for gi, it in sel]
-    return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups]}
+    return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups],
+            "cocitation": cocit_ok, "citers": len({k for k in citers_of if citers_of[k]})}
 
 
 def _bool_group(terms):
@@ -769,6 +810,7 @@ def _run_smart(q, year, key, plan=None):
     else:
         groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 검색 순서대로 표시", "items": items}]
         excluded = 0
+    stage("마무리: 인용 관계 조사 중")
     rmap = results_map(groups)
     for n in items:
         n.pop("_refs", None)
