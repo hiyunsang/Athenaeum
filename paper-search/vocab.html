@@ -197,7 +197,7 @@ function renderList() {
   $("list").innerHTML = ws.map(w => {
     const ex = (w.examples || [])[0];
     return "<div class='w' data-id='" + w.id + "'>" +
-      "<div><div class='t'>" + esc(w.term) + (w.pos ? "<span class='pos'>" + esc(w.pos) + "</span>" : "") + "</div>" +
+      "<div><div class='t'>" + esc(w.term) + (w.pos ? "<span class='pos'>" + esc(w.pos) + "</span>" : "") + (w.ipa ? "<span class='pos'>" + esc(w.ipa) + "</span>" : "") + "</div>" +
       (w.gloss_en ? "<div class='g'>" + esc(w.gloss_en) + "</div>" : "") +
       (ex ? "<div class='ex'><i>" + esc((ex.en || "").slice(0, 180)) + "</i>" + (ex.ko ? "<br>" + esc(ex.ko.slice(0, 180)) : "") +
         (ex.title ? "<div class='src'>" + esc(ex.title.slice(0, 70)) + (ex.page ? " p." + ex.page : "") + (ex.file ? " · <a href='/view?file=" + encodeURIComponent(ex.file) + "&kind=translation" + (ex.sent ? "&sent=" + ex.sent : "") + "' target='_blank'>원문</a>" : "") + "</div>" : "") + "</div>" : "") +
@@ -289,7 +289,7 @@ function showCard() {
   const w = queue[qi];
   $("rBar").style.width = Math.round(100 * qi / queue.length) + "%";
   const ex = (w.examples || [])[0];
-  $("card").innerHTML = "<div class='term'>" + esc(w.term) + "</div>" + (shown
+  $("card").innerHTML = "<div class='term'>" + esc(w.term) + "</div>" + (w.ipa ? "<div class='sub'>" + esc(w.ipa) + "</div>" : "") + (shown
     ? "<div class='mean'>" + esc(w.meaning || "(뜻 없음)") + "</div>" +
       (w.gloss_en ? "<div class='sub'>" + esc(w.gloss_en) + "</div>" : "") +
       (ex ? "<div class='sub'><i>" + esc((ex.en || "").slice(0, 220)) + "</i>" + (ex.ko ? "<br>" + esc(ex.ko.slice(0, 220)) : "") + "</div>" : "")

@@ -249,23 +249,33 @@ def deck_style(d, deck):
     return st if st in STYLES else DEFAULT_STYLE.get(deck, "toeic")
 
 
-def _example_prompt(items, style="toeic"):
+IPA_RULE = "- 발음은 미국식 IPA 를 슬래시 사이에: /ˈrezəmeɪ/ 처럼. 강세 표시(ˈ) 포함. 두 낱말 이상이면 띄어서."
+
+
+def _example_prompt(items, style="toeic", ipa_only=False):
     who, what = STYLES.get(style, STYLES["toeic"])
     lines = ["%s\t%s" % (t, m) for t, m in items]
+    if ipa_only:
+        # 품사·예문은 이미 있고 발음만 빈 경우 — 짧게 묻는다
+        return ("아래 영어 단어마다 미국식 발음 기호를 붙여 JSON 한 줄로만 답하라.\n"
+                "{\"items\": [{\"term\": \"입력한 그대로\", \"ipa\": \"발음\"}]}\n"
+                "규칙:\n" + IPA_RULE + "\n"
+                "- 입력한 단어를 하나도 빠뜨리지 말고 순서대로. 다른 말은 하지 않는다.\n\n"
+                "[단어 %d개]\n%s" % (len(items), "\n".join(t for t, _ in items)))
     return ("당신은 %s 한국인 대학원생의 단어장을 만드는 영어 강사다. "
-            "아래 '단어<탭>뜻' 마다 품사와 예문을 붙여 JSON 한 줄로만 답하라.\n"
-            "{\"items\": [{\"term\": \"입력한 그대로\", \"pos\": \"품사\", \"en\": \"영어 예문\", \"ko\": \"예문의 자연스러운 한국어 번역\"}]}\n"
-            "규칙:\n"
+            "아래 '단어<탭>뜻' 마다 발음·품사·예문을 붙여 JSON 한 줄로만 답하라.\n"
+            "{\"items\": [{\"term\": \"입력한 그대로\", \"ipa\": \"발음\", \"pos\": \"품사\", \"en\": \"영어 예문\", \"ko\": \"예문의 자연스러운 한국어 번역\"}]}\n"
+            "규칙:\n" + IPA_RULE + "\n"
             "- 품사는 한국어 한 낱말: 명사·동사·형용사·부사·전치사·접속사·대명사·구·숙어 중 하나. 주어진 뜻에 맞는 품사로.\n"
             "- 예문은 %s. 주어진 뜻 그대로 그 단어를 쓴다. 단어가 동사면 문장 안에서 활용형이어도 된다.\n"
             "- 입력한 단어를 하나도 빠뜨리지 말고 순서대로. 다른 말은 하지 않는다.\n\n"
             "[단어 %d개]\n%s" % (who, what, len(items), "\n".join(lines)))
 
 
-def _fill_chunk(chunk, style="toeic"):
-    """chunk = [(id, term, meaning)] → {id: {pos, en, ko}}"""
+def _fill_chunk(chunk, style="toeic", ipa_only=False):
+    """chunk = [(id, term, meaning)] → {id: {ipa, pos, en, ko}}"""
     items = [(t, m) for _, t, m in chunk]
-    r = cfg["claude_json"](_example_prompt(items, style), timeout=360) or {}
+    r = cfg["claude_json"](_example_prompt(items, style, ipa_only), timeout=360) or {}
     by_term = {}
     for it in (r.get("items") or []):
         if isinstance(it, dict) and it.get("term"):
@@ -289,6 +299,11 @@ def _apply_fill(got):
                 continue
             if not w.get("pos") and it.get("pos"):
                 w["pos"] = str(it["pos"])[:12]
+            if not w.get("ipa") and it.get("ipa"):
+                ipa = str(it["ipa"]).strip()
+                if not ipa.startswith("/"):
+                    ipa = "/%s/" % ipa.strip("/[] ")
+                w["ipa"] = ipa[:60]
             en, ko = str(it.get("en") or "").strip(), str(it.get("ko") or "").strip()
             if en and not w.get("examples"):
                 w["examples"] = [{"en": en[:300], "ko": ko[:300], "source": "gen"}]
@@ -297,11 +312,11 @@ def _apply_fill(got):
     return n
 
 
-def _fill_worker(targets, style):
+def _fill_worker(targets, style, ipa_only=False):
     chunks = [targets[i:i + 40] for i in range(0, len(targets), 40)]
     try:
         with ThreadPoolExecutor(max_workers=4) as ex:
-            futs = [ex.submit(_fill_chunk, c, style) for c in chunks]
+            futs = [ex.submit(_fill_chunk, c, style, ipa_only) for c in chunks]
             for c, f in zip(chunks, futs):
                 if _fill["stop"]:
                     break
@@ -327,14 +342,17 @@ def start_fill(body):
     if deck and body.get("style") in STYLES and deck_style(d, deck) != style:
         with _fill_lock:   # 이 묶음의 문체로 기억
             d2 = load(); d2.setdefault("deck_style", {})[deck] = style; save(d2)
-    targets = [(w["id"], w["term"], w.get("meaning") or "") for w in d["words"]
-               if w.get("term") and (not deck or w.get("deck") == deck) and (not tag or tag in (w.get("tags") or []))
-               and (not w.get("pos") or not w.get("examples"))]
+    picked = [w for w in d["words"]
+              if w.get("term") and (not deck or w.get("deck") == deck) and (not tag or tag in (w.get("tags") or []))
+              and (not w.get("pos") or not w.get("examples") or not w.get("ipa"))]
+    targets = [(w["id"], w["term"], w.get("meaning") or "") for w in picked]
     if not targets:
         return {"ok": True, "total": 0}
+    # 전부 발음만 빈 경우엔 짧은 프롬프트로
+    ipa_only = all(w.get("pos") and w.get("examples") for w in picked)
     _fill.update({"running": True, "done": 0, "total": len(targets), "started": time.time(),
-                  "errors": 0, "deck": deck, "stop": False, "style": style})
-    t = threading.Thread(target=_fill_worker, args=(targets, style), daemon=True)
+                  "errors": 0, "deck": deck, "stop": False, "style": style, "ipa_only": ipa_only})
+    t = threading.Thread(target=_fill_worker, args=(targets, style, ipa_only), daemon=True)
     t.start()
     return {"ok": True, "total": len(targets)}
 
@@ -358,7 +376,7 @@ def edit(body):
         n += 1
         if op == "delete":
             continue
-        for k in ("term", "meaning", "pos", "gloss_en", "note", "deck"):
+        for k in ("term", "meaning", "pos", "ipa", "gloss_en", "note", "deck"):
             if k in body:
                 w[k] = str(body[k])[:600]
         if "tags" in body:
@@ -414,6 +432,8 @@ def export_csv(body):
             back = "<b>%s</b>" % _html(w.get("meaning") or "")
             if w.get("pos"):
                 back += " <span style=color:#888>(%s)</span>" % _html(w["pos"])
+            if w.get("ipa"):
+                back += " <span style=color:#888>%s</span>" % _html(w["ipa"])
             if w.get("gloss_en"):
                 back += "<br>%s" % _html(w["gloss_en"])
             if ex.get("en"):

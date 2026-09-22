@@ -20,7 +20,9 @@
   #card { flex: none; padding: var(--s6) var(--s4) var(--s3); text-align: center; }
   #prompt { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; word-break: break-word; line-height: 1.25; min-height: 33px; }
   #prompt.ko { font-size: 20px; font-weight: 500; }
-  #sub { font-size: 12px; color: var(--text-3); margin-top: var(--s1); min-height: 16px; }
+  #sub { font-size: 13px; color: var(--text-2); margin-top: var(--s1); min-height: 18px; }
+  #prompt.say { cursor: pointer; }
+  #prompt.say:hover { color: var(--accent); }
   #choices { flex: 1; overflow: auto; border-top: 1px solid var(--line); }
   .ch { display: flex; align-items: center; gap: var(--s3); padding: 10px var(--s4); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; line-height: 1.35; }
   .ch:hover { background: var(--hover); }
@@ -64,7 +66,8 @@
 <div id="choices"></div>
 <div id="ex"></div>
 <footer>
-  <span class="note" id="note">1~4 로 고르고, Enter·스페이스로 다음</span>
+  <span class="note" id="note">1~4 로 고르고, 5 는 듣기, Enter 로 다음</span>
+  <button class="act" id="auto" title="새 단어가 나올 때마다 읽어 줍니다">자동 듣기</button>
   <button class="act" id="skip" title="이 단어는 건너뜁니다 (Enter)">다음</button>
   <a class="act" href="/vocab" target="_blank" title="단어장 전체 화면">단어장</a>
 </footer>
@@ -75,6 +78,19 @@
   const KEY = "vocabQuiz";                       // localStorage: { stats: {id: {r, w}}, deck, tag, dir }
   let words = [], pool = [], cur = null, locked = false, recent = [];
   let ok = 0, ng = 0;
+  // ---- 발음 듣기: 브라우저 내장 음성(Web Speech). 5 키 또는 단어 클릭. 자동 듣기는 기억한다
+  // 음성 목록은 비동기로 온다 — 미리 한 번 부르고 바뀌면 다시 받는다 (첫 호출에 빈 목록이 오는 크롬·엣지 특성)
+  if ("speechSynthesis" in window) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices(); }
+  function speak(text) {
+    if (!("speechSynthesis" in window) || !text) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US"; u.rate = 0.92;
+    const vs = speechSynthesis.getVoices().filter(v => /^en[-_]US/i.test(v.lang));
+    const v = vs.find(v => /natural|aria|jenny|guy/i.test(v.name)) || vs.find(v => /zira|david|mark/i.test(v.name)) || vs[0];
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  }
   let pref = {};
   try { pref = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { pref = {}; }
   pref.stats = pref.stats || {};
@@ -121,11 +137,14 @@
     const dir = $("dir").value;
     $("prompt").textContent = dir === "en" ? cur.term : cur.meaning;
     $("prompt").className = dir === "en" ? "" : "ko";
-    $("sub").textContent = "";   // 품사는 답을 고른 뒤 예문 줄에 보인다 — 미리 보이면 선택지가 좁혀지는 힌트가 된다
+    // 품사는 답을 고른 뒤 예문 줄에 보인다 — 미리 보이면 선택지가 좁혀지는 힌트가 된다. 발음 기호는 힌트가 아니라 단어와 같이
+    $("sub").textContent = dir === "en" ? (cur.ipa || "") : "";
+    $("prompt").classList.toggle("say", dir === "en");
+    if (pref.auto && dir === "en") speak(cur.term);
     const opts = distractors(cur, 3).concat([cur]).sort(() => Math.random() - 0.5);
     $("choices").innerHTML = opts.map((w, i) =>
       "<div class='ch' data-id='" + esc(w.id) + "'><span class='n'>" + (i + 1) + "</span><span class='t'>" + esc(dir === "en" ? w.meaning : w.term) + "</span></div>").join("");
-    $("note").textContent = "1~4 로 고르고, Enter·스페이스로 다음";
+    $("note").textContent = "1~4 로 고르고, 5 는 듣기, Enter 로 다음";
     $("ex").innerHTML = "";
   }
   // 예문 안의 그 단어(활용형 포함)를 강조
@@ -151,6 +170,7 @@
     });
     const extra = cur.note ? " · " + cur.note : "";
     $("note").textContent = (right ? "맞음" : "틀림 — " + (($("dir").value === "en") ? cur.meaning : cur.term)) + extra + " · Enter 로 다음";
+    if ($("dir").value === "ko") { $("sub").textContent = cur.ipa || ""; if (pref.auto) speak(cur.term); }
     const ex = (cur.examples || [])[0];
     $("ex").innerHTML = (cur.pos ? "<span class='pos'>" + esc(cur.pos) + "</span>" : "") +
       (ex && ex.en ? "<span class='en'>" + markTerm(ex.en, cur.term) + "</span>" + (ex.ko ? "<div class='ko'>" + esc(ex.ko) + "</div>" : "") : "");
@@ -182,8 +202,13 @@
   });
   $("ex").addEventListener("click", () => { if (locked) next(); });
   $("skip").onclick = () => { locked = false; next(); };
+  $("prompt").onclick = () => { if (cur && ($("dir").value === "en" || locked)) speak(cur.term); };
+  function paintAuto() { $("auto").textContent = pref.auto ? "자동 듣기 켬" : "자동 듣기"; $("auto").style.color = pref.auto ? "var(--accent)" : ""; }
+  $("auto").onclick = () => { pref.auto = !pref.auto; savePref(); paintAuto(); if (pref.auto && cur) speak(cur.term); };
+  paintAuto();
   document.addEventListener("keydown", e => {
     if (e.target.tagName === "SELECT") return;
+    if (e.key === "5") { if (cur && ($("dir").value === "en" || locked)) speak(cur.term); e.preventDefault(); return; }
     if (e.key >= "1" && e.key <= "4") { const el = document.querySelectorAll(".ch")[+e.key - 1]; if (el) answer(el.dataset.id); e.preventDefault(); }
     else if (e.key === "Enter" || e.key === " ") { locked = false; next(); e.preventDefault(); }
   });
