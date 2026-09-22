@@ -68,11 +68,15 @@
       <div id="filters">
         <input type="text" id="q" placeholder="단어·뜻 검색">
         <select id="fDeck"><option value="">모든 묶음</option></select>
+        <select id="fTag"><option value="">모든 태그</option></select>
         <select id="fSrc"><option value="">담은 곳 전체</option><option value="paper">논문에서</option><option value="list">목록에서</option></select>
         <select id="fSt"><option value="">상태 전체</option><option value="new">아직</option><option value="known">알아요</option></select>
         <select id="fSort"><option value="new">최근 담은 순</option><option value="term">가나다·알파벳순</option><option value="deck">묶음순</option></select>
         <span style="margin-left:auto"></span><span class="hint" id="cnt"></span>
+        <select id="fillStyle" title="예문 문체 — 묶음마다 기억됩니다"><option value="toeic">토익</option><option value="toefl">토플</option><option value="paper">논문</option></select>
+        <button class="act" id="fillGo" title="지금 고른 묶음·태그의 단어 중 품사나 예문이 빈 것을 Claude 가 채웁니다 (책 예문을 베끼지 않고 새로 씀)">예문·품사 채우기</button>
       </div>
+      <div class="prog" id="fillProg" hidden></div>
       <div id="list"></div>
     </div>
   </div>
@@ -101,6 +105,7 @@
     <div class="box">
       <div class="row" style="margin:0 0 6px">
         <label>묶음 <select id="rDeck"><option value="">전체</option></select></label>
+        <label>태그 <select id="rTag"><option value="">전체</option></select></label>
         <label><input type="checkbox" id="rOnlyNew" checked> 아직 못 외운 것만</label>
         <label><input type="checkbox" id="rShuffle" checked> 섞기</label>
         <button class="btn" id="rStart">시작</button>
@@ -162,6 +167,9 @@ async function load() {
   for (const [id, first] of [["fDeck", "모든 묶음"], ["rDeck", "전체"], ["eSel", "전체"]])
     $(id).innerHTML = "<option value=''>" + first + "</option>" + decks.map(d => "<option>" + esc(d) + "</option>").join("");
   $("deckList").innerHTML = decks.map(d => "<option value='" + esc(d) + "'>").join("");
+  const tags = [...new Set(data.words.flatMap(w => w.tags || []))].sort();
+  for (const [id, first] of [["fTag", "모든 태그"], ["rTag", "전체"]])
+    $(id).innerHTML = "<option value=''>" + first + "</option>" + tags.map(t => "<option>" + esc(t) + "</option>").join("");
   const known = data.words.filter(w => w.status === "known").length;
   $("stat").textContent = "단어 " + data.words.length + "개 · 알아요 " + known + " · 논문에서 " + data.words.filter(w => w.source === "paper").length;
   renderList();
@@ -173,9 +181,9 @@ document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
 
 // ---------- 목록 ----------
 function filtered() {
-  const q = $("q").value.trim().toLowerCase(), dk = $("fDeck").value, sc = $("fSrc").value, st = $("fSt").value;
+  const q = $("q").value.trim().toLowerCase(), dk = $("fDeck").value, tg = $("fTag").value, sc = $("fSrc").value, st = $("fSt").value;
   let ws = data.words.filter(w =>
-    (!dk || w.deck === dk) && (!sc || w.source === sc) && (!st || (st === "known" ? w.status === "known" : w.status !== "known")) &&
+    (!dk || w.deck === dk) && (!tg || (w.tags || []).includes(tg)) && (!sc || w.source === sc) && (!st || (st === "known" ? w.status === "known" : w.status !== "known")) &&
     (!q || (w.term + " " + (w.meaning || "") + " " + (w.gloss_en || "")).toLowerCase().includes(q)));
   const mode = $("fSort").value;
   ws.sort(mode === "term" ? (a, b) => a.term.localeCompare(b.term)
@@ -220,7 +228,35 @@ function renderList() {
     await api("/api/vocab/edit", { op: "delete", ids: [w.id] }); load();
   });
 }
-["q", "fDeck", "fSrc", "fSt", "fSort"].forEach(id => { $(id).oninput = renderList; $(id).onchange = renderList; });
+["q", "fDeck", "fTag", "fSrc", "fSt", "fSort"].forEach(id => { $(id).oninput = renderList; $(id).onchange = renderList; });
+$("fDeck").addEventListener("change", () => { const st = (data.deck_style || {})[$("fDeck").value]; if (st) $("fillStyle").value = st; });
+
+// ---------- 예문·품사 채우기 (바탕 작업, 5초마다 진행 확인) ----------
+let fillTimer = null, fillPrev = null;
+function paintFill(s) {
+  const box = $("fillProg");
+  if (!s.running) {
+    box.hidden = true; $("fillGo").disabled = false;
+    if (fillTimer) { clearInterval(fillTimer); fillTimer = null; load(); }
+    return;
+  }
+  const info = progressInfo({ elapsed: s.elapsed, done: s.done, total: s.total }, Math.ceil(s.total / 160) * 75);
+  box.hidden = false; $("fillGo").disabled = true;
+  if (!fillTimer) fillTimer = setInterval(pollFill, 5000); // 열었을 때 이미 도는 중이면 여기서 폴링 시작
+  box.innerHTML = pbarHtml(info.frac, fillPrev, "wide") + "<span>예문·품사 만드는 중 " + s.done + "/" + s.total +
+    (s.errors ? " · 실패 " + s.errors : "") + (info.text ? " · " + info.text : "") + "</span>" +
+    "<button class='act' id='fillStop'>멈춤</button>";
+  fillPrev = info.frac; animateBars(box);
+  $("fillStop").onclick = () => api("/api/vocab/fill_stop", {});
+}
+async function pollFill() { paintFill(await api("/api/vocab/fill")); }
+$("fillGo").onclick = async () => {
+  const r = await api("/api/vocab/fill", { deck: $("fDeck").value, tag: $("fTag").value, style: $("fillStyle").value });
+  if (r.error) { alert(r.error); return; }
+  if (!r.total) { alert("채울 단어가 없습니다 (품사·예문이 이미 다 있음)"); return; }
+  fillPrev = 0; pollFill();
+};
+pollFill(); // 열었을 때 이미 도는 중이면 이어서 보여 준다
 
 // ---------- 담기 ----------
 $("bGo").onclick = async () => {
@@ -238,8 +274,8 @@ $("bGo").onclick = async () => {
 // ---------- 훑어보기 ----------
 let queue = [], qi = 0, shown = false;
 $("rStart").onclick = () => {
-  const dk = $("rDeck").value;
-  queue = data.words.filter(w => (!dk || w.deck === dk) && (!$("rOnlyNew").checked || w.status !== "known"));
+  const dk = $("rDeck").value, tg = $("rTag").value;
+  queue = data.words.filter(w => (!dk || w.deck === dk) && (!tg || (w.tags || []).includes(tg)) && (!$("rOnlyNew").checked || w.status !== "known"));
   if ($("rShuffle").checked) queue.sort(() => Math.random() - 0.5);
   qi = 0; shown = false;
   if (!queue.length) { $("card").innerHTML = "<div class='tip'>볼 단어가 없습니다</div>"; $("rBtns").style.display = "none"; return; }

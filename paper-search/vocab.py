@@ -17,8 +17,10 @@ import io
 import json
 import os
 import re
+import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
 cfg = {}
 
@@ -222,6 +224,127 @@ def add_bulk(body):
     return {"ok": True, "added": added, "skipped": skipped, "total": len(d["words"])}
 
 
+# ---------- 예문·품사 채우기 (시험 단어용, 바탕 작업) ----------
+# 책의 예문을 베끼지 않고 Claude 가 새로 쓴다. 40개씩 한 번에, 4개 구간 동시. 구간이 끝날 때마다 저장하므로
+# 중간에 끊겨도 이미 채운 것은 남고, 다시 시작하면 빈 것만 이어서 한다.
+
+_fill = {"running": False, "done": 0, "total": 0, "started": 0, "errors": 0, "deck": "", "stop": False}
+_fill_lock = threading.Lock()
+
+
+# 예문 문체. 묶음마다 하나를 정해 두면(단어.json 의 deck_style) 채우기가 그 문체로 쓴다
+STYLES = {
+    "toeic": ("토익(TOEIC)을 준비하는",
+              "토익 지문·이메일·공지·회의 상황(사무실, 인사, 마케팅, 출장, 고객 응대, 계약, 일정)에서 실제로 나올 법한 문장 10~18단어"),
+    "toefl": ("토플(TOEFL)을 준비하는",
+              "토플 읽기 지문·강의(지질학, 생물학, 천문학, 미술사, 고고학, 경제사 같은 학술 주제)에서 나올 법한 설명문 12~20단어. 격식 있는 학술 문체"),
+    "paper": ("기계가공·재료 분야 논문을 읽는",
+              "학술 논문(실험 방법, 결과, 고찰)에서 나올 법한 문장 12~20단어. 수동태·객관적 서술"),
+}
+DEFAULT_STYLE = {"논문단어": "paper"}   # 묶음 이름으로 정해지는 기본. 그 밖은 toeic
+
+
+def deck_style(d, deck):
+    st = (d.get("deck_style") or {}).get(deck)
+    return st if st in STYLES else DEFAULT_STYLE.get(deck, "toeic")
+
+
+def _example_prompt(items, style="toeic"):
+    who, what = STYLES.get(style, STYLES["toeic"])
+    lines = ["%s\t%s" % (t, m) for t, m in items]
+    return ("당신은 %s 한국인 대학원생의 단어장을 만드는 영어 강사다. "
+            "아래 '단어<탭>뜻' 마다 품사와 예문을 붙여 JSON 한 줄로만 답하라.\n"
+            "{\"items\": [{\"term\": \"입력한 그대로\", \"pos\": \"품사\", \"en\": \"영어 예문\", \"ko\": \"예문의 자연스러운 한국어 번역\"}]}\n"
+            "규칙:\n"
+            "- 품사는 한국어 한 낱말: 명사·동사·형용사·부사·전치사·접속사·대명사·구·숙어 중 하나. 주어진 뜻에 맞는 품사로.\n"
+            "- 예문은 %s. 주어진 뜻 그대로 그 단어를 쓴다. 단어가 동사면 문장 안에서 활용형이어도 된다.\n"
+            "- 입력한 단어를 하나도 빠뜨리지 말고 순서대로. 다른 말은 하지 않는다.\n\n"
+            "[단어 %d개]\n%s" % (who, what, len(items), "\n".join(lines)))
+
+
+def _fill_chunk(chunk, style="toeic"):
+    """chunk = [(id, term, meaning)] → {id: {pos, en, ko}}"""
+    items = [(t, m) for _, t, m in chunk]
+    r = cfg["claude_json"](_example_prompt(items, style), timeout=360) or {}
+    by_term = {}
+    for it in (r.get("items") or []):
+        if isinstance(it, dict) and it.get("term"):
+            by_term[_norm(it["term"])] = it
+    out = {}
+    for wid, term, _ in chunk:
+        it = by_term.get(_norm(term))
+        if it:
+            out[wid] = it
+    return out
+
+
+def _apply_fill(got):
+    """구간 결과를 단어장에 얹는다. 품사는 비어 있을 때만, 예문은 없을 때만."""
+    with _fill_lock:
+        d = load()
+        n = 0
+        for w in d["words"]:
+            it = got.get(w.get("id"))
+            if not it:
+                continue
+            if not w.get("pos") and it.get("pos"):
+                w["pos"] = str(it["pos"])[:12]
+            en, ko = str(it.get("en") or "").strip(), str(it.get("ko") or "").strip()
+            if en and not w.get("examples"):
+                w["examples"] = [{"en": en[:300], "ko": ko[:300], "source": "gen"}]
+            n += 1
+        save(d)
+    return n
+
+
+def _fill_worker(targets, style):
+    chunks = [targets[i:i + 40] for i in range(0, len(targets), 40)]
+    try:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            futs = [ex.submit(_fill_chunk, c, style) for c in chunks]
+            for c, f in zip(chunks, futs):
+                if _fill["stop"]:
+                    break
+                try:
+                    got = f.result()
+                except Exception:
+                    got = {}
+                _apply_fill(got)
+                _fill["done"] += len(c)
+                _fill["errors"] += len(c) - len(got)
+    finally:
+        _fill["running"] = False
+
+
+def start_fill(body):
+    """POST /api/vocab/fill {deck?, tag?} — 그 조건의 단어 중 품사나 예문이 빈 것을 채운다."""
+    if _fill["running"]:
+        return {"error": "이미 채우는 중입니다"}
+    deck = (body.get("deck") or "").strip()
+    tag = (body.get("tag") or "").strip()
+    d = load()
+    style = body.get("style") if body.get("style") in STYLES else deck_style(d, deck)
+    if deck and body.get("style") in STYLES and deck_style(d, deck) != style:
+        with _fill_lock:   # 이 묶음의 문체로 기억
+            d2 = load(); d2.setdefault("deck_style", {})[deck] = style; save(d2)
+    targets = [(w["id"], w["term"], w.get("meaning") or "") for w in d["words"]
+               if w.get("term") and (not deck or w.get("deck") == deck) and (not tag or tag in (w.get("tags") or []))
+               and (not w.get("pos") or not w.get("examples"))]
+    if not targets:
+        return {"ok": True, "total": 0}
+    _fill.update({"running": True, "done": 0, "total": len(targets), "started": time.time(),
+                  "errors": 0, "deck": deck, "stop": False, "style": style})
+    t = threading.Thread(target=_fill_worker, args=(targets, style), daemon=True)
+    t.start()
+    return {"ok": True, "total": len(targets)}
+
+
+def fill_status():
+    s = dict(_fill)
+    s["elapsed"] = round(time.time() - s["started"]) if s["running"] and s["started"] else 0
+    return s
+
+
 # ---------- 고치기 ----------
 
 def edit(body):
@@ -324,9 +447,17 @@ def handle_get(h, url):
     if p == "/vocab":
         with open(os.path.join(cfg["BASE"], "vocab.html"), "rb") as f:
             return h._send(200, f.read(), "text/html; charset=utf-8")
+    if p == "/vocab/quiz":
+        # 작은 팝업용 무한 4지선다 (Horarium 헤더의 '단어' 가 이 주소를 연다)
+        with open(os.path.join(cfg["BASE"], "vocab_quiz.html"), "rb") as f:
+            return h._send(200, f.read(), "text/html; charset=utf-8")
     if p == "/api/vocab":
         d = load()
-        return h._send(200, {"words": d["words"], "decks": sorted(set(d["decks"] + [w.get("deck") for w in d["words"] if w.get("deck")]))})
+        decks = sorted(set(d["decks"] + [w.get("deck") for w in d["words"] if w.get("deck")]))
+        return h._send(200, {"words": d["words"], "decks": decks,
+                             "deck_style": {k: deck_style(d, k) for k in decks}})
+    if p == "/api/vocab/fill":
+        return h._send(200, fill_status())
     if p == "/api/vocab/file":
         name = os.path.basename(_q(url, "name"))
         fp = os.path.join(cfg["VOCAB_EXPORT"], name)
@@ -346,6 +477,11 @@ def handle_post(h, body):
             return h._send(200, add_bulk(body))
         if p == "/api/vocab/edit":
             return h._send(200, edit(body))
+        if p == "/api/vocab/fill":
+            return h._send(200, start_fill(body))
+        if p == "/api/vocab/fill_stop":
+            _fill["stop"] = True
+            return h._send(200, {"ok": True})
         if p == "/api/vocab/export":
             return h._send(200, export_csv(body))
         if p == "/api/vocab/open_folder":

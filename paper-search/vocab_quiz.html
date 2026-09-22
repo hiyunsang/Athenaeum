@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>단어 맞추기 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  /* 작은 팝업 창(약 380×520)에 맞춘 한 화면 구성. 무한히 이어지는 4지선다 */
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; background: var(--surface); }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding: 6px var(--s3); border-bottom: 1px solid var(--line); flex: none; }
+  header .brand-mark { height: 18px; display: block; }
+  header h1 { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  header .ctl { flex-basis: 100%; display: flex; gap: var(--s2); }
+  header .ctl select { flex: 1; min-width: 0; font-size: 12px; padding: 2px 4px; }
+  header .score { margin-left: auto; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  header .score b { color: var(--text); font-weight: 600; }
+  #card { flex: none; padding: var(--s6) var(--s4) var(--s3); text-align: center; }
+  #prompt { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; word-break: break-word; line-height: 1.25; min-height: 33px; }
+  #prompt.ko { font-size: 20px; font-weight: 500; }
+  #sub { font-size: 12px; color: var(--text-3); margin-top: var(--s1); min-height: 16px; }
+  #choices { flex: 1; overflow: auto; border-top: 1px solid var(--line); }
+  .ch { display: flex; align-items: center; gap: var(--s3); padding: 10px var(--s4); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; line-height: 1.35; }
+  .ch:hover { background: var(--hover); }
+  .ch .n { color: var(--text-3); font-size: 12px; width: 10px; flex: none; }
+  .ch .t { flex: 1; min-width: 0; word-break: break-word; }
+  .ch.right { color: var(--green); font-weight: 600; }
+  .ch.right .n { color: var(--green); }
+  .ch.wrong { color: var(--red); text-decoration: line-through; }
+  .ch.dim { color: var(--text-3); }
+  #choices.locked .ch { cursor: default; }
+  #choices.locked .ch:hover { background: transparent; }
+  /* 답을 고른 뒤 보이는 예문. 높이를 고정해 두어 선택지가 밀리지 않는다 */
+  #ex { flex: none; min-height: 72px; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--text-2); }
+  #ex .en { color: var(--text); }
+  #ex .en b { color: var(--accent); font-weight: 600; }
+  #ex .ko { margin-top: 2px; }
+  #ex .pos { color: var(--text-3); font-size: 12px; margin-right: var(--s2); }
+  footer { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 6px var(--s3); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); min-height: 30px; }
+  footer .act { padding: 0; }
+  footer .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { padding: var(--s8) var(--s4); color: var(--text-3); text-align: center; }
+  @media (prefers-reduced-motion: no-preference) { .ch { transition: background .08s; } }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <img class="brand-mark" src="/logo/mark.svg" alt="">
+  <h1>단어 맞추기</h1>
+  <span class="score" title="이 창을 연 뒤의 성적">맞음 <b id="ok">0</b> · 틀림 <b id="ng">0</b></span>
+  <div class="ctl">
+    <select id="deck" title="묶음"></select>
+    <select id="tag" title="태그 (Day)"></select>
+    <select id="dir" title="문제 방향"><option value="en">단어 → 뜻</option><option value="ko">뜻 → 단어</option></select>
+  </div>
+</header>
+<div id="card">
+  <div id="prompt">—</div>
+  <div id="sub"></div>
+</div>
+<div id="choices"></div>
+<div id="ex"></div>
+<footer>
+  <span class="note" id="note">1~4 로 고르고, Enter·스페이스로 다음</span>
+  <button class="act" id="skip" title="이 단어는 건너뜁니다 (Enter)">다음</button>
+  <a class="act" href="/vocab" target="_blank" title="단어장 전체 화면">단어장</a>
+</footer>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const KEY = "vocabQuiz";                       // localStorage: { stats: {id: {r, w}}, deck, tag, dir }
+  let words = [], pool = [], cur = null, locked = false, recent = [];
+  let ok = 0, ng = 0;
+  let pref = {};
+  try { pref = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { pref = {}; }
+  pref.stats = pref.stats || {};
+  const savePref = () => { try { localStorage.setItem(KEY, JSON.stringify(pref)); } catch (e) {} };
+
+  // ---- 출제 가중치: 틀린 단어는 자주, 맞힌 단어는 드물게. 최근 8개는 제외
+  function weight(w) {
+    const s = pref.stats[w.id] || { r: 0, w: 0 };
+    return Math.max(0.25, 1 + 2 * s.w - 0.5 * s.r);
+  }
+  function pick() {
+    const cand = pool.filter(w => !recent.includes(w.id));
+    const list = cand.length ? cand : pool;
+    let total = 0; const ws = list.map(w => { const x = weight(w); total += x; return x; });
+    let r = Math.random() * total;
+    for (let i = 0; i < list.length; i++) { r -= ws[i]; if (r <= 0) return list[i]; }
+    return list[list.length - 1];
+  }
+  function distractors(w, n) {
+    const dir = $("dir").value, key = dir === "en" ? "meaning" : "term";
+    const seen = new Set([String(w[key]).trim()]);
+    const out = [];
+    // 같은 묶음에서 먼저 고르고, 모자라면 전체에서
+    const src = [pool.filter(x => x.id !== w.id), words.filter(x => x.id !== w.id)];
+    for (const arr of src) {
+      const a = arr.slice().sort(() => Math.random() - 0.5);
+      for (const x of a) {
+        const v = String(x[key] || "").trim();
+        if (!v || seen.has(v)) continue;
+        seen.add(v); out.push(x);
+        if (out.length >= n) return out;
+      }
+    }
+    return out;
+  }
+  function next() {
+    locked = false; $("choices").classList.remove("locked");
+    if (!pool.length) {
+      $("prompt").textContent = "—"; $("sub").textContent = "";
+      $("choices").innerHTML = "<div class='empty'>이 조건에 단어가 없습니다</div>"; return;
+    }
+    cur = pick();
+    recent.push(cur.id); if (recent.length > 8) recent.shift();
+    const dir = $("dir").value;
+    $("prompt").textContent = dir === "en" ? cur.term : cur.meaning;
+    $("prompt").className = dir === "en" ? "" : "ko";
+    $("sub").textContent = "";   // 품사는 답을 고른 뒤 예문 줄에 보인다 — 미리 보이면 선택지가 좁혀지는 힌트가 된다
+    const opts = distractors(cur, 3).concat([cur]).sort(() => Math.random() - 0.5);
+    $("choices").innerHTML = opts.map((w, i) =>
+      "<div class='ch' data-id='" + esc(w.id) + "'><span class='n'>" + (i + 1) + "</span><span class='t'>" + esc(dir === "en" ? w.meaning : w.term) + "</span></div>").join("");
+    $("note").textContent = "1~4 로 고르고, Enter·스페이스로 다음";
+    $("ex").innerHTML = "";
+  }
+  // 예문 안의 그 단어(활용형 포함)를 강조
+  function markTerm(en, term) {
+    const stem = term.split(/\s+/)[0].replace(/[^a-z]/gi, "");
+    if (!stem || stem.length < 3) return esc(en);
+    const re = new RegExp("\\b(" + stem.slice(0, Math.max(3, stem.length - 2)) + "[a-z]*)", "gi");
+    return esc(en).replace(re, "<b>$1</b>");
+  }
+  function answer(id) {
+    if (locked || !cur) return;
+    locked = true; $("choices").classList.add("locked");
+    const s = pref.stats[cur.id] = pref.stats[cur.id] || { r: 0, w: 0 };
+    const right = id === cur.id;
+    if (right) { ok++; s.r++; } else { ng++; s.w++; }
+    savePref();
+    $("ok").textContent = ok; $("ng").textContent = ng;
+    document.querySelectorAll(".ch").forEach(el => {
+      const eid = el.dataset.id;
+      if (eid === cur.id) el.classList.add("right");
+      else if (eid === id) el.classList.add("wrong");
+      else el.classList.add("dim");
+    });
+    const extra = cur.note ? " · " + cur.note : "";
+    $("note").textContent = (right ? "맞음" : "틀림 — " + (($("dir").value === "en") ? cur.meaning : cur.term)) + extra + " · Enter 로 다음";
+    const ex = (cur.examples || [])[0];
+    $("ex").innerHTML = (cur.pos ? "<span class='pos'>" + esc(cur.pos) + "</span>" : "") +
+      (ex && ex.en ? "<span class='en'>" + markTerm(ex.en, cur.term) + "</span>" + (ex.ko ? "<div class='ko'>" + esc(ex.ko) + "</div>" : "") : "");
+    // 자동으로 넘기지 않는다 — 예문·품사를 읽을 시간은 사용자가 정한다 (Enter·스페이스·클릭)
+  }
+  function rebuild() {
+    const dk = $("deck").value, tg = $("tag").value;
+    pool = words.filter(w => w.term && w.meaning && (!dk || w.deck === dk) && (!tg || (w.tags || []).includes(tg)));
+    pref.deck = dk; pref.tag = tg; pref.dir = $("dir").value; savePref();
+    recent = []; next();
+  }
+  function fill(sel, items, first, want) {
+    sel.innerHTML = "<option value=''>" + first + "</option>" + items.map(x => "<option" + (x === want ? " selected" : "") + ">" + esc(x) + "</option>").join("");
+  }
+  async function load() {
+    const d = await (await fetch("/api/vocab")).json();
+    words = (d.words || []).filter(w => w.term && w.meaning);
+    const decks = [...new Set(words.map(w => w.deck).filter(Boolean))].sort();
+    const tags = [...new Set(words.flatMap(w => w.tags || []))].sort();
+    fill($("deck"), decks, "모든 묶음", pref.deck || (decks.includes("노랭이 보카") ? "노랭이 보카" : ""));
+    fill($("tag"), tags, "모든 태그", pref.tag || "");
+    if (pref.dir) $("dir").value = pref.dir;
+    rebuild();
+  }
+  ["deck", "tag", "dir"].forEach(id => $(id).onchange = rebuild);
+  $("choices").addEventListener("click", e => {
+    if (locked) { next(); return; }              // 답을 고른 뒤 아무 데나 누르면 다음
+    const el = e.target.closest(".ch"); if (el) answer(el.dataset.id);
+  });
+  $("ex").addEventListener("click", () => { if (locked) next(); });
+  $("skip").onclick = () => { locked = false; next(); };
+  document.addEventListener("keydown", e => {
+    if (e.target.tagName === "SELECT") return;
+    if (e.key >= "1" && e.key <= "4") { const el = document.querySelectorAll(".ch")[+e.key - 1]; if (el) answer(el.dataset.id); e.preventDefault(); }
+    else if (e.key === "Enter" || e.key === " ") { locked = false; next(); e.preventDefault(); }
+  });
+  load().catch(() => { $("choices").innerHTML = "<div class='empty'>단어장을 불러오지 못했습니다</div>"; });
+})();
+</script>
+</body>
+</html>
