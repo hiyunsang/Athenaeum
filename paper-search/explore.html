@@ -340,10 +340,10 @@ function cssVar(name, fb) { const v = getComputedStyle(document.documentElement)
 function renderResultMap(m, host) {
   host.innerHTML = "";
   const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
-  const W = Math.max(600, host.clientWidth || smartbox.clientWidth || 900), H = 600;
+  const W = Math.max(600, host.clientWidth || smartbox.clientWidth || 900), H = Math.max(560, Math.min(900, (window.innerHeight || 800) - 250));   // 큰 창이면 더 높게
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));   // 고배율 화면에서 글자·선이 흐리지 않게
   // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
-  let cohesion = 0.6; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion")); if (!isNaN(v)) cohesion = v; } catch (e) {}
+  let cohesion = 0; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion2")); if (!isNaN(v)) cohesion = v; } catch (e) {}   // 기본 = 관계대로 (소주제는 색으로 이미 구분되므로)
   const ctl = document.createElement("div"); ctl.className = "mapctl";
   ctl.innerHTML = "<span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span>" +
     "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓아 소주제가 달라도 깊이 관련된 논문이 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다.</span>";
@@ -491,7 +491,7 @@ function renderResultMap(m, host) {
   };
   cv.onmouseleave = () => { tip.hidden = true; if (hovered) { hovered = null; draw(); } };
   cv.onclick = (e) => { const rc = cv.getBoundingClientRect(), n = at((e.clientX - rc.left) * (W / rc.width), (e.clientY - rc.top) * (H / rc.height)); if (n) openPaper(n); };
-  slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
+  slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion2", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
   layout(cohesion); draw();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);   // 글꼴이 늦게 오면 다시
 }
@@ -570,6 +570,9 @@ function mapButton(r) {
 // 홈 화면 안의 분할 패널로 열렸으면 '내 논문 검색으로' 링크는 불필요
 if (window.self !== window.top) {
   document.body.classList.add("embedded");  // 분할창 안: 배경을 연한 회색으로 (CSS body.embedded)
+  // 분할창은 좁아서(700px 안팎) 맵·목록을 넓게 보려면 따로 큰 창으로
+  document.getElementById("backHome").insertAdjacentHTML("afterend", "<a href='#' id='popOut' title='탐색을 따로 큰 창(1280×900)으로 엽니다'>새 창으로 ↗</a>");
+  document.getElementById("popOut").onclick = (e) => { e.preventDefault(); window.open("/explore", "athenaeum_explore", "width=1280,height=900"); };
   // 분할창 안에서는 '내 논문 검색으로' 가 필요 없다 (로고 링크와 헷갈리지 않게 id 로 지정 — 예전엔 첫 a[href='/'] 를 숨겨 로고가 숨고 이 링크가 남는 버그가 있었음)
   const back = document.getElementById("backHome");
   if (back) back.style.display = "none";
