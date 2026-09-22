@@ -127,6 +127,7 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다
+- **OpenAlex 일일 한도(2026-09-22 발견)**: 키 없는 요청은 같은 네트워크(IP)의 모두가 나눠 쓰는 무료 일일 한도에 걸린다(429 본문에 `Insufficient budget`, 자정 UTC 리셋). `mapper._get` 은 이 429 를 보면 재시도하지 않고 리셋 때까지 `_breaker["until"]` 로 바로 실패시키며 안내문(`budget_message`)을 돌려준다. **API 키**(무료, https://help.openalex.org/api/authentication/)는 `paper-search\설정.json` 의 `openalex_api_key` — ⚙ 환경설정에서 입력(`/api/settings`), git·배포판 제외. 키를 넣으면 차단이 풀리고 모든 요청에 `api_key` 가 붙는다. 홈의 "맵 서비스" 표시가 한도 소진을 알린다
 - Crossref: User-Agent 지정, 타임아웃
 
 ---

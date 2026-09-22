@@ -4,6 +4,7 @@
 무료 OpenAlex API에서 시드 논문의 참고문헌·피인용 논문을 모으고,
 '공통 참고문헌 수(bibliographic coupling)'로 유사도를 계산해 그래프를 만든다.
 """
+import json
 import math
 import os
 import re
@@ -40,11 +41,45 @@ class RateLimited(RuntimeError):
     pass
 
 
+# OpenAlex API 키 (2025년부터 키 없는 요청은 같은 네트워크(IP)의 모두가 나눠 쓰는 무료 일일 한도에 걸린다. 키는 무료, 키마다 한도 별도)
+SETTINGS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "설정.json")   # 비공개 (git 제외, 배포판 제외)
+KEY_HELP = "https://help.openalex.org/api/authentication/"
+
+
+def settings():
+    try:
+        with open(SETTINGS_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_settings(d):
+    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+
+
+def api_key():
+    return (settings().get("openalex_api_key") or "").strip()
+
+
+def budget_message(body_msg="", had_key=False):
+    if had_key:
+        return ("OpenAlex 에 넣어 둔 API 키의 일일 한도가 다 됐습니다 (자정 UTC = 한국 아침 9시에 리셋). " + KEY_HELP)
+    return ("OpenAlex 무료 일일 한도가 다 됐습니다. API 키 없이 쓰면 같은 네트워크(학교·건물)의 모두가 한 한도를 나눠 씁니다 (자정 UTC = 한국 아침 9시에 리셋). "
+            "무료 API 키를 받아 ⚙ 설정 → 'OpenAlex API 키' 에 넣으면 내 몫의 한도로 바로 계속 쓸 수 있습니다: " + KEY_HELP)
+
+
 _breaker = {"fails": 0, "t": 0.0}   # 연속 실패 시 10분간 요청 중단 (제한 악화 방지)
 _last_req = [0.0]                    # 전역 요청 간격 강제
 
 
 def _get(url, params=None):
+    key = api_key()
+    # 한도 소진으로 막아 둔 동안은 바로 실패 (키를 새로 넣으면 키 없는 한도 차단은 풀린다)
+    if _breaker.get("until", 0) > time.time() and not (_breaker.get("keyless") and key):
+        raise RateLimited(_breaker.get("msg") or "OpenAlex 한도 소진")
     if _breaker["fails"] >= 2:
         if time.time() - _breaker["t"] < 600:
             raise RateLimited("OpenAlex가 오늘 우리 사용량 때문에 당분간 제한 중입니다 - 10분+ 후 다시 시도해 주세요")
@@ -55,6 +90,8 @@ def _get(url, params=None):
     _last_req[0] = time.time()
     params = dict(params or {})
     params["mailto"] = MAILTO
+    if key:
+        params["api_key"] = key
     for i in range(6):
         try:
             r = requests.get(url, params=params, headers=HEADERS, timeout=40)
@@ -62,6 +99,26 @@ def _get(url, params=None):
             _log("연결 오류({}) 재시도 {}회: {}".format(type(e).__name__, i + 1, url[:90]))
             time.sleep(3 * (2 ** i))
             continue
+        if r.status_code in (401, 403) and key:
+            _log("API 키 거부 ({}): {}".format(r.status_code, r.text[:120]))
+            raise RateLimited("OpenAlex 가 API 키를 거부했습니다 (%d). ⚙ 설정의 키를 확인하세요: %s" % (r.status_code, KEY_HELP))
+        if r.status_code == 429:
+            try:
+                body = r.json()
+            except ValueError:
+                body = {}
+            msg = str(body.get("message") or "")
+            if "budget" in msg.lower() or "api key" in msg.lower() or "api_key" in msg.lower():
+                # 일일 한도 소진: 재시도해 봐야 소용없다 → 리셋 때까지(최대 하루) 빠르게 실패
+                try:
+                    wait = int(body.get("retryAfter") or r.headers.get("Retry-After") or 3600)
+                except (TypeError, ValueError):
+                    wait = 3600
+                _breaker["until"] = time.time() + min(wait, 86400)
+                _breaker["keyless"] = not key
+                _breaker["msg"] = budget_message(msg, had_key=bool(key))
+                _log("일일 한도 소진 ({}초 뒤 리셋): {}".format(wait, msg[:100]))
+                raise RateLimited(_breaker["msg"])
         if r.status_code == 429 or r.status_code >= 500:
             try:
                 wait = float(r.headers.get("Retry-After", 0))

@@ -87,6 +87,8 @@ function openSettings() {
     row("줄 간격", range("ui_lh", 1.4, 2.4, 0.1), "요약·번역 본문") +
     row("원고 자동 검토", "<label class='uswitch'><input type='checkbox' data-k='ms_autorev'> 쓰다가 30초 멈추면 Claude가 그 문단을 검토</label>", "토큰이 듭니다. 기본은 꺼짐") +
     row("도식 코드 모델", "<select data-k='fig_model'><option value='opus'>Opus (꼼꼼함, 5~7분)</option><option value='sonnet'>Sonnet (빠름, 약 2분)</option></select>", "말로 만드는 도식의 그리기 코드를 쓰는 모델. 요약·번역·검토는 항상 Opus") +
+    row("OpenAlex API 키", "<input type='password' id='oaKey' placeholder='없으면 비워 둠' autocomplete='off' style='width:100%'><span class='uout' id='oaKeyState'></span>",
+        "논문 탐색·관련맵이 쓰는 OpenAlex. 키가 없으면 같은 네트워크(학교)가 나눠 쓰는 무료 일일 한도에 걸릴 수 있습니다. 무료 키: <a href='https://help.openalex.org/api/authentication/' target='_blank'>help.openalex.org/api/authentication</a>") +
     "<div class='ufoot'><button class='ureset' onclick='resetSettings()'>기본값으로</button></div>" +
     "</div></div>";
   document.body.insertAdjacentHTML("beforeend", html);
@@ -97,6 +99,19 @@ function openSettings() {
     el.addEventListener("change", () => uiSet(el.dataset.k, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));
   });
   applyUi();
+  // OpenAlex API 키는 서버 설정 (설정.json) — 열 때 상태를 받고, 바꾸면 저장
+  const oa = document.getElementById("oaKey"), oaSt = document.getElementById("oaKeyState");
+  if (oa) {
+    fetch("/api/settings").then(r => r.json()).then(s => { if (s.openalex_api_key_set) { oa.placeholder = "저장됨 (…" + s.openalex_api_key_tail + ") — 바꾸려면 입력"; oaSt.textContent = "저장됨"; } }).catch(() => {});
+    oa.addEventListener("change", async () => {
+      oaSt.textContent = "저장 중…";
+      try {
+        const s = await (await fetch("/api/settings", { method: "POST", body: JSON.stringify({ openalex_api_key: oa.value.trim() }) })).json();
+        oaSt.textContent = s.openalex_api_key_set ? "저장됨 (…" + s.openalex_api_key_tail + ")" : "지움";
+        oa.value = ""; oa.placeholder = s.openalex_api_key_set ? "저장됨 (…" + s.openalex_api_key_tail + ") — 바꾸려면 입력" : "없으면 비워 둠";
+      } catch (e) { oaSt.textContent = "저장 실패"; }
+    });
+  }
   document.addEventListener("keydown", escClose);
 }
 function escClose(e) { if (e.key === "Escape") closeSettings(); }

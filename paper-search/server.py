@@ -677,7 +677,7 @@ def _run_smart(q, year, key, plan=None):
             ladder.append(("'%s' 빼고" % c["name"], req[:i] + req[i + 1:], 40))
 
     stage("2/3 검색 중 (0/{})".format(len(ladder)))
-    merged, queries = {}, []
+    merged, queries, last_err = {}, [], ""
     for i, (label, concepts, per_page) in enumerate(ladder):
         expr = build_boolean(concepts, plan["exclude"])
         total, got = 0, 0
@@ -690,9 +690,11 @@ def _run_smart(q, year, key, plan=None):
                         merged[n["id"]] = n
                         got += 1
             except Exception as e:
-                total = "실패"
+                total = "실패"; last_err = str(e)[:400]
         queries.append({"q": label, "expr": expr, "total": total, "new": got})
         stage("2/3 검색 중 ({}/{})".format(i + 1, len(ladder)))
+    if not merged and last_err:
+        raise RuntimeError(last_err)   # OpenAlex 한도 소진 등 — 빈 결과 대신 이유를 보여 준다
     with _lock:
         tags = load_json(TAGS_PATH, {})
     owned_idx = archive_title_index(tags)
@@ -2505,15 +2507,27 @@ class Handler(BaseHTTPRequestHandler):
                 "lookup": ("https://api.openalex.org/works/W2741809807", {}),
                 "search": ("https://api.openalex.org/works", {"search": "tantalum cutting", "per-page": "1"}),
             }
+            import mapper
+            key = mapper.api_key()
             for name, (u, p) in probes.items():
                 try:
                     p = dict(p, mailto="maenglaboratory@gmail.com")
+                    if key:
+                        p["api_key"] = key
                     r = rq.get(u, params=p, timeout=12)
                     result[name] = r.status_code
+                    if r.status_code == 429 and "budget" in r.text.lower():
+                        result["budget"] = True      # 일일 한도 소진 (키 없으면 네트워크 공용 한도)
                 except Exception:
                     result[name] = 0
             result["ok"] = result.get("lookup") == 200 and result.get("search") == 200
+            result["key"] = bool(key)
             self._send(200, result)
+        elif url.path == "/api/settings":
+            # 서버 쪽 설정 (지금은 OpenAlex API 키). 키 값은 돌려주지 않고 끝 4자만
+            import mapper
+            k = mapper.api_key()
+            self._send(200, {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else ""})
         elif url.path == "/api/fulltext":
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})
@@ -2635,6 +2649,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"error": str(e)[:300]})
                 return
             self._send(200, {"answer": answer})
+        elif self.path == "/api/settings":
+            import mapper
+            d = mapper.settings()
+            if "openalex_api_key" in body:
+                k = str(body.get("openalex_api_key") or "").strip()
+                if k:
+                    d["openalex_api_key"] = k
+                else:
+                    d.pop("openalex_api_key", None)
+                mapper.save_settings(d)
+                mapper._breaker.update(fails=0, until=0)   # 키를 바꿨으면 차단 해제하고 다시 시도
+            k = mapper.api_key()
+            self._send(200, {"ok": True, "openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else ""})
         elif self.path == "/api/smart":
             q = (body.get("q") or "").strip()
             year = str(body.get("year") or "")

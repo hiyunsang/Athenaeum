@@ -20,7 +20,7 @@ SRC = os.path.join(ROOT, "paper-search")
 DIST = os.path.join(ROOT, "dist"); CACHE = os.path.join(ROOT, "tools", "_cache")
 OUT = os.path.join(DIST, "Athenaeum")
 EXCLUDE_DIRS = {"__pycache__", "_cache"}
-EXCLUDE_FILES = {"text_index.json", "맵생성기록.txt", "proto_turning_zones.svg", "proto_turning_zones.png"}
+EXCLUDE_FILES = {"text_index.json", "맵생성기록.txt", "설정.json", "proto_turning_zones.svg", "proto_turning_zones.png"}   # 설정.json = 개인 OpenAlex 키
 
 
 def log(m):

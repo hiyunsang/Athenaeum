@@ -165,7 +165,7 @@ async function plainSearch(q, withSmart) {
   plainbox.innerHTML = "";
   const params = new URLSearchParams({ q, year: document.getElementById("year").value, sort: document.getElementById("sort").value });
   const d = await (await fetch("/api/explore?" + params)).json();
-  if (d.error) { plainbox.innerHTML = "<div class='hint'>⚠ " + d.error + "</div>"; return; }
+  if (d.error) { plainbox.innerHTML = "<div class='hint'>⚠ " + linkify(d.error) + "</div>"; return; }
   saveState({ plain: d });
   renderPlain(d, withSmart);
 }
@@ -215,7 +215,7 @@ function pollSmart(key, prog) {
     }
     clearInterval(smartTimer); smartTimer = null;
     if (s.status === "none") { prog.innerHTML = "⚠ 스마트 탐색 결과가 사라졌습니다 (서버 재시작?) — 다시 검색해 주세요"; return; }
-    if (s.status !== "done") { prog.innerHTML = "⚠ 스마트 탐색 실패: " + (s.error || "원인 불명"); return; }
+    if (s.status !== "done") { prog.innerHTML = "⚠ 스마트 탐색 실패: " + linkify(s.error || "원인 불명"); return; }
     saveState({ smartResult: s.result });
     renderSmart(s.result);
   }, 3000);
@@ -300,6 +300,8 @@ function openPaper(r) {
   else if (r.doi) window.open(r.doi);
 }
 
+// 오류문 안의 주소(OpenAlex 키 안내 등)를 눌러서 열 수 있게
+function linkify(s) { return escH(s).replace(/(https?:\/\/[^\s<]+)/g, "<a href='$1' target='_blank'>$1</a>"); }
 function escH(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function renderRow(r) {
   const row = document.createElement("div");

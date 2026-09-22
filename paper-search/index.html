@@ -821,7 +821,8 @@ async function checkOpenAlex() {
   el.textContent = "맵 서비스 확인 중…";
   try {
     const s = await (await fetch("/api/openalex_status")).json();
-    if (s.ok) { el.textContent = "● 맵 서비스 정상"; el.style.color = "var(--green)"; }
+    if (s.ok) { el.textContent = "● 맵 서비스 정상" + (s.key ? " (내 키)" : ""); el.style.color = "var(--green)"; }
+    else if (s.budget) { el.textContent = s.key ? "● 맵 서비스: 내 키의 일일 한도 소진 (아침 9시 리셋)" : "● 맵 서비스: 무료 일일 한도 소진 — ⚙ 설정에 OpenAlex 키를 넣으세요"; el.style.color = "var(--amber)"; el.onclick = () => openSettings(); }
     else if (s.lookup === 200) { el.textContent = "● 맵 서비스 일부 제한 (검색 " + s.search + ")"; el.style.color = "var(--amber)"; }
     else { el.textContent = "● 맵 서비스 제한 중 (" + (s.lookup || "연결 실패") + ")"; el.style.color = "var(--red)"; }
   } catch (e) { el.textContent = "● 맵 서비스 확인 실패"; el.style.color = "var(--red)"; }
