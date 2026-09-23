@@ -671,7 +671,7 @@ def results_map(groups, with_cocitation=True):
                 have.add(key); edges.append([key[0], key[1], 0, s_])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
               "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
-              "hits": it.get("hits", [])} for gi, it in sel]
+              "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:500]} for gi, it in sel]   # 초록은 맵의 정보 패널용
     return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups],
             "cocitation": cocit_ok, "citers": len({k for k in citers_of if citers_of[k]})}
 

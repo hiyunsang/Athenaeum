@@ -124,6 +124,8 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 
 ### 탐색 (`_run_smart`)
 말로 적은 주제(한국어 가능) → `plan_search` 가 Claude 로 **검색 계획**(개념 2~5개, 개념마다 영어 동의어·약어 3~8개, 필수/선택, 제외어) → `build_boolean` 이 OpenAlex `title_and_abstract.search` 불리언식 `("built-up edge" OR BUE) AND ("in situ" OR …) NOT (…)` 로 → **검색 사다리**(전체 → 필수만 → 필수 하나씩 뺀 것) 결과를 앞 단계 우선으로 합침(≤150) → Claude 가 필수 개념을 실제로 다루지 않는 것을 제외하고 소주제로 묶으며 선택 개념의 `hits`(LPBF, DSS …)를 붙임. 결과의 `plan` 을 화면에서 고쳐 `POST /api/smart {plan}` 으로 다시 검색(계획 단계 생략). OpenAlex 불리언은 AND/OR/NOT/따옴표/괄호만 되고 와일드카드(`*`)는 400.
+- **탐색은 항상 따로 큰 창**(홈 「논문 탐색」 → `window.open` 1280×900, 이미 열려 있으면 앞으로). 홈 옆 분할창(iframe)은 목록 재배치로 끊기고 버튼이 헷갈려 없앴다(2026-09-23)
+- **결과 맵**(`explore.html` `renderResultMap`, 캔버스): `results_map` 이 준 노드·선·유사도로 배치(관계대로 ↔ 소주제로 슬라이더; 관계대로일 땐 연결 강도로 반지름을 정해 연결 많은 논문이 가운데). 색 = 소주제(같은 소주제 안에서 최근일수록 진하게, 「색: 연도」 토글), 원 크기 = 피인용, 겹침 허용, 처음엔 튀어나오는 애니메이션, 휠 확대·빈 곳 드래그 이동, 원을 누르면 오른쪽 정보 패널(초록은 노드의 `abstract`), 아래 오른쪽 연도 띠. 팔레트 상수는 `mapColor` 안에 둔다(복원이 선언보다 먼저 불러 전역 const 는 TDZ 오류). 내장 브라우저는 rAF 가 안 돌아 애니메이션은 setTimeout 폴백으로 끝 상태를 그린다
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다
