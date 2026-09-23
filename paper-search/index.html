@@ -129,22 +129,13 @@
   .addlbl input { flex: 1; padding: 2px 6px; font-size: 12px; }
   .hint { font-size: 12px; color: var(--text-3); margin: var(--s1) 0; }
   #closeDrawer { float: right; cursor: pointer; color: var(--text-3); font-size: 14px; }
-  #explorePane { width: 0; min-width: 0; overflow: hidden; display: flex; flex: none; height: calc(100vh - 84px); border-left: 1px solid var(--line-2); background: var(--surface); transition: width .18s ease; }
-  /* 라벨 편집 서랍이 열리면 탐색 창을 줄여 가운데 목록이 최소 ~400px는 남게 */
-  #drawer.open ~ #explorePane { max-width: calc(100vw - 232px - 300px - 400px); }
-  #splitter { width: 5px; flex: none; cursor: col-resize; background: var(--line); }
-  #splitter:hover { background: var(--line-2); }
-  #exploreFrame { flex: 1; border: 0; height: 100%; min-width: 0; }
-  body.dragging #exploreFrame { pointer-events: none; }
-  body.dragging #explorePane { transition: none; }
 </style>
 <script src="/ui.js"></script>
 </head>
 <body>
 <header>
   <h1><a class="brand" href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
-  <a href="#" id="exploreToggle" class="toggle act" title="주제 키워드로 세상의 논문 찾기 - 화면이 좌우로 갈라집니다">논문 탐색</a>
-  <a href="/explore" target="athenaeum_explore" class="toggle act" title="탐색을 따로 큰 창으로 열기 (맵·목록을 넓게 볼 때)" onclick="event.preventDefault(); window.open('/explore', 'athenaeum_explore', 'width=1280,height=900')">↗ 새 창</a>
+  <a href="/explore" id="exploreBtn" class="toggle act" title="주제를 말로 적어 세상의 논문 찾기 — 따로 큰 창으로 열립니다">논문 탐색</a>
   <a href="/ms" class="toggle act" title="원고 작성: 근거 카드 → 개요 → 초안 → 영문 → Word">원고</a>
   <a href="/vocab" class="toggle act" title="단어장: 논문에서 담은 말과 시험 단어를 모아 Anki 로 내보냅니다">단어장</a>
   <a href="#" id="intakeBtn" class="toggle act" title="다운로드 폴더를 지켜보다가 새 논문 PDF 를 이름 바꿔 보관합니다">수집</a>
@@ -172,7 +163,6 @@
   <div id="side"></div>
   <div id="main"></div>
   <div id="drawer"></div>
-  <div id="explorePane"><div id="splitter" title="드래그해서 크기 조절"></div><iframe id="exploreFrame" src="about:blank"></iframe></div>
 </div>
 <script>
 mountUiControls("#uiCtlHost");   // 글꼴 크기 · 다크 모드 (ui.js)
@@ -831,32 +821,19 @@ async function checkOpenAlex() {
 }
 document.getElementById("oastatus").onclick = checkOpenAlex;
 
-// 논문 탐색 분할 패널 (오른쪽 슬라이드, 드래그로 크기 조절, 상태 기억)
-const pane = document.getElementById("explorePane"), frame = document.getElementById("exploreFrame");
-const splitter = document.getElementById("splitter"), exploreToggle = document.getElementById("exploreToggle");
-function openExplore(open) {
-  if (open) {
-    if (!frame.getAttribute("src") || frame.getAttribute("src") === "about:blank") frame.src = "/explore";
-    const saved = parseInt(localStorage.getItem("explore_w") || "0");
-    pane.style.width = Math.max(380, saved || Math.round(window.innerWidth * 0.5)) + "px";
-  } else pane.style.width = "0px";
-  pane.classList.toggle("open", open);
-  exploreToggle.textContent = open ? "탐색 닫기" : "논문 탐색";
-  try { localStorage.setItem("explore_open", open ? "1" : "0"); } catch (e) {}
+// 논문 탐색은 따로 큰 창(1280×900)으로. 이미 열려 있으면 그 창을 앞으로 (다시 불러오지 않아 진행 중인 검색이 끊기지 않음)
+// (예전의 홈 옆 분할창은 열릴 때마다 목록을 다시 배치해 끊기고, 버튼이 셋이라 헷갈려 없앴다 — 2026-09-23)
+function openExplore() {
+  const name = "athenaeum_explore", feat = "width=1280,height=900";
+  let w = null;
+  try { w = window.open("", name, feat); } catch (e) {}          // 빈 URL = 같은 이름의 창이 있으면 그대로 돌려줌
+  if (!w) { window.open("/explore", name, feat); return; }
+  let fresh = true;
+  try { fresh = !w.location || w.location.href === "about:blank" || !/^\/explore/.test(w.location.pathname); } catch (e) {}
+  if (fresh) w.location.href = "/explore";
+  try { w.focus(); } catch (e) {}
 }
-exploreToggle.onclick = (e) => { e.preventDefault(); openExplore(!pane.classList.contains("open")); };
-let dragging = false;
-splitter.onmousedown = (e) => { dragging = true; document.body.classList.add("dragging"); e.preventDefault(); };
-window.addEventListener("mousemove", (e) => {
-  if (!dragging) return;
-  pane.style.width = Math.min(window.innerWidth - 500, Math.max(380, window.innerWidth - e.clientX)) + "px";
-});
-window.addEventListener("mouseup", () => {
-  if (!dragging) return;
-  dragging = false; document.body.classList.remove("dragging");
-  try { localStorage.setItem("explore_w", parseInt(pane.style.width)); } catch (e) {}
-});
-try { if (localStorage.getItem("explore_open") === "1") openExplore(true); } catch (e) {}
+document.getElementById("exploreBtn").onclick = (e) => { e.preventDefault(); openExplore(); };
 
 loadData();
 checkOpenAlex();

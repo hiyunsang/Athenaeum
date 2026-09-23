@@ -18,9 +18,6 @@
   #main { max-width: 1040px; margin: 0 auto; padding: 0 0 var(--s8); background: var(--surface); min-height: calc(100vh - 44px); }
   .row { padding: 10px 12px 11px; border-bottom: 1px solid var(--line); }
   .row:hover { background: var(--hover); }
-  body.embedded header, body.embedded #main { background: var(--panel); }
-  body.embedded .row:hover { background: #ededea; }
-  body.embedded .plan { background: var(--surface); }
   .title { font-family: var(--font-serif); font-size: 15px; font-weight: 400; line-height: 1.35; color: var(--text); cursor: pointer; margin-bottom: 2px; }
   .title:hover { color: var(--accent); }
   .meta .rv { color: var(--amber); }   /* 리뷰/총설 (OpenAlex 분류 또는 제목) */
@@ -105,7 +102,6 @@
 <header>
   <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>논문 탐색</h1>
-  <a href="/" id="backHome" target="_top">← 내 논문 검색으로</a>
   <input id="q" placeholder="주제를 말로 적어도 됩니다 — 예: BUE 논문인데 in situ 로 본 것, 재료는 탄탈럼 / 이방성 금속 절삭 (LPBF 든 DSS 든) / tantalum machining">
   <select id="year">
     <option value="">전체 연도</option>
@@ -140,7 +136,6 @@ const main = document.getElementById("main"), info = document.getElementById("in
 mountUiControls("header");   // 글꼴 크기 · 다크 모드 (ui.js)
 const smartbox = document.getElementById("smartbox"), plainbox = document.getElementById("plainbox");
 const polling = {}, stages = {};
-if (window.self !== window.top) document.body.classList.add("embedded");   // 홈의 분할창 안 — 복원(restore) 이 맵을 그리기 전에 알아야 하므로 맨 위에서
 let rowSeq = 0; const rowIndex = {};   // 화면 번호 → 논문 (Claude 대화에서 [n] 으로 가리킴). 복원(restore) 이 먼저 돌므로 맨 위에 선언
 
 // 탐색 상태 저장/복원: 홈으로 갔다가 돌아와도 결과가 그대로 남도록
@@ -357,14 +352,8 @@ function renderResultMap(m, host) {
   let cohesion = 0; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion2")); if (!isNaN(v)) cohesion = v; } catch (e) {}   // 기본 = 관계대로 (소주제는 색으로 이미 구분되므로)
   const ctl = document.createElement("div"); ctl.className = "mapctl";
   ctl.innerHTML = "<span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span>" +
-    "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓습니다 — 관계가 많은 논문일수록 가운데, 관계가 없는 논문은 바깥. 소주제가 달라도 깊이 관련된 논문은 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다.</span>";
+    "<span class='hint' id='mapctlHint'>왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓습니다 — 관계가 많은 논문일수록 가운데, 관계가 없는 논문은 바깥. 소주제가 달라도 깊이 관련된 논문은 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다. 범례의 소주제에 마우스를 올리면 그 군집만 강조됩니다(누르면 고정).</span>";
   const slider = ctl.querySelector("input"); slider.value = cohesion; host.appendChild(ctl);
-  const embedded = document.body.classList.contains("embedded");   // 홈의 분할창 안
-  if (embedded) {
-    ctl.insertAdjacentHTML("beforeend", "<a href='#' class='act' id='mapPop' title='탐색을 따로 큰 창(1280×900)으로 열어 이 맵을 넓게 봅니다'>↗ 새 창에서 크게</a>");
-    ctl.querySelector("#mapPop").onclick = (e) => { e.preventDefault(); popOutExplore(); };
-    ctl.insertAdjacentHTML("beforeend", "<span class='hint' style='width:100%'>맵의 빈 곳을 누르면 새 창에서 크게 열립니다. 범례의 소주제에 마우스를 올리면 그 군집만 강조됩니다." + (narrow ? " 창이 좁아 원과 이름표를 줄였습니다." : "") + "</span>");
-  }
   const wrap = document.createElement("div"); wrap.className = "mapwrap";
   const cv = document.createElement("canvas"); cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = "100%"; wrap.appendChild(cv);
   const tip = document.createElement("div"); tip.className = "maptip"; tip.hidden = true; wrap.appendChild(tip);
@@ -530,7 +519,7 @@ function renderResultMap(m, host) {
   };
   cv.onmouseleave = () => { tip.hidden = true; if (hovered) { hovered = null; draw(); } };
   cv.onclick = (e) => { const rc = cv.getBoundingClientRect(), n = at((e.clientX - rc.left) * (W / rc.width), (e.clientY - rc.top) * (H / rc.height));
-    if (n) openPaper(n); else if (embedded) popOutExplore(); };   // 분할창에서 빈 곳을 누르면 큰 창으로
+    if (n) openPaper(n); };
   slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion2", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
   // 범례: 마우스를 올리면 그 소주제만 강조, 누르면 고정(다시 누르면 해제)
   legend.querySelectorAll(".lg").forEach(el => {
@@ -557,7 +546,6 @@ function renderResultMap(m, host) {
     host._ro.observe(host);
   }
 }
-function popOutExplore() { window.open("/explore", "athenaeum_explore", "width=1280,height=900"); }
 
 function openPaper(r) {
   if (r.owned) fetch("/api/open", { method: "POST", body: JSON.stringify({ file: r.owned }) });
@@ -630,15 +618,6 @@ function mapButton(r) {
   return b;
 }
 
-// 홈 화면 안의 분할 패널로 열렸으면 '내 논문 검색으로' 링크는 불필요
-if (window.self !== window.top) {
-  // 분할창은 좁아서(700px 안팎) 맵·목록을 넓게 보려면 따로 큰 창으로
-  document.getElementById("backHome").insertAdjacentHTML("afterend", "<a href='#' id='popOut' title='탐색을 따로 큰 창(1280×900)으로 엽니다'>새 창으로 ↗</a>");
-  document.getElementById("popOut").onclick = (e) => { e.preventDefault(); popOutExplore(); };
-  // 분할창 안에서는 '내 논문 검색으로' 가 필요 없다 (로고 링크와 헷갈리지 않게 id 로 지정 — 예전엔 첫 a[href='/'] 를 숨겨 로고가 숨고 이 링크가 남는 버그가 있었음)
-  const back = document.getElementById("backHome");
-  if (back) back.style.display = "none";
-}
 // ---------- Claude(Opus)와 이야기: 화면의 결과 목록이 맥락 ----------
 const CHAT_KEY = "explore_chat_v1";
 let chatBusy = false;
