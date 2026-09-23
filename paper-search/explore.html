@@ -60,7 +60,13 @@
   .maptip { position: absolute; max-width: 320px; background: var(--text); color: var(--surface); font-size: 12px; line-height: 1.5; padding: 6px 9px; border-radius: var(--r); pointer-events: none; z-index: 3; }
   .maptip .hint { color: var(--line-2); padding: 0; text-align: left; line-height: inherit; }
   .maplegend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: var(--s1) 12px var(--s2); font-size: 12px; color: var(--text-2); }
-  .maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; box-sizing: border-box; }
+  .maplegend i.hollow { background: transparent !important; border: 1px solid var(--text-3); }
+  .maplegend .grad { width: 44px; height: 10px; border-radius: 2px; background: linear-gradient(90deg, hsl(178, 26%, 76%), hsl(178, 26%, 30%)); }
+  :root[data-theme=dark] .maplegend .grad { background: linear-gradient(90deg, hsl(178, 26%, 34%), hsl(178, 26%, 68%)); }
+  .mapctl .cmode { display: flex; align-items: center; gap: 2px; margin-left: var(--s3); }
+  .mapctl .cmode .act { padding: 0 5px; }
+  .mapctl .cmode .act.on { color: var(--accent); font-weight: 600; }
   .maplegend .lg { cursor: pointer; }
   .maplegend .lg:hover, .maplegend .lg.on { color: var(--text); font-weight: 600; }
   .maplegend .hint { padding: 0; text-align: left; line-height: inherit; width: 100%; }
@@ -350,12 +356,14 @@ function renderResultMap(m, host) {
   host.innerHTML = "";
   const W = Math.max(420, host.clientWidth || smartbox.clientWidth || 900), H = Math.max(560, Math.min(900, (window.innerHeight || 800) - 250));   // 실제 폭으로, 큰 창이면 더 높게
   const narrow = W < 700, rs = narrow ? 0.75 : 1;   // 분할창처럼 좁으면 원을 작게, 이름표도 적게
-  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: rs * Math.min(22, 6 + Math.sqrt(n.cit || 1)) }));
+  const rs2 = rs * (m.nodes.length > 60 ? 0.75 : 1);   // 논문이 많으면 원을 조금 작게
+  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: rs2 * Math.min(38, 8 + 1.5 * Math.sqrt(n.cit || 1)), pop: 1 }));
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));   // 고배율 화면에서 글자·선이 흐리지 않게
   // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
   let cohesion = 0; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion2")); if (!isNaN(v)) cohesion = v; } catch (e) {}   // 기본 = 관계대로 (소주제는 색으로 이미 구분되므로)
   const ctl = document.createElement("div"); ctl.className = "mapctl";
   ctl.innerHTML = "<span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span>" +
+    "<span class='cmode'>색 <a href='#' class='act' data-c='year' title='최근 논문일수록 진하게'>연도</a><a href='#' class='act' data-c='group' title='Claude 가 나눈 소주제별 색'>소주제</a></span>" +
     "<span class='zoom'><a href='#' class='act' data-z='-' title='축소'>−</a><a href='#' class='act' data-z='+' title='확대'>＋</a><a href='#' class='act' data-z='0' title='전체가 보이게'>맞춤</a></span>" +
     "<span class='hint' id='mapctlHint'>휠로 확대·축소, 빈 곳을 끌어 이동. 왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓습니다 — 관계가 많은 논문일수록 가운데, 관계가 없는 논문은 바깥. 소주제가 달라도 깊이 관련된 논문은 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다. 범례의 소주제에 마우스를 올리면 그 군집만 강조됩니다(누르면 고정).</span>";
   const slider = ctl.querySelector("input"); slider.value = cohesion; host.appendChild(ctl);
@@ -369,7 +377,8 @@ function renderResultMap(m, host) {
   const gcolor = (gi) => mapColor(gi, m.groups[gi], dark);
   const tint = (hex) => { const v = parseInt(hex.slice(1), 16); return "rgba(" + (v >> 16) + "," + ((v >> 8) & 255) + "," + (v & 255) + "," + (dark ? 0.30 : 0.20) + ")"; };   // 연한 채움
   const legend = document.createElement("div"); legend.className = "maplegend";
-  legend.innerHTML = m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
+  legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
+    m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + escH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
     "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기</span>";
   host.appendChild(legend);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
@@ -403,7 +412,7 @@ function renderResultMap(m, host) {
           const ideal = (same ? 0 : crossGap) + DMIN + Math.pow(1 - s, 2.2) * (DMAX - DMIN);
           const f = (dd - ideal) * (0.03 + s * 1.5) * lr;
           a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
-          const mind = a.r + b.r + 14;
+          const mind = (a.r + b.r) * 0.55;   // 겹쳐도 됨 — 중심만 너무 붙지 않게
           if (dd < mind) { const push = (mind - dd) * 0.4; a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; }
         }
         const ce = centers[a.g % G]; a.x += (ce[0] - a.x) * pull; a.y += (ce[1] - a.y) * pull;
@@ -429,6 +438,43 @@ function renderResultMap(m, host) {
   const hullAlpha = dark ? 0.10 : 0.07;         // 군집 바탕은 아주 연하게
   const off = document.createElement("canvas"); off.width = cv.width; off.height = cv.height; const octx = off.getContext("2d");
   let hovered = null, focusG = null, focusPinned = false;   // 범례에서 고른 소주제 (그 군집만 껍질·이름·선을 또렷이)
+  // 색 모드: 연도(한 색, 최근일수록 진하게) 또는 소주제. 기억됨
+  let colorMode = "year"; try { colorMode = localStorage.getItem("explore_map_color") || "year"; } catch (e) {}
+  const yrs = nodes.map(n => +n.year).filter(y => y > 1900), y0 = yrs.length ? Math.min(...yrs) : 0, y1 = yrs.length ? Math.max(...yrs) : 0;
+  const yearCol = (y) => { const t = (y1 > y0 && +y > 1900) ? (+y - y0) / (y1 - y0) : 0.5; const L = dark ? 34 + 34 * t : 76 - 46 * t; return "hsl(178, 26%, " + L.toFixed(0) + "%)"; };
+  const paintNodes = () => nodes.forEach(n => n.col = colorMode === "year" ? yearCol(n.year) : gcolor(n.g));
+  const paintLegend = () => {
+    legend.querySelector("#yrLegend").hidden = colorMode !== "year";
+    legend.querySelectorAll(".lg i").forEach((el, gi) => { el.classList.toggle("hollow", colorMode === "year"); el.style.background = colorMode === "year" ? "" : gcolor(gi); });
+    ctl.querySelectorAll(".cmode a").forEach(a => a.classList.toggle("on", a.dataset.c === colorMode));
+  };
+  paintNodes(); paintLegend();
+  ctl.querySelectorAll(".cmode a").forEach(a => a.onclick = (e) => { e.preventDefault(); colorMode = a.dataset.c; try { localStorage.setItem("explore_map_color", colorMode); } catch (e2) {} paintNodes(); paintLegend(); draw(); });
+  // 이웃: 마우스를 올리면 이웃만 또렷이
+  const nb = nodes.map(() => new Set()); for (const [i, j] of m.edges) { nb[i].add(j); nb[j].add(i); }
+  // 애니메이션: 처음엔 원이 튀어나오고(overshoot), 배치가 바뀌면 자리 이동이 부드럽게. rAF 가 안 도는 환경이면 끝 상태로
+  let animRun = null, introP = 1;
+  const backOut = (p) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); };
+  function animate(kind) {
+    const start = performance.now(), dur = kind === "intro" ? 900 : 420;
+    if (kind === "intro") { introP = 0; nodes.forEach((n, i) => { n.pop = 0; n.delay = Math.min(450, i * 12); }); }
+    const finish = () => { if (kind === "intro") { introP = 1; nodes.forEach(n => n.pop = 1); } else nodes.forEach(n => { n.x = n.tx; n.y = n.ty; }); animRun = null; draw(); };
+    const step = (now) => {
+      if (animRun !== step) return;
+      const t = now - start; let done = true;
+      if (kind === "intro") { introP = Math.min(1, t / 700); for (const n of nodes) { const p = Math.max(0, Math.min(1, (t - n.delay) / 520)); n.pop = backOut(p); if (p < 1) done = false; } }
+      else { const p = Math.min(1, t / dur), e = 1 - Math.pow(1 - p, 3); for (const n of nodes) { n.x = n.fx + (n.tx - n.fx) * e; n.y = n.fy + (n.ty - n.fy) * e; } if (p < 1) done = false; }
+      if (done) finish(); else { draw(); requestAnimationFrame(step); }
+    };
+    animRun = step; requestAnimationFrame(step);
+    setTimeout(() => { if (animRun === step) finish(); }, dur + 700);
+  }
+  function relayout(c) {   // 새 배치로 부드럽게 이동
+    const prev = nodes.map(n => [n.x, n.y]);
+    layout(c);
+    nodes.forEach((n, i) => { n.tx = n.x; n.ty = n.y; n.fx = prev[i][0]; n.fy = prev[i][1]; n.x = n.fx; n.y = n.fy; });
+    animate("move");
+  }
   if (host._pinnedG != null && host._pinnedG < G) { focusG = host._pinnedG; focusPinned = true; }   // 폭이 바뀌어 다시 그린 경우
   const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, narrow ? 6 : 12);
   const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, narrow ? 4 : 8);
@@ -482,17 +528,20 @@ function renderResultMap(m, host) {
   }
   function drawNodeLabels() {
     const u = Math.min(k, 1.5) / k;
-    ctx.font = (11 * u) + "px " + font; ctx.textAlign = "center"; ctx.lineWidth = 2.5 * u; ctx.strokeStyle = bg; ctx.lineJoin = "round";
+    ctx.font = "500 " + (11 * u) + "px " + font; ctx.textAlign = "center"; ctx.lineWidth = 3 * u; ctx.strokeStyle = bg; ctx.lineJoin = "round";
     const boxes = [];
-    const pool = k >= 1.3 ? nodes.slice().sort((a, b) => b.cit - a.cit) : nodes.filter(n => top.includes(n) || ownedTop.includes(n));   // 확대하면 자리가 생기니 전부 시도 (겹치는 것만 건너뜀)
-    const cands = pool.filter(n => n !== hovered && inFocus(n));
+    const pool = nodes.slice().sort((a, b) => b.cit - a.cit);   // 피인용 많은 것부터 전부 시도, 겹치는 것만 건너뜀
+    const cands = pool.filter(n => n !== hovered && inFocus(n) && !(hovered && !nb[hovered.i].has(n.i)));
+    ctx.globalAlpha = introP;
     for (const n of cands.concat(hovered ? [hovered] : [])) {
-      const t = (n.author || "") + " " + (n.year || ""), w = ctx.measureText(t).width + 4 * u, x = n.x, y = n.y + n.r * zr() + 12 * u;
+      const r = n.r * zr(), t = (n.author || "") + ", " + (n.year || "?"), w = ctx.measureText(t).width + 4 * u, x = n.x;
+      const y = r >= 13 * u ? n.y + 4 * u : n.y + r + 12 * u;   // 큰 원엔 원 위에, 작은 원엔 아래에
       const box = [x - w / 2, y - 10 * u, x + w / 2, y + 3 * u];
       if (n !== hovered && boxes.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]))) continue;   // 겹치면 건너뜀 (hover 는 항상)
       boxes.push(box);
-      ctx.strokeText(t, x, y); ctx.fillStyle = n === hovered ? textCol : text2; ctx.fillText(t, x, y);   // 바탕색 후광
+      ctx.strokeText(t, x, y); ctx.fillStyle = textCol; ctx.fillText(t, x, y);   // 바탕색 후광 → 진한 원 위에서도 읽힘
     }
+    ctx.globalAlpha = 1;
   }
   function draw() {
     screen(ctx); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); view(ctx);
@@ -501,21 +550,28 @@ function renderResultMap(m, host) {
     for (const [i, j, w, s] of m.edges) {
       const act = hovered && (nodes[i] === hovered || nodes[j] === hovered);
       const st = Math.max(0, Math.min(1, s == null ? 0.3 : s));   // 유사도 → 진하기·굵기
-      let base = w === 2 ? 0.35 + st * 0.35 : w === 3 ? 0.28 + st * 0.3 : w === 1 ? 0.12 + st * 0.25 : 0.05 + st * 0.12;
+      let base = w === 2 ? 0.45 + st * 0.35 : w === 3 ? 0.35 + st * 0.3 : w === 1 ? 0.18 + st * 0.3 : 0.08 + st * 0.15;
       if (focusG !== null && !(inFocus(nodes[i]) && inFocus(nodes[j]))) base *= 0.25;   // 강조 군집 밖의 선은 흐리게
-      ctx.strokeStyle = act ? accent : (dark ? "rgba(220,220,215," : "rgba(80,80,76,") + (act ? 1 : base).toFixed(2) + ")";
-      ctx.lineWidth = lw * (act ? 1.6 : (w === 2 ? 1 + st * 0.6 : w === 0 ? 0.7 : 0.8 + st * 0.6));
+      if (hovered && !act) base *= 0.45;                                                   // 마우스를 올린 논문의 선만 또렷이
+      base *= introP;
+      ctx.strokeStyle = act ? accent : (dark ? "rgba(200,215,215," : "rgba(70,90,90,") + (act ? 1 : base).toFixed(2) + ")";
+      ctx.lineWidth = lw * (act ? 1.8 : (w === 2 ? 1.1 + st * 0.8 : w === 0 ? 0.75 : 0.9 + st * 0.7));
       ctx.setLineDash(w === 3 ? [2 * lw, 4 * lw] : []);   // 점선 = 동시인용 (남들이 둘을 함께 인용)
       ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
       ctx.setLineDash([]);
     }
-    for (const n of nodes) {
-      const r = n.r * zr(), col = gcolor(n.g);
-      ctx.globalAlpha = inFocus(n) || n === hovered ? 1 : 0.28;   // 강조 군집 밖은 흐리게
+    const order = nodes.slice().sort((a, b) => b.r - a.r);   // 큰 원을 먼저 → 작은 원이 위에 보임. 마우스를 올린 원은 맨 위
+    if (hovered) { order.splice(order.indexOf(hovered), 1); order.push(hovered); }
+    for (const n of order) {
+      const r = n.r * zr() * (n.pop == null ? 1 : n.pop);
+      if (r <= 0) continue;
+      const dim = !inFocus(n) ? 0.28 : (hovered && n !== hovered && !nb[hovered.i].has(n.i)) ? 0.4 : 1;   // 강조 군집 밖·이웃 아닌 것은 흐리게
+      ctx.globalAlpha = dim * 0.94;
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7);
-      ctx.fillStyle = tint(col); ctx.fill();                       // 연한 채움 + 소주제색 테두리 (단색 원보다 차분)
+      if (n === hovered) { ctx.save(); ctx.shadowColor = dark ? "rgba(0,0,0,0.7)" : "rgba(0,0,0,0.38)"; ctx.shadowBlur = 18 * dpr; ctx.shadowOffsetY = 3 * dpr; ctx.fillStyle = n.col; ctx.fill(); ctx.restore(); }
+      ctx.fillStyle = n.col; ctx.fill();
       ctx.setLineDash(n.review ? [3 * lw, 3 * lw] : []);            // 점선 테두리 = Review
-      ctx.lineWidth = lw * (n === hovered || n.owned ? 2 : 1.25); ctx.strokeStyle = (n === hovered || n.owned) ? accent : col; ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth = lw * (n === hovered || n.owned ? 2 : 1); ctx.strokeStyle = (n === hovered || n.owned) ? accent : bg; ctx.stroke(); ctx.setLineDash([]);   // 보통은 바탕색 1px 로 겹친 원을 구분
       ctx.globalAlpha = 1;
     }
     drawNodeLabels();
@@ -548,7 +604,7 @@ function renderResultMap(m, host) {
   };
   cv.onmouseleave = () => { endDrag(); tip.hidden = true; if (hovered) { hovered = null; draw(); } };
   cv.onclick = (e) => { if (justDragged) { justDragged = false; return; } const [wx, wy] = where(e), n = at(wx, wy); if (n) openPaper(n); };
-  slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion2", String(cohesion)); } catch (e) {} layout(cohesion); draw(); };
+  slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem("explore_map_cohesion2", String(cohesion)); } catch (e) {} relayout(cohesion); };
   // 범례: 마우스를 올리면 그 소주제만 강조, 누르면 고정(다시 누르면 해제)
   legend.querySelectorAll(".lg").forEach(el => {
     const gi = +el.dataset.g;
@@ -559,8 +615,9 @@ function renderResultMap(m, host) {
       legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", focusPinned && +x.dataset.g === focusG)); draw(); };
   });
   if (focusPinned) legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", +x.dataset.g === focusG));
-  layout(cohesion); draw();
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);   // 글꼴이 늦게 오면 다시
+  layout(cohesion); nodes.forEach(n => { n.tx = n.x; n.ty = n.y; });
+  if (host._introFor === m) draw(); else { host._introFor = m; animate("intro"); }   // 같은 결과를 폭 때문에 다시 그릴 땐 튀어나오기 생략
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!animRun) draw(); });   // 글꼴이 늦게 오면 다시
   // 폭이 바뀌면(분할창 드래그·창 크기 조절) 캔버스가 CSS 로 늘어나 뭉개지므로, 멈춘 뒤 새 폭으로 다시 그린다
   host._mapW = W;
   if (!host._ro && window.ResizeObserver) {
