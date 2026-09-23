@@ -345,11 +345,12 @@ function renderSmart(r) {
 // ---------- 결과 맵 ----------
 // 노드 = 논문(크기 = 피인용, 색 = 소주제), 선 = 직접 인용(진하게) 또는 공통 참고문헌이 많음(연하게). 보유 논문은 파란 테두리, Review 는 점선 테두리.
 // 배치: 유사도(서지결합+인용)가 높을수록 가깝게 + 같은 소주제끼리 모이게.
-function mapColor(gi, name, dark) {   // 소주제 색 (캔버스는 CSS 변수를 못 씀). 파랑은 상호작용 색(강조색)이라 뺌. UI 의 회색조와 어울리게 채도를 낮춤. '기타 관련' 은 진짜 소주제가 아니라 회색
+function mapColor(gi, name, dark, t) {   // 캔버스는 CSS 변수를 못 씀. t = 연도 위치(0 오래됨 … 1 최근, 없으면 중간) — 같은 소주제 안에서 최근일수록 조금 진하게. '기타 관련' 은 진짜 소주제가 아니라 회색
   if (name === "기타 관련") return dark ? "#7e7d78" : "#8c8c87";
-  const P = dark ? ["#c9a36a", "#7fb59a", "#c98aa8", "#a49ad3", "#b5b06e", "#d29188", "#86b3c2"]
-                 : ["#9a7742", "#4f7f68", "#8f5f7a", "#6d679c", "#7f7a48", "#9a5f56", "#557f8d"];
-  return P[gi % P.length];
+  const HUES = [[178, 34, 36], [236, 24, 50], [318, 22, 46], [76, 36, 38], [14, 40, 48], [42, 50, 42], [204, 28, 46]];   // 색상, 채도, 밝기(라이트). 파랑(강조색)은 뺌. 함수 안에 둔 이유: 복원(restore)이 이 함수를 선언보다 먼저 부름(전역 const 는 TDZ 오류)
+  const [h, sat, l] = HUES[gi % HUES.length], tt = t == null ? 0.5 : t;
+  const L = dark ? (l + 22) + (tt - 0.5) * 20 : l + (0.5 - tt) * 20;   // 라이트: 최근 = 진하게, 다크: 최근 = 밝게
+  return "hsl(" + h + ", " + sat + "%, " + L.toFixed(0) + "%)";
 }
 function cssVar(name, fb) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
 function renderResultMap(m, host) {
@@ -357,7 +358,7 @@ function renderResultMap(m, host) {
   const W = Math.max(420, host.clientWidth || smartbox.clientWidth || 900), H = Math.max(560, Math.min(900, (window.innerHeight || 800) - 250));   // 실제 폭으로, 큰 창이면 더 높게
   const narrow = W < 700, rs = narrow ? 0.75 : 1;   // 분할창처럼 좁으면 원을 작게, 이름표도 적게
   const rs2 = rs * (m.nodes.length > 60 ? 0.75 : 1);   // 논문이 많으면 원을 조금 작게
-  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: rs2 * Math.min(38, 8 + 1.5 * Math.sqrt(n.cit || 1)), pop: 1 }));
+  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: rs2 * Math.min(44, 9 + 1.6 * Math.sqrt(n.cit || 1)), pop: 1 }));
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));   // 고배율 화면에서 글자·선이 흐리지 않게
   // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
   let cohesion = 0; try { const v = parseFloat(localStorage.getItem("explore_map_cohesion2")); if (!isNaN(v)) cohesion = v; } catch (e) {}   // 기본 = 관계대로 (소주제는 색으로 이미 구분되므로)
@@ -439,10 +440,11 @@ function renderResultMap(m, host) {
   const off = document.createElement("canvas"); off.width = cv.width; off.height = cv.height; const octx = off.getContext("2d");
   let hovered = null, focusG = null, focusPinned = false;   // 범례에서 고른 소주제 (그 군집만 껍질·이름·선을 또렷이)
   // 색 모드: 연도(한 색, 최근일수록 진하게) 또는 소주제. 기억됨
-  let colorMode = "year"; try { colorMode = localStorage.getItem("explore_map_color") || "year"; } catch (e) {}
+  let colorMode = "group"; try { colorMode = localStorage.getItem("explore_map_color") || "group"; } catch (e) {}
   const yrs = nodes.map(n => +n.year).filter(y => y > 1900), y0 = yrs.length ? Math.min(...yrs) : 0, y1 = yrs.length ? Math.max(...yrs) : 0;
-  const yearCol = (y) => { const t = (y1 > y0 && +y > 1900) ? (+y - y0) / (y1 - y0) : 0.5; const L = dark ? 34 + 34 * t : 76 - 46 * t; return "hsl(178, 26%, " + L.toFixed(0) + "%)"; };
-  const paintNodes = () => nodes.forEach(n => n.col = colorMode === "year" ? yearCol(n.year) : gcolor(n.g));
+  const yearT = (y) => (y1 > y0 && +y > 1900) ? (+y - y0) / (y1 - y0) : 0.5;
+  const yearCol = (y) => { const t = yearT(y), L = dark ? 34 + 34 * t : 76 - 46 * t; return "hsl(178, 26%, " + L.toFixed(0) + "%)"; };
+  const paintNodes = () => nodes.forEach(n => n.col = colorMode === "year" ? yearCol(n.year) : mapColor(n.g, m.groups[n.g], dark, yearT(n.year)));
   const paintLegend = () => {
     legend.querySelector("#yrLegend").hidden = colorMode !== "year";
     legend.querySelectorAll(".lg i").forEach((el, gi) => { el.classList.toggle("hollow", colorMode === "year"); el.style.background = colorMode === "year" ? "" : gcolor(gi); });
@@ -528,18 +530,18 @@ function renderResultMap(m, host) {
   }
   function drawNodeLabels() {
     const u = Math.min(k, 1.5) / k;
-    ctx.font = "500 " + (11 * u) + "px " + font; ctx.textAlign = "center"; ctx.lineWidth = 3 * u; ctx.strokeStyle = bg; ctx.lineJoin = "round";
+    ctx.font = (10.5 * u) + "px " + font; ctx.textAlign = "center"; ctx.lineWidth = 2 * u; ctx.strokeStyle = bg; ctx.lineJoin = "round";
     const boxes = [];
     const pool = nodes.slice().sort((a, b) => b.cit - a.cit);   // 피인용 많은 것부터 전부 시도, 겹치는 것만 건너뜀
     const cands = pool.filter(n => n !== hovered && inFocus(n) && !(hovered && !nb[hovered.i].has(n.i)));
     ctx.globalAlpha = introP;
     for (const n of cands.concat(hovered ? [hovered] : [])) {
       const r = n.r * zr(), t = (n.author || "") + ", " + (n.year || "?"), w = ctx.measureText(t).width + 4 * u, x = n.x;
-      const y = r >= 13 * u ? n.y + 4 * u : n.y + r + 12 * u;   // 큰 원엔 원 위에, 작은 원엔 아래에
+      const y = n.y + 3.5 * u;   // 원의 가운데에 (작은 원은 글자가 원 밖으로 나가지만 후광 덕에 읽힘)
       const box = [x - w / 2, y - 10 * u, x + w / 2, y + 3 * u];
       if (n !== hovered && boxes.some(b => !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]))) continue;   // 겹치면 건너뜀 (hover 는 항상)
       boxes.push(box);
-      ctx.strokeText(t, x, y); ctx.fillStyle = textCol; ctx.fillText(t, x, y);   // 바탕색 후광 → 진한 원 위에서도 읽힘
+      ctx.strokeText(t, x, y); ctx.fillStyle = n === hovered ? textCol : text2; ctx.fillText(t, x, y);   // 바탕색 후광 → 진한 원 위에서도 읽힘
     }
     ctx.globalAlpha = 1;
   }
@@ -554,7 +556,7 @@ function renderResultMap(m, host) {
       if (focusG !== null && !(inFocus(nodes[i]) && inFocus(nodes[j]))) base *= 0.25;   // 강조 군집 밖의 선은 흐리게
       if (hovered && !act) base *= 0.45;                                                   // 마우스를 올린 논문의 선만 또렷이
       base *= introP;
-      ctx.strokeStyle = act ? accent : (dark ? "rgba(200,215,215," : "rgba(70,90,90,") + (act ? 1 : base).toFixed(2) + ")";
+      ctx.strokeStyle = act ? accent : (dark ? "rgba(215,215,210," : "rgba(70,70,66,") + (act ? 1 : base).toFixed(2) + ")";
       ctx.lineWidth = lw * (act ? 1.8 : (w === 2 ? 1.1 + st * 0.8 : w === 0 ? 0.75 : 0.9 + st * 0.7));
       ctx.setLineDash(w === 3 ? [2 * lw, 4 * lw] : []);   // 점선 = 동시인용 (남들이 둘을 함께 인용)
       ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
@@ -570,8 +572,8 @@ function renderResultMap(m, host) {
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7);
       if (n === hovered) { ctx.save(); ctx.shadowColor = dark ? "rgba(0,0,0,0.7)" : "rgba(0,0,0,0.38)"; ctx.shadowBlur = 18 * dpr; ctx.shadowOffsetY = 3 * dpr; ctx.fillStyle = n.col; ctx.fill(); ctx.restore(); }
       ctx.fillStyle = n.col; ctx.fill();
-      ctx.setLineDash(n.review ? [3 * lw, 3 * lw] : []);            // 점선 테두리 = Review
-      ctx.lineWidth = lw * (n === hovered || n.owned ? 2 : 1); ctx.strokeStyle = (n === hovered || n.owned) ? accent : bg; ctx.stroke(); ctx.setLineDash([]);   // 보통은 바탕색 1px 로 겹친 원을 구분
+      if (n === hovered || n.owned) { ctx.lineWidth = lw * 2; ctx.strokeStyle = accent; ctx.stroke(); }                       // 파란 테두리 = 보유(또는 마우스)
+      else if (n.review) { ctx.setLineDash([3 * lw, 3 * lw]); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = bg; ctx.stroke(); ctx.setLineDash([]); }   // 바탕색 점선 = Review. 그 밖엔 테두리 없음
       ctx.globalAlpha = 1;
     }
     drawNodeLabels();
