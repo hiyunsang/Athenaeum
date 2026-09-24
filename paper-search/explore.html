@@ -624,7 +624,7 @@ function renderResultMap(m, host) {
   // 한국어 짧은 요약: 있으면 보여 주고, 없으면 만들기 동작. 만든 것은 결과 상태에도 넣어 다시 열어도 남게
   const briefHtml = (n) => n.brief ? "<p class='kb'>" + escH(n.brief) + "</p>" : "<a href='#' class='act' data-a='brief'>한국어로 짧게 요약</a> <span class='hint' style='padding:0'>Claude · 10초쯤 · 제목과 초록으로</span>";
   // 초록: 번역이 있으면 한국어로(원문 보기 토글), 없으면 영어 원문 + 번역 동작
-  const absHtml = (n) => !n.abstract ? "<div class='sub'>초록 <a href='#' class='act' data-a='findabs'>찾기</a></div><p class='hint' style='padding:0;text-align:left'>검색 결과에 초록이 없습니다 (Elsevier 논문은 OpenAlex 가 초록을 안 줍니다). 「찾기」는 보유 PDF → Crossref → Semantic Scholar → Elsevier(환경설정에 키가 있으면) 순으로 찾습니다.</p>"
+  const absHtml = (n) => !n.abstract ? "<div class='sub'>초록 <a href='#' class='act' data-a='findabs'>찾기</a></div><p class='hint' style='padding:0;text-align:left'>검색 결과에 초록이 없습니다 (Elsevier 논문은 OpenAlex 가 초록을 안 줍니다). 「찾기」는 보유 PDF → Scopus(환경설정의 Elsevier API 키) → Crossref → Semantic Scholar 순으로 찾습니다. 새로 검색하면 Scopus 로 미리 채워집니다.</p>"
     : n.abstract_ko ? "<div class='sub'>초록 <a href='#' class='act' data-a='abs-orig'>영어 원문</a></div><p class='abs ko'>" + escH(n.abstract_ko) + "</p><p class='abs orig' hidden>" + escH(n.abstract) + "</p>"
     : "<div class='sub'>초록 <a href='#' class='act' data-a='tr'>한국어로 번역</a> <span class='hint' style='padding:0'>Claude · 20초쯤</span></div><p class='abs'>" + escH(n.abstract) + "</p>";
   const persistField = (n, field) => { try { const st = loadState(); const nn = st && st.smartResult && st.smartResult.map && st.smartResult.map.nodes.find(x => x.id === n.id); if (nn) { nn[field] = n[field]; saveState({ smartResult: st.smartResult }); } } catch (e) {} };

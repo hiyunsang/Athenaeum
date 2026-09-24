@@ -780,6 +780,7 @@ def _run_smart(q, year, key, plan=None):
         n["owned"] = owned_idx.get(mapper.norm_title(n["title"])) or ""
     items.sort(key=lambda n: (n["tier"], -n["rel"], -n["cit"]))   # 엄격한 검색에서 나온 것 → 관련도 → 피인용
     items = items[:150]
+    fill_abstracts_scopus(items, stage)   # OpenAlex 에 초록이 없는 후보(Elsevier 등)는 Scopus 로 보강 — Claude 선별 정확도와 정보 패널용
 
     stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
     listing = "\n".join("[{}] ({}{}) {} :: {}".format(i, n["year"], ", 리뷰" if n.get("review") else "", n["title"][:120], (n["abstract"] or "")[:220])
@@ -950,8 +951,80 @@ def extract_abstract_from_pdf(name):
     return re.sub(r"\s*\n\s*", " ", m.group(1)).strip()[:2500]
 
 
+def _elsevier_key():
+    import mapper
+    return (mapper.settings().get("elsevier_api_key") or "").strip()
+
+
+def scopus_abstract(doi, key=None):
+    """Scopus 초록 API — 무료 키로 모든 출판사 논문의 초록이 온다(ScienceDirect 기사 API 는 기관 밖에서 403). 없으면 ''."""
+    import requests as rq
+    key = key or _elsevier_key()
+    doi = (doi or "").replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+    if not key or not doi:
+        return ""
+    try:
+        r = rq.get("https://api.elsevier.com/content/abstract/doi/" + doi, params={"httpAccept": "application/json"},
+                   headers={"X-ELS-APIKey": key, "Accept": "application/json", "User-Agent": "Athenaeum/0.9"}, timeout=20)
+        if r.status_code != 200:
+            return ""
+        core = (r.json().get("abstracts-retrieval-response") or {}).get("coredata") or {}
+        a = core.get("dc:description") or ""
+        if isinstance(a, dict):
+            a = a.get("$") or ""
+        a = re.sub(r"\s+", " ", str(a)).strip()
+        if a.lower().startswith("abstract"):
+            a = a[8:].strip()
+        return a[:2500] if len(a) > 80 else ""
+    except Exception:
+        return ""
+
+
+def _abs_cache_path():
+    return os.path.join(MAPS_DIR, "초록캐시.json")
+
+
+def fill_abstracts_scopus(items, stage=None):
+    """스마트 탐색 후보 중 초록이 없는 것(Elsevier 등)을 Scopus 로 채운다. DOI 별 캐시. 키가 없으면 아무것도 안 함. 채운 편수를 돌려준다."""
+    key = _elsevier_key()
+    if not key:
+        return 0
+    targets = [n for n in items if not n.get("abstract") and n.get("doi")]
+    if not targets:
+        return 0
+    try:
+        cache = json.load(io.open(_abs_cache_path(), encoding="utf-8")) if os.path.exists(_abs_cache_path()) else {}
+    except Exception:
+        cache = {}
+    todo = []
+    for n in targets:
+        d = n["doi"].replace("https://doi.org/", "").strip().lower()
+        if d in cache:
+            n["abstract"] = cache[d]
+        else:
+            todo.append((n, d))
+    filled = sum(1 for n in targets if n.get("abstract"))
+    if todo:
+        if stage:
+            stage("2/3 초록 보강 중 (Scopus, {}편)".format(len(todo)))
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for (n, d), a in zip(todo, ex.map(lambda t: scopus_abstract(t[1], key), todo)):
+                cache[d] = a   # 없으면 '' 도 기억해 같은 논문을 매번 다시 묻지 않는다
+                if a:
+                    n["abstract"] = a
+                    filled += 1
+        try:
+            os.makedirs(MAPS_DIR, exist_ok=True)
+            with io.open(_abs_cache_path(), "w", encoding="utf-8") as f:
+                json.dump(cache, f, ensure_ascii=False)
+        except Exception:
+            pass
+    return filled
+
+
 def find_abstract(doi, owned):
-    """OpenAlex 에 초록이 없을 때: 보유 PDF → Crossref → Semantic Scholar → (키가 있으면) Elsevier. 없으면 ''."""
+    """OpenAlex 에 초록이 없을 때: 보유 PDF → Scopus(키가 있으면, 모든 출판사) → Crossref → Semantic Scholar. 없으면 ''."""
     import requests as rq
     doi = (doi or "").replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
     hdr = {"User-Agent": "Athenaeum/0.9 (https://github.com/hiyunsang/Athenaeum)"}
@@ -961,6 +1034,9 @@ def find_abstract(doi, owned):
             return a
     if not doi:
         return ""
+    a = scopus_abstract(doi)
+    if a:
+        return a
     try:   # Crossref (JATS 태그 제거)
         r = rq.get("https://api.crossref.org/works/" + doi, headers=hdr, timeout=15)
         if r.status_code == 200:
@@ -976,24 +1052,6 @@ def find_abstract(doi, owned):
             a = (r.json().get("abstract") or "").strip()
             if len(a) > 80:
                 return a[:2500]
-    except Exception:
-        pass
-    try:   # Elsevier 기사 API — 초록·메타(META_ABS). 키는 설정.json 의 elsevier_api_key (dev.elsevier.com, 무료)
-        import mapper
-        ek = (mapper.settings().get("elsevier_api_key") or "").strip()
-        if ek and doi.lower().startswith("10.1016/"):
-            r = rq.get("https://api.elsevier.com/content/article/doi/" + doi, params={"view": "META_ABS", "httpAccept": "application/json"},
-                       headers={"X-ELS-APIKey": ek, "Accept": "application/json"}, timeout=20)
-            if r.status_code == 200:
-                core = (r.json().get("full-text-retrieval-response") or {}).get("coredata") or {}
-                a = core.get("dc:description") or ""
-                if isinstance(a, dict):
-                    a = a.get("$") or ""
-                a = re.sub(r"\s+", " ", str(a)).strip()
-                if a.lower().startswith("abstract"):
-                    a = a[8:].strip()
-                if len(a) > 80:
-                    return a[:2500]
     except Exception:
         pass
     return ""
@@ -2865,7 +2923,7 @@ class Handler(BaseHTTPRequestHandler):
                 if abstract:
                     self._send(200, {"abstract": abstract})
                 else:
-                    self._send(404, {"error": "초록을 못 찾았습니다 — Elsevier 논문은 OpenAlex·Crossref·Semantic Scholar 에 초록이 없습니다. 보유 PDF 가 있으면 거기서, 아니면 환경설정의 Elsevier API 키로 찾습니다"})
+                    self._send(404, {"error": "초록을 못 찾았습니다 — 보유 PDF·Scopus(환경설정의 Elsevier API 키)·Crossref·Semantic Scholar 어디에도 없습니다"})
                 return
             key = base_key + ("|tr" if kind == "translate" else "")
             if cache.get(key):

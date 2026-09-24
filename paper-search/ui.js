@@ -90,7 +90,7 @@ function openSettings() {
     row("OpenAlex API 키", "<input type='password' id='oaKey' placeholder='없으면 비워 둠' autocomplete='off' style='width:100%'><span class='uout' id='oaKeyState'></span>",
         "논문 탐색·관련맵이 쓰는 OpenAlex. 키가 없으면 같은 네트워크(학교)가 나눠 쓰는 무료 일일 한도에 걸릴 수 있습니다. 무료 키: <a href='https://help.openalex.org/api/authentication/' target='_blank'>help.openalex.org/api/authentication</a>") +
     row("Elsevier API 키", "<input type='password' id='elsKey' placeholder='없으면 비워 둠' autocomplete='off' style='width:100%'><span class='uout' id='elsKeyState'></span>",
-        "논문 탐색 맵에서 초록 찾기용. Elsevier(ScienceDirect) 논문은 OpenAlex·Crossref 에 초록이 없어, 보유 PDF 가 없으면 이 키로 Elsevier 에서 가져옵니다. 무료 키: <a href='https://dev.elsevier.com/' target='_blank'>dev.elsevier.com</a>") +
+        "논문 탐색에서 초록이 없는 논문(Elsevier 등은 OpenAlex 가 초록을 안 줌)을 Scopus 초록 API 로 채웁니다 — 모든 출판사, 주 1만 회. 검색 결과의 선별 정확도와 정보 패널의 요약·번역에 쓰입니다. 무료 키: <a href='https://dev.elsevier.com/' target='_blank'>dev.elsevier.com</a>") +
     "<div class='ufoot'><button class='ureset' onclick='resetSettings()'>기본값으로</button></div>" +
     "</div></div>";
   document.body.insertAdjacentHTML("beforeend", html);
