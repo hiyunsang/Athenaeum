@@ -575,7 +575,7 @@ def openalex_search(query, year="", per_page=30):
         n.pop("_refs", None)
         inv = it.get("abstract_inverted_index") or {}
         ws = sorted((p, w) for w, ps in inv.items() for p in ps)
-        n["abstract"] = " ".join(w for _, w in ws)[:500]
+        n["abstract"] = " ".join(w for _, w in ws)[:2500]
         n["rel"] = it.get("relevance_score") or 0
         out.append(n)
     return out, d.get("meta", {}).get("count", 0)
@@ -596,7 +596,7 @@ def openalex_boolean(expr, year="", per_page=100):
         n["_refs"] = [mapper.wid(x) for x in (it.get("referenced_works") or [])]   # 결과 맵의 인용 관계용 (결과에 실을 때 뺀다)
         inv = it.get("abstract_inverted_index") or {}
         ws = sorted((p, w) for w, ps in inv.items() for p in ps)
-        n["abstract"] = " ".join(w for _, w in ws)[:500]
+        n["abstract"] = " ".join(w for _, w in ws)[:2500]
         n["rel"] = it.get("relevance_score") or 0
         out.append(n)
     return out, d.get("meta", {}).get("count", 0)
@@ -672,7 +672,7 @@ def results_map(groups, with_cocitation=True):
                 have.add(key); edges.append([key[0], key[1], 0, s_])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
               "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
-              "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:500]} for gi, it in sel]   # 초록은 맵의 정보 패널용
+              "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:2500]} for gi, it in sel]   # 초록은 맵의 정보 패널용 (요약·번역)
     return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups],
             "cocitation": cocit_ok, "citers": len({k for k in citers_of if citers_of[k]})}
 
@@ -2562,7 +2562,7 @@ class Handler(BaseHTTPRequestHandler):
                 inv = it.get("abstract_inverted_index") or {}
                 ws = sorted((p, w) for w, ps in inv.items() for p in ps)
                 abstract = " ".join(w for _, w in ws)
-                n["abstract"] = abstract[:500]
+                n["abstract"] = abstract[:2500]
                 n["strict"] = strict_hits((n["title"] + " " + abstract).lower())
                 n["rel"] = it.get("relevance_score") or 0
                 results.append(n)
@@ -2751,7 +2751,8 @@ class Handler(BaseHTTPRequestHandler):
             if not title:
                 self._send(400, {"error": "제목이 없습니다"})
                 return
-            key = str(body.get("id") or "") or hashlib.md5(title.encode("utf-8")).hexdigest()
+            kind = "translate" if body.get("kind") == "translate" else "brief"   # brief = 2~3문장 요약, translate = 초록 전체 번역
+            key = (str(body.get("id") or "") or hashlib.md5(title.encode("utf-8")).hexdigest()) + ("|tr" if kind == "translate" else "")
             cache_path = os.path.join(MAPS_DIR, "탐색요약.json")
             try:
                 cache = json.load(io.open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
@@ -2764,6 +2765,25 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(503, {"error": CLAUDE_MISSING_MSG})
                 return
             abstract = (body.get("abstract") or "").strip()
+            if kind == "translate":
+                if not abstract:
+                    self._send(400, {"error": "초록이 없습니다"})
+                    return
+                prompt = ("다음 논문 초록을 한국어로 번역해라. 요약하지 말고 문장을 빠뜨리지 말 것. 전문 용어는 자연스러운 한국어로 쓰되 "
+                          "처음 나올 때 괄호에 영어를 병기. 번역문만 출력하고 머리말·설명은 쓰지 마라.\n\n제목: {}\n초록: {}").format(title, abstract)
+                out = claude_text(prompt, timeout=180, model="sonnet")
+                if not out:
+                    self._send(502, {"error": "Claude 응답이 없습니다"})
+                    return
+                cache[key] = out
+                try:
+                    os.makedirs(MAPS_DIR, exist_ok=True)
+                    with io.open(cache_path, "w", encoding="utf-8") as f:
+                        json.dump(cache, f, ensure_ascii=False, indent=1)
+                except Exception:
+                    pass
+                self._send(200, {"brief": out, "cached": False})
+                return
             prompt = ("다음 논문을 한국어로 2~3문장으로 아주 짧게 요약해라. 무엇을 어떻게 했고 무엇을 밝혔는지, 왜 볼 만한지. "
                       "제목·초록에 없는 내용은 지어내지 말고, 초록이 없으면 제목만으로 알 수 있는 범위에서 한 문장으로. "
                       "요약 문장만 쓰고 머리말·제목 반복·따옴표는 쓰지 마라.\n\n"

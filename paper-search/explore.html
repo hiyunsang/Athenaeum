@@ -75,6 +75,8 @@
   .mappanel .acts { display: flex; gap: var(--s3); margin: 10px 0; flex-wrap: wrap; }
   .mappanel .abs { color: var(--text-2); line-height: 1.55; margin: 8px 0 12px; font-size: 12px; }
   .mappanel .brief { margin: 8px 0; }
+  .mappanel .abs.ko { color: var(--text); font-size: 12.5px; }
+  .mappanel .abs.orig { color: var(--text-3); border-left: 2px solid var(--line); padding-left: 8px; }
   .mappanel .kb { color: var(--text); line-height: 1.6; font-size: 12.5px; margin: 0; padding: 8px 10px; background: var(--panel); border-radius: var(--r); }
   .mappanel .sub { font-weight: 600; color: var(--text); margin: 12px 0 2px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
   .mappanel .nbrow { display: block; padding: 5px 0; border-bottom: 1px solid var(--line); color: var(--text-2); text-decoration: none; }
@@ -621,7 +623,18 @@ function renderResultMap(m, host) {
   }
   // 한국어 짧은 요약: 있으면 보여 주고, 없으면 만들기 동작. 만든 것은 결과 상태에도 넣어 다시 열어도 남게
   const briefHtml = (n) => n.brief ? "<p class='kb'>" + escH(n.brief) + "</p>" : "<a href='#' class='act' data-a='brief'>한국어로 짧게 요약</a> <span class='hint' style='padding:0'>Claude · 10초쯤 · 제목과 초록으로</span>";
-  const persistBrief = (n) => { try { const st = loadState(); const nn = st && st.smartResult && st.smartResult.map && st.smartResult.map.nodes.find(x => x.id === n.id); if (nn) { nn.brief = n.brief; saveState({ smartResult: st.smartResult }); } } catch (e) {} };
+  // 초록: 번역이 있으면 한국어로(원문 보기 토글), 없으면 영어 원문 + 번역 동작
+  const absHtml = (n) => !n.abstract ? "<p class='hint' style='padding:0;text-align:left'>초록은 다시 검색한 결과부터 담깁니다</p>"
+    : n.abstract_ko ? "<div class='sub'>초록 <a href='#' class='act' data-a='abs-orig'>영어 원문</a></div><p class='abs ko'>" + escH(n.abstract_ko) + "</p><p class='abs orig' hidden>" + escH(n.abstract) + "</p>"
+    : "<div class='sub'>초록 <a href='#' class='act' data-a='tr'>한국어로 번역</a> <span class='hint' style='padding:0'>Claude · 20초쯤</span></div><p class='abs'>" + escH(n.abstract) + "</p>";
+  const persistField = (n, field) => { try { const st = loadState(); const nn = st && st.smartResult && st.smartResult.map && st.smartResult.map.nodes.find(x => x.id === n.id); if (nn) { nn[field] = n[field]; saveState({ smartResult: st.smartResult }); } } catch (e) {} };
+  const persistBrief = (n) => persistField(n, "brief");
+  // 요약·번역 요청 공통: kind = brief | translate
+  async function askBrief(n, kind) {
+    const res = await fetch("/api/smart_brief", { method: "POST", body: JSON.stringify({ kind, id: n.id, title: n.title, abstract: n.abstract || "", year: n.year, author: n.author, venue: n.venue }) }).then(r => r.json());
+    if (!res.brief) throw new Error(res.error || "실패");
+    return res.brief;
+  }
   // 누른 논문: 오른쪽 패널에 정보 (제목·저자·연도·저널·피인용·소주제·요약·초록·이어진 논문·열기)
   function select(n) {
     selected = n; if (!n) panel.hidden = true; draw();   // 닫을 땐 그리기 전에 숨겨야 연도 띠 자리가 맞음
@@ -640,7 +653,7 @@ function renderResultMap(m, host) {
         (n.doi ? "<a class='act' href='" + escH(n.doi) + "' target='_blank' rel='noopener'>논문 페이지</a>" : "") +
         (oa ? "<a class='act' href='" + escH(oa) + "' target='_blank' rel='noopener'>OpenAlex</a>" : "") + "</div>" +
       "<div class='brief'>" + briefHtml(n) + "</div>" +
-      (n.abstract ? "<p class='abs'>" + escH(n.abstract) + "</p>" : "<p class='hint' style='padding:0;text-align:left'>초록은 다시 검색한 결과부터 담깁니다</p>") +
+      "<div class='absbox'>" + absHtml(n) + "</div>" +
       (nbs.length ? "<div class='sub'>이어진 논문 " + nbs.length + "</div>" + nbs.map(b => "<a href='#' class='nbrow' data-i='" + b.i + "'><span>" + escH(b.author || "?") + ", " + (b.year || "?") + "</span><span class='t'>" + escH(b.title) + "</span></a>").join("") : "");
     panel.hidden = false; panel.scrollTop = 0;
     panel.querySelector(".x").onclick = (e) => { e.preventDefault(); select(null); };
@@ -650,12 +663,21 @@ function renderResultMap(m, host) {
     if (bb) bb.onclick = async (e) => {
       e.preventDefault();
       const box = panel.querySelector(".brief"); box.innerHTML = "<span class='hint' style='padding:0'>요약 중… (Claude, 10초쯤)</span>";
-      try {
-        const res = await fetch("/api/smart_brief", { method: "POST", body: JSON.stringify({ id: n.id, title: n.title, abstract: n.abstract || "", year: n.year, author: n.author, venue: n.venue }) }).then(r => r.json());
-        if (res.brief) { n.brief = res.brief; if (m.nodes[n.i]) m.nodes[n.i].brief = res.brief; persistBrief(n); box.innerHTML = briefHtml(n); }
-        else box.innerHTML = "<span class='hint' style='padding:0'>" + escH(res.error || "요약 실패") + "</span>";
-      } catch (err) { box.innerHTML = "<span class='hint' style='padding:0'>요약 실패 (서버 연결)</span>"; }
+      try { n.brief = await askBrief(n, "brief"); if (m.nodes[n.i]) m.nodes[n.i].brief = n.brief; persistBrief(n); box.innerHTML = briefHtml(n); }
+      catch (err) { box.innerHTML = "<span class='hint' style='padding:0'>요약 실패 — " + escH(err.message) + "</span>"; }
     };
+    const bindAbs = () => {   // 초록 번역·원문 토글 (번역 뒤 다시 그리므로 다시 묶음)
+      const tr = panel.querySelector("[data-a=tr]");
+      if (tr) tr.onclick = async (e) => {
+        e.preventDefault();
+        tr.replaceWith(Object.assign(document.createElement("span"), { className: "hint", style: "padding:0", textContent: "번역 중… (Claude, 20초쯤)" }));
+        try { n.abstract_ko = await askBrief(n, "translate"); if (m.nodes[n.i]) m.nodes[n.i].abstract_ko = n.abstract_ko; persistField(n, "abstract_ko"); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
+        catch (err) { panel.querySelector(".absbox").innerHTML = absHtml(n) + "<p class='hint' style='padding:0'>번역 실패 — " + escH(err.message) + "</p>"; bindAbs(); }
+      };
+      const og = panel.querySelector("[data-a=abs-orig]");
+      if (og) og.onclick = (e) => { e.preventDefault(); const p = panel.querySelector(".abs.orig"); p.hidden = !p.hidden; og.textContent = p.hidden ? "영어 원문" : "원문 숨기기"; };
+    };
+    bindAbs();
     draw();   // 패널이 열리면 연도 띠 자리를 옮김
   }
   const at = (x, y) => { for (let i = nodes.length - 1; i >= 0; i--) { const n = nodes[i], rr = n.r * zr() + 4 / k, dx = x - n.x, dy = y - n.y; if (dx * dx + dy * dy <= rr * rr) return n; } return null; };
