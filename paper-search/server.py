@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Athenaeum 로컬 서버 (논문 수집·검색·읽기·원고). Athenaeum_실행.bat 또는 시작프로그램의 Athenaeum_시작.vbs 로 실행."""
 import hashlib
+import io
 import html as html_mod
 import json
 import os
@@ -896,12 +897,12 @@ def pdf_pages_text(name, per_page=3500):
     return pages
 
 
-def claude_text(prompt, timeout=240):
+def claude_text(prompt, timeout=240, model="opus"):
     exe = find_claude()
     if not exe:
         return None
     try:
-        r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
+        r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"],
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
         return r.stdout.decode("utf-8", "replace").strip() or None
     except Exception:
@@ -2745,6 +2746,40 @@ class Handler(BaseHTTPRequestHandler):
                 mapper._breaker.update(fails=0, until=0)   # 키를 바꿨으면 차단 해제하고 다시 시도
             k = mapper.api_key()
             self._send(200, {"ok": True, "openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else ""})
+        elif self.path == "/api/smart_brief":   # 탐색 맵의 정보 패널: 제목·초록으로 한국어 2~3문장 요약 (캐시)
+            title = (body.get("title") or "").strip()
+            if not title:
+                self._send(400, {"error": "제목이 없습니다"})
+                return
+            key = str(body.get("id") or "") or hashlib.md5(title.encode("utf-8")).hexdigest()
+            cache_path = os.path.join(MAPS_DIR, "탐색요약.json")
+            try:
+                cache = json.load(io.open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
+            except Exception:
+                cache = {}
+            if cache.get(key):
+                self._send(200, {"brief": cache[key], "cached": True})
+                return
+            if not find_claude():
+                self._send(503, {"error": CLAUDE_MISSING_MSG})
+                return
+            abstract = (body.get("abstract") or "").strip()
+            prompt = ("다음 논문을 한국어로 2~3문장으로 아주 짧게 요약해라. 무엇을 어떻게 했고 무엇을 밝혔는지, 왜 볼 만한지. "
+                      "제목·초록에 없는 내용은 지어내지 말고, 초록이 없으면 제목만으로 알 수 있는 범위에서 한 문장으로. "
+                      "요약 문장만 쓰고 머리말·제목 반복·따옴표는 쓰지 마라.\n\n"
+                      "제목: {}\n저자·연도: {} {}\n초록: {}").format(title, body.get("author") or "", body.get("year") or "", abstract or "(없음)")
+            brief = claude_text(prompt, timeout=120, model="sonnet")
+            if not brief:
+                self._send(502, {"error": "Claude 응답이 없습니다"})
+                return
+            cache[key] = brief
+            try:
+                os.makedirs(MAPS_DIR, exist_ok=True)
+                with io.open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump(cache, f, ensure_ascii=False, indent=1)
+            except Exception:
+                pass
+            self._send(200, {"brief": brief, "cached": False})
         elif self.path == "/api/smart":
             q = (body.get("q") or "").strip()
             year = str(body.get("year") or "")
