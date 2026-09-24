@@ -624,14 +624,16 @@ function renderResultMap(m, host) {
   // 한국어 짧은 요약: 있으면 보여 주고, 없으면 만들기 동작. 만든 것은 결과 상태에도 넣어 다시 열어도 남게
   const briefHtml = (n) => n.brief ? "<p class='kb'>" + escH(n.brief) + "</p>" : "<a href='#' class='act' data-a='brief'>한국어로 짧게 요약</a> <span class='hint' style='padding:0'>Claude · 10초쯤 · 제목과 초록으로</span>";
   // 초록: 번역이 있으면 한국어로(원문 보기 토글), 없으면 영어 원문 + 번역 동작
-  const absHtml = (n) => !n.abstract ? "<p class='hint' style='padding:0;text-align:left'>초록은 다시 검색한 결과부터 담깁니다</p>"
+  const absHtml = (n) => !n.abstract ? "<div class='sub'>초록 <a href='#' class='act' data-a='findabs'>찾기</a></div><p class='hint' style='padding:0;text-align:left'>검색 결과에 초록이 없습니다 (Elsevier 논문은 OpenAlex 가 초록을 안 줍니다). 「찾기」는 보유 PDF → Crossref → Semantic Scholar → Elsevier(환경설정에 키가 있으면) 순으로 찾습니다.</p>"
     : n.abstract_ko ? "<div class='sub'>초록 <a href='#' class='act' data-a='abs-orig'>영어 원문</a></div><p class='abs ko'>" + escH(n.abstract_ko) + "</p><p class='abs orig' hidden>" + escH(n.abstract) + "</p>"
     : "<div class='sub'>초록 <a href='#' class='act' data-a='tr'>한국어로 번역</a> <span class='hint' style='padding:0'>Claude · 20초쯤</span></div><p class='abs'>" + escH(n.abstract) + "</p>";
   const persistField = (n, field) => { try { const st = loadState(); const nn = st && st.smartResult && st.smartResult.map && st.smartResult.map.nodes.find(x => x.id === n.id); if (nn) { nn[field] = n[field]; saveState({ smartResult: st.smartResult }); } } catch (e) {} };
   const persistBrief = (n) => persistField(n, "brief");
   // 요약·번역 요청 공통: kind = brief | translate
-  async function askBrief(n, kind) {
-    const res = await fetch("/api/smart_brief", { method: "POST", body: JSON.stringify({ kind, id: n.id, title: n.title, abstract: n.abstract || "", year: n.year, author: n.author, venue: n.venue }) }).then(r => r.json());
+  async function askBrief(n, kind) {   // 서버가 초록을 새로 찾아 주면(res.abstract) 노드에 담아 둔다
+    const res = await fetch("/api/smart_brief", { method: "POST", body: JSON.stringify({ kind, id: n.id, title: n.title, abstract: n.abstract || "", doi: n.doi || "", owned: n.owned || "", year: n.year, author: n.author, venue: n.venue }) }).then(r => r.json());
+    if (res.abstract && !n.abstract) { n.abstract = res.abstract; if (m.nodes[n.i]) m.nodes[n.i].abstract = res.abstract; persistField(n, "abstract"); }
+    if (kind === "abstract") { if (!res.abstract) throw new Error(res.error || "못 찾음"); return res.abstract; }
     if (!res.brief) throw new Error(res.error || "실패");
     return res.brief;
   }
@@ -663,7 +665,7 @@ function renderResultMap(m, host) {
     if (bb) bb.onclick = async (e) => {
       e.preventDefault();
       const box = panel.querySelector(".brief"); box.innerHTML = "<span class='hint' style='padding:0'>요약 중… (Claude, 10초쯤)</span>";
-      try { n.brief = await askBrief(n, "brief"); if (m.nodes[n.i]) m.nodes[n.i].brief = n.brief; persistBrief(n); box.innerHTML = briefHtml(n); }
+      try { n.brief = await askBrief(n, "brief"); if (m.nodes[n.i]) m.nodes[n.i].brief = n.brief; persistBrief(n); box.innerHTML = briefHtml(n); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
       catch (err) { box.innerHTML = "<span class='hint' style='padding:0'>요약 실패 — " + escH(err.message) + "</span>"; }
     };
     const bindAbs = () => {   // 초록 번역·원문 토글 (번역 뒤 다시 그리므로 다시 묶음)
@@ -673,6 +675,13 @@ function renderResultMap(m, host) {
         tr.replaceWith(Object.assign(document.createElement("span"), { className: "hint", style: "padding:0", textContent: "번역 중… (Claude, 20초쯤)" }));
         try { n.abstract_ko = await askBrief(n, "translate"); if (m.nodes[n.i]) m.nodes[n.i].abstract_ko = n.abstract_ko; persistField(n, "abstract_ko"); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
         catch (err) { panel.querySelector(".absbox").innerHTML = absHtml(n) + "<p class='hint' style='padding:0'>번역 실패 — " + escH(err.message) + "</p>"; bindAbs(); }
+      };
+      const fa = panel.querySelector("[data-a=findabs]");
+      if (fa) fa.onclick = async (e) => {
+        e.preventDefault();
+        fa.replaceWith(Object.assign(document.createElement("span"), { className: "hint", style: "padding:0", textContent: "찾는 중…" }));
+        try { await askBrief(n, "abstract"); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
+        catch (err) { panel.querySelector(".absbox").innerHTML = absHtml(n) + "<p class='hint' style='padding:0'>" + escH(err.message) + "</p>"; bindAbs(); }
       };
       const og = panel.querySelector("[data-a=abs-orig]");
       if (og) og.onclick = (e) => { e.preventDefault(); const p = panel.querySelector(".abs.orig"); p.hidden = !p.hidden; og.textContent = p.hidden ? "영어 원문" : "원문 숨기기"; };

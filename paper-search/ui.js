@@ -89,6 +89,8 @@ function openSettings() {
     row("도식 코드 모델", "<select data-k='fig_model'><option value='opus'>Opus (꼼꼼함, 5~7분)</option><option value='sonnet'>Sonnet (빠름, 약 2분)</option></select>", "말로 만드는 도식의 그리기 코드를 쓰는 모델. 요약·번역·검토는 항상 Opus") +
     row("OpenAlex API 키", "<input type='password' id='oaKey' placeholder='없으면 비워 둠' autocomplete='off' style='width:100%'><span class='uout' id='oaKeyState'></span>",
         "논문 탐색·관련맵이 쓰는 OpenAlex. 키가 없으면 같은 네트워크(학교)가 나눠 쓰는 무료 일일 한도에 걸릴 수 있습니다. 무료 키: <a href='https://help.openalex.org/api/authentication/' target='_blank'>help.openalex.org/api/authentication</a>") +
+    row("Elsevier API 키", "<input type='password' id='elsKey' placeholder='없으면 비워 둠' autocomplete='off' style='width:100%'><span class='uout' id='elsKeyState'></span>",
+        "논문 탐색 맵에서 초록 찾기용. Elsevier(ScienceDirect) 논문은 OpenAlex·Crossref 에 초록이 없어, 보유 PDF 가 없으면 이 키로 Elsevier 에서 가져옵니다. 무료 키: <a href='https://dev.elsevier.com/' target='_blank'>dev.elsevier.com</a>") +
     "<div class='ufoot'><button class='ureset' onclick='resetSettings()'>기본값으로</button></div>" +
     "</div></div>";
   document.body.insertAdjacentHTML("beforeend", html);
@@ -110,6 +112,18 @@ function openSettings() {
         oaSt.textContent = s.openalex_api_key_set ? "저장됨 (…" + s.openalex_api_key_tail + ")" : "지움";
         oa.value = ""; oa.placeholder = s.openalex_api_key_set ? "저장됨 (…" + s.openalex_api_key_tail + ") — 바꾸려면 입력" : "없으면 비워 둠";
       } catch (e) { oaSt.textContent = "저장 실패"; }
+    });
+  }
+  const els = document.getElementById("elsKey"), elsSt = document.getElementById("elsKeyState");
+  if (els) {
+    fetch("/api/settings").then(r => r.json()).then(s => { if (s.elsevier_api_key_set) { els.placeholder = "저장됨 (…" + s.elsevier_api_key_tail + ") — 바꾸려면 입력"; elsSt.textContent = "저장됨"; } }).catch(() => {});
+    els.addEventListener("change", async () => {
+      elsSt.textContent = "저장 중…";
+      try {
+        const s = await (await fetch("/api/settings", { method: "POST", body: JSON.stringify({ elsevier_api_key: els.value.trim() }) })).json();
+        elsSt.textContent = s.elsevier_api_key_set ? "저장됨 (…" + s.elsevier_api_key_tail + ")" : "지움";
+        els.value = ""; els.placeholder = s.elsevier_api_key_set ? "저장됨 (…" + s.elsevier_api_key_tail + ") — 바꾸려면 입력" : "없으면 비워 둠";
+      } catch (e) { elsSt.textContent = "저장 실패"; }
     });
   }
   document.addEventListener("keydown", escClose);

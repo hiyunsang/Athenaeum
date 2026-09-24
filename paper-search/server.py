@@ -909,6 +909,96 @@ def claude_text(prompt, timeout=240, model="opus"):
         return None
 
 
+# ---------- 탐색 맵 정보 패널: 초록 찾기·요약·번역 캐시 ----------
+def _brief_cache_path():
+    return os.path.join(MAPS_DIR, "탐색요약.json")
+
+
+def _load_brief_cache():
+    try:
+        return json.load(io.open(_brief_cache_path(), encoding="utf-8")) if os.path.exists(_brief_cache_path()) else {}
+    except Exception:
+        return {}
+
+
+def _save_brief_cache(cache):
+    try:
+        os.makedirs(MAPS_DIR, exist_ok=True)
+        with io.open(_brief_cache_path(), "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
+def extract_abstract_from_pdf(name):
+    """보유 PDF 첫 2쪽에서 초록만. Elsevier 는 'a b s t r a c t' 로 띄어 찍으므로 그것도 잡는다. 못 찾으면 ''."""
+    path = os.path.join(ARCHIVE, os.path.basename(name))
+    if not os.path.exists(path):
+        return ""
+    try:
+        import fitz
+        doc = fitz.open(path)
+        text = "\n".join(doc[i].get_text() for i in range(min(2, len(doc))))
+        doc.close()
+    except Exception:
+        return ""
+    t = re.sub(r"[ \t]+", " ", text)
+    m = re.search(r"(?is)\b(?:a\s?b\s?s\s?t\s?r\s?a\s?c\s?t)\b[\s:.\-–]*\n?(.{200,4000}?)"
+                  r"(?:\n\s*(?:keywords?|key words|index terms|1\.?\s+introduction|introduction\b|©|nomenclature|article info|\d\.\s+introduction))", t)
+    if not m:
+        return ""
+    return re.sub(r"\s*\n\s*", " ", m.group(1)).strip()[:2500]
+
+
+def find_abstract(doi, owned):
+    """OpenAlex 에 초록이 없을 때: 보유 PDF → Crossref → Semantic Scholar → (키가 있으면) Elsevier. 없으면 ''."""
+    import requests as rq
+    doi = (doi or "").replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+    hdr = {"User-Agent": "Athenaeum/0.9 (https://github.com/hiyunsang/Athenaeum)"}
+    if owned:
+        a = extract_abstract_from_pdf(owned)
+        if a:
+            return a
+    if not doi:
+        return ""
+    try:   # Crossref (JATS 태그 제거)
+        r = rq.get("https://api.crossref.org/works/" + doi, headers=hdr, timeout=15)
+        if r.status_code == 200:
+            a = re.sub(r"<[^>]+>", " ", (r.json().get("message") or {}).get("abstract") or "")
+            a = re.sub(r"\s+", " ", a).strip()
+            if len(a) > 80:
+                return a[:2500]
+    except Exception:
+        pass
+    try:   # Semantic Scholar
+        r = rq.get("https://api.semanticscholar.org/graph/v1/paper/DOI:" + doi, params={"fields": "abstract"}, headers=hdr, timeout=15)
+        if r.status_code == 200:
+            a = (r.json().get("abstract") or "").strip()
+            if len(a) > 80:
+                return a[:2500]
+    except Exception:
+        pass
+    try:   # Elsevier 기사 API — 초록·메타(META_ABS). 키는 설정.json 의 elsevier_api_key (dev.elsevier.com, 무료)
+        import mapper
+        ek = (mapper.settings().get("elsevier_api_key") or "").strip()
+        if ek and doi.lower().startswith("10.1016/"):
+            r = rq.get("https://api.elsevier.com/content/article/doi/" + doi, params={"view": "META_ABS", "httpAccept": "application/json"},
+                       headers={"X-ELS-APIKey": ek, "Accept": "application/json"}, timeout=20)
+            if r.status_code == 200:
+                core = (r.json().get("full-text-retrieval-response") or {}).get("coredata") or {}
+                a = core.get("dc:description") or ""
+                if isinstance(a, dict):
+                    a = a.get("$") or ""
+                a = re.sub(r"\s+", " ", str(a)).strip()
+                if a.lower().startswith("abstract"):
+                    a = a[8:].strip()
+                if len(a) > 80:
+                    return a[:2500]
+    except Exception:
+        pass
+    return ""
+
+
 def locate_in_pdf(name, passage):
     """한국어 요약 구절 -> 근거가 되는 원문 영어 문장과 페이지."""
     pages = pdf_pages_text(name)
@@ -2611,7 +2701,9 @@ class Handler(BaseHTTPRequestHandler):
             # 서버 쪽 설정 (지금은 OpenAlex API 키). 키 값은 돌려주지 않고 끝 4자만
             import mapper
             k = mapper.api_key()
-            self._send(200, {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else ""})
+            ek = (mapper.settings().get("elsevier_api_key") or "").strip()
+            self._send(200, {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
+                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else ""})
         elif url.path == "/api/fulltext":
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})
@@ -2744,62 +2836,62 @@ class Handler(BaseHTTPRequestHandler):
                     d.pop("openalex_api_key", None)
                 mapper.save_settings(d)
                 mapper._breaker.update(fails=0, until=0)   # 키를 바꿨으면 차단 해제하고 다시 시도
+            if "elsevier_api_key" in body:   # 탐색 맵의 초록 찾기용 (Elsevier 논문은 OpenAlex 에 초록이 없음)
+                ek = str(body.get("elsevier_api_key") or "").strip()
+                if ek:
+                    d["elsevier_api_key"] = ek
+                else:
+                    d.pop("elsevier_api_key", None)
+                mapper.save_settings(d)
             k = mapper.api_key()
-            self._send(200, {"ok": True, "openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else ""})
-        elif self.path == "/api/smart_brief":   # 탐색 맵의 정보 패널: 제목·초록으로 한국어 2~3문장 요약 (캐시)
+            ek = (mapper.settings().get("elsevier_api_key") or "").strip()
+            self._send(200, {"ok": True, "openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
+                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else ""})
+        elif self.path == "/api/smart_brief":   # 탐색 맵의 정보 패널: 초록 찾기(kind=abstract) · 한국어 2~3문장 요약(brief) · 초록 전체 번역(translate). 캐시
             title = (body.get("title") or "").strip()
             if not title:
                 self._send(400, {"error": "제목이 없습니다"})
                 return
-            kind = "translate" if body.get("kind") == "translate" else "brief"   # brief = 2~3문장 요약, translate = 초록 전체 번역
-            key = (str(body.get("id") or "") or hashlib.md5(title.encode("utf-8")).hexdigest()) + ("|tr" if kind == "translate" else "")
-            cache_path = os.path.join(MAPS_DIR, "탐색요약.json")
-            try:
-                cache = json.load(io.open(cache_path, encoding="utf-8")) if os.path.exists(cache_path) else {}
-            except Exception:
-                cache = {}
+            kind = body.get("kind") if body.get("kind") in ("brief", "translate", "abstract") else "brief"
+            base_key = str(body.get("id") or "") or hashlib.md5(title.encode("utf-8")).hexdigest()
+            cache = _load_brief_cache()
+            abstract = (body.get("abstract") or "").strip()
+            if not abstract:   # OpenAlex 에 없던 초록: 캐시 → 보유 PDF·Crossref·Semantic Scholar·Elsevier
+                abstract = cache.get(base_key + "|abs") or find_abstract(body.get("doi") or "", body.get("owned") or "")
+                if abstract and not cache.get(base_key + "|abs"):
+                    cache[base_key + "|abs"] = abstract
+                    _save_brief_cache(cache)
+            if kind == "abstract":
+                if abstract:
+                    self._send(200, {"abstract": abstract})
+                else:
+                    self._send(404, {"error": "초록을 못 찾았습니다 — Elsevier 논문은 OpenAlex·Crossref·Semantic Scholar 에 초록이 없습니다. 보유 PDF 가 있으면 거기서, 아니면 환경설정의 Elsevier API 키로 찾습니다"})
+                return
+            key = base_key + ("|tr" if kind == "translate" else "")
             if cache.get(key):
-                self._send(200, {"brief": cache[key], "cached": True})
+                self._send(200, {"brief": cache[key], "cached": True, "abstract": abstract})
                 return
             if not find_claude():
                 self._send(503, {"error": CLAUDE_MISSING_MSG})
                 return
-            abstract = (body.get("abstract") or "").strip()
             if kind == "translate":
                 if not abstract:
-                    self._send(400, {"error": "초록이 없습니다"})
+                    self._send(400, {"error": "초록이 없어 번역할 수 없습니다"})
                     return
                 prompt = ("다음 논문 초록을 한국어로 번역해라. 요약하지 말고 문장을 빠뜨리지 말 것. 전문 용어는 자연스러운 한국어로 쓰되 "
                           "처음 나올 때 괄호에 영어를 병기. 번역문만 출력하고 머리말·설명은 쓰지 마라.\n\n제목: {}\n초록: {}").format(title, abstract)
-                out = claude_text(prompt, timeout=180, model="sonnet")
-                if not out:
-                    self._send(502, {"error": "Claude 응답이 없습니다"})
-                    return
-                cache[key] = out
-                try:
-                    os.makedirs(MAPS_DIR, exist_ok=True)
-                    with io.open(cache_path, "w", encoding="utf-8") as f:
-                        json.dump(cache, f, ensure_ascii=False, indent=1)
-                except Exception:
-                    pass
-                self._send(200, {"brief": out, "cached": False})
-                return
-            prompt = ("다음 논문을 한국어로 2~3문장으로 아주 짧게 요약해라. 무엇을 어떻게 했고 무엇을 밝혔는지, 왜 볼 만한지. "
-                      "제목·초록에 없는 내용은 지어내지 말고, 초록이 없으면 제목만으로 알 수 있는 범위에서 한 문장으로. "
-                      "요약 문장만 쓰고 머리말·제목 반복·따옴표는 쓰지 마라.\n\n"
-                      "제목: {}\n저자·연도: {} {}\n초록: {}").format(title, body.get("author") or "", body.get("year") or "", abstract or "(없음)")
-            brief = claude_text(prompt, timeout=120, model="sonnet")
-            if not brief:
+            else:
+                prompt = ("다음 논문을 한국어로 2~3문장으로 아주 짧게 요약해라. 무엇을 어떻게 했고 무엇을 밝혔는지, 왜 볼 만한지. "
+                          "제목·초록에 없는 내용은 지어내지 말고, 초록이 없으면 제목만으로 알 수 있는 범위에서 한 문장으로. "
+                          "요약 문장만 쓰고 머리말·제목 반복·따옴표는 쓰지 마라.\n\n"
+                          "제목: {}\n저자·연도: {} {}\n초록: {}").format(title, body.get("author") or "", body.get("year") or "", abstract or "(없음)")
+            out = claude_text(prompt, timeout=180, model="sonnet")
+            if not out:
                 self._send(502, {"error": "Claude 응답이 없습니다"})
                 return
-            cache[key] = brief
-            try:
-                os.makedirs(MAPS_DIR, exist_ok=True)
-                with io.open(cache_path, "w", encoding="utf-8") as f:
-                    json.dump(cache, f, ensure_ascii=False, indent=1)
-            except Exception:
-                pass
-            self._send(200, {"brief": brief, "cached": False})
+            cache[key] = out
+            _save_brief_cache(cache)
+            self._send(200, {"brief": out, "cached": False, "abstract": abstract})
         elif self.path == "/api/smart":
             q = (body.get("q") or "").strip()
             year = str(body.get("year") or "")
