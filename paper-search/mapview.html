@@ -6,271 +6,73 @@
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg"><link rel="icon" type="image/png" sizes="192x192" href="/logo/icon-192.png"><link rel="apple-touch-icon" href="/logo/icon-180.png">
 <link rel="stylesheet" href="/ui.css">
 <script src="/ui.js"></script>
+<script src="/map.js"></script>
 <style>
-  body { overflow: hidden; }
-  #bar { height: 36px; background: var(--surface); border-bottom: 1px solid var(--line-2); padding: 0 var(--s3); font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: var(--s2); white-space: nowrap; overflow: hidden; }
+  #bar { min-height: 36px; background: var(--surface); border-bottom: 1px solid var(--line-2); padding: 6px var(--s3); font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
   #bar b { color: var(--text); font-weight: 600; }
-  #bar a { padding: 4px 8px; margin: 0 -4px; border-radius: var(--r); }
-  #bar a:hover { background: var(--hover); text-decoration: none; }
-  #layout { display: flex; height: calc(100vh - 36px); }
-  #panel { width: 360px; min-width: 360px; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line-2); }
-  .prow { padding: 10px 12px 11px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 12px; }
+  #bar .t { font-family: var(--font-serif); font-size: 14px; color: var(--text); }
+  #bar .act { margin-left: auto; }
+  #rmap { margin: 0 4px; }
+  #extra { max-width: 1100px; margin: var(--s4) 16px var(--s8); font-size: 12px; }
+  #extra .gh { padding: 10px 0 4px; color: var(--text); font-weight: 600; border-bottom: 1px solid var(--line-2); }
+  #extra .gh span { color: var(--text-3); font-weight: 400; margin-left: 6px; }
+  .prow { padding: 8px 0 9px; border-bottom: 1px solid var(--line); cursor: pointer; }
   .prow:hover { background: var(--hover); }
-  .prow.hl { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel-bg); }
-  .prow.seedrow { box-shadow: inset 3px 0 0 var(--text); }
-  .prow.seedrow .pt { font-weight: 600; }
-  .pt { font-family: var(--font-serif); font-size: 14.5px; color: var(--text); line-height: 1.35; margin-bottom: 2px; font-weight: 400; }
+  .pt { font-family: var(--font-serif); font-size: 14px; color: var(--text); line-height: 1.35; margin-bottom: 2px; }
   .pm { color: var(--text-2); line-height: 1.4; }
   .pm b { color: var(--text-2); font-weight: 600; }
-  .kws { margin-top: 2px; color: var(--text-3); }
-  .kw { display: inline; font-size: 11.5px; color: var(--text-2); }
-  .kw + .kw::before { content: " · "; color: var(--text-3); }
-  #cvwrap { flex: 1; position: relative; background: var(--bg); }
-  canvas { display: block; }
-  #tip { position: fixed; display: none; background: #1c1c1a; color: #fff; padding: var(--s2) var(--s3); border-radius: var(--r); font-size: 12px; max-width: 380px; z-index: 10; pointer-events: none; line-height: 1.5; }
-  #legend { position: absolute; bottom: var(--s3); right: var(--s3); font-size: 12px; color: var(--text-2); background: rgba(255,255,255,.9); padding: 4px 8px; border: 1px solid var(--line); }
-  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 5px; vertical-align: -1px; }
 </style>
 </head>
 <body>
-<div id="bar"><b>● 시드 논문</b>의 관련 논문 지도 · 왼쪽 목록 = 관련도 순 · 원 크기 = 피인용 · 색 진할수록 최신 ·
-<span style="color:var(--accent)">파란 표시 = 보유</span> · 클릭 = 논문 열기 · <a href="javascript:history.back()">← 목록으로</a></div>
-<div id="layout">
-  <div id="panel">불러오는 중...</div>
-  <div id="cvwrap"><canvas id="cv"></canvas><div id="legend"></div></div>
-</div>
-<div id="tip"></div>
+<div id="bar"><b>관련맵</b> <span class="t" id="seedTitle"></span> <span id="status"></span><a class="act" href="javascript:history.back()">← 목록으로</a></div>
+<div id="rmap"><div class="hint" style="padding:16px">불러오는 중…</div></div>
+<div id="extra"></div>
 <script>
-const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-const tip = document.getElementById("tip"), panel = document.getElementById("panel");
-let nodes = [], edges = [], sims = null, hovered = null, W = 830, H = 720;
 const file = new URLSearchParams(location.search).get("file");
-
-function resize() {
-  let vw = Math.max(innerWidth, document.documentElement.clientWidth || 0);
-  let vh = Math.max(innerHeight, document.documentElement.clientHeight || 0);
-  if (vw < 100 || vh < 100) { vw = 1210; vh = 760; }  // 크기를 못 읽는 환경 대비
-  W = Math.max(500, vw - 380); H = vh - 38;
-  cv.width = W; cv.height = H;
-}
-resize(); addEventListener("resize", () => { resize(); fit(); draw(); });
-
 function openPaper(n) {
   if (n.owned) fetch("/api/open", { method: "POST", body: JSON.stringify({ file: n.owned }) });
   else if (n.doi) window.open(n.doi);
 }
-
-fetch("/api/mapdata?file=" + encodeURIComponent(file)).then(r => r.json()).then(d => {
-  resize();
-  nodes = d.nodes; edges = d.edges; sims = d.sims || null;
-  if (sims) {  // 유사도 정규화 (상위값 기준) - 군집이 뚜렷해지게
-    const flat = [];
-    for (let i = 0; i < sims.length; i++)
-      for (let j = i + 1; j < sims.length; j++) if (sims[i][j] > 0) flat.push(sims[i][j]);
-    flat.sort((a, b) => b - a);
-    const hi = flat[Math.floor(flat.length * 0.05)] || 1;
-    for (let i = 0; i < sims.length; i++)
-      for (let j = 0; j < sims.length; j++) sims[i][j] = Math.min(1, sims[i][j] / hi);
-  }
-  const years = nodes.map(n => n.year).filter(y => y > 0);
-  window.yMin = Math.min(...years); window.yMax = Math.max(...years);
-  nodes.forEach((n, i) => {
-    const a = i / nodes.length * Math.PI * 2;
-    n.x = W / 2 + (n.seed ? 0 : Math.cos(a) * 250 + Math.random() * 60);
-    n.y = H / 2 + (n.seed ? 0 : Math.sin(a) * 250 + Math.random() * 60);
-    n.vx = 0; n.vy = 0;
-    n.r = Math.min(24, 7 + Math.sqrt(n.cit || 1));
-    if (n.seed) n.r = Math.max(n.r, 13);
-  });
-  document.getElementById("legend").innerHTML =
-    "표시 " + (nodes.length - 1) + "편 / 후보 " + (d.pool || "?") + "편 분석 · 참고문헌 " + d.refs + " · 피인용 " + d.citers +
-    " · <span class='dot' style='background:" + yearColor(yMin) + "'></span>" + yMin +
-    " ~ <span class='dot' style='background:" + yearColor(yMax) + "'></span>" + yMax;
-  buildPanel();
-  buildExtraSections(d.prior || [], d.derived || []);
-  simulate(); fit(); draw();
-});
-
 function extraRow(n, metaText) {
-  const row = document.createElement("div");
-  row.className = "prow" + (n.owned ? " owned" : "");
-  row.innerHTML = "<div class='pt'>" + n.title + "</div><div class='pm'>" +
-    (n.author || "?") + " · " + (n.year || "?") + (n.venue ? " · " + n.venue : "") +
-    " · 피인용 <b>" + n.cit + "</b> · " + metaText +
-    (n.owned ? " · <b style='color:var(--accent)'>보유</b>" : "") + "</div>";
+  const row = document.createElement("div"); row.className = "prow";
+  row.innerHTML = "<div class='pt'>" + mapEscH(n.title) + "</div><div class='pm'>" + mapEscH(n.author || "?") + " · " + (n.year || "?") + (n.venue ? " · " + mapEscH(n.venue) : "") +
+    " · 피인용 <b>" + n.cit + "</b> · " + metaText + (n.owned ? " · <b style='color:var(--accent)'>보유</b>" : "") + "</div>";
   row.onclick = () => openPaper(n);
   return row;
 }
-
-function buildExtraSections(prior, derived) {
-  const mk = (title, desc) => {
-    const h = document.createElement("div");
-    h.className = "prow";
-    h.style.background = "var(--bg)"; h.style.cursor = "default";
-    h.innerHTML = "<div class='pt'><b>" + title + "</b></div><div class='pm'>" + desc + "</div>";
-    panel.appendChild(h);
-  };
-  if (prior.length) {
-    mk("Prior works - 이 분야의 뿌리 논문", "이 맵의 논문들이 공통으로 인용하는 조상 논문");
-    for (const n of prior) panel.appendChild(extraRow(n, "맵 논문 " + n.inter + "편이 인용"));
-  }
-  if (derived.length) {
-    mk("Derivative works - 후속·종합 연구", "이 맵의 논문 여러 편을 인용하는 후속 논문 (리뷰 후보)");
-    for (const n of derived) panel.appendChild(extraRow(n, "맵 논문 " + n.inter + "편을 인용"));
-  }
+function buildExtraSections(prior, derived) {   // 뿌리 논문·후속 논문 — 맵 아래 목록
+  const box = document.getElementById("extra"); box.innerHTML = "";
+  const mk = (title, desc, n) => { const h = document.createElement("div"); h.className = "gh"; h.innerHTML = mapEscH(title) + "<span>" + n + "편 · " + mapEscH(desc) + "</span>"; box.appendChild(h); };
+  if (prior.length) { mk("뿌리 논문 (Prior works)", "이 맵의 논문들이 공통으로 인용하는 조상 논문", prior.length); for (const n of prior) box.appendChild(extraRow(n, "맵 논문 " + n.inter + "편이 인용")); }
+  if (derived.length) { mk("후속 논문 (Derivative works)", "이 맵의 논문 여러 편을 인용하는 후속 논문 — 리뷰 후보", derived.length); for (const n of derived) box.appendChild(extraRow(n, "맵 논문 " + n.inter + "편을 인용")); }
 }
-
-function yearColor(y) {
-  if (!y) return "#bbb";
-  const t = (yMax === yMin) ? 1 : (y - yMin) / (yMax - yMin);
-  const c1 = [190, 226, 214], c2 = [8, 80, 65];
-  return "rgb(" + c1.map((v, i) => Math.round(v + (c2[i] - v) * t)).join(",") + ")";
-}
-
-function buildPanel() {
-  panel.innerHTML = "";
-  for (const n of nodes) {
-    const row = document.createElement("div");
-    row.className = "prow" + (n.seed ? " seedrow" : n.owned ? " owned" : "");
-    n._row = row;
-    const meta = (n.seed ? "★ 시드 논문 · " : "") + (n.author || "?") + " · " + (n.year || "?") +
-      (n.venue ? " · " + n.venue : "") + " · 피인용 <b>" + n.cit + "</b>" +
-      (n.seed ? "" : " · 공통문헌 <b>" + n.inter + "</b>") +
-      (n.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
-    row.innerHTML = "<div class='pt'>" + n.title + "</div><div class='pm'>" + meta + "</div>" +
-      (n.kw && n.kw.length ? "<div class='kws'>" + n.kw.map(k => "<span class='kw'>" + k + "</span>").join("") + "</div>" : "");
-    row.onclick = () => openPaper(n);
-    row.onmouseenter = () => { hovered = n; draw(); };
-    row.onmouseleave = () => { hovered = null; draw(); };
-    panel.appendChild(row);
+fetch("/api/mapdata?file=" + encodeURIComponent(file)).then(r => r.json()).then(d => {
+  const host = document.getElementById("rmap");
+  if (!d || !d.nodes || !d.nodes.length) { host.innerHTML = "<div class='hint' style='padding:16px'>" + mapEscH((d && d.error) || "맵 데이터가 없습니다") + "</div>"; return; }
+  const nodes = d.nodes.map(n => Object.assign({}, n, { g: 0 }));
+  const N = nodes.length;
+  let sims = d.sims || null;
+  if (sims) {   // 유사도 정규화 (상위 5% 값 기준) — 군집이 뚜렷해지게
+    const flat = [];
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) if (sims[i][j] > 0) flat.push(sims[i][j]);
+    flat.sort((a, b) => b - a);
+    const hi = flat[Math.floor(flat.length * 0.05)] || 1;
+    sims = sims.map(row => row.map(v => Math.min(1, v / hi)));
+  } else {
+    sims = nodes.map(() => new Array(N).fill(0));
+    for (const [i, j, w] of d.edges) sims[i][j] = sims[j][i] = Math.min(1, (w || 1) / 10);
   }
-}
-
-function simulate() {
-  if (!sims) return simulateOld();
-  // 유사도 -> 목표 거리 임베딩: 비슷한 논문은 가깝게(강하게), 다른 논문은 멀게(약하게)
-  const n = nodes.length, DMIN = 85, DMAX = 640;
-  for (let step = 0; step < 900; step++) {
-    const lr = 0.10 * (1 - step / 1000);
-    for (let i = 0; i < n; i++) {
-      const a = nodes[i];
-      for (let j = i + 1; j < n; j++) {
-        const b = nodes[j];
-        let dx = b.x - a.x, dy = b.y - a.y;
-        const dd = Math.sqrt(dx * dx + dy * dy) + 0.01;
-        dx /= dd; dy /= dd;
-        const s = sims[i][j];
-        const ideal = DMIN + Math.pow(1 - s, 2.5) * (DMAX - DMIN);
-        const f = (dd - ideal) * (0.03 + s * 1.7) * lr;
-        a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
-        const mind = a.r + b.r + 16;  // 겹침 방지
-        if (dd < mind) {
-          const push = (mind - dd) * 0.4;
-          a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push;
-        }
-      }
-    }
-  }
-}
-
-function simulateOld() {
-  const cx = W / 2, cy = H / 2;
-  for (let step = 0; step < 400; step++) {
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i];
-      for (let j = i + 1; j < nodes.length; j++) {
-        const b = nodes[j];
-        let dx = a.x - b.x, dy = a.y - b.y;
-        const d2 = dx * dx + dy * dy + 0.01, dd = Math.sqrt(d2);
-        const f = 5200 / d2;
-        dx /= dd; dy /= dd;
-        a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
-      }
-      a.vx += (cx - a.x) * 0.004; a.vy += (cy - a.y) * 0.004;
-    }
-    for (const [i, j, w] of edges) {
-      const a = nodes[i], b = nodes[j];
-      const dx = b.x - a.x, dy = b.y - a.y, dd = Math.sqrt(dx * dx + dy * dy) + 0.01;
-      const f = (dd - Math.max(90, 230 - Math.min(w, 12) * 12)) * 0.004;
-      a.vx += dx / dd * f; a.vy += dy / dd * f; b.vx -= dx / dd * f; b.vy -= dy / dd * f;
-    }
-    for (const n of nodes) {
-      if (n.seed) { n.x = cx; n.y = cy; n.vx = n.vy = 0; continue; }
-      n.x += n.vx * 0.5; n.y += n.vy * 0.5; n.vx *= 0.6; n.vy *= 0.6;
-    }
-  }
-}
-
-function fit() {
-  if (!nodes.length) return;
-  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const m = 60, sx = (W - m * 2) / Math.max(1, x1 - x0), sy = (H - m * 2 - 20) / Math.max(1, y1 - y0);
-  const s = Math.min(sx, sy, 1.4);
-  for (const n of nodes) {
-    n.x = m + (n.x - x0) * s;
-    n.y = m + 10 + (n.y - y0) * s;
-  }
-}
-
-function draw() {
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  for (const [i, j, w] of edges) {
-    const active = hovered && (nodes[i] === hovered || nodes[j] === hovered);
-    ctx.strokeStyle = active ? "rgba(31,79,209,0.55)"
-                             : "rgba(120,120,120," + Math.min(0.45, 0.07 + w * 0.03) + ")";
-    ctx.lineWidth = active ? 1.8 : 1;
-    ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
-  }
-  const bySize = nodes.slice().sort((a, b) => b.r - a.r).slice(0, 14);
-  for (const n of nodes) {
-    ctx.beginPath(); ctx.arc(n.x, n.y, n.r + (n === hovered ? 3 : 0), 0, 7);
-    ctx.fillStyle = yearColor(n.year); ctx.fill();
-    if (n.seed) { ctx.lineWidth = 3.5; ctx.strokeStyle = "#1c1c1a"; ctx.stroke(); }  /* = --text */
-    else if (n.owned) { ctx.lineWidth = 3; ctx.strokeStyle = "#1f4fd1";  /* = --accent (캔버스는 CSS 변수 사용 불가) */ ctx.stroke(); }
-    else { ctx.lineWidth = 1; ctx.strokeStyle = "#fff"; ctx.stroke(); }
-  }
-  ctx.font = "11px 'Malgun Gothic'"; ctx.fillStyle = "#444"; ctx.textAlign = "center";
-  for (const n of nodes) {
-    if (n.seed || n === hovered || bySize.includes(n)) {
-      ctx.fillText((n.author || "") + (n.year ? " " + n.year : ""), n.x, n.y + n.r + 12);
-    }
-  }
-}
-
-function nodeAt(x, y) {
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i], dx = x - n.x, dy = y - n.y;
-    if (dx * dx + dy * dy <= (n.r + 4) * (n.r + 4)) return n;
-  }
-  return null;
-}
-
-cv.addEventListener("mousemove", (e) => {
-  const rect = cv.getBoundingClientRect();
-  const n = nodeAt(e.clientX - rect.left, e.clientY - rect.top);
-  if (n !== hovered) {
-    if (hovered && hovered._row) hovered._row.classList.remove("hl");
-    hovered = n;
-    if (n && n._row) { n._row.classList.add("hl"); n._row.scrollIntoView({ block: "nearest" }); }
-    draw();
-  }
-  if (n) {
-    tip.style.display = "block";
-    tip.style.left = Math.max(0, Math.min(e.clientX + 14, (innerWidth || 1200) - 400)) + "px";
-    tip.style.top = (e.clientY + 14) + "px";
-    tip.innerHTML = "<b>" + n.title + "</b><br>" + (n.author || "") + " · " + (n.year || "?") +
-      " · 피인용 " + n.cit + (n.venue ? "<br>" + n.venue : "") +
-      (n.kw && n.kw.length ? "<br>키워드: " + n.kw.join(", ") : "") +
-      (n.owned ? "<br><span style='color:#9db8f5'>✓ 보유 중 - 클릭하면 PDF 열림</span>" : "<br>클릭하면 논문 페이지 열림");
-    cv.style.cursor = "pointer";
-  } else { tip.style.display = "none"; cv.style.cursor = "default"; }
-});
-cv.addEventListener("mouseleave", () => { tip.style.display = "none"; });
-cv.addEventListener("click", (e) => {
-  const rect = cv.getBoundingClientRect();
-  const n = nodeAt(e.clientX - rect.left, e.clientY - rect.top);
-  if (n) openPaper(n);
+  const edges = (d.edges || []).map(([i, j, w]) => [i, j, 1, sims[i][j]]);   // 관련맵의 선 = 공통 참고문헌
+  const seed = nodes.find(n => n.seed);
+  document.getElementById("seedTitle").textContent = seed ? seed.title : "";
+  document.getElementById("status").textContent = "· 표시 " + (N - 1) + "편 / 후보 " + (d.pool || "?") + "편 분석 · 참고문헌 " + (d.refs || 0) + " · 피인용 " + (d.citers || 0);
+  renderResultMap({ nodes, edges, sims, groups: ["관련 논문"], cocitation: false }, host, {
+    fixedColor: "year", noCohesion: true, storagePrefix: "relmap_", openPaper,
+    height: Math.max(520, (window.innerHeight || 800) - 150),
+    hint: "휠로 확대·축소, 빈 곳을 끌어 이동. 관계가 많은 논문일수록 가운데. 굵은 검은 테두리 = 시드(기준) 논문. 원을 누르면 오른쪽에 자세히(초록·요약·번역).",
+    legendHint: "원 크기 = 피인용 · 옅음 = 오래됨, 진함 = 최근 · 선 = 공통 참고문헌(진할수록 많음) · 파란 테두리 = 보유 · 점선 테두리 = Review · 굵은 검은 테두리 = 시드 논문",
+  });
+  buildExtraSections(d.prior || [], d.derived || []);
 });
 </script>
 </body>

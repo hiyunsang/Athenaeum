@@ -1,0 +1,414 @@
+// 논문 맵 그리기 — 탐색 결과 맵(explore.html)과 관련맵(mapview.html)이 함께 쓴다.
+// renderResultMap(m, host, opts): m = {nodes, edges [i,j,종류,유사도], sims, groups}, opts = { openPaper(n), persist(n, field), colorMode|fixedColor ("group"|"year"),
+//   noCohesion(소주제 슬라이더 없음), storagePrefix, height, hint, legendHint }. 노드의 seed=true 면 시드(기준) 논문으로 가운데·굵은 테두리.
+function mapEscH(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function mapOpenPaper(n) {   // 기본 열기: 보유면 PDF, 아니면 논문 페이지
+  if (n.owned) fetch("/api/open", { method: "POST", body: JSON.stringify({ file: n.owned }) });
+  else if (n.doi) window.open(n.doi);
+}
+// ---------- 결과 맵 ----------
+// 노드 = 논문(크기 = 피인용, 색 = 소주제), 선 = 직접 인용(진하게) 또는 공통 참고문헌이 많음(연하게). 보유 논문은 파란 테두리, Review 는 점선 테두리.
+// 배치: 유사도(서지결합+인용)가 높을수록 가깝게 + 같은 소주제끼리 모이게.
+function mapColor(gi, name, dark, t) {   // 캔버스는 CSS 변수를 못 씀. t = 연도 위치(0 오래됨 … 1 최근, 없으면 중간) — 같은 소주제 안에서 최근일수록 조금 진하게. '기타 관련' 은 진짜 소주제가 아니라 회색
+  if (name === "기타 관련") return dark ? "#7e7d78" : "#8c8c87";
+  const HUES = [[178, 34, 36], [236, 24, 50], [318, 22, 46], [76, 36, 38], [14, 40, 48], [42, 50, 42], [204, 28, 46]];   // 색상, 채도, 밝기(라이트). 파랑(강조색)은 뺌. 함수 안에 둔 이유: 복원(restore)이 이 함수를 선언보다 먼저 부름(전역 const 는 TDZ 오류)
+  const [h, sat, l] = HUES[gi % HUES.length], tt = t == null ? 0.5 : t;
+  const L = dark ? (l + 4) + tt * 40 : (l + 30) - tt * 42;   // 라이트: 옛 논문은 옅게(l+30) → 최근은 진하게(l−12). 다크: 옛 = 어둡게 → 최근 = 밝게. 폭을 크게 해야 한눈에 구분됨
+  return "hsl(" + h + ", " + sat + "%, " + L.toFixed(0) + "%)";
+}
+function cssVar(name, fb) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
+function renderResultMap(m, host, opts) {
+  opts = opts || host._opts || {}; host._opts = opts;   // 폭이 바뀌어 다시 그릴 때도 같은 옵션
+  const KEY = opts.storagePrefix || "explore_map_";     // 기억할 설정의 localStorage 키 접두사
+  host.innerHTML = "";
+  const totalW = Math.max(420, host.clientWidth || document.body.clientWidth || 900), H = opts.height || Math.max(560, Math.min(900, (window.innerHeight || 800) - 250));   // 실제 폭으로, 큰 창이면 더 높게
+  const LIST_W = totalW >= 900 ? 280 : 0, W = totalW - LIST_W;   // 넓으면 왼쪽에 논문 목록
+  const narrow = W < 700, rs = narrow ? 0.75 : 1;   // 분할창처럼 좁으면 원을 작게, 이름표도 적게
+  const rs2 = rs * (m.nodes.length > 60 ? 0.75 : 1);   // 논문이 많으면 원을 조금 작게
+  const nodes = m.nodes.map((n, i) => Object.assign({}, n, { i, r: rs2 * Math.min(44, 9 + 1.6 * Math.sqrt(n.cit || 1)), pop: 1 }));
+  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));   // 고배율 화면에서 글자·선이 흐리지 않게
+  // 배치 정도: 0 = 인용·공통문헌 관계대로만 (소주제가 달라도 관련 깊으면 붙음) … 1 = 소주제별로 모음. 기억됨
+  let cohesion = 0; if (!opts.noCohesion) { try { const v = parseFloat(localStorage.getItem(KEY + "cohesion2")); if (!isNaN(v)) cohesion = v; } catch (e) {} }   // 기본 = 관계대로 (소주제는 색으로 이미 구분되므로)
+  const ctl = document.createElement("div"); ctl.className = "mapctl";
+  ctl.innerHTML = "<span class='coh'><span>배치</span><span class='hint'>관계대로</span><input type='range' min='0' max='1' step='0.05'><span class='hint'>소주제로</span></span>" +
+    "<span class='cmode'>색 <a href='#' class='act' data-c='year' title='최근 논문일수록 진하게'>연도</a><a href='#' class='act' data-c='group' title='Claude 가 나눈 소주제별 색'>소주제</a></span>" +
+    "<span class='zoom'><a href='#' class='act' data-z='-' title='축소'>−</a><a href='#' class='act' data-z='+' title='확대'>＋</a><a href='#' class='act' data-z='0' title='전체가 보이게'>맞춤</a></span>" +
+    "<span class='hint' id='mapctlHint'>휠로 확대·축소, 빈 곳을 끌어 이동. 왼쪽으로 갈수록 인용 관계(직접 인용·동시인용·공통 참고문헌)만으로 놓습니다 — 관계가 많은 논문일수록 가운데, 관계가 없는 논문은 바깥. 소주제가 달라도 깊이 관련된 논문은 붙습니다. 오른쪽은 Claude 가 나눈 소주제대로 모읍니다. 범례의 소주제에 마우스를 올리면 그 군집만 강조됩니다(누르면 고정).</span>";
+  const slider = ctl.querySelector("input"); slider.value = cohesion; host.appendChild(ctl);
+  if (opts.noCohesion) ctl.querySelector(".coh").hidden = true;                       // 소주제가 없는 맵(관련맵)
+  if (opts.hint) ctl.querySelector("#mapctlHint").textContent = opts.hint;
+  const wrap = document.createElement("div"); wrap.className = "mapwrap";
+  const list = document.createElement("div"); list.className = "maplist"; list.style.height = H + "px"; if (LIST_W) wrap.appendChild(list);
+  const cv = document.createElement("canvas"); cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + "px"; cv.style.height = H + "px"; wrap.appendChild(cv);
+  const tip = document.createElement("div"); tip.className = "maptip"; tip.hidden = true; wrap.appendChild(tip);
+  const panel = document.createElement("div"); panel.className = "mappanel"; panel.hidden = true; wrap.appendChild(panel);   // 누른 논문의 정보
+  host.appendChild(wrap);
+  const accent = cssVar("--accent", "#1f4fd1"), textCol = cssVar("--text", "#1c1c1a"), text2 = cssVar("--text-2", "#6b6b66"), text3 = cssVar("--text-3", "#8c8c87"), bg = cssVar("--surface", "#fff");
+  const font = cssVar("--font", "Pretendard, 'Malgun Gothic', sans-serif");
+  const dark = (document.documentElement.getAttribute("data-theme") === "dark") || (() => { const h = /^#([0-9a-f]{6})$/i.exec(bg); if (!h) return false; const v = parseInt(h[1], 16); return ((v >> 16) * 0.299 + ((v >> 8) & 255) * 0.587 + (v & 255) * 0.114) < 128; })();
+  const gcolor = (gi) => mapColor(gi, m.groups[gi], dark);
+  const tint = (hex) => { const v = parseInt(hex.slice(1), 16); return "rgba(" + (v >> 16) + "," + ((v >> 8) & 255) + "," + (v & 255) + "," + (dark ? 0.30 : 0.20) + ")"; };   // 연한 채움
+  const legend = document.createElement("div"); legend.className = "maplegend";
+  legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
+    m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
+    (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기</span>");
+  host.appendChild(legend);
+  if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
+  const G = m.groups.length || 1, sims = m.sims, DMIN = 60, DMAX = 560;
+  // 연결 강도 = 다른 논문과의 유사도 합 (0~1 로 정규화). 관계대로 배치에서 가운데로 당기는 힘 = 이 값. 연결 수는 선 개수
+  const strength = nodes.map((n, i) => nodes.reduce((acc, _, j) => acc + (i !== j && sims[i] && sims[i][j] ? sims[i][j] : 0), 0));
+  const maxStr = Math.max(0.001, ...strength), conn = strength.map(v => Math.sqrt(v / maxStr));
+  nodes.forEach((n, i) => { n.links = m.edges.filter(e => e[0] === i || e[1] === i).length; n.conn = conn[i]; });
+  host._nodes = nodes;
+  // 결정적 난수 (같은 결과 → 같은 그림)
+  let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  function layout(c) {
+    const centers = [], R = Math.min(W, H) * (G <= 2 ? 0.22 : G <= 4 ? 0.3 : 0.36) * (0.4 + 0.6 * c);
+    for (let gi = 0; gi < G; gi++) { const a = -Math.PI / 2 + gi / G * Math.PI * 2; centers.push([W / 2 + Math.cos(a) * R, H / 2 + Math.sin(a) * R * 0.85]); }
+    seed = 12345;
+    nodes.forEach(n => { const ce = centers[n.g % G]; n.x = ce[0] + (rnd() - 0.5) * 120; n.y = ce[1] + (rnd() - 0.5) * 120; });
+    const sameFloor = 0.15 + 0.45 * c, crossCap = 1 - 0.7 * c, crossGap = 170 * c, pull = 0.03 * c;   // 소주제 중심으로 당기는 힘은 오른쪽으로 갈수록
+    // 관계대로일수록 반지름 규칙: 연결이 강할수록 무게중심 가까이, 연결 0 은 맨 바깥 고리. 각도(누구 옆에 놓이나)는 인용 관계가 정한다
+    const RMAX = DMAX * 0.62, radialK = 0.6 * (1 - c);
+    nodes.forEach(n => { n.tr = n.seed ? 0 : 30 + (RMAX - 30) * Math.pow(1 - n.conn, 1.3); });   // 시드(기준) 논문은 한가운데
+    for (let step = 0; step < 700; step++) {
+      const lr = 0.10 * (1 - step / 800);
+      let mx = 0, my = 0; for (const n of nodes) { mx += n.x; my += n.y; } mx /= nodes.length; my /= nodes.length;   // 무게중심
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          let dx = b.x - a.x, dy = b.y - a.y; const dd = Math.sqrt(dx * dx + dy * dy) + 0.01; dx /= dd; dy /= dd;
+          const same = a.g === b.g, s0 = sims[i] && sims[i][j] ? sims[i][j] : 0;
+          const s = same ? Math.max(s0, sameFloor) : Math.min(s0, crossCap);
+          const ideal = (same ? 0 : crossGap) + DMIN + Math.pow(1 - s, 2.2) * (DMAX - DMIN);
+          const f = (dd - ideal) * (0.03 + s * 1.5) * lr;
+          a.x += dx * f; a.y += dy * f; b.x -= dx * f; b.y -= dy * f;
+          const mind = (a.r + b.r) * 0.55;   // 겹쳐도 됨 — 중심만 너무 붙지 않게
+          if (dd < mind) { const push = (mind - dd) * 0.4; a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; }
+        }
+        const ce = centers[a.g % G]; a.x += (ce[0] - a.x) * pull; a.y += (ce[1] - a.y) * pull;
+        if (radialK > 0) {   // 목표 반지름으로 (무게중심 기준)
+          let rx = a.x - mx, ry = a.y - my; const rr = Math.sqrt(rx * rx + ry * ry) + 0.01; rx /= rr; ry /= rr;
+          const k = radialK * lr * (a.tr - rr); a.x += rx * k; a.y += ry * k;
+        }
+      }
+    }
+    // 화면에 맞추고 가운데 정렬 (군집 이름 자리를 위해 위쪽 여유)
+    const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const mg = 64, sc = Math.min((W - mg * 2) / Math.max(1, x1 - x0), (H - mg * 2 - 24) / Math.max(1, y1 - y0), 1.5);
+    const ox = (W - mg * 2 - (x1 - x0) * sc) / 2, oy = (H - mg * 2 - 24 - (y1 - y0) * sc) / 2;
+    nodes.forEach(n => { n.x = mg + ox + (n.x - x0) * sc; n.y = mg + 18 + oy + (n.y - y0) * sc; });
+  }
+  const ctx = cv.getContext("2d");
+  // 보기 변환: 휠로 확대(커서 기준), 빈 곳 드래그로 이동. 원은 2배까지만 따라 커지고, 선·글자 두께는 화면 기준으로 일정하게
+  let k = 1, tx = 0, ty = 0;
+  const view = (c) => c.setTransform(dpr * k, 0, 0, dpr * k, dpr * tx, dpr * ty);
+  const screen = (c) => c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const zr = () => Math.min(k, 2) / k;          // 원 반지름에 곱함 (월드 단위)
+  const px1 = () => 1 / k;                      // 화면 1px 의 월드 길이
+  const hullAlpha = dark ? 0.10 : 0.07;         // 군집 바탕은 아주 연하게
+  const off = document.createElement("canvas"); off.width = cv.width; off.height = cv.height; const octx = off.getContext("2d");
+  const rowOf = new Map();   // 노드 → 왼쪽 목록 줄
+  let hovered = null, selected = null, focusG = null, focusPinned = false;   // selected = 눌러서 오른쪽 패널에 띄운 논문. focusG = 범례에서 고른 소주제 (그 군집만 껍질·이름·선을 또렷이)
+  // 색 모드: 연도(한 색, 최근일수록 진하게) 또는 소주제. 기억됨
+  let colorMode = opts.colorMode || "group";
+  if (opts.fixedColor) colorMode = opts.fixedColor; else { try { colorMode = localStorage.getItem(KEY + "color") || colorMode; } catch (e) {} }
+  const yrs = nodes.map(n => +n.year).filter(y => y > 1900), y0 = yrs.length ? Math.min(...yrs) : 0, y1 = yrs.length ? Math.max(...yrs) : 0;
+  // 연도 위치는 순위 기준: 1963년 논문 하나 때문에 나머지가 다 '최근' 쪽으로 몰리지 않게 (같은 해는 같은 색)
+  const uy = [...new Set(yrs)].sort((a, b) => a - b), rankOf = new Map(uy.map((y, i) => [y, uy.length > 1 ? i / (uy.length - 1) : 0.5]));
+  const yearT = (y) => rankOf.has(+y) ? rankOf.get(+y) : 0.5;
+  const yearCol = (y) => { const t = yearT(y), L = dark ? 34 + 34 * t : 76 - 46 * t; return "hsl(178, 26%, " + L.toFixed(0) + "%)"; };
+  const paintNodes = () => nodes.forEach(n => n.col = colorMode === "year" ? yearCol(n.year) : mapColor(n.g, m.groups[n.g], dark, yearT(n.year)));
+  const paintLegend = () => {
+    legend.querySelector("#yrLegend").hidden = colorMode !== "year";
+    legend.querySelectorAll(".lg i").forEach((el, gi) => { el.classList.toggle("hollow", colorMode === "year"); el.style.background = colorMode === "year" ? "" : gcolor(gi); });
+    ctl.querySelectorAll(".cmode a").forEach(a => a.classList.toggle("on", a.dataset.c === colorMode));
+  };
+  paintNodes(); paintLegend();
+  if (opts.fixedColor) ctl.querySelector(".cmode").hidden = true;
+  ctl.querySelectorAll(".cmode a").forEach(a => a.onclick = (e) => { e.preventDefault(); colorMode = a.dataset.c; try { localStorage.setItem(KEY + "color", colorMode); } catch (e2) {} paintNodes(); paintLegend(); draw(); });
+  // 이웃: 마우스를 올리면 이웃만 또렷이
+  const nb = nodes.map(() => new Set()); for (const [i, j] of m.edges) { nb[i].add(j); nb[j].add(i); }
+  // 애니메이션: 처음엔 원이 튀어나오고(overshoot), 배치가 바뀌면 자리 이동이 부드럽게. rAF 가 안 도는 환경이면 끝 상태로
+  let animRun = null, introP = 1;
+  const backOut = (p) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); };
+  function animate(kind) {
+    const start = performance.now(), dur = kind === "intro" ? 900 : 420;
+    if (kind === "intro") { introP = 0; nodes.forEach((n, i) => { n.pop = 0; n.delay = Math.min(450, i * 12); }); }
+    const finish = () => { if (kind === "intro") { introP = 1; nodes.forEach(n => n.pop = 1); } else nodes.forEach(n => { n.x = n.tx; n.y = n.ty; }); animRun = null; draw(); };
+    const step = (now) => {
+      if (animRun !== step) return;
+      const t = now - start; let done = true;
+      if (kind === "intro") { introP = Math.min(1, t / 700); for (const n of nodes) { const p = Math.max(0, Math.min(1, (t - n.delay) / 520)); n.pop = backOut(p); if (p < 1) done = false; } }
+      else { const p = Math.min(1, t / dur), e = 1 - Math.pow(1 - p, 3); for (const n of nodes) { n.x = n.fx + (n.tx - n.fx) * e; n.y = n.fy + (n.ty - n.fy) * e; } if (p < 1) done = false; }
+      if (done) finish(); else { draw(); requestAnimationFrame(step); }
+    };
+    animRun = step; requestAnimationFrame(step);
+    setTimeout(() => { if (animRun === step) finish(); }, dur + 700);
+  }
+  function relayout(c) {   // 새 배치로 부드럽게 이동
+    const prev = nodes.map(n => [n.x, n.y]);
+    layout(c);
+    nodes.forEach((n, i) => { n.tx = n.x; n.ty = n.y; n.fx = prev[i][0]; n.fy = prev[i][1]; n.x = n.fx; n.y = n.fy; });
+    animate("move");
+  }
+  if (host._pinnedG != null && host._pinnedG < G) { focusG = host._pinnedG; focusPinned = true; }   // 폭이 바뀌어 다시 그린 경우
+  const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, narrow ? 6 : 12);
+  const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, narrow ? 4 : 8);
+  const inFocus = (n) => focusG === null || n.g === focusG;
+  // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 (1편이면 원, 2편이면 캡슐). 오프스크린에 불투명하게 그린 뒤 한 번에 반투명 합성 → 겹침 띠 없음.
+  // 관계대로 놓으면 껍질끼리 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
+  function hull(pts) {
+    if (pts.length < 3) return pts;
+    pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const p of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+    for (const p of pts.slice().reverse()) { while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  }
+  const groupsPts = m.groups.map((_, gi) => nodes.filter(n => n.g === gi));
+  function drawHulls() {
+    groupsPts.forEach((ns, gi) => {
+      if (!ns.length) return;
+      if (focusG !== null ? gi !== focusG : cohesion < 0.5) return;   // 관계대로 배치면 껍질이 겹쳐 어지러우니 강조한 군집만
+      const col = gcolor(gi), pad = 26 + Math.max(...ns.map(n => n.r)) * zr();
+      const h = hull(ns.map(n => [n.x, n.y]));
+      screen(octx); octx.clearRect(0, 0, W, H); view(octx);
+      octx.fillStyle = col; octx.strokeStyle = col; octx.lineJoin = "round"; octx.lineCap = "round"; octx.lineWidth = pad * 2;
+      octx.beginPath();
+      if (h.length === 1) { octx.arc(h[0][0], h[0][1], pad, 0, Math.PI * 2); octx.fill(); }
+      else { h.forEach((p, idx) => idx ? octx.lineTo(p[0], p[1]) : octx.moveTo(p[0], p[1])); octx.closePath(); octx.stroke(); if (h.length > 2) octx.fill(); }
+      ctx.save(); screen(ctx); ctx.globalAlpha = hullAlpha; ctx.drawImage(off, 0, 0, W, H); ctx.restore();
+    });
+  }
+  function drawGroupLabels() {
+    const placed = [], u = Math.min(k, 1.5) / k;   // 글자·여백은 1.5배까지만 따라 커짐
+    const vx0 = -tx / k, vx1 = (W - tx) / k, vy0 = -ty / k;   // 지금 보이는 월드 범위
+    groupsPts.forEach((ns, gi) => {
+      if (!ns.length) return;
+      if (focusG !== null ? gi !== focusG : cohesion < 0.5) return;   // 이름도 껍질과 같은 규칙 (범례에 있으니 화면에선 생략)
+      const name = m.groups[gi] || "", count = ns.length + "편";
+      ctx.font = "600 " + (12 * u) + "px " + font; const wn = ctx.measureText(name).width;
+      ctx.font = (11 * u) + "px " + font; const wc = ctx.measureText(count).width;
+      const w = 30 * u + wn + wc;
+      const cx = ns.reduce((a, n) => a + n.x, 0) / ns.length, topY = Math.min(...ns.map(n => n.y - n.r * zr())) - 26 * u - Math.max(...ns.map(n => n.r)) * zr() * 0.4;
+      let lx = Math.max(vx0 + w / 2 + 4 * u, Math.min(vx1 - w / 2 - 4 * u, cx)), ly = Math.max(vy0 + 14 * u, topY);
+      for (const p of placed) if (Math.abs(p[1] - ly) < 20 * u && Math.abs(p[0] - lx) < (p[2] + w) / 2) ly = p[1] + 20 * u;   // 이름끼리 겹치면 아래로
+      placed.push([lx, ly, w]);
+      ctx.fillStyle = bg; ctx.globalAlpha = 0.85; ctx.fillRect(lx - w / 2, ly - 11 * u, w, 20 * u); ctx.globalAlpha = 1;
+      let x = lx - w / 2 + 6 * u;
+      ctx.beginPath(); ctx.arc(x + 3 * u, ly - u, 3 * u, 0, Math.PI * 2); ctx.fillStyle = gcolor(gi); ctx.fill(); x += 12 * u;   // 색 점 = 범례와 같은 방식
+      ctx.textAlign = "left"; ctx.font = "600 " + (12 * u) + "px " + font; ctx.fillStyle = textCol; ctx.fillText(name, x, ly + 4 * u); x += wn + 6 * u;
+      ctx.font = (11 * u) + "px " + font; ctx.fillStyle = text2; ctx.fillText(count, x, ly + 4 * u);
+    });
+  }
+  const lightness = (col) => { const h = /hsl\(\s*[\d.]+,\s*[\d.]+%,\s*([\d.]+)%/.exec(col); if (h) return +h[1]; const x = /^#([0-9a-f]{6})$/i.exec(col); if (!x) return 50; const v = parseInt(x[1], 16); return ((v >> 16) * 0.299 + ((v >> 8) & 255) * 0.587 + (v & 255) * 0.114) / 2.55; };
+  function drawNodeLabels() {   // 후광 없이: 큰 원엔 원 안 가운데(어두운 원엔 흰 글자), 작은 원엔 바로 위(회색). 모든 원에
+    const u = Math.min(k, 1.5) / k, fs = 10 * u;
+    ctx.textAlign = "center"; ctx.globalAlpha = introP;
+    for (const n of nodes) {
+      const strong = n === hovered || n === selected || !!n.seed;
+      if (!inFocus(n) && !strong) continue;
+      const r = n.r * zr(), t = (n.author || "") + ", " + (n.year || "?");
+      ctx.font = (strong ? "600 " : "") + fs + "px " + font;
+      const inside = r >= ctx.measureText(t).width / 2 + 5 * u;   // 글자가 원 안에 들어갈 때만 안에 (흰 글자가 바탕으로 삐져나오면 안 보임)
+      const y = inside ? n.y + 3.5 * u : n.y - r - 3 * u;
+      if (!inside) { ctx.lineWidth = 1 * u; ctx.strokeStyle = bg; ctx.lineJoin = "round"; ctx.strokeText(t, n.x, y); }   // 선·다른 원 위에서도 읽히게 얇은 후광
+      ctx.fillStyle = inside ? (lightness(n.col) < 58 ? "rgba(255,255,255,0.92)" : "rgba(28,28,26,0.85)") : (strong ? textCol : text2);
+      ctx.fillText(t, n.x, y);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function draw() {
+    screen(ctx); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); view(ctx);
+    drawHulls();
+    const lw = px1();   // 선 두께는 화면 기준
+    for (const [i, j, w, s] of m.edges) {
+      const a = nodes[i], b = nodes[j];
+      const act = (hovered && (a === hovered || b === hovered)) || (selected && (a === selected || b === selected));   // 올리거나 누른 논문의 선
+      const st = Math.max(0, Math.min(1, s == null ? 0.3 : s));   // 유사도 → 진하기·굵기
+      let base = w === 2 ? 0.55 + st * 0.35 : w === 3 ? 0.45 + st * 0.3 : w === 1 ? 0.3 + st * 0.35 : 0.18 + st * 0.2;
+      if (focusG !== null && !(inFocus(a) && inFocus(b))) base *= 0.25;   // 강조 군집 밖의 선은 흐리게
+      base *= introP;
+      ctx.strokeStyle = act ? accent : (dark ? "rgba(215,215,210," : "rgba(60,60,58,") + (act ? 1 : base).toFixed(2) + ")";
+      ctx.lineWidth = lw * (act ? 1.8 : (w === 2 ? 1.2 + st * 0.8 : w === 0 ? 0.9 : 1 + st * 0.7));
+      ctx.setLineDash(w === 3 ? [2 * lw, 4 * lw] : []);   // 점선 = 동시인용 (남들이 둘을 함께 인용)
+      ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const order = nodes.slice().sort((a, b) => b.r - a.r);   // 큰 원을 먼저 → 작은 원이 위에 보임. 마우스를 올린 원은 맨 위
+    for (const top of [selected, hovered]) if (top) { order.splice(order.indexOf(top), 1); order.push(top); }
+    for (const n of order) {
+      const r = n.r * zr() * (n.pop == null ? 1 : n.pop);
+      if (r <= 0) continue;
+      const lift = n === hovered || n === selected;
+      ctx.globalAlpha = (inFocus(n) ? 1 : 0.28) * 0.94;   // 범례로 고른 군집 밖만 흐리게 (올리거나 눌러도 다른 원은 그대로)
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7);
+      if (lift) { ctx.save(); ctx.shadowColor = dark ? "rgba(0,0,0,0.7)" : "rgba(0,0,0,0.38)"; ctx.shadowBlur = 18 * dpr; ctx.shadowOffsetY = 3 * dpr; ctx.fillStyle = n.col; ctx.fill(); ctx.restore(); }
+      ctx.fillStyle = n.col; ctx.fill();
+      if (n.seed) { ctx.lineWidth = lw * 3; ctx.strokeStyle = textCol; ctx.stroke(); }                                 // 시드(기준) 논문 = 굵은 검은 테두리
+      if (lift || n.owned) { ctx.lineWidth = lw * (lift ? 2.5 : 1.5); ctx.strokeStyle = accent; ctx.stroke(); }                 // 파란 테두리 = 보유(가늘게) · 올리거나 누른 논문(굵게)
+      else if (n.review) { ctx.setLineDash([3 * lw, 3 * lw]); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = bg; ctx.stroke(); ctx.setLineDash([]); }   // 바탕색 점선 = Review. 그 밖엔 테두리 없음
+      ctx.globalAlpha = 1;
+    }
+    drawNodeLabels();
+    drawGroupLabels();
+    drawYearBar();
+  }
+  function drawYearBar() {   // 아래 오른쪽: 옅음 = 오래됨 → 진함 = 최근. 소주제 색 모드면 소주제마다 작은 띠(그 소주제 원의 실제 색), 연도 모드면 청록 띠 하나
+    if (!(y1 > y0)) return;
+    ctx.save(); screen(ctx);
+    const gis = colorMode === "year" ? [null] : m.groups.map((_, gi) => gi).filter(gi => groupsPts[gi].length);
+    const totalW = 170, gap = 3, bh = 7;
+    const bw = gis.length > 1 ? Math.max(14, (totalW - gap * (gis.length - 1)) / gis.length) : totalW;
+    const full = bw * gis.length + gap * (gis.length - 1), x0 = W - full - 16 - (panel.hidden ? 0 : 320), y = H - 18;
+    gis.forEach((gi, k) => {
+      const x = x0 + k * (bw + gap), g = ctx.createLinearGradient(x, 0, x + bw, 0);
+      if (gi === null) { g.addColorStop(0, yearCol(y0)); g.addColorStop(1, yearCol(y1)); }
+      else { g.addColorStop(0, mapColor(gi, m.groups[gi], dark, 0)); g.addColorStop(1, mapColor(gi, m.groups[gi], dark, 1)); }
+      ctx.fillStyle = g; ctx.fillRect(x, y, bw, bh);
+    });
+    ctx.font = "10px " + font; ctx.fillStyle = text2; ctx.textAlign = "left"; ctx.fillText(String(y0), x0, y - 4); ctx.textAlign = "right"; ctx.fillText(String(y1), x0 + full, y - 4);
+    ctx.restore();
+  }
+  // 한국어 짧은 요약: 있으면 보여 주고, 없으면 만들기 동작. 만든 것은 결과 상태에도 넣어 다시 열어도 남게
+  const briefHtml = (n) => n.brief ? "<p class='kb'>" + mapEscH(n.brief) + "</p>" : "<a href='#' class='act' data-a='brief'>한국어로 짧게 요약</a> <span class='hint' style='padding:0'>Claude · 10초쯤 · 제목과 초록으로</span>";
+  // 초록: 번역이 있으면 한국어로(원문 보기 토글), 없으면 영어 원문 + 번역 동작
+  const absHtml = (n) => !n.abstract ? "<div class='sub'>초록 <a href='#' class='act' data-a='findabs'>찾기</a></div><p class='hint' style='padding:0;text-align:left'>검색 결과에 초록이 없습니다 (Elsevier 논문은 OpenAlex 가 초록을 안 줍니다). 「찾기」는 보유 PDF → Scopus(환경설정의 Elsevier API 키) → Crossref → Semantic Scholar 순으로 찾습니다. 새로 검색하면 Scopus 로 미리 채워집니다.</p>"
+    : n.abstract_ko ? "<div class='sub'>초록 <a href='#' class='act' data-a='abs-orig'>영어 원문</a></div><p class='abs ko'>" + mapEscH(n.abstract_ko) + "</p><p class='abs orig' hidden>" + mapEscH(n.abstract) + "</p>"
+    : "<div class='sub'>초록 <a href='#' class='act' data-a='tr'>한국어로 번역</a> <span class='hint' style='padding:0'>Claude · 20초쯤</span></div><p class='abs'>" + mapEscH(n.abstract) + "</p>";
+  const persistField = (n, field) => { try { if (opts.persist) opts.persist(n, field); } catch (e) {} };   // 만든 요약·번역·초록을 어디에 남길지는 부르는 쪽이 정함
+  const persistBrief = (n) => persistField(n, "brief");
+  // 요약·번역 요청 공통: kind = brief | translate
+  async function askBrief(n, kind) {   // 서버가 초록을 새로 찾아 주면(res.abstract) 노드에 담아 둔다
+    const res = await fetch("/api/smart_brief", { method: "POST", body: JSON.stringify({ kind, id: n.id, title: n.title, abstract: n.abstract || "", doi: n.doi || "", owned: n.owned || "", year: n.year, author: n.author, venue: n.venue }) }).then(r => r.json());
+    if (res.abstract && !n.abstract) { n.abstract = res.abstract; if (m.nodes[n.i]) m.nodes[n.i].abstract = res.abstract; persistField(n, "abstract"); }
+    if (kind === "abstract") { if (!res.abstract) throw new Error(res.error || "못 찾음"); return res.abstract; }
+    if (!res.brief) throw new Error(res.error || "실패");
+    return res.brief;
+  }
+  // 누른 논문: 오른쪽 패널에 정보 (제목·저자·연도·저널·피인용·소주제·요약·초록·이어진 논문·열기)
+  function select(n) {
+    selected = n; if (!n) panel.hidden = true; draw();   // 닫을 땐 그리기 전에 숨겨야 연도 띠 자리가 맞음
+    rowOf.forEach((a, nn) => a.classList.toggle("on", nn === n));
+    if (n && rowOf.get(n)) rowOf.get(n).scrollIntoView({ block: "nearest" });
+    if (!n) { panel.hidden = true; return; }
+    const nbs = [...nb[n.i]].map(j => nodes[j]).sort((a, b) => (sims[n.i] && sims[n.i][b.i] || 0) - (sims[n.i] && sims[n.i][a.i] || 0));
+    const oa = n.id ? "https://openalex.org/" + String(n.id).replace(/^.*\//, "") : "";
+    panel.innerHTML = "<a href='#' class='x act' title='닫기'>×</a>" +
+      "<h3>" + mapEscH(n.title) + "</h3>" +
+      "<div class='meta'>" + mapEscH(n.author || "?") + (n.year ? " · " + n.year : "") + (n.venue ? " · " + mapEscH(n.venue) : "") + "</div>" +
+      "<div class='meta'>피인용 " + (n.cit || 0) + " · 이 맵 안 연결 " + (n.links || 0) + (n.review ? " · <span class='rv'>Review</span>" : "") + (n.owned ? " · 보유" : "") + "</div>" +
+      (n.hits && n.hits.length ? "<div class='meta'>" + mapEscH(n.hits.join(" · ")) + "</div>" : "") +
+      (n.kw && n.kw.length ? "<div class='meta'>키워드: " + mapEscH(n.kw.join(" · ")) + "</div>" : "") +
+      "<div class='meta'><i style='background:" + gcolor(n.g) + "'></i>" + mapEscH(m.groups[n.g] || "") + "</div>" +
+      "<div class='acts'>" + (n.owned ? "<a href='#' class='act' data-a='pdf'>PDF 열기</a>" : "") +
+        (n.doi ? "<a class='act' href='" + mapEscH(n.doi) + "' target='_blank' rel='noopener'>논문 페이지</a>" : "") +
+        (oa ? "<a class='act' href='" + mapEscH(oa) + "' target='_blank' rel='noopener'>OpenAlex</a>" : "") + "</div>" +
+      "<div class='brief'>" + briefHtml(n) + "</div>" +
+      "<div class='absbox'>" + absHtml(n) + "</div>" +
+      (nbs.length ? "<div class='sub'>이어진 논문 " + nbs.length + "</div>" + nbs.map(b => "<a href='#' class='nbrow' data-i='" + b.i + "'><span>" + mapEscH(b.author || "?") + ", " + (b.year || "?") + "</span><span class='t'>" + mapEscH(b.title) + "</span></a>").join("") : "");
+    panel.hidden = false; panel.scrollTop = 0;
+    panel.querySelector(".x").onclick = (e) => { e.preventDefault(); select(null); };
+    const pdf = panel.querySelector("[data-a=pdf]"); if (pdf) pdf.onclick = (e) => { e.preventDefault(); (opts.openPaper || mapOpenPaper)(n); };
+    panel.querySelectorAll(".nbrow").forEach(a => a.onclick = (e) => { e.preventDefault(); select(nodes[+a.dataset.i]); });
+    const bb = panel.querySelector("[data-a=brief]");
+    if (bb) bb.onclick = async (e) => {
+      e.preventDefault();
+      const box = panel.querySelector(".brief"); box.innerHTML = "<span class='hint' style='padding:0'>요약 중… (Claude, 10초쯤)</span>";
+      try { n.brief = await askBrief(n, "brief"); if (m.nodes[n.i]) m.nodes[n.i].brief = n.brief; persistBrief(n); box.innerHTML = briefHtml(n); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
+      catch (err) { box.innerHTML = "<span class='hint' style='padding:0'>요약 실패 — " + mapEscH(err.message) + "</span>"; }
+    };
+    const bindAbs = () => {   // 초록 번역·원문 토글 (번역 뒤 다시 그리므로 다시 묶음)
+      const tr = panel.querySelector("[data-a=tr]");
+      if (tr) tr.onclick = async (e) => {
+        e.preventDefault();
+        tr.replaceWith(Object.assign(document.createElement("span"), { className: "hint", style: "padding:0", textContent: "번역 중… (Claude, 20초쯤)" }));
+        try { n.abstract_ko = await askBrief(n, "translate"); if (m.nodes[n.i]) m.nodes[n.i].abstract_ko = n.abstract_ko; persistField(n, "abstract_ko"); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
+        catch (err) { panel.querySelector(".absbox").innerHTML = absHtml(n) + "<p class='hint' style='padding:0'>번역 실패 — " + mapEscH(err.message) + "</p>"; bindAbs(); }
+      };
+      const fa = panel.querySelector("[data-a=findabs]");
+      if (fa) fa.onclick = async (e) => {
+        e.preventDefault();
+        fa.replaceWith(Object.assign(document.createElement("span"), { className: "hint", style: "padding:0", textContent: "찾는 중…" }));
+        try { await askBrief(n, "abstract"); panel.querySelector(".absbox").innerHTML = absHtml(n); bindAbs(); }
+        catch (err) { panel.querySelector(".absbox").innerHTML = absHtml(n) + "<p class='hint' style='padding:0'>" + mapEscH(err.message) + "</p>"; bindAbs(); }
+      };
+      const og = panel.querySelector("[data-a=abs-orig]");
+      if (og) og.onclick = (e) => { e.preventDefault(); const p = panel.querySelector(".abs.orig"); p.hidden = !p.hidden; og.textContent = p.hidden ? "영어 원문" : "원문 숨기기"; };
+    };
+    bindAbs();
+    draw();   // 패널이 열리면 연도 띠 자리를 옮김
+  }
+  const at = (x, y) => { for (let i = nodes.length - 1; i >= 0; i--) { const n = nodes[i], rr = n.r * zr() + 4 / k, dx = x - n.x, dy = y - n.y; if (dx * dx + dy * dy <= rr * rr) return n; } return null; };
+  // 마우스 위치 → [월드 x, 월드 y, 캔버스 x, 캔버스 y, CSS x, CSS y]
+  const where = (e) => { const rc = cv.getBoundingClientRect(), px = e.clientX - rc.left, py = e.clientY - rc.top, sx = px * (W / rc.width), sy = py * (H / rc.height); return [(sx - tx) / k, (sy - ty) / k, sx, sy, px, py, rc]; };
+  function zoomAt(f, sx, sy) { const k2 = Math.max(0.5, Math.min(5, k * f)); tx = sx - (sx - tx) * (k2 / k); ty = sy - (sy - ty) * (k2 / k); k = k2; draw(); }
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); const [, , sx, sy] = where(e); zoomAt(Math.exp(-e.deltaY * 0.0012), sx, sy); }, { passive: false });
+  ctl.querySelectorAll(".zoom a").forEach(a => a.onclick = (e) => { e.preventDefault(); const z = a.dataset.z; if (z === "0") { k = 1; tx = 0; ty = 0; draw(); } else zoomAt(z === "+" ? 1.4 : 1 / 1.4, W / 2, H / 2); });
+  let drag = null, justDragged = false;   // 빈 곳을 끌면 이동 (끌고 난 클릭은 무시)
+  cv.onmousedown = (e) => { if (e.button !== 0) return; const [wx, wy, sx, sy] = where(e); if (at(wx, wy)) return; drag = { sx, sy, tx, ty, moved: false }; cv.style.cursor = "grabbing"; e.preventDefault(); };
+  const endDrag = () => { if (drag) { justDragged = drag.moved; drag = null; cv.style.cursor = "default"; } };
+  cv.onmouseup = endDrag;
+  cv.onmousemove = (e) => {
+    const [wx, wy, sx, sy, px, py, rc] = where(e);
+    if (drag) { tx = drag.tx + (sx - drag.sx); ty = drag.ty + (sy - drag.sy); if (Math.abs(sx - drag.sx) + Math.abs(sy - drag.sy) > 3) drag.moved = true; tip.hidden = true; draw(); return; }
+    const n = at(wx, wy);
+    if (n !== hovered) { hovered = n; draw(); }
+    if (n) {
+      tip.innerHTML = "<b>" + mapEscH(n.title) + "</b><br><span class='hint'>" + mapEscH(n.author || "?") + " · " + (n.year || "?") + " · 피인용 " + n.cit + " · 누르면 오른쪽에 자세히</span>";
+      tip.hidden = false;
+      const tw = tip.offsetWidth, th = tip.offsetHeight;   // 넘치면 커서 왼쪽·위로 뒤집기
+      tip.style.left = (cv.offsetLeft + Math.max(0, (px + 14 + tw > rc.width) ? px - 14 - tw : px + 14)) + "px";
+      tip.style.top = Math.max(0, (py + 14 + th > rc.height) ? py - 14 - th : py + 14) + "px";
+      cv.style.cursor = "pointer";
+    } else { tip.hidden = true; cv.style.cursor = "default"; }
+  };
+  cv.onmouseleave = () => { endDrag(); tip.hidden = true; if (hovered) { hovered = null; draw(); } };
+  cv.onclick = (e) => { if (justDragged) { justDragged = false; return; } const [wx, wy] = where(e), n = at(wx, wy); if (n) select(n); else if (selected) select(null); };
+  slider.oninput = () => { cohesion = parseFloat(slider.value); try { localStorage.setItem(KEY + "cohesion2", String(cohesion)); } catch (e) {} relayout(cohesion); };
+  // 범례: 마우스를 올리면 그 소주제만 강조, 누르면 고정(다시 누르면 해제)
+  legend.querySelectorAll(".lg").forEach(el => {
+    const gi = +el.dataset.g;
+    el.onmouseenter = () => { if (!focusPinned) { focusG = gi; draw(); } };
+    el.onmouseleave = () => { if (!focusPinned) { focusG = null; draw(); } };
+    el.onclick = () => { if (focusPinned && focusG === gi) { focusPinned = false; focusG = null; } else { focusPinned = true; focusG = gi; }
+      host._pinnedG = focusPinned ? focusG : null;
+      legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", focusPinned && +x.dataset.g === focusG)); draw(); };
+  });
+  if (focusPinned) legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", +x.dataset.g === focusG));
+  if (LIST_W) {   // 왼쪽 목록: 소주제별, 피인용 순. 줄을 누르면 선택, 올리면 맵의 원이 도드라짐
+    m.groups.forEach((g, gi) => {
+      const ns = nodes.filter(n => n.g === gi).sort((a, b) => b.cit - a.cit);
+      if (!ns.length) return;
+      const gh = document.createElement("div"); gh.className = "gh";
+      gh.innerHTML = "<i style='background:" + gcolor(gi) + "'></i><span>" + mapEscH(g) + "</span><span class='n'>" + ns.length + "</span>"; list.appendChild(gh);
+      for (const n of ns) {
+        const a = document.createElement("a"); a.className = "mrow"; a.href = "#";
+        a.innerHTML = "<span class='ay'>" + (n.seed ? "★ 시드 · " : "") + mapEscH(n.author || "?") + ", " + (n.year || "?") + (n.owned ? " · 보유" : "") + (n.review ? " · Review" : "") + "</span><span class='tt'>" + mapEscH(n.title) + "</span>";
+        a.onclick = (e) => { e.preventDefault(); select(n); };
+        a.onmouseenter = () => { if (hovered !== n) { hovered = n; draw(); } };
+        a.onmouseleave = () => { if (hovered === n) { hovered = null; draw(); } };
+        list.appendChild(a); rowOf.set(n, a);
+      }
+    });
+  }
+  layout(cohesion); nodes.forEach(n => { n.tx = n.x; n.ty = n.y; });
+  if (host._introFor === m) draw(); else { host._introFor = m; animate("intro"); }   // 같은 결과를 폭 때문에 다시 그릴 땐 튀어나오기 생략
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (!animRun) draw(); });   // 글꼴이 늦게 오면 다시
+  // 폭이 바뀌면(분할창 드래그·창 크기 조절) 캔버스가 CSS 로 늘어나 뭉개지므로, 멈춘 뒤 새 폭으로 다시 그린다
+  host._mapW = totalW;
+  if (!host._ro && window.ResizeObserver) {
+    let t = null;
+    host._ro = new ResizeObserver(() => {
+      const w = host.clientWidth;
+      if (w < 80 || host.hidden) return;   // 숨겨진 상태(목록 보기·숨은 탭)는 폭 0 — 건너뜀
+      if (Math.abs(w - (host._mapW || 0)) < 24) return;
+      clearTimeout(t); t = setTimeout(() => { if (host.clientWidth >= 80 && !host.hidden && Math.abs(host.clientWidth - (host._mapW || 0)) >= 24) renderResultMap(m, host); }, 180);
+    });
+    host._ro.observe(host);
+  }
+}
+

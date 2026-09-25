@@ -2735,6 +2735,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/ui.js":
             with open(os.path.join(BASE, "ui.js"), "rb") as f:
                 self._send(200, f.read(), "application/javascript; charset=utf-8")
+        elif url.path == "/map.js":
+            with open(os.path.join(BASE, "map.js"), "rb") as f:
+                self._send(200, f.read(), "application/javascript; charset=utf-8")
         elif url.path.startswith("/fonts/"):
             # 로컬 글꼴 파일 (Pretendard 등) — 인터넷 없이도 뜨게 paper-search\fonts\ 에서 제공
             fname = os.path.basename(url.path)
