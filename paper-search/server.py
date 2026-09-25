@@ -672,7 +672,7 @@ def results_map(groups, with_cocitation=True):
                 have.add(key); edges.append([key[0], key[1], 0, s_])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
               "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
-              "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:2500]} for gi, it in sel]   # 초록은 맵의 정보 패널용 (요약·번역)
+              "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:2500], "kw": (it.get("kw") or [])[:6]} for gi, it in sel]   # 초록·키워드는 맵의 정보 패널용
     return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups],
             "cocitation": cocit_ok, "citers": len({k for k in citers_of if citers_of[k]})}
 
@@ -693,6 +693,106 @@ def build_boolean(concepts, exclude=None):
     expr = " AND ".join(parts)
     ex = _bool_group(exclude)
     return (expr + " NOT " + ex) if (expr and ex) else expr
+
+
+def build_scopus(concepts, exclude=None):
+    """OpenAlex 용과 같은 개념·검색어를 Scopus 문법으로: TITLE-ABS-KEY((a OR b) AND (c OR d) AND NOT (e))"""
+    parts = [g for g in (_bool_group(c.get("terms")) for c in concepts) if g]
+    if not parts:
+        return ""
+    expr = " AND ".join(parts)
+    ex = _bool_group(exclude)
+    if ex:
+        expr += " AND NOT " + ex
+    return "TITLE-ABS-KEY(" + expr + ")"
+
+
+def _norm_doi(d):
+    return (d or "").replace("https://doi.org/", "").replace("http://doi.org/", "").strip().lower()
+
+
+def scopus_search(query, year="", pages=2, count=25):
+    """Scopus 검색 API (무료 키: 한 쪽 25편, view=COMPLETE 로 초록·저자 키워드 포함). (결과 목록, 전체 건수, 오류문)."""
+    import requests as rq
+    key = _elsevier_key()
+    if not key or not query:
+        return [], 0, ""
+    if str(year).isdigit():
+        query += " AND PUBYEAR > {}".format(int(year) - 1)
+    out, total = [], 0
+    for p in range(pages):
+        try:
+            r = rq.get("https://api.elsevier.com/content/search/scopus",
+                       params={"query": query, "count": count, "start": p * count, "view": "COMPLETE"},
+                       headers={"X-ELS-APIKey": key, "Accept": "application/json", "User-Agent": "Athenaeum/0.9"}, timeout=25)
+            if r.status_code != 200:
+                return out, total, "Scopus {}: {}".format(r.status_code, r.text[:120])
+            sr = r.json().get("search-results") or {}
+            total = int(sr.get("opensearch:totalResults") or 0)
+            entries = sr.get("entry") or []
+            if entries and "error" in entries[0]:
+                break
+            for e in entries:
+                title = (e.get("dc:title") or "").strip()
+                if not title:
+                    continue
+                kws = [k.strip() for k in (e.get("authkeywords") or "").split("|") if k.strip()][:6]
+                out.append({"eid": e.get("eid") or "", "doi": _norm_doi(e.get("prism:doi")), "title": title,
+                            "year": (e.get("prism:coverDate") or "")[:4], "author": ((e.get("dc:creator") or "").split(",")[0] or "").strip(),
+                            "venue": e.get("prism:publicationName") or "", "cit": int(e.get("citedby-count") or 0),
+                            "abstract": re.sub(r"\s+", " ", (e.get("dc:description") or "")).strip()[:2500], "kw": kws})
+            if len(entries) < count:
+                break
+        except Exception as ex:
+            return out, total, "Scopus 오류: " + str(ex)[:120]
+    return out, total, ""
+
+
+def merge_scopus_into(merged, sres, tier):
+    """Scopus 결과 중 아직 없는 논문을 합친다. DOI 로 OpenAlex 에 한 번에 조회해(50편씩) 인용 관계·피인용을 붙이고, OpenAlex 에 없으면 Scopus 정보만으로."""
+    import mapper
+    known = {_norm_doi(n.get("doi")) for n in merged.values() if n.get("doi")}
+    fresh = [r for r in sres if r["doi"] and r["doi"] not in known]
+    if not fresh:
+        return 0
+    by_doi = {r["doi"]: r for r in fresh}
+    added = 0
+    dois = list(by_doi)
+    for k in range(0, len(dois), 50):
+        chunk = dois[k:k + 50]
+        found = set()
+        try:
+            d = mapper._get(mapper.API + "/works", {"filter": "doi:" + "|".join(chunk), "per-page": "50",
+                                                    "select": mapper.SELECT + ",abstract_inverted_index"})
+            for it in d.get("results", []):
+                n = mapper._node(it, set(), 0, None)
+                if n["id"] in merged:
+                    continue
+                n["_refs"] = [mapper.wid(x) for x in (it.get("referenced_works") or [])]
+                inv = it.get("abstract_inverted_index") or {}
+                ws = sorted((p, w) for w, ps in inv.items() for p in ps)
+                sc = by_doi.get(_norm_doi(n.get("doi")))
+                n["abstract"] = (" ".join(w for _, w in ws)[:2500]) or (sc["abstract"] if sc else "")
+                if sc and sc.get("kw") and not n.get("kw"):
+                    n["kw"] = sc["kw"]
+                n["rel"] = 0; n["tier"] = tier; n["src"] = "scopus"
+                merged[n["id"]] = n; added += 1
+                if sc:
+                    found.add(sc["doi"])
+        except Exception:
+            pass
+        for doi in chunk:   # OpenAlex 에 없는 것: Scopus 정보만으로 (인용 관계는 없음)
+            if doi in found:
+                continue
+            r = by_doi[doi]
+            nid = "scopus:" + (r["eid"] or doi)
+            if nid in merged:
+                continue
+            merged[nid] = {"id": nid, "doi": "https://doi.org/" + doi, "title": r["title"], "year": r["year"], "author": r["author"],
+                           "venue": r["venue"], "cit": r["cit"], "kw": r["kw"], "review": mapper.is_review_title(r["title"]),
+                           "abstract": r["abstract"], "rel": 0, "tier": tier, "src": "scopus", "_refs": []}
+            added += 1
+    return added
 
 
 def _clean_plan(plan, q):
@@ -768,7 +868,11 @@ def _run_smart(q, year, key, plan=None):
                         got += 1
             except Exception as e:
                 total = "실패"; last_err = str(e)[:400]
-        queries.append({"q": label, "expr": expr, "total": total, "new": got})
+        qrec = {"q": label, "expr": expr, "total": total, "new": got}
+        if expr and _elsevier_key():   # Scopus 도 나란히 (키가 있을 때): OpenAlex 가 놓친 논문 보완, 초록·키워드 동봉
+            sres, stotal, serr = scopus_search(build_scopus(concepts, plan["exclude"]), year, pages=2 if per_page >= 100 else 1)
+            qrec["scopus"] = {"total": stotal if not serr else "실패", "got": len(sres), "new": merge_scopus_into(merged, sres, i) if sres else 0}
+        queries.append(qrec)
         stage("2/3 검색 중 ({}/{})".format(i + 1, len(ladder)))
     if not merged and last_err:
         raise RuntimeError(last_err)   # OpenAlex 한도 소진 등 — 빈 결과 대신 이유를 보여 준다
