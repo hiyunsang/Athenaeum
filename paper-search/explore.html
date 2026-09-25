@@ -376,7 +376,7 @@ function mapColor(gi, name, dark, t) {   // 캔버스는 CSS 변수를 못 씀. 
   if (name === "기타 관련") return dark ? "#7e7d78" : "#8c8c87";
   const HUES = [[178, 34, 36], [236, 24, 50], [318, 22, 46], [76, 36, 38], [14, 40, 48], [42, 50, 42], [204, 28, 46]];   // 색상, 채도, 밝기(라이트). 파랑(강조색)은 뺌. 함수 안에 둔 이유: 복원(restore)이 이 함수를 선언보다 먼저 부름(전역 const 는 TDZ 오류)
   const [h, sat, l] = HUES[gi % HUES.length], tt = t == null ? 0.5 : t;
-  const L = dark ? (l + 22) + (tt - 0.5) * 24 : l + (0.5 - tt) * 24;   // 라이트: 최근 = 진하게(±12), 다크: 최근 = 밝게
+  const L = dark ? (l + 4) + tt * 40 : (l + 30) - tt * 42;   // 라이트: 옛 논문은 옅게(l+30) → 최근은 진하게(l−12). 다크: 옛 = 어둡게 → 최근 = 밝게. 폭을 크게 해야 한눈에 구분됨
   return "hsl(" + h + ", " + sat + "%, " + L.toFixed(0) + "%)";
 }
 function cssVar(name, fb) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
@@ -473,7 +473,9 @@ function renderResultMap(m, host) {
   // 색 모드: 연도(한 색, 최근일수록 진하게) 또는 소주제. 기억됨
   let colorMode = "group"; try { colorMode = localStorage.getItem("explore_map_color") || "group"; } catch (e) {}
   const yrs = nodes.map(n => +n.year).filter(y => y > 1900), y0 = yrs.length ? Math.min(...yrs) : 0, y1 = yrs.length ? Math.max(...yrs) : 0;
-  const yearT = (y) => (y1 > y0 && +y > 1900) ? (+y - y0) / (y1 - y0) : 0.5;
+  // 연도 위치는 순위 기준: 1963년 논문 하나 때문에 나머지가 다 '최근' 쪽으로 몰리지 않게 (같은 해는 같은 색)
+  const uy = [...new Set(yrs)].sort((a, b) => a - b), rankOf = new Map(uy.map((y, i) => [y, uy.length > 1 ? i / (uy.length - 1) : 0.5]));
+  const yearT = (y) => rankOf.has(+y) ? rankOf.get(+y) : 0.5;
   const yearCol = (y) => { const t = yearT(y), L = dark ? 34 + 34 * t : 76 - 46 * t; return "hsl(178, 26%, " + L.toFixed(0) + "%)"; };
   const paintNodes = () => nodes.forEach(n => n.col = colorMode === "year" ? yearCol(n.year) : mapColor(n.g, m.groups[n.g], dark, yearT(n.year)));
   const paintLegend = () => {
