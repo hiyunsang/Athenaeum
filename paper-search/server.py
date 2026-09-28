@@ -2869,11 +2869,17 @@ class Handler(BaseHTTPRequestHandler):
             ek = (mapper.settings().get("elsevier_api_key") or "").strip()
             self._send(200, {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
                              "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else ""})
-        elif url.path == "/api/fulltext":
+        elif url.path == "/api/fulltext":   # 홈 검색 Enter: PDF 본문까지. 낱말 단위로 모든 낱말이 든 논문만 ('ti' 가 cutting 에 걸리지 않게)
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})
-            hits = [f for f, t in texts.items() if q and q in t]
-            self._send(200, {"files": hits, "indexed": len(texts)})
+            words = [w for w in re.split(r"\s+", q) if len(w) >= 2][:8]
+            hits = []
+            if words:
+                rxs = [re.compile(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", re.I) for w in words]
+                hits = [f for f, t in texts.items() if all(rx.search(t) for rx in rxs)]
+            n = len(texts)
+            too_common = bool(n >= 10 and len(hits) > n * 0.6)   # 대부분 논문에 있는 말이면 본문 검색은 뜻이 없다 → 건너뛰고 알림
+            self._send(200, {"files": [] if too_common else hits, "hits": len(hits), "indexed": n, "too_common": too_common, "words": words})
         else:
             self._send(404, {"error": "not found"})
 

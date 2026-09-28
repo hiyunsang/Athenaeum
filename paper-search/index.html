@@ -92,6 +92,7 @@
   .row .meta { grid-column: 1; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }  /* 좁아도 동작 칸을 밀지 않고 말줄임 */
   .row .title { grid-column: 1 / -1; grid-row: 2; }
   .row .tags { grid-column: 1 / -1; grid-row: 3; }
+  .bodysect { padding: 12px 12px 5px; font-size: 12px; color: var(--text-2); border-bottom: 1px solid var(--line); background: var(--panel); }
   .meta { font-size: 12px; color: var(--text-2); line-height: 1.4; }
   .meta b { color: var(--text-2); font-weight: 600; }
   .meta .rv { color: var(--amber); font-weight: 600; }   /* 리뷰/총설 논문 (라벨 Review 또는 제목) */
@@ -244,7 +245,7 @@ let intakeDownInside = false;
 document.addEventListener("mousedown", e => { intakeDownInside = intakePanel.contains(e.target); });
 document.addEventListener("click", e => { if (intakePanel.style.display !== "none" && !intakeDownInside && !intakePanel.contains(e.target) && e.target !== intakeBtn) intakePanel.style.display = "none"; });
 pollIntake(); setInterval(pollIntake, 10000);
-let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, editing = null;
+let papers = [], groups = {}, selected = [], selectedJournals = [], ftQuery = "", ftFiles = null, ftNote = "", editing = null;
 let searchQ = "";   // 제목·저자·연도·저널·라벨 검색어 (타자와 동시에 적용)
 
 // 논문 한 편이 검색어와 맞는지. 단어를 모두 만족해야 함(AND).
@@ -320,7 +321,10 @@ function filtered() {
 function render() {
   const base = baseFiltered();
   const cur = filtered();
-  let summaryHtml = "검색 결과 " + cur.length + "편 / 전체 " + papers.length + "편";
+  const words = searchQ ? searchQ.toLowerCase().split(/\s+/).filter(Boolean) : null;
+  const bodyOnly = (p) => !!(words && ftFiles && !metaMatch(p, words));   // 제목·저자·라벨엔 없고 PDF 본문에만 걸린 논문
+  const nBody = ftFiles ? cur.filter(bodyOnly).length : 0;
+  let summaryHtml = "검색 결과 " + (cur.length - nBody) + "편" + (nBody ? " + 본문에서 " + nBody + "편" : "") + " / 전체 " + papers.length + "편" + (ftNote ? " <span class='hint' style='display:inline'>" + ftNote + "</span>" : "");
   if (clsInfo) {  // 새 논문 라벨 분류 진행 막대 (논문당 ~45초 가정)
     const el = (Date.now() - clsInfo.start) / 1000, T = 45 * clsInfo.n;
     const frac = Math.min(0.92, (el + 14) / T), prev = Math.min(0.92, el / T);
@@ -446,12 +450,19 @@ function render() {
   const mode = document.getElementById("sortSel").value;
   const byYear = (a, b) => (b.year || "0").localeCompare(a.year || "0");
   const lastRead = p => (p.read && p.read.last) || 0;
-  const sorted = cur.slice().sort((a, b) =>
-    mode === "added" ? (b.added || 0) - (a.added || 0)
+  const sorted = cur.slice().sort((a, b) => (bodyOnly(a) - bodyOnly(b)) ||   // 본문에서만 걸린 것은 뒤로
+    (mode === "added" ? (b.added || 0) - (a.added || 0)
     : mode === "read" ? (lastRead(b) - lastRead(a)) || byYear(a, b)
     : mode === "notes" ? ((b.notes_n || 0) - (a.notes_n || 0)) || byYear(a, b)
-    : byYear(a, b));
+    : byYear(a, b)));
+  let sectDone = false;
   for (const p of sorted) {
+    if (!sectDone && bodyOnly(p)) {   // 구역 머리: 여기부터는 본문 검색 결과
+      sectDone = true;
+      const h = document.createElement("div"); h.className = "bodysect";
+      h.textContent = "본문에서만 걸린 " + nBody + "편 — 제목·저자·라벨에는 없지만 PDF 본문에 \"" + searchQ + "\" 이(가) 있는 논문";
+      main.appendChild(h);
+    }
     const row = document.createElement("div"); row.className = "row" + (editing === p.file ? " sel" : "");
     row.dataset.file = p.file;
     const btn = document.createElement("button");
@@ -790,18 +801,19 @@ document.getElementById("ft").addEventListener("input", (e) => {
   const q = e.target.value.trim();
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
-    if (q !== searchQ) { searchQ = q; if (!q) { ftFiles = null; ftQuery = ""; } render(); }
+    if (q !== searchQ) { searchQ = q; if (q !== ftQuery) { ftFiles = null; ftQuery = ""; ftNote = ""; } render(); }   // 검색어를 고치면 이전 본문 결과는 버림
   }, 150);
 });
 document.getElementById("ft").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
   const q = e.target.value.trim();
   searchQ = q;
-  if (!q) { ftFiles = null; ftQuery = ""; render(); return; }
-  render();
-  const r = await fetch("/api/fulltext?q=" + encodeURIComponent(q));   // PDF 본문까지 더해서 찾기
+  if (!q) { ftFiles = null; ftQuery = ""; ftNote = ""; render(); return; }
+  ftNote = "본문 검색 중…"; render();
+  const r = await fetch("/api/fulltext?q=" + encodeURIComponent(q));   // PDF 본문까지 더해서 찾기 (낱말 단위, 모든 낱말)
   const d = await r.json();
   ftQuery = q; ftFiles = new Set(d.files);
+  ftNote = d.too_common ? "본문 검색 건너뜀 — 너무 흔한 말이라 " + d.indexed + "편 중 " + d.hits + "편에 있음" : (d.files.length ? "" : "본문에도 없음 (" + d.indexed + "편 검색)");
   render();
 });
 document.getElementById("incSug").addEventListener("change", render);
