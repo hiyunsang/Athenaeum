@@ -478,16 +478,38 @@ function highlightItems(pi, idxs, cls = "", align = "top") {
   }
   if (idxs.length) { pauseFollow(10000); scrollPdfTo(pi, pg.items[idxs[0]].y, align); }
 }
+// 글자·숫자만 남긴 비교용 문자열 (하이픈·띄어쓰기·합자(ﬁ)·문장부호를 무시 → 줄 끝 하이픈으로 갈라진 낱말도 맞는다)
+function normK(t) { return String(t || "").normalize("NFKD").toLowerCase().replace(/[^a-z0-9\u00c0-\u024f\uac00-\ud7a3]/g, ""); }
 function findInPdf(quote, preferPage, onlyPages) {
-  const tries = [quote, quote.slice(0, 80), quote.slice(0, 50), quote.slice(0, 30)].map(norm).filter(q => q.length >= 12);
+  const qn = normK(quote);
+  if (qn.length < 12) return null;
   // onlyPages 가 있으면 그 쪽들만 본다 (짧은 조각이 엉뚱한 앞쪽 페이지에 걸리는 것을 막음)
   let order = onlyPages ? onlyPages.filter(i => pages[i]) : pages.map((_, i) => i);
   if (preferPage != null && pages[preferPage]) order = [preferPage].concat(order.filter(i => i !== preferPage));
-  for (const q of tries) for (const pi of order) {
-    const pg = pages[pi]; let s = "", map = [];
-    pg.items.forEach((it, idx) => { const t = norm(it.str) + " "; for (let c = 0; c < t.length; c++) map.push(idx); s += t; });
-    const pos = s.indexOf(q);
-    if (pos >= 0) return { page: pi, idxs: [...new Set(map.slice(pos, pos + q.length))] };
+  const built = {};
+  const page = (pi) => {   // 쪽 글자 조각들을 이어 붙인 비교 문자열 + 글자 → 조각 번호
+    if (built[pi]) return built[pi];
+    let s = "", map = [];
+    pages[pi].items.forEach((it, idx) => { const t = normK(it.str); for (let c = 0; c < t.length; c++) map.push(idx); s += t; });
+    return (built[pi] = { s, map });
+  };
+  // 1) 문장 통째로
+  for (const pi of order) { const { s, map } = page(pi); const pos = s.indexOf(qn); if (pos >= 0) return { page: pi, idxs: [...new Set(map.slice(pos, pos + qn.length))] }; }
+  // 2) 앞머리(80→50→30자)로 시작을 찾고, 거기서 맞는 데까지 늘린 뒤, 꼬리(40→25→15자)로 끝을 더 찾는다 → 가운데가 조금 달라도 문장 전체를 칠함
+  for (const L of [80, 50, 30]) {
+    const head = qn.slice(0, L); if (head.length < 12) continue;
+    for (const pi of order) {
+      const { s, map } = page(pi); const pos = s.indexOf(head); if (pos < 0) continue;
+      let lo = head.length, hi = qn.length;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (s.startsWith(qn.slice(0, mid), pos)) lo = mid; else hi = mid - 1; }
+      let end = pos + lo;
+      for (const T of [40, 25, 15]) {
+        const tail = qn.slice(-T); if (tail.length < 10) continue;
+        const e = s.indexOf(tail, pos + Math.min(lo, 10));
+        if (e >= 0 && e + tail.length > end && e + tail.length - pos <= qn.length * 1.3 + 40) { end = e + tail.length; break; }
+      }
+      return { page: pi, idxs: [...new Set(map.slice(pos, end))] };
+    }
   }
   return null;
 }
