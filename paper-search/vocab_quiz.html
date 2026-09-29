@@ -35,6 +35,8 @@
   .ch.dim { color: var(--text-3); }
   #choices.locked .ch { cursor: default; }
   #choices.locked .ch:hover { background: transparent; }
+  #choices.locked { cursor: pointer; }   /* 빈 자리를 누르면 다음 */
+  #choices.locked .ch { cursor: text; }
   /* 답을 고른 뒤 보이는 예문. 높이를 고정해 두어 선택지가 밀리지 않는다 */
   #ex { flex: none; min-height: 72px; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--text-2); }
   #ex .en { color: var(--text); }
@@ -199,10 +201,13 @@
   }
   ["deck", "tag", "dir"].forEach(id => $(id).onchange = rebuild);
   $("choices").addEventListener("click", e => {
-    if (locked) { next(); return; }              // 답을 고른 뒤 아무 데나 누르면 다음
+    if (locked) {
+      // 답을 고른 뒤: 선택지 4 아래 빈 자리만 '다음'. 선택지 글이나 예문을 드래그해 읽는 건 넘기지 않는다
+      if (e.target === e.currentTarget && !String(window.getSelection()).trim()) next();
+      return;
+    }
     const el = e.target.closest(".ch"); if (el) answer(el.dataset.id);
   });
-  $("ex").addEventListener("click", () => { if (locked) next(); });
   $("skip").onclick = () => { locked = false; next(); };
   $("prompt").onclick = () => { if (cur && ($("dir").value === "en" || locked)) speak(cur.term); };
   function paintAuto() { $("auto").textContent = pref.auto ? "자동 듣기 켬" : "자동 듣기"; $("auto").style.color = pref.auto ? "var(--accent)" : ""; }
