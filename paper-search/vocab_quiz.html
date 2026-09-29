@@ -38,11 +38,14 @@
   #choices.locked { cursor: pointer; }   /* 빈 자리를 누르면 다음 */
   #choices.locked .ch { cursor: text; }
   /* 답을 고른 뒤 보이는 예문. 높이를 고정해 두어 선택지가 밀리지 않는다 */
-  #ex { flex: none; min-height: 72px; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--text-2); }
+  #ex { flex: none; min-height: 92px; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--text-2); }
   #ex .en { color: var(--text); }
   #ex .en b { color: var(--accent); font-weight: 600; }
   #ex .ko { margin-top: 2px; }
   #ex .pos { color: var(--text-3); font-size: 12px; margin-right: var(--s2); }
+  #ex .rel { margin-top: var(--s1); font-size: 12px; color: var(--text-2); }
+  #ex .rel .k { color: var(--text-3); margin-right: 2px; }
+  #ex .rel span + span { margin-left: var(--s3); }
   footer { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 6px var(--s3); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); min-height: 30px; }
   footer .act { padding: 0; }
   footer .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -176,7 +179,11 @@
     if ($("dir").value === "ko" && pref.auto) speak(cur.term);
     $("sub").innerHTML = esc(cur.ipa || "") + (cur.pos ? (cur.ipa ? " · " : "") + "<b class='pos'>" + esc(cur.pos) + "</b>" : "");
     const ex = (cur.examples || [])[0];
-    $("ex").innerHTML =
+    const rel = [];
+    if (cur.syn && cur.syn.length) rel.push("<span><i class='k'>≈</i>" + esc(cur.syn.join(", ")) + "</span>");
+    if (cur.ant && cur.ant.length) rel.push("<span><i class='k'>≠</i>" + esc(cur.ant.join(", ")) + "</span>");
+    if (cur.family && cur.family.length) rel.push("<span><i class='k'>파생</i>" + esc(cur.family.map(f => f.w + (f.pos ? "(" + f.pos + ")" : "")).join(", ")) + "</span>");
+    $("ex").innerHTML = (rel.length ? "<div class='rel'>" + rel.join("") + "</div>" : "") +
       (ex && ex.en ? "<span class='en'>" + markTerm(ex.en, cur.term) + "</span>" + (ex.ko ? "<div class='ko'>" + esc(ex.ko) + "</div>" : "") : "");
     // 자동으로 넘기지 않는다 — 예문·품사를 읽을 시간은 사용자가 정한다 (Enter·스페이스·클릭)
   }

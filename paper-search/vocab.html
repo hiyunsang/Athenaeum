@@ -74,7 +74,7 @@
         <select id="fSort"><option value="new">최근 담은 순</option><option value="term">가나다·알파벳순</option><option value="deck">묶음순</option></select>
         <span style="margin-left:auto"></span><span class="hint" id="cnt"></span>
         <select id="fillStyle" title="예문 문체 — 묶음마다 기억됩니다"><option value="toeic">토익</option><option value="toefl">토플</option><option value="paper">논문</option></select>
-        <button class="act" id="fillGo" title="지금 고른 묶음·태그의 단어 중 품사나 예문이 빈 것을 Claude 가 채웁니다 (책 예문을 베끼지 않고 새로 씀)">예문·품사 채우기</button>
+        <button class="act" id="fillGo" title="지금 고른 묶음·태그의 단어 중 품사·예문·발음·동의어/반의어/파생어가 빈 것을 Claude 가 채웁니다 (책을 베끼지 않고 새로 씀)">예문·품사·관계어 채우기</button>
       </div>
       <div class="prog" id="fillProg" hidden></div>
       <div id="list"></div>
@@ -199,6 +199,9 @@ function renderList() {
     return "<div class='w' data-id='" + w.id + "'>" +
       "<div><div class='t'>" + esc(w.term) + (w.pos ? "<span class='pos'>" + esc(w.pos) + "</span>" : "") + (w.ipa ? "<span class='pos'>" + esc(w.ipa) + "</span>" : "") + "</div>" +
       (w.gloss_en ? "<div class='g'>" + esc(w.gloss_en) + "</div>" : "") +
+      ((w.syn && w.syn.length) || (w.ant && w.ant.length) || (w.family && w.family.length)
+        ? "<div class='g'>" + [w.syn && w.syn.length ? "≈ " + esc(w.syn.join(", ")) : "", w.ant && w.ant.length ? "≠ " + esc(w.ant.join(", ")) : "",
+            w.family && w.family.length ? "파생 " + esc(w.family.map(f => f.w + (f.pos ? "(" + f.pos + ")" : "")).join(", ")) : ""].filter(Boolean).join(" · ") + "</div>" : "") +
       (ex ? "<div class='ex'><i>" + esc((ex.en || "").slice(0, 180)) + "</i>" + (ex.ko ? "<br>" + esc(ex.ko.slice(0, 180)) : "") +
         (ex.title ? "<div class='src'>" + esc(ex.title.slice(0, 70)) + (ex.page ? " p." + ex.page : "") + (ex.file ? " · <a href='/view?file=" + encodeURIComponent(ex.file) + "&kind=translation" + (ex.sent ? "&sent=" + ex.sent : "") + "' target='_blank'>원문</a>" : "") + "</div>" : "") + "</div>" : "") +
       "</div>" +
