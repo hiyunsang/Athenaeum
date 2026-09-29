@@ -17,7 +17,7 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
   paper-search\               프로그램
     server.py        (2.5k줄) 표준 라이브러리 ThreadingHTTPServer. 라우트·PDF 추출·요약/번역 생성·라벨링·탐색·읽기 기록
     intake.py        (1.0k줄) 수집: Downloads 감시 → DOI → Crossref → '연도_저널약어_저자_제목.pdf' 로 보관
-    manuscript.py    (1.3k줄) 원고: 근거 카드·개요·초안·검토·영문화·.docx 입출력·교수님 주석 논의·도식
+    manuscript.py    (1.5k줄) 원고: 근거 카드·개요·초안·검토·영문화·.docx 입출력·교수님 주석 논의·도식·본보기(잘 쓴 초록의 문장 역할)
     vocab.py         (360줄)  단어장: 논문에서 담기·목록 담기·Anki 내보내기
     mapper.py                  관련 논문 맵 (OpenAlex)
     rules.py                   규칙 기반 라벨 분류 (Claude 실패 시 폴백)
@@ -129,6 +129,9 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 - **탐색은 항상 따로 큰 창**(홈 「논문 탐색」 → `window.open` 1280×900, 이미 열려 있으면 앞으로). 홈 옆 분할창(iframe)은 목록 재배치로 끊기고 버튼이 헷갈려 없앴다(2026-09-23)
 - **결과 맵**(`map.js` 의 `renderResultMap(m, host, opts)` — 탐색 결과 맵과 **관련맵(`mapview.html`)이 공유**, CSS 는 `ui.css` 의 '논문 맵' 절. 관련맵은 `fixedColor: "year"`(색 = 연도 한 가지, 사용자 선택 2026-09-25)·`noCohesion`·시드 노드(`seed: true` → 한가운데·굵은 검은 테두리), 뿌리·후속 논문은 맵 아래 목록; 캔버스): `results_map` 이 준 노드·선·유사도로 배치(관계대로 ↔ 소주제로 슬라이더; 관계대로일 땐 연결 강도로 반지름을 정해 연결 많은 논문이 가운데). 색 = 소주제(같은 소주제 안에서 최근일수록 진하게, 「색: 연도」 토글), 원 크기 = 피인용, 겹침 허용, 처음엔 튀어나오는 애니메이션, 휠 확대·빈 곳 드래그 이동, 원을 누르면 오른쪽 정보 패널(초록은 노드의 `abstract`), 아래 오른쪽 연도 띠. 팔레트 상수는 `mapColor` 안에 둔다(복원이 선언보다 먼저 불러 전역 const 는 TDZ 오류). 내장 브라우저는 rAF 가 안 돌아 애니메이션은 setTimeout 폴백으로 끝 상태를 그린다
 - **초록**: OpenAlex 는 Elsevier(ScienceDirect) 논문의 초록을 안 준다(Crossref·Semantic Scholar 도 없음, 2026-09-24 확인). 정보 패널의 「찾기」·요약·번역은 초록이 없으면 `find_abstract` 로 보유 PDF 첫 2쪽(`a b s t r a c t` 띄어쓰기 포함) → Scopus(키가 있으면) → Crossref → Semantic Scholar 순으로 찾고. **Elsevier 무료 API 키**(환경설정 `elsevier_api_key`, `설정.json`)로 되는 것: Scopus 초록 API `/content/abstract/doi/` (모든 출판사 초록·저자 키워드·피인용, 주 10,000회), Scopus 검색 API(주 20,000회), ScienceDirect 검색 API. 안 되는 것: ScienceDirect 기사 API(META_ABS 도 403, 기관 IP 필요). 스마트 탐색은 키가 있으면 **사다리 단계마다 Scopus 검색도 나란히**(`build_scopus` → `scopus_search`, TITLE-ABS-KEY, 1~2쪽×25편, view=COMPLETE 로 초록·저자 키워드 동봉; `merge_scopus_into` 가 OpenAlex 에 없던 DOI 를 OpenAlex 에 50편씩 DOI 조회해 인용 관계를 붙이고, 거기도 없으면 `scopus:EID` 노드) 돌리고, Claude 선별 전에 초록 없는 후보를 `fill_abstracts_scopus` 로 채운다(4갈래 병렬, `관련맵\초록캐시.json` DOI 캐시). 단계당 1~3초 추가. 찾은 초록은 `관련맵\탐색요약.json` 에 캐시(키 `id|abs`, 요약 `id`, 번역 `id|tr`). 검색 결과의 초록은 2500자까지 보관
+
+### 원고 '본보기' (`manuscript.py` `exemplars` → `POST /api/ms/exemplars`)
+고른 저널(기본 IJMTM·JMPT·IJEM + 원고의 투고 저널)의 초록을 **내 서재 PDF**(`extract_abstract`, 원고 주제어와 겹치는 제목·최근 순)와 **Scopus**(Elsevier 키, 저널마다 고르게 — 한 번에 섞으면 IJMTM 만 나옴, 주제어로 모자라면 그 저널 피인용 상위)에서 모아, 문장마다 역할(배경·공백·목적·방법·결과·의의)을 Claude sonnet 한 번에 붙인다(캐시 `원고\_본보기캐시.json`, 실패하면 단서 규칙). 내 초록도 같은 기준으로 나눠 빠진 역할을 알린다. 첫 호출 1~2분, 캐시 뒤엔 빠름. 서버가 `claude_text`·`extract_abstract`·`elsevier_key` 를 `ms.init` 으로 주입
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다

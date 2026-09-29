@@ -1153,6 +1153,230 @@ def _q(url, k, d=""):
     return urllib.parse.parse_qs(url.query).get(k, [d])[0]
 
 
+# ---------- 본보기: 잘 쓴 논문들이 그 절을 어떻게 썼나 (지금은 초록) ----------
+MOVES = ["배경", "공백", "목적", "방법", "결과", "의의"]
+_STOP = set(("the and for with from that this these those into onto over under between during using based study studies paper results "
+             "result method methods effect effects analysis model models new novel approach high low different various also than which were "
+             "been have has had their there here such both more most less very when while where within without through toward towards").split())
+_ABBR = r"(?:e\.g|i\.e|et al|Figs?|Eqs?|approx|vs|ca|resp|Refs?|No)\."
+
+
+def _sentences(text):
+    """영어·한국어 초록을 문장으로. 약어(e.g., et al., Fig.)와 소수점의 마침표는 문장 끝으로 보지 않는다."""
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    if not t:
+        return []
+    t = re.sub(_ABBR, lambda m: m.group(0).replace(".", "\u00a7"), t)
+    t = re.sub(r"(\d)\.(\d)", "\\1\u00a7\\2", t)
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9(\[\"\u201c\uac00-\ud7a3])", t)
+    return [p.replace("\u00a7", ".").strip() for p in parts if p.strip()]
+
+
+def _topic_words(doc, limit=10):
+    import collections
+    f = doc.get("front") or {}
+    text = " ".join([doc.get("title", ""), f.get("title", ""), " ".join(f.get("keywords") or []), f.get("abstract", "")] +
+                    [n.get("heading", "") for n in (doc.get("outline") or [])[:12]])
+    words = re.findall(r"[A-Za-z][A-Za-z\-]{3,}", text.lower())
+    c = collections.Counter(w for w in words if w not in _STOP)
+    return [w for w, _ in c.most_common(limit)]
+
+
+def _journal_full(abbr):
+    return re.sub(r"\s*\([^)]*\)\s*$", "", JOURNAL_NAMES.get(abbr, abbr)).strip()
+
+
+def _library_exemplars(journals, topic, n):
+    """내 서재에서 그 저널 논문을 주제 가까운 순·최근 순으로 골라 PDF 첫 2쪽의 초록을 뽑는다."""
+    tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
+    cands = []
+    try:
+        names = os.listdir(cfg["ARCHIVE"])
+    except OSError:
+        names = []
+    tset = set(topic)
+    for f in names:
+        m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_(.+)\.pdf$", f, re.I)
+        if not m or m.group(2) not in journals:
+            continue
+        title = (tags.get(f) or {}).get("title") or m.group(4)
+        tw = set(re.findall(r"[a-z][a-z\-]{3,}", title.lower()))
+        cands.append((len(tw & tset) * 3 + (int(m.group(1)) - 2000) * 0.05, f, m.group(2), int(m.group(1)), m.group(3), title))
+    cands.sort(reverse=True)
+    out = []
+    for _, f, j, y, au, title in cands[: n * 3]:
+        a = cfg["extract_abstract"](f) if cfg.get("extract_abstract") else ""
+        if 80 <= len(a.split()) <= 450:
+            out.append({"src": "library", "file": f, "journal": j, "year": y, "author": au, "title": title, "abstract": a})
+        if len(out) >= n:
+            break
+    return out
+
+
+def _scopus_exemplars(journals, topic, n):
+    """Scopus(Elsevier 키)에서 저널마다 고르게: 2018년 이후, 주제어로 좁혀 피인용 순. 주제어로 모자라면 그 저널의 피인용 상위로 채움. 초록이 함께 온다."""
+    key = cfg["elsevier_key"]() if cfg.get("elsevier_key") else ""
+    if not key:
+        return [], "Elsevier API 키가 없어 Scopus 는 건너뜀 (⚙ 설정)"
+    if n <= 0:
+        return [], ""
+    import requests as rq
+    per = max(2, -(-n // max(1, len(journals))))
+    out, errs = [], []
+
+    def query(q, want, j):
+        try:
+            r = rq.get("https://api.elsevier.com/content/search/scopus", params={"query": q, "count": min(25, want * 3), "view": "COMPLETE", "sort": "-citedby-count"},
+                       headers={"X-ELS-APIKey": key, "Accept": "application/json", "User-Agent": "Athenaeum/0.9"}, timeout=30)
+            if r.status_code != 200:
+                errs.append("Scopus %s %d" % (j, r.status_code)); return []
+            entries = (r.json().get("search-results") or {}).get("entry") or []
+        except Exception as e:
+            errs.append("Scopus %s 오류" % j); return []
+        got = []
+        for e in entries:
+            if "error" in e:
+                break
+            a = re.sub(r"\s+", " ", e.get("dc:description") or "").strip()
+            a = re.sub(r"^abstract\s*", "", a, flags=re.I)
+            a = re.sub(r"\s*(©|\(c\))\s*\d{4}.*$", "", a, flags=re.I)   # 끝의 저작권 표기
+            if not (80 <= len(a.split()) <= 450):
+                continue
+            got.append({"src": "scopus", "doi": e.get("prism:doi") or "", "journal": j, "year": int((e.get("prism:coverDate") or "0")[:4] or 0),
+                        "author": ((e.get("dc:creator") or "").split(",")[0]).strip(), "title": e.get("dc:title") or "", "abstract": a,
+                        "cit": int(e.get("citedby-count") or 0)})
+            if len(got) >= want:
+                break
+        return got
+
+    for j in journals:
+        base = 'SRCTITLE("%s") AND PUBYEAR > 2017' % _journal_full(j)
+        got = query(base + (" AND TITLE-ABS-KEY(" + " OR ".join(topic[:6]) + ")" if topic else ""), per, j)
+        if len(got) < per:   # 주제어로 모자라면 그 저널의 잘 인용된 초록으로 채움 (글 구조를 보는 데는 주제가 달라도 됨)
+            titles = {g["title"] for g in got}
+            got += [g for g in query(base, per - len(got) + 2, j) if g["title"] not in titles][: per - len(got)]
+        out += got
+    return out[:max(n, per * len(journals))], (" · ".join(errs) if errs else "")
+
+
+_MOVE_CUES = [("공백", r"\b(however|remains? (unclear|unknown|limited|challenging)|lack of|little is known|few studies|not (yet )?been|challeng)"),
+              ("목적", r"\b(this (study|paper|work|research)|in this (study|paper|work)|we (propose|present|investigate|develop|aim|report)|aims? to|the (aim|objective|purpose))"),
+              ("의의", r"\b(provides? (a |new )?(insight|guidance|basis|understanding)|contribut|implication|can be (used|applied|extended)|this work (offers|provides)|these findings)"),
+              ("결과", r"\b(results? (show|indicate|reveal|demonstrate)|(was|were) (observed|found)|found that|increase[sd]?|decrease[sd]?|reduc|improv|%)"),
+              ("방법", r"\b(experiment|simulat|finite element|modell?ing|were (conducted|performed|measured|carried)|characteri[sz]|measur|using)")]
+
+
+def _heuristic_moves(sents):
+    """Claude 가 안 될 때의 단서 규칙."""
+    out = []
+    for i, s in enumerate(sents):
+        low = s.lower(); mv = None
+        for name, rx in _MOVE_CUES:
+            if re.search(rx, low):
+                mv = name; break
+        out.append(mv or ("배경" if i < 2 else ("의의" if i == len(sents) - 1 else "결과")))
+    return out
+
+
+def _exemplar_cache_path():
+    return os.path.join(cfg["MS_DIR"], "_본보기캐시.json")
+
+
+def _label_moves(texts):
+    """{키: 문장 목록} → {키: 역할 목록}. 캐시(문장 목록의 md5) 먼저, 나머지는 Claude(sonnet) 한 번에. 안 되면 단서 규칙."""
+    import hashlib, io
+    try:
+        cache = json.load(io.open(_exemplar_cache_path(), encoding="utf-8"))
+    except Exception:
+        cache = {}
+    res, todo = {}, {}
+    for k, sents in texts.items():
+        h = hashlib.md5("\n".join(sents).encode("utf-8")).hexdigest()
+        if isinstance(cache.get(h), list) and len(cache[h]) == len(sents):
+            res[k] = cache[h]
+        elif sents:
+            todo[k] = (h, sents)
+        else:
+            res[k] = []
+    if todo and cfg.get("claude_text"):
+        blocks = ["<%s>\n" % k + "\n".join("[%d] %s" % (i + 1, s) for i, s in enumerate(sents)) for k, (h, sents) in todo.items()]
+        prompt = ("아래 초록들의 문장마다 수사적 역할을 하나씩 붙여라. 역할은 다음 여섯 가지 중 하나다:\n"
+                  "배경(분야·중요성·일반 사실), 공백(기존 연구의 한계·남은 문제·필요성), 목적(이 연구가 하려는 것·제안), "
+                  "방법(실험·모델·조건·재료·측정), 결과(발견·관찰·수치), 의의(기여·응용·결론적 함의).\n"
+                  "JSON 한 줄만 출력: {\"<키>\": [\"배경\", \"공백\", ...]} — 배열 길이는 그 초록의 문장 수와 같게.\n\n" + "\n\n".join(blocks))
+        out = cfg["claude_text"](prompt, timeout=240, model="sonnet") or ""
+        m = re.search(r"\{.*\}", out, re.S)
+        parsed = {}
+        if m:
+            try:
+                parsed = json.loads(m.group(0))
+            except Exception:
+                parsed = {}
+        for k, (h, sents) in todo.items():
+            mv = parsed.get(k)
+            if isinstance(mv, list) and len(mv) == len(sents) and all(x in MOVES for x in mv):
+                res[k] = mv; cache[h] = mv
+    for k, (h, sents) in todo.items():
+        if k not in res:
+            res[k] = _heuristic_moves(sents)
+    try:
+        with io.open(_exemplar_cache_path(), "w", encoding="utf-8") as fp:
+            json.dump(cache, fp, ensure_ascii=False)
+    except Exception:
+        pass
+    return res
+
+
+def _pattern(moves):
+    out = []
+    for m in moves:
+        if out and out[-1][0] == m:
+            out[-1][1] += 1
+        else:
+            out.append([m, 1])
+    return " → ".join(m + (" ×%d" % c if c > 1 else "") for m, c in out)
+
+
+def exemplars(body):
+    """잘 쓴 논문의 초록 본보기 + 문장 역할 + 전형적 구조 요약 + 내 초록 비교."""
+    doc = load_ms(body.get("id")) or {"title": "", "front": {}, "outline": []}
+    journals = [str(j).strip() for j in (body.get("journals") or []) if str(j).strip()] or ["IJMTM", "JMPT", "IJEM"]
+    source = body.get("source") if body.get("source") in ("both", "library", "scopus") else "both"
+    n = max(4, min(20, int(body.get("n") or 10)))
+    topic = _topic_words(doc)
+    items, notes = [], []
+    if source in ("both", "library"):
+        items += _library_exemplars(journals, topic, n if source == "library" else (n + 1) // 2)
+    if source in ("both", "scopus"):
+        sc, err = _scopus_exemplars(journals, topic, n if source == "scopus" else n - len(items))
+        if err:
+            notes.append(err)
+        seen = {re.sub(r"\W+", "", it["title"].lower())[:60] for it in items}
+        items += [x for x in sc if re.sub(r"\W+", "", x["title"].lower())[:60] not in seen]
+    texts = {"E%d" % i: _sentences(it["abstract"]) for i, it in enumerate(items)}
+    mine_text = ((doc.get("front") or {}).get("abstract") or "").strip()
+    if mine_text:
+        texts["ME"] = _sentences(mine_text)
+    labels = _label_moves(texts) if texts else {}
+    for i, it in enumerate(items):
+        ss = texts["E%d" % i]; mv = labels.get("E%d" % i) or _heuristic_moves(ss)
+        it["sentences"] = [{"t": s, "m": m} for s, m in zip(ss, mv)]
+        it["pattern"] = _pattern(mv); it["words"] = len(it["abstract"].split())
+        it.pop("abstract", None)
+    mine = None
+    if mine_text:
+        ss = texts["ME"]; mv = labels.get("ME") or _heuristic_moves(ss)
+        mine = {"sentences": [{"t": s, "m": m} for s, m in zip(ss, mv)], "pattern": _pattern(mv),
+                "words": len(mine_text.split()), "missing": [m for m in MOVES if m not in mv]}
+    summ = {}
+    if items:
+        k = len(items)
+        summ = {"n": k, "avg_words": round(sum(it["words"] for it in items) / k), "avg_sents": round(sum(len(it["sentences"]) for it in items) / k, 1),
+                "moves": {m: {"avg": round(sum(sum(1 for s in it["sentences"] if s["m"] == m) for it in items) / k, 1),
+                              "share": round(100 * sum(1 for it in items if any(s["m"] == m for s in it["sentences"])) / k)} for m in MOVES}}
+    return {"items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
+
+
 def handle_get(h, url):
     p = url.path
     if p == "/ms":
@@ -1218,6 +1442,8 @@ def handle_post(h, body):
             return h._send(200, find_evidence(load_ms(body.get("id")), body.get("node"), body.get("query", "")))
         if p == "/api/ms/check":
             return h._send(200, check_manuscript(load_ms(body.get("id"))))
+        if p == "/api/ms/exemplars":   # 본보기: 잘 쓴 논문의 초록 구조
+            return h._send(200, exemplars(body))
         if p == "/api/ms/claude":
             doc = load_ms(body.get("id"))
             mode = body.get("mode")
