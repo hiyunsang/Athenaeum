@@ -8,26 +8,29 @@
 <link rel="stylesheet" href="/ui.css">
 <style>
   /* 작은 팝업 창(약 380×520)에 맞춘 한 화면 구성. 무한히 이어지는 4지선다 */
+  /* 창을 키우면 글자도 같이 커진다(누워서 볼 때). 기준 380px 창 = 12.7px, 폭·높이 중 작은 쪽을 따라 최대 3배 */
+  html { font-size: clamp(12px, calc(min(100vw, 70vh) / 30), 38px); }
   html, body { height: 100%; }
+  body { font-size: 1rem; }
   body { display: flex; flex-direction: column; background: var(--surface); }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding: 6px var(--s3); border-bottom: 1px solid var(--line); flex: none; }
   header .brand-mark { height: 18px; display: block; }
-  header h1 { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  header h1 { font-size: 1.05rem; font-weight: 600; white-space: nowrap; }
   header .ctl { flex-basis: 100%; display: flex; gap: var(--s2); }
-  header .ctl select { flex: 1; min-width: 0; font-size: 12px; padding: 2px 4px; }
-  header .score { margin-left: auto; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  header .ctl select { flex: 1; min-width: 0; font-size: 0.95rem; padding: 0.15rem 0.3rem; }
+  header .score { margin-left: auto; font-size: 0.95rem; color: var(--text-2); white-space: nowrap; }
   header .score b { color: var(--text); font-weight: 600; }
-  #card { flex: none; padding: var(--s6) var(--s4) var(--s3); text-align: center; }
-  #prompt { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; word-break: break-word; line-height: 1.25; min-height: 33px; }
-  #prompt.ko { font-size: 20px; font-weight: 500; }
-  #sub { font-size: 13px; color: var(--text-2); margin-top: var(--s1); min-height: 18px; }
+  #card { flex: none; padding: 1.8rem var(--s4) 1rem; text-align: center; }
+  #prompt { font-size: 2.1rem; font-weight: 600; letter-spacing: -0.01em; word-break: break-word; line-height: 1.25; min-height: 33px; }
+  #prompt.ko { font-size: 1.6rem; font-weight: 500; }
+  #sub { font-size: 1.05rem; color: var(--text-2); margin-top: var(--s1); min-height: 18px; }
   #sub .pos { color: var(--accent); font-weight: 600; }   /* 답을 고른 뒤 품사 — 동사·형용사·부사가 한눈에 */
   #prompt.say { cursor: pointer; }
   #prompt.say:hover { color: var(--accent); }
   #choices { flex: 1; overflow: auto; border-top: 1px solid var(--line); }
-  .ch { display: flex; align-items: center; gap: var(--s3); padding: 10px var(--s4); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; line-height: 1.35; }
+  .ch { display: flex; align-items: center; gap: var(--s3); padding: 0.8rem var(--s4); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 1.15rem; line-height: 1.35; }
   .ch:hover { background: var(--hover); }
-  .ch .n { color: var(--text-3); font-size: 12px; width: 10px; flex: none; }
+  .ch .n { color: var(--text-3); font-size: 0.95rem; width: 0.8rem; flex: none; }
   .ch .t { flex: 1; min-width: 0; word-break: break-word; }
   .ch.right { color: var(--green); font-weight: 600; }
   .ch.right .n { color: var(--green); }
@@ -38,16 +41,16 @@
   #choices.locked { cursor: pointer; }   /* 빈 자리를 누르면 다음 */
   #choices.locked .ch { cursor: text; }
   /* 답을 고른 뒤 보이는 예문. 높이를 고정해 두어 선택지가 밀리지 않는다 */
-  #ex { flex: none; min-height: 92px; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--text-2); }
+  #ex { flex: none; min-height: 7rem; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); font-size: 1.05rem; line-height: 1.45; color: var(--text-2); }
   #ex .en { color: var(--text); }
   #ex .en b { color: var(--accent); font-weight: 600; }
   #ex .ko { margin-top: 2px; }
-  #ex .pos { color: var(--text-3); font-size: 12px; margin-right: var(--s2); }
-  #ex .rel { margin-top: var(--s1); font-size: 12px; color: var(--text-2); }
+  #ex .pos { color: var(--text-3); font-size: 0.95rem; margin-right: var(--s2); }
+  #ex .rel { margin-top: var(--s1); font-size: 0.95rem; color: var(--text-2); }
   #ex .rel .k { color: var(--text-3); margin-right: 2px; }
   #ex .rel span + span { margin-left: var(--s3); }
-  footer { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 6px var(--s3); border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); min-height: 30px; }
-  footer .act { padding: 0; }
+  footer { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0.4rem var(--s3); border-top: 1px solid var(--line); font-size: 0.95rem; color: var(--text-3); min-height: 2.4rem; }
+  footer .act { padding: 0; font-size: 0.95rem; }
   footer .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty { padding: var(--s8) var(--s4); color: var(--text-3); text-align: center; }
   @media (prefers-reduced-motion: no-preference) { .ch { transition: background .08s; } }
