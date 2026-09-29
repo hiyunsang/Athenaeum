@@ -48,6 +48,9 @@
   .prog { height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; margin: 4px 0 10px; } .prog i { display: block; height: 100%; background: var(--accent); }
   code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
   ol.guide { margin: 6px 0 0 18px; padding: 0; font-size: 13px; line-height: 1.8; color: var(--text-2); } ol.guide b { color: var(--text); }
+  /* 책 색: 노랭이·초록이 묶음 칩 (단어 맞추기 팝업과 같은 색) */
+  .chip[data-book="yellow"] { background: #FFF1C7; color: #946800; }
+  .chip[data-book="green"] { background: #DDF1E6; color: #0B7358; }
 </style>
 <script src="/ui.js"></script>
 </head>
@@ -208,7 +211,7 @@ function renderList() {
       "<div class='m'><input class='ed' data-m='" + w.id + "' value='" + esc(w.meaning || "") + "' placeholder='뜻'>" +
       (w.note ? "<div class='g'>" + esc(w.note) + "</div>" : "") + "</div>" +
       "<div class='acts'><span class='chip" + (w.status === "known" ? " known" : "") + "' data-k='" + w.id + "' title='알아요 표시 바꾸기'>" + (w.status === "known" ? "알아요" : "아직") + "</span>" +
-      "<span class='chip'>" + esc(w.deck || "") + "</span>" +
+      "<span class='chip'" + (/노랭/.test(w.deck || "") ? " data-book='yellow'" : /초록/.test(w.deck || "") ? " data-book='green'" : "") + ">" + esc(w.deck || "") + "</span>" +
       "<span class='ic' data-mv='" + w.id + "' title='묶음 옮기기'>⇄</span>" +
       "<span class='ic del' data-d='" + w.id + "' title='삭제'>✕</span></div></div>";
   }).join("") || "<div class='hint' style='padding:20px;text-align:center'>단어가 없습니다. 「담기」에서 목록을 붙여 넣거나, 읽기 화면에서 드래그 → 단어.</div>";

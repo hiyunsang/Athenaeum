@@ -54,6 +54,12 @@
   footer .act { padding: 0; font-size: 0.95rem; }
   footer .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty { padding: var(--s8) var(--s4); color: var(--text-3); text-align: center; }
+
+  /* 책 색 입히기 (Lyceum 처럼 화면 전체를 옅게 물들이고 강조색만 바꾼다). 맞음·틀림 색은 그대로 */
+  body[data-book="yellow"] { --accent: #946800; --accent-bg: #FFF1C7; --surface: #FFFDF4; --bg: #FBF6E4; --line: #EEE3C2; --hover: #FFF6DA; }
+  body[data-book="green"]  { --accent: #0B7358; --accent-bg: #DDF1E6; --surface: #F8FCF9; --bg: #EDF6F0; --line: #D6E9DE; --hover: #ECF7F0; }
+  body[data-book] header { border-top: 4px solid var(--accent); background: var(--accent-bg); }
+  body[data-book] header h1 { color: var(--accent); }
   @media (prefers-reduced-motion: no-preference) { .ch { transition: background .08s; } }
 </style>
 <script src="/ui.js"></script>
@@ -205,8 +211,10 @@
     const dk = $("deck").value;
     o.textContent = "복습할 것 (" + words.filter(w => (!dk || w.deck === dk) && weak(w)).length + ")";
   }
+  function bookOf(deck) { return /노랭/.test(deck || "") ? "yellow" : /초록/.test(deck || "") ? "green" : ""; }
   function rebuild() {
     const dk = $("deck").value, tg = $("tag").value;
+    if (bookOf(dk)) document.body.dataset.book = bookOf(dk); else delete document.body.dataset.book;
     pool = words.filter(w => w.term && w.meaning && (!dk || w.deck === dk) &&
       (tg === REVIEW ? weak(w) : (!tg || (w.tags || []).includes(tg))));
     paintReviewCount();
