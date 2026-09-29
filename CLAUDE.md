@@ -62,6 +62,7 @@ POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/label
 ## 2. 실행·재시작·시험
 
 - 실행: `paper-search\Athenaeum_실행.bat` (포터블판은 동봉 `python\` 을, 아니면 PATH 의 pythonw 를 씀)
+- **업데이트 뒤 옛 서버가 남는 문제(2026-09-29, 친구 PC 에서 '변한 게 없다')**: 실행 bat 이 서버를 켜기 전에 `launch_check.py` 를 불러 같은 포트의 **다른 판** 서버(옛 판은 `/api/version` 이 없어 `?`)를 `Get-NetTCPConnection` 으로 찾아 끈다(명령줄에 server.py 가 있는 것만). 서버는 판을 **켤 때 한 번만** 읽는다(`APP_VERSION`) — 파일이 바뀌어도 옛 프로세스는 옛 판을 알려야 교체된다. 설치 도우미의 업데이트도 `stop_port(8770)` 로 한 번 더 끈다. 어느 판이 도는지는 ⚙ 환경설정 머리에 표시
 - **코드를 고친 뒤 반영**: `python tools\restart_server.py` — 진행 중인 요약·번역이 있으면 멈추지 않고 알려 준다. 끊어도 되면 `--force`
 - 다른 포트로 시험: 환경변수 `ATHENAEUM_PORT=8790`, 브라우저를 안 띄우려면 `ATHENAEUM_NOBROWSER=1`
 - Python: 개발 PC 는 3.8.6, 포터블판은 3.11.9. 패키지는 `paper-search\requirements.txt` (pymupdf·pypdf·requests·pywin32·numpy·scipy·fonttools)

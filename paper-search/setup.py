@@ -287,6 +287,13 @@ def update_in_place(old):
     """기존 폴더의 프로그램 파일만 새것으로. 데이터(논문모음·번역·메모·원고·단어장·라벨·설정)는 그대로."""
     say("      기존 폴더를 %s → %s 로 업데이트합니다: %s" % (read_version(old) or "0.9.1 이하", VERSION, old))
     stop_server_at(old)
+    try:   # 다른 경로·방법으로 켜진 옛 서버가 포트를 잡고 있으면 그것도 끈다 (안 그러면 새 판을 켜도 옛 서버에 붙어 '변한 게 없어' 보인다)
+        sys.path.insert(0, HERE)
+        import launch_check
+        if launch_check.port_open(8770):
+            launch_check.stop_port(8770, say)
+    except Exception as e:
+        say("      (포트 점검 건너뜀: %s)" % e)
     n = copy_tree_program(HERE, os.path.join(old, "paper-search"))
     say("      paper-search 프로그램 파일 %d개 교체 (tags·labels·수집설정 등 데이터 파일은 그대로)" % n)
     newpy = os.path.join(ROOT, "python")
@@ -310,6 +317,7 @@ def update_in_place(old):
         if os.path.isfile(p):
             shutil.copy2(p, os.path.join(old, f))
     say("      업데이트 끝. 이제부터 바로가기와 실행은 기존 폴더를 씁니다. 새로 푼 이 폴더(%s)는 지워도 됩니다." % ROOT)
+    say("      Athenaeum 앱 창이 열려 있으면 F5 로 새로 고치세요. 어느 판인지는 홈의 ⚙ 환경설정 머리에 적혀 있습니다.")
     return True
 
 

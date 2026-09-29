@@ -95,6 +95,7 @@ function openSettings() {
     "</div></div>";
   document.body.insertAdjacentHTML("beforeend", html);
   const box = document.getElementById("uiSettings");
+  fetch("/api/version").then(r => r.json()).then(v => { const h = box.querySelector(".uhint"); if (h && v.version) h.textContent = "Athenaeum " + v.version + " · " + h.textContent; }).catch(() => {});   // 어느 판이 도는지
   box.addEventListener("click", e => { if (e.target === box) closeSettings(); });
   box.querySelectorAll("[data-k]").forEach(el => {
     el.addEventListener("input", () => uiSet(el.dataset.k, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));

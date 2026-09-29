@@ -19,6 +19,8 @@ if not defined PYW (
   pause
   exit /b 1
 )
+rem if another version of the server is already on this port (left over after an update), stop it first
+"%PY%" "%HERE%launch_check.py"
 start "" "%PYW%" "%HERE%server.py"
 rem wait up to ~12 s for the server to answer on the port
 set /a N=0

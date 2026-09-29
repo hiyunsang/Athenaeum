@@ -1002,6 +1002,20 @@ def pdf_pages_text(name, per_page=3500):
     return pages
 
 
+def _read_app_version():
+    try:
+        return io.open(os.path.join(BASE, "VERSION"), encoding="utf-8").read().strip()
+    except Exception:
+        return "?"
+
+
+APP_VERSION = _read_app_version()   # 켤 때 한 번만 읽는다 — 업데이트로 파일이 바뀌어도 옛 프로세스는 옛 판을 알려야 launch_check 가 바꿔 켤 수 있다
+
+
+def app_version():
+    return APP_VERSION
+
+
 def claude_text(prompt, timeout=240, model="opus"):
     exe = find_claude()
     if not exe:
@@ -2546,6 +2560,7 @@ class Handler(BaseHTTPRequestHandler):
                     label_meta(groups_now)["분류기준편수"] = len(papers)   # 기준이 없던 기존 설치: 지금 편수를 기준으로 삼는다
                     save_json(LABELS_PATH, groups_now)
             self._send(200, {"papers": papers, "groups": groups_now, "classifying": classifying, "classifying_n": classifying_n,
+                             "version": app_version(),
                              "claude": bool(find_claude()),                       # 홈 화면이 Claude Code 미설치 안내를 띄우는 데 씀
                              "catalog_nudge": catalog_nudge(groups_now, len(papers))})   # 체계 만들기 / 다시 분류 권유
         elif url.path == "/api/claude":
@@ -2732,6 +2747,8 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/ui.css":
             with open(os.path.join(BASE, "ui.css"), "rb") as f:
                 self._send(200, f.read(), "text/css; charset=utf-8")
+        elif url.path == "/api/version":   # 실행 bat(launch_check)·설치 도우미·환경설정이 어느 판이 도는지 확인
+            self._send(200, {"version": app_version()})
         elif url.path == "/ui.js":
             with open(os.path.join(BASE, "ui.js"), "rb") as f:
                 self._send(200, f.read(), "application/javascript; charset=utf-8")
