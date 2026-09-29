@@ -21,6 +21,7 @@
   #prompt { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; word-break: break-word; line-height: 1.25; min-height: 33px; }
   #prompt.ko { font-size: 20px; font-weight: 500; }
   #sub { font-size: 13px; color: var(--text-2); margin-top: var(--s1); min-height: 18px; }
+  #sub .pos { color: var(--accent); font-weight: 600; }   /* 답을 고른 뒤 품사 — 동사·형용사·부사가 한눈에 */
   #prompt.say { cursor: pointer; }
   #prompt.say:hover { color: var(--accent); }
   #choices { flex: 1; overflow: auto; border-top: 1px solid var(--line); }
@@ -170,9 +171,10 @@
     });
     const extra = cur.note ? " · " + cur.note : "";
     $("note").textContent = (right ? "맞음" : "틀림 — " + (($("dir").value === "en") ? cur.meaning : cur.term)) + extra + " · Enter 로 다음";
-    if ($("dir").value === "ko") { $("sub").textContent = cur.ipa || ""; if (pref.auto) speak(cur.term); }
+    if ($("dir").value === "ko" && pref.auto) speak(cur.term);
+    $("sub").innerHTML = esc(cur.ipa || "") + (cur.pos ? (cur.ipa ? " · " : "") + "<b class='pos'>" + esc(cur.pos) + "</b>" : "");
     const ex = (cur.examples || [])[0];
-    $("ex").innerHTML = (cur.pos ? "<span class='pos'>" + esc(cur.pos) + "</span>" : "") +
+    $("ex").innerHTML =
       (ex && ex.en ? "<span class='en'>" + markTerm(ex.en, cur.term) + "</span>" + (ex.ko ? "<div class='ko'>" + esc(ex.ko) + "</div>" : "") : "");
     // 자동으로 넘기지 않는다 — 예문·품사를 읽을 시간은 사용자가 정한다 (Enter·스페이스·클릭)
   }
