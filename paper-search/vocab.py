@@ -298,6 +298,17 @@ def _fill_chunk(chunk, style="toeic", ipa_only=False, rel_only=False):
         it = by_term.get(_norm(term))
         if it:
             out[wid] = it
+    # 뜻이 빈 단어인데 응답에 meaning 이 안 온 경우(가끔 한 구간이 통째로 비어 온다) — 뜻만 따로 한 번 더 묻는다
+    field = {"toefl": "토플 학술 영어", "toeic": "토익 비즈니스 영어"}.get(style, "기계가공·재료")
+    missing = [term for wid, term, m in chunk if not m and not str((out.get(wid) or {}).get("meaning") or "").strip()]
+    if missing:
+        got2 = fill_meanings([(t, "") for t in missing], field=field)
+        for wid, term, m in chunk:
+            g = got2.get(_norm(term))
+            if g and g.get("meaning"):
+                out.setdefault(wid, {})["meaning"] = g["meaning"]
+                if not out[wid].get("pos") and g.get("pos"):
+                    out[wid]["pos"] = g["pos"]
     return out
 
 
