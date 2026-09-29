@@ -88,6 +88,20 @@
   .exs[data-m='결과'] { border-left-color: var(--green); } .exs[data-m='결과'] .mv { color: var(--green); }
   .exs[data-m='의의'] { border-left-color: var(--text-2); } .exs[data-m='의의'] .mv { color: var(--text); font-weight: 600; }
   .ex.mine { background: var(--sel-bg); padding-left: 8px; padding-right: 8px; margin: 0 4px; }
+  .exkinds { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 2px 0 8px; }
+  .exkinds .act { padding: 2px 6px; font-size: 12.5px; }
+  .exkinds .act.on { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+  .exp { cursor: pointer; }
+  .exp:hover { background: var(--hover); }
+  .exs .mv { width: 44px; }
+  .exp .bd { flex: 1; min-width: 0; }
+  .exp .orig { margin-top: 4px; color: var(--text-2); font-size: 12px; line-height: 1.55; }
+  .exs[data-m='목적·접근'], .exs[data-m='해석·기구'], .exs[data-m='향후'] { border-left-color: var(--accent); }
+  .exs[data-m='목적·접근'] .mv, .exs[data-m='해석·기구'] .mv, .exs[data-m='향후'] .mv { color: var(--accent); }
+  .exs[data-m='한계'], .exs[data-m='문헌 비교'] { border-left-color: var(--amber); }
+  .exs[data-m='한계'] .mv, .exs[data-m='문헌 비교'] .mv { color: var(--amber); }
+  .exs[data-m='관찰'] { border-left-color: var(--green); } .exs[data-m='관찰'] .mv { color: var(--green); }
+  .exs[data-m='기여·구성'] { border-left-color: var(--text-2); } .exs[data-m='기여·구성'] .mv { color: var(--text); font-weight: 600; }
   .hint { font-size: 12px; color: var(--text-3); line-height: 1.6; }
   .prog { display: flex; align-items: center; gap: var(--s2); font-size: 12px; color: var(--text-2); margin: var(--s2) 0; }
   .prog .pbar { flex: 1; }
@@ -194,7 +208,7 @@
     <div class="hint" style="padding:0">지금 원고(BUE)라면: ① 피드백 탭에서 교수님 주석부터 처리 → ② 원고 모드로 통독하며 고치기 → ③ 점검 → ④ 내보내기.</div>
   </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
-    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록을 어떤 구조로 썼는지 — 문장마다 배경·공백·목적·방법·결과·의의">본보기</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록·제목·서론·방법·결과·결론을 어떤 구조로 썼는지 — 문장·문단마다 역할">본보기</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
     <div class="tab on" id="tab-cards"></div>
     <div class="tab" id="tab-figs"></div>
     <div class="tab" id="tab-check"></div>
@@ -294,7 +308,7 @@ function renderFront() {
   ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>머리부 · " + esc(doc.meta.journal || "저널 미지정") + (doc.meta.lang === "en" ? " · 영어 원고" : "") + "</div>" +
     "<label class='f'>논문 제목</label><textarea id='fTitle' rows='2'>" + esc(f.title) + "</textarea>" +
     "<label class='f'>저자·소속</label><textarea id='fAuthors' rows='3'>" + esc(f.authors) + "</textarea>" +
-    "<label class='f'>초록 <span class='hint' style='font-weight:400'>" + wc + " 단어</span> <a href='#' class='act' style='font-weight:400' onclick='openEx();return false' title='잘 쓴 가공 논문들의 초록 구조를 옆에 펼쳐 놓고 쓰기'>잘 쓴 초록 보기 →</a></label><textarea id='fAbs' rows='9'>" + esc(f.abstract) + "</textarea>" +
+    "<label class='f'>초록 <span class='hint' style='font-weight:400'>" + wc + " 단어</span> <a href='#' class='act' style='font-weight:400' onclick='openEx();return false' title='잘 쓴 가공 논문들의 초록 구조를 옆에 펼쳐 놓고 쓰기 (서랍 본보기 탭에서 제목·서론·방법·결과·결론도)'>잘 쓴 초록 보기 →</a></label><textarea id='fAbs' rows='9'>" + esc(f.abstract) + "</textarea>" +
     "<label class='f'>키워드 <span class='hint' style='font-weight:400'>세미콜론으로 구분</span></label><textarea id='fKw' rows='2'>" + esc((f.keywords || []).join("; ")) + "</textarea>" +
     "<label class='f'>하이라이트 <span class='hint' style='font-weight:400'>한 줄에 하나 · JMPT 3~5개, 각 85자 이내</span></label><textarea id='fHl' rows='5'>" + esc((f.highlights || []).join("\n")) + "</textarea>" +
     "<div class='ctl' style='padding:8px 0;margin-left:-8px'><button class='btn pri' id='frontGen'>초록·키워드·하이라이트 생성 (Claude)</button></div><div id='frontprog'></div>" +
@@ -397,7 +411,7 @@ function renderEditor() {
   if (!n) { ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='hint'>왼쪽에서 절을 추가하세요.</div>"; return; }
   const by = Object.fromEntries(doc.cards.map(c => [c.id, c]));
   ed.innerHTML =
-    "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>" + (n.level === 2 ? "소절 · " : "절 · ") + "<input class='inl' id='headIn' value='" + esc(n.heading) + "' style='width:60%;font-family:var(--font-serif);font-size:15px;color:var(--text)'></div>" +
+    "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>" + (n.level === 2 ? "소절 · " : "절 · ") + "<input class='inl' id='headIn' value='" + esc(n.heading) + "' style='width:60%;font-family:var(--font-serif);font-size:15px;color:var(--text)'>" + (exKindOfNode(n) ? " <a href='#' class='act' data-exk='" + exKindOfNode(n) + "' title='잘 쓴 논문들이 이 부분을 어떻게 썼는지 오른쪽에 펼쳐 놓고 쓰기'>잘 쓴 " + exKindName(exKindOfNode(n)) + " 보기 →</a>" : "") + "</div>" +
     "<label class='f'>주장 (이 문단이 말하려는 것 한두 줄)</label><textarea id='claim' rows='2' placeholder='예: 극저온 냉각은 Ta 합금 절삭에서 공구 마모를 줄이지만 칩 형태는 크게 바꾸지 않는다'>" + esc(n.claim) + "</textarea>" +
     "<label class='f'>붙인 근거 카드 " + (n.cards || []).length + "개 <span class='hint' style='font-weight:400'>· 오른쪽 카드 서랍에서 「이 문단에 붙이기」</span></label><div class='cards' id='ncards'>" +
     ((n.cards || []).map(id => by[id]).filter(Boolean).map(c => cardHtml(c, true)).join("") || "<div class='hint'>아직 없음. 카드 없이 초안을 쓰면 Claude가 근거 필요 자리를 표시합니다.</div>") + "</div>" +
@@ -411,6 +425,7 @@ function renderEditor() {
     "<label class='f'>영문 (한국어 초안에서 영문화)</label><textarea id='draftEn' placeholder='「영문화 →」를 누르면 용어집을 지켜 옮깁니다.'>" + esc(n.draft_en) + "</textarea>";
   const bind = (id, key, cb) => { const el = $(id); el.oninput = () => { n[key] = el.value; save(); if (cb) cb(); }; };
   bind("headIn", "heading", renderTree); bind("claim", "claim"); bind("draft", "draft"); bind("draftEn", "draft_en");
+  ed.querySelectorAll("[data-exk]").forEach(a => a.onclick = e => { e.preventDefault(); openEx(a.dataset.exk); });
   autogrow($("draft")); autogrow($("draftEn"));   // 내용만큼 늘어나는 칸
   $("status").onchange = e => { n.status = e.target.value; save(); renderTree(); };
   ed.querySelectorAll("[data-m]").forEach(b => b.onclick = () => runClaude(b.dataset.m));
@@ -487,62 +502,104 @@ async function runClaude(mode) {
   save(); renderTree();
 }
 
-// ---------- 본보기: 잘 쓴 논문의 초록 구조 ----------
-const EX_MOVES = ["배경", "공백", "목적", "방법", "결과", "의의"];
-let exState = { journals: null, source: "both", n: 10, data: null, busy: false, forDoc: null };
-function openEx() { switchTab("ex"); renderEx(); if (!exState.data || exState.forDoc !== (doc && doc.id)) loadEx(); }
+// ---------- 본보기: 잘 쓴 논문이 그 부분(초록·제목·서론·방법·결과·논의·결론)을 어떻게 썼나 ----------
+const EX_KINDS = [["abstract", "초록"], ["title", "제목"], ["intro", "서론"], ["methods", "방법"], ["results", "결과·논의"], ["conclusion", "결론"]];
+const EX_MINE_RX = { intro: /서론|introduc/i, methods: /방법|실험|재료|장치|method|experiment|material|set-?up/i, results: /결과|고찰|논의|result|discussion/i, conclusion: /결론|conclu/i };
+let exState = { section: "abstract", journals: null, source: "both", n: 10, data: {}, busy: false, forDoc: null };   // data = 부분별 결과
+const exKindName = k => (EX_KINDS.find(x => x[0] === k) || [k, k])[1];
+const exIsBody = k => !["abstract", "title"].includes(k);   // 본문은 전문이 필요 → 내 서재 PDF 만
+function exKindOfNode(n) {   // 개요 노드(소절이면 위 절)의 제목으로 부분 종류를 짐작
+  if (!doc || !n) return null;
+  let h = n.heading || "";
+  if ((n.level || 1) > 1) { const i = doc.outline.indexOf(n); for (let j = i - 1; j >= 0; j--) if ((doc.outline[j].level || 1) === 1) { h = doc.outline[j].heading || ""; break; } }
+  for (const k of ["conclusion", "intro", "results", "methods"]) if (EX_MINE_RX[k].test(h)) return k;
+  return null;
+}
+function openEx(kind) {
+  exState.section = kind || "abstract";
+  if (exIsBody(exState.section) && exState.n > 8) exState.n = 6;
+  if (exState.section === "results" && exState.n > 4) exState.n = 4;
+  if (exState.forDoc !== (doc && doc.id)) { exState.data = {}; exState.forDoc = doc && doc.id; }
+  switchTab("ex"); renderEx(); if (!exState.data[exState.section]) loadEx();
+}
 async function renderEx() {
   const el = $("tab-ex"); if (!el) return;
   if (!doc) { el.innerHTML = "<div class='hint' style='padding:12px'>원고를 먼저 고르세요</div>"; return; }
+  if (exState.forDoc !== doc.id) { exState.data = {}; exState.forDoc = doc.id; }
   if (!window._msJournals) { try { window._msJournals = (await api("/api/ms/journals")).journals || []; } catch (e) { window._msJournals = []; } }
   const def = ["IJMTM", "JMPT", "IJEM"]; if (doc.meta.journal && !def.includes(doc.meta.journal)) def.unshift(doc.meta.journal);
   if (!exState.journals) exState.journals = def.slice();
   const all = [...new Set(def.concat(window._msJournals.map(j => j.abbr)))].slice(0, 16);
   const cnt = {}; window._msJournals.forEach(j => cnt[j.abbr] = j.count);
-  el.innerHTML = "<div class='sec'>본보기 — 잘 쓴 논문의 초록 구조</div>" +
-    "<div class='exctl'>저널 <span class='hint' style='display:inline'>(숫자 = 내 서재 편수, 없으면 Scopus 에서)</span><div class='jl'>" +
+  const body = exIsBody(exState.section), has = !!exState.data[exState.section];
+  el.innerHTML = "<div class='sec'>본보기 — 잘 쓴 논문의 " + esc(exKindName(exState.section)) + " 구조</div>" +
+    "<div class='exctl'><div class='exkinds'>" + EX_KINDS.map(([k, nm]) => "<a href='#' class='act" + (k === exState.section ? " on" : "") + "' data-k='" + k + "'>" + nm + "</a>").join("") + "</div>" +
+      "저널 <span class='hint' style='display:inline'>(숫자 = 내 서재 편수" + (body ? " · 본문은 내 서재 PDF 에서만" : ", 없으면 Scopus 에서") + ")</span><div class='jl'>" +
       all.map(a => "<label><input type='checkbox' value='" + esc(a) + "'" + (exState.journals.includes(a) ? " checked" : "") + "> " + esc(a) + (cnt[a] ? " <span class='hint' style='display:inline'>" + cnt[a] + "</span>" : "") + "</label>").join("") + "</div>" +
-      "<select id='exSrc'><option value='both'>내 서재 + Scopus</option><option value='library'>내 서재만</option><option value='scopus'>Scopus 만 (피인용 순)</option></select> " +
-      "<select id='exN'><option>8</option><option>10</option><option>14</option><option>20</option></select>편 " +
-      "<button class='btn' id='exGo'>" + (exState.data ? "다시 불러오기" : "불러오기") + "</button></div><div id='exOut'></div>";
-  $("exSrc").value = exState.source; $("exN").value = String(exState.n);
+      (body ? "" : "<select id='exSrc'><option value='both'>내 서재 + Scopus</option><option value='library'>내 서재만</option><option value='scopus'>Scopus 만 (피인용 순)</option></select> ") +
+      "<select id='exN'><option>4</option><option>6</option><option>8</option><option>10</option><option>14</option><option>20</option></select>편 " +
+      "<button class='btn' id='exGo'>" + (has ? "다시 불러오기" : "불러오기") + "</button></div><div id='exOut'></div>";
+  if ($("exSrc")) { $("exSrc").value = exState.source; $("exSrc").onchange = e => exState.source = e.target.value; }
+  $("exN").value = String(exState.n); $("exN").onchange = e => exState.n = +e.target.value;
   el.querySelectorAll(".jl input").forEach(c => c.onchange = () => { exState.journals = [...el.querySelectorAll(".jl input:checked")].map(x => x.value); });
-  $("exSrc").onchange = e => exState.source = e.target.value; $("exN").onchange = e => exState.n = +e.target.value;
-  $("exGo").onclick = loadEx;
-  if (exState.busy) $("exOut").innerHTML = exBusyHtml(); else if (exState.data && exState.forDoc === doc.id) drawEx();
+  el.querySelectorAll(".exkinds a").forEach(a => a.onclick = e => {
+    e.preventDefault(); exState.section = a.dataset.k;
+    if (exIsBody(exState.section) && exState.n > 8) exState.n = 6;   // 본문은 길어 기본 6편
+    if (exState.section === "results" && exState.n > 4) exState.n = 4;   // 결과·논의는 논문마다 30문단 넘게 — 기본 4편
+    renderEx(); if (!exState.data[exState.section]) loadEx();
+  });
+  $("exGo").onclick = () => loadEx(true);
+  if (exState.busy) { $("exOut").innerHTML = exBusyHtml(); animateBars($("exOut")); } else if (has) drawEx();
 }
-function exBusyHtml() { return "<div class='hint' style='padding:6px 12px'>초록을 모으고(내 서재 PDF·Scopus) Claude 가 문장 역할을 붙이는 중 — 처음엔 1~2분, 한 번 본 초록은 다음부터 바로 나옵니다 " + pbarHtml(0.92, 0, "slow") + "</div>"; }
-async function loadEx() {
+function exBusyHtml() {
+  const body = exIsBody(exState.section);
+  return "<div class='hint' style='padding:6px 12px'>" + esc(exKindName(exState.section)) + " 본보기를 모으는 중 — " +
+    (exState.section === "title" ? "제목 목록이라 금방 끝납니다 " : (body ? "내 서재 PDF 에서 그 절을 찾아 Claude 가 문단마다 역할·요지를 붙입니다. 처음 1~3분(결과·논의는 더), 한 번 본 것은 다음부터 바로 " : "내 서재 PDF·Scopus 에서 모아 Claude 가 문장 역할을 붙입니다. 처음 1~2분, 한 번 본 것은 다음부터 바로 ")) + pbarHtml(0.92, 0, "slow") + "</div>";
+}
+async function loadEx(force) {
   if (!doc || exState.busy) return;
+  const sec = exState.section;
   exState.busy = true; const out = $("exOut"); if (out) { out.innerHTML = exBusyHtml(); animateBars(out); }
-  try { exState.data = await api("/api/ms/exemplars", { id: doc.id, section: "abstract", journals: exState.journals, source: exState.source, n: exState.n }); exState.forDoc = doc.id; }
-  catch (e) { exState.data = { items: [], notes: ["불러오기 실패"] }; }
+  try { exState.data[sec] = await api("/api/ms/exemplars", { id: doc.id, section: sec, journals: exState.journals, source: exState.source, n: exState.n }); }
+  catch (e) { exState.data[sec] = { items: [], notes: ["불러오기 실패"] }; }
   exState.busy = false; if (activeTab() === "ex") renderEx();
 }
 function exSentHtml(ss) { return ss.map(s => "<div class='exs' data-m='" + esc(s.m) + "'><span class='mv'>" + esc(s.m) + "</span><span>" + esc(s.t) + "</span></div>").join(""); }
+function exParaHtml(ps) {   // 문단: 역할 + 한 줄 요지 (누르면 원문)
+  return ps.map(p => "<div class='exs exp' data-m='" + esc(p.role) + "' title='누르면 원문 문단'><span class='mv'>" + esc(p.role) + "</span><div class='bd'><div>" + esc(p.gist || p.text.slice(0, 80) + "…") +
+    (p.sub ? " <span class='hint' style='display:inline'>· " + esc(p.sub) + "</span>" : "") + "</div><div class='orig' hidden>" + esc(p.text) + "</div></div></div>").join("");
+}
 function drawEx() {
-  const d = exState.data || {}, out = $("exOut"); if (!out) return;
-  const sm = d.summary || {};
+  const d = exState.data[exState.section] || {}, out = $("exOut"); if (!out) return;
+  const sm = d.summary || {}, unit = d.unit || "문장";
   let h = "";
-  if (sm.n) {
-    h += "<div class='exsum'><b>전형적 구조</b> (" + sm.n + "편 평균 " + sm.avg_words + "단어 · " + sm.avg_sents + "문장)<div class='mvbar'>" +
-      EX_MOVES.map(m => { const v = sm.moves[m] || { avg: 0, share: 0 }; return "<span title='이 역할이 있는 초록 " + v.share + "%'>" + m + " <b>" + v.avg + "</b></span>"; }).join("<span class='hint' style='display:inline'>→</span>") +
-      "</div><span class='hint' style='display:inline'>숫자 = 초록 하나에 그 역할 문장이 평균 몇 개인지 (마우스를 올리면 그 역할이 있는 초록 비율)</span></div>";
-  }
-  if (d.mine) {
-    h += "<div class='ex mine'><div class='exh'>내 초록 · " + d.mine.words + "단어 · " + d.mine.sentences.length + "문장</div><div class='pat'>" + esc(d.mine.pattern) +
-      (d.mine.missing.length ? " <span style='color:var(--amber)'>· 빠진 역할: " + d.mine.missing.join(", ") + "</span>" : "") + "</div>" + exSentHtml(d.mine.sentences) + "</div>";
-  }
-  for (const it of d.items || []) {
-    const open = it.src === "library" ? "<a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a>" : (it.doi ? "<a class='act' href='https://doi.org/" + esc(it.doi) + "' target='_blank' rel='noopener'>논문</a>" : "");
-    h += "<div class='ex'><div class='exh'>" + esc(it.journal) + " " + (it.year || "") + " · " + esc(it.author || "") + (it.src === "scopus" ? " · Scopus 피인용 " + (it.cit || 0) : " · 내 서재") + " · " + it.words + "단어 " + open + "</div>" +
-      "<div class='ttl'>" + esc(it.title) + "</div><div class='pat'>" + esc(it.pattern) + "</div>" + exSentHtml(it.sentences) + "</div>";
+  const openLink = it => it.src === "library" ? "<a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a>" : (it.doi ? "<a class='act' href='https://doi.org/" + esc(it.doi) + "' target='_blank' rel='noopener'>논문</a>" : "");
+  const head = it => esc(it.journal) + " " + (it.year || "") + " · " + esc(it.author || "") + (it.src === "scopus" ? " · Scopus 피인용 " + (it.cit || 0) : " · 내 서재");
+  if (d.level === "title") {
+    if (sm.n) h += "<div class='exsum'><b>제목</b> " + sm.n + "편 · 평균 <b>" + sm.avg_words + "</b>단어 · 쌍점(:)으로 나눈 제목 " + sm.colon_share + "%</div>";
+    if (d.mine) h += "<div class='ex mine'><div class='exh'>내 제목 · " + d.mine.words + "단어" + (d.mine.colon ? " · 쌍점 있음" : "") + "</div><div class='ttl'>" + esc(d.mine.title) + "</div></div>";
+    for (const it of d.items || []) h += "<div class='ex'><div class='exh'>" + head(it) + " · " + it.words + "단어 " + openLink(it) + "</div><div class='ttl'>" + esc(it.title) + "</div></div>";
+  } else {
+    if (sm.n) {
+      h += "<div class='exsum'><b>전형적 구조</b> (" + sm.n + "편 평균 " + sm.avg_words + "단어 · " + sm.avg_units + unit + (exIsBody(exState.section) ? " · 인용 " + sm.avg_cites + "개" : "") + ")<div class='mvbar'>" +
+        (d.roles || []).map(m => { const v = (sm.roles || {})[m] || { avg: 0, share: 0 }; return "<span title='이 역할이 있는 글 " + v.share + "%'>" + esc(m) + " <b>" + v.avg + "</b></span>"; }).join("<span class='hint' style='display:inline'>→</span>") +
+        "</div><span class='hint' style='display:inline'>숫자 = 글 하나에 그 역할 " + unit + "이 평균 몇 개인지 (마우스를 올리면 그 역할이 있는 글의 비율)" + (d.level === "para" ? ". 문단을 누르면 원문" : "") + "</span></div>";
+    }
+    const unitsHtml = x => d.level === "para" ? exParaHtml(x.paras || []) : exSentHtml(x.sentences || []);
+    if (d.mine) h += "<div class='ex mine'><div class='exh'>내 " + esc(exKindName(exState.section)) + " · " + d.mine.words + "단어 · " + ((d.mine.paras || d.mine.sentences || []).length) + unit + (exIsBody(exState.section) ? " · 인용 " + d.mine.cites + "개" : "") + "</div><div class='pat'>" + esc(d.mine.pattern) +
+      (d.mine.missing.length ? " <span style='color:var(--amber)'>· 빠진 역할: " + d.mine.missing.join(", ") + "</span>" : "") + "</div>" + unitsHtml(d.mine) + "</div>";
+    else if (exIsBody(exState.section)) h += "<div class='hint' style='padding:4px 12px'>내 원고의 '" + esc(exKindName(exState.section)) + "' 절에 아직 초안이 없어 비교는 건너뜁니다 (개요의 절 제목으로 찾음)</div>";
+    for (const it of d.items || []) {
+      h += "<div class='ex'><div class='exh'>" + head(it) + " · " + it.words + "단어" + (exIsBody(exState.section) ? " · 인용 " + it.cites + "개" : "") + " " + openLink(it) + "</div>" +
+        "<div class='ttl'>" + esc(it.title) + "</div><div class='pat'>" + esc(it.pattern) + "</div>" + unitsHtml(it) + "</div>";
+    }
   }
   if (!(d.items || []).length) h += "<div class='hint' style='padding:6px 12px'>본보기를 찾지 못했습니다. 저널을 더 고르거나 출처를 바꿔 보세요.</div>";
   if ((d.notes || []).length) h += "<div class='hint' style='padding:6px 12px'>" + d.notes.map(esc).join(" · ") + "</div>";
   if ((d.topic || []).length) h += "<div class='hint' style='padding:0 12px 10px'>주제어(원고에서): " + esc(d.topic.slice(0, 8).join(", ")) + "</div>";
   out.innerHTML = h;
   out.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
+  out.querySelectorAll(".exp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); o.hidden = !o.hidden; });
 }
 
 // ---------- 서랍 ----------

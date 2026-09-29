@@ -2472,7 +2472,8 @@ sys.path.insert(0, BASE)
 import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search,
-        claude_text=claude_text, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key)   # 원고 '본보기'(잘 쓴 초록 구조)용
+        claude_text=claude_text, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
+        paper_body=lambda name: pdf_body_and_asides(name)[0])
 
 # ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------
 import vocab

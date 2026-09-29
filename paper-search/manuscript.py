@@ -1153,16 +1153,37 @@ def _q(url, k, d=""):
     return urllib.parse.parse_qs(url.query).get(k, [d])[0]
 
 
-# ---------- 본보기: 잘 쓴 논문들이 그 절을 어떻게 썼나 (지금은 초록) ----------
+# ---------- 본보기: 잘 쓴 논문들이 그 부분을 어떻게 썼나 (초록·제목·서론·방법·결과·논의·결론) ----------
 MOVES = ["배경", "공백", "목적", "방법", "결과", "의의"]
+# 부분마다: 이름, 나누는 단위(sent = 문장, para = 문단, title = 제목 목록), 역할
+SECTION_KINDS = {
+    "abstract": {"name": "초록", "level": "sent", "roles": MOVES},
+    "title": {"name": "제목", "level": "title", "roles": []},
+    "intro": {"name": "서론", "level": "para", "roles": ["배경", "선행연구", "공백", "목적·접근", "기여·구성"]},
+    "methods": {"name": "방법", "level": "para", "roles": ["재료·시편", "장치·셋업", "조건·절차", "측정·분석", "모델·해석"]},
+    "results": {"name": "결과·논의", "level": "para", "roles": ["관찰", "비교", "해석·기구", "문헌 비교", "요약·전환"]},
+    "conclusion": {"name": "결론", "level": "sent", "roles": ["요약", "결과", "의의", "한계", "향후"]},
+}
+_ROLE_HELP = {
+    "abstract": "배경(분야·중요성·일반 사실), 공백(기존 연구의 한계·남은 문제·필요성), 목적(이 연구가 하려는 것·제안), 방법(실험·모델·조건·재료·측정), 결과(발견·관찰·수치), 의의(기여·응용·결론적 함의)",
+    "conclusion": "요약(무엇을 했는지 다시), 결과(핵심 발견·수치), 의의(기여·응용), 한계(제한·가정), 향후(앞으로 할 일)",
+    "intro": "배경(분야·중요성), 선행연구(기존 연구 소개·정리), 공백(한계·남은 문제), 목적·접근(이 연구가 하려는 것과 방법의 개요), 기여·구성(기여 요약·논문 구성 안내)",
+    "methods": "재료·시편(재료·시편 준비), 장치·셋업(장비·실험 장치 구성), 조건·절차(가공 조건·실험 순서), 측정·분석(측정·관찰·데이터 처리), 모델·해석(수치·해석 모델)",
+    "results": "관찰(결과·관찰 제시), 비교(조건 사이 비교), 해석·기구(원인·메커니즘 설명), 문헌 비교(선행 연구와 대조), 요약·전환(정리·다음으로 넘어감)",
+}
 _STOP = set(("the and for with from that this these those into onto over under between during using based study studies paper results "
              "result method methods effect effects analysis model models new novel approach high low different various also than which were "
              "been have has had their there here such both more most less very when while where within without through toward towards").split())
 _ABBR = r"(?:e\.g|i\.e|et al|Figs?|Eqs?|approx|vs|ca|resp|Refs?|No)\."
+_SEC_RX = {"conclusion": r"conclu|concluding|closing remarks|^summary", "intro": r"introduc",
+           "results": r"result|discussion", "methods": r"experiment|method|material|set-?up|procedure|approach|modell?ing|simulation|numerical|preparation"}
+_END_RX = r"acknowledg|credit authorship|declaration|data availability|references|appendix|funding|supplementary|nomenclature"
+_MINE_RX = {"intro": r"서론|introduc", "methods": r"방법|실험|재료|장치|method|experiment|material|set-?up",
+            "results": r"결과|고찰|논의|result|discussion", "conclusion": r"결론|conclu"}
 
 
 def _sentences(text):
-    """영어·한국어 초록을 문장으로. 약어(e.g., et al., Fig.)와 소수점의 마침표는 문장 끝으로 보지 않는다."""
+    """영어·한국어를 문장으로. 약어(e.g., et al., Fig.)와 소수점의 마침표는 문장 끝으로 보지 않는다."""
     t = re.sub(r"\s+", " ", (text or "").strip())
     if not t:
         return []
@@ -1186,75 +1207,135 @@ def _journal_full(abbr):
     return re.sub(r"\s*\([^)]*\)\s*$", "", JOURNAL_NAMES.get(abbr, abbr)).strip()
 
 
-def _library_exemplars(journals, topic, n):
-    """내 서재에서 그 저널 논문을 주제 가까운 순·최근 순으로 골라 PDF 첫 2쪽의 초록을 뽑는다."""
+def _library_candidates(journals, topic):
+    """내 서재에서 그 저널 논문을 주제 가까운 순·최근 순으로."""
     tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
-    cands = []
     try:
         names = os.listdir(cfg["ARCHIVE"])
     except OSError:
         names = []
-    tset = set(topic)
+    tset, cands = set(topic), []
     for f in names:
         m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_(.+)\.pdf$", f, re.I)
         if not m or m.group(2) not in journals:
             continue
         title = (tags.get(f) or {}).get("title") or m.group(4)
         tw = set(re.findall(r"[a-z][a-z\-]{3,}", title.lower()))
-        cands.append((len(tw & tset) * 3 + (int(m.group(1)) - 2000) * 0.05, f, m.group(2), int(m.group(1)), m.group(3), title))
-    cands.sort(reverse=True)
+        cands.append((len(tw & tset) * 3 + (int(m.group(1)) - 2000) * 0.05, {"src": "library", "file": f, "journal": m.group(2), "year": int(m.group(1)), "author": m.group(3), "title": title}))
+    cands.sort(key=lambda x: -x[0])
+    return [c for _, c in cands]
+
+
+def _pdf_sections(name):
+    """보유 PDF 본문을 1단계 절로 나눈다: [(종류 또는 None, 절 제목, [{sub, text}])]. 그림·표 모음·감사의 글·참고문헌 뒤는 버린다."""
+    try:
+        body = cfg["paper_body"](name) if cfg.get("paper_body") else ""
+    except Exception:
+        body = ""
+    secs, cur, sub = [], None, ""
+    for p in re.split(r"\n\s*\n", body or ""):
+        one = re.sub(r"\s+", " ", p).strip()
+        if not one:
+            continue
+        if one.startswith("Figures and Tables"):
+            break
+        m1 = re.match(r"^(\d{1,2})\.?\s+([A-Z][^.]{2,80})$", one)
+        m2 = re.match(r"^\d{1,2}\.\d{1,2}(?:\.\d{1,2})?\.?\s+([A-Z].{2,120})$", one)
+        plain = re.match(r"^(introduction|conclusions?|results and discussion|discussion|summary)$", one, re.I)
+        if (m1 and len(one) < 90) or plain:
+            head = (m1.group(2) if m1 else one).strip(); low = head.lower()
+            if re.search(_END_RX, low):
+                cur = None; continue
+            kind = next((k for k in ("conclusion", "intro", "results", "methods") if re.search(_SEC_RX[k], low)), None)
+            cur = [kind, head, []]; secs.append(cur); sub = ""
+            continue
+        if re.search(r"^(" + _END_RX + r")", one.lower()) and len(one) < 60:
+            cur = None; continue
+        if cur is None:
+            continue
+        if m2 and len(one) < 140:
+            sub = m2.group(1).strip(); continue
+        if one.startswith("[[EQ:") or len(one.split()) < 20:
+            continue
+        cur[2].append({"sub": sub, "text": one})
+    return secs
+
+
+def _section_paras(name, kind):
+    """그 종류의 절들(방법은 여러 절일 수 있음)의 문단을 모아서."""
     out = []
-    for _, f, j, y, au, title in cands[: n * 3]:
-        a = cfg["extract_abstract"](f) if cfg.get("extract_abstract") else ""
-        if 80 <= len(a.split()) <= 450:
-            out.append({"src": "library", "file": f, "journal": j, "year": y, "author": au, "title": title, "abstract": a})
+    for k, head, paras in _pdf_sections(name):
+        if k == kind:
+            out += [dict(p, sub=p["sub"] or head) for p in paras]
+    return out
+
+
+def _cites(text):
+    return len(re.findall(r"\[\d+(?:\s*[,\u2013\-]\s*\d+)*\]", text or ""))
+
+
+def _library_exemplars(kind, journals, topic, n):
+    out = []
+    for c in _library_candidates(journals, topic)[: n * 4]:
+        if kind == "abstract":
+            a = cfg["extract_abstract"](c["file"]) if cfg.get("extract_abstract") else ""
+            if 80 <= len(a.split()) <= 450:
+                out.append(dict(c, text=a))
+        elif kind == "title":
+            out.append(dict(c, text=c["title"]))
+        else:
+            paras = _section_paras(c["file"], kind)
+            words = sum(len(p["text"].split()) for p in paras)
+            if (kind == "conclusion" and 50 <= words <= 1200) or (kind != "conclusion" and len(paras) >= 2):
+                out.append(dict(c, paras=paras, text="\n\n".join(p["text"] for p in paras)))
         if len(out) >= n:
             break
     return out
 
 
-def _scopus_exemplars(journals, topic, n):
-    """Scopus(Elsevier 키)에서 저널마다 고르게: 2018년 이후, 주제어로 좁혀 피인용 순. 주제어로 모자라면 그 저널의 피인용 상위로 채움. 초록이 함께 온다."""
+def _scopus_query(key, q, want):
+    import requests as rq
+    r = rq.get("https://api.elsevier.com/content/search/scopus", params={"query": q, "count": min(25, max(want, 1) * 3), "view": "COMPLETE", "sort": "-citedby-count"},
+               headers={"X-ELS-APIKey": key, "Accept": "application/json", "User-Agent": "Athenaeum/0.9"}, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError("Scopus %d" % r.status_code)
+    return (r.json().get("search-results") or {}).get("entry") or []
+
+
+def _scopus_exemplars(kind, journals, topic, n):
+    """Scopus(Elsevier 키): 저널마다 고르게(한 번에 섞으면 IJMTM 만 나옴), 2018년 이후, 주제어로 좁혀 피인용 순. 모자라면 그 저널 피인용 상위로. 초록·제목만 가능."""
     key = cfg["elsevier_key"]() if cfg.get("elsevier_key") else ""
     if not key:
         return [], "Elsevier API 키가 없어 Scopus 는 건너뜀 (⚙ 설정)"
     if n <= 0:
         return [], ""
-    import requests as rq
     per = max(2, -(-n // max(1, len(journals))))
     out, errs = [], []
-
-    def query(q, want, j):
-        try:
-            r = rq.get("https://api.elsevier.com/content/search/scopus", params={"query": q, "count": min(25, want * 3), "view": "COMPLETE", "sort": "-citedby-count"},
-                       headers={"X-ELS-APIKey": key, "Accept": "application/json", "User-Agent": "Athenaeum/0.9"}, timeout=30)
-            if r.status_code != 200:
-                errs.append("Scopus %s %d" % (j, r.status_code)); return []
-            entries = (r.json().get("search-results") or {}).get("entry") or []
-        except Exception as e:
-            errs.append("Scopus %s 오류" % j); return []
-        got = []
-        for e in entries:
-            if "error" in e:
-                break
-            a = re.sub(r"\s+", " ", e.get("dc:description") or "").strip()
-            a = re.sub(r"^abstract\s*", "", a, flags=re.I)
-            a = re.sub(r"\s*(©|\(c\))\s*\d{4}.*$", "", a, flags=re.I)   # 끝의 저작권 표기
-            if not (80 <= len(a.split()) <= 450):
-                continue
-            got.append({"src": "scopus", "doi": e.get("prism:doi") or "", "journal": j, "year": int((e.get("prism:coverDate") or "0")[:4] or 0),
-                        "author": ((e.get("dc:creator") or "").split(",")[0]).strip(), "title": e.get("dc:title") or "", "abstract": a,
-                        "cit": int(e.get("citedby-count") or 0)})
-            if len(got) >= want:
-                break
-        return got
-
     for j in journals:
         base = 'SRCTITLE("%s") AND PUBYEAR > 2017' % _journal_full(j)
-        got = query(base + (" AND TITLE-ABS-KEY(" + " OR ".join(topic[:6]) + ")" if topic else ""), per, j)
-        if len(got) < per:   # 주제어로 모자라면 그 저널의 잘 인용된 초록으로 채움 (글 구조를 보는 데는 주제가 달라도 됨)
-            titles = {g["title"] for g in got}
-            got += [g for g in query(base, per - len(got) + 2, j) if g["title"] not in titles][: per - len(got)]
+        got, seen = [], set()
+        for q in ([base + " AND TITLE-ABS-KEY(" + " OR ".join(topic[:6]) + ")"] if topic else []) + [base]:
+            if len(got) >= per:
+                break
+            try:
+                entries = _scopus_query(key, q, per)
+            except Exception as e:
+                errs.append("%s: %s" % (j, str(e)[:40])); break
+            for e in entries:
+                if "error" in e or len(got) >= per:
+                    break
+                title = e.get("dc:title") or ""
+                if not title or title in seen:
+                    continue
+                a = re.sub(r"\s+", " ", e.get("dc:description") or "").strip()
+                a = re.sub(r"^abstract\s*", "", a, flags=re.I)
+                a = re.sub(r"\s*(©|\(c\))\s*\d{4}.*$", "", a, flags=re.I)   # 끝의 저작권 표기
+                if kind == "abstract" and not (80 <= len(a.split()) <= 450):
+                    continue
+                seen.add(title)
+                got.append({"src": "scopus", "doi": e.get("prism:doi") or "", "journal": j, "year": int((e.get("prism:coverDate") or "0")[:4] or 0),
+                            "author": ((e.get("dc:creator") or "").split(",")[0]).strip(), "title": title, "cit": int(e.get("citedby-count") or 0),
+                            "text": a if kind == "abstract" else title})
         out += got
     return out[:max(n, per * len(journals))], (" · ".join(errs) if errs else "")
 
@@ -1266,15 +1347,20 @@ _MOVE_CUES = [("공백", r"\b(however|remains? (unclear|unknown|limited|challeng
               ("방법", r"\b(experiment|simulat|finite element|modell?ing|were (conducted|performed|measured|carried)|characteri[sz]|measur|using)")]
 
 
-def _heuristic_moves(sents):
-    """Claude 가 안 될 때의 단서 규칙."""
+def _heuristic_roles(kind, units):
+    """Claude 가 안 될 때: 초록은 단서 규칙, 나머지는 위치로 어림."""
+    roles = SECTION_KINDS[kind]["roles"]
     out = []
-    for i, s in enumerate(sents):
-        low = s.lower(); mv = None
-        for name, rx in _MOVE_CUES:
-            if re.search(rx, low):
-                mv = name; break
-        out.append(mv or ("배경" if i < 2 else ("의의" if i == len(sents) - 1 else "결과")))
+    for i, u in enumerate(units):
+        if kind == "abstract":
+            low = u.lower(); mv = None
+            for name, rx in _MOVE_CUES:
+                if re.search(rx, low):
+                    mv = name; break
+            out.append(mv or ("배경" if i < 2 else ("의의" if i == len(units) - 1 else "결과")))
+        else:
+            k = min(len(roles) - 1, int(i * len(roles) / max(1, len(units))))
+            out.append(roles[k])
     return out
 
 
@@ -1282,29 +1368,40 @@ def _exemplar_cache_path():
     return os.path.join(cfg["MS_DIR"], "_본보기캐시.json")
 
 
-def _label_moves(texts):
-    """{키: 문장 목록} → {키: 역할 목록}. 캐시(문장 목록의 md5) 먼저, 나머지는 Claude(sonnet) 한 번에. 안 되면 단서 규칙."""
+def _label(kind, texts):
+    """{키: 단위 목록(문장 또는 문단)} → {키: [[역할, 요지], …]}. 캐시 먼저, 나머지는 Claude(sonnet) 한 번에. 안 되면 규칙.
+    문단은 앞 90단어만 보여 역할과 한국어 한 줄 요지를 받는다. 문장은 역할만(요지는 빈 문자열)."""
     import hashlib, io
+    level = SECTION_KINDS[kind]["level"]; roles = SECTION_KINDS[kind]["roles"]
     try:
         cache = json.load(io.open(_exemplar_cache_path(), encoding="utf-8"))
     except Exception:
         cache = {}
     res, todo = {}, {}
-    for k, sents in texts.items():
-        h = hashlib.md5("\n".join(sents).encode("utf-8")).hexdigest()
-        if isinstance(cache.get(h), list) and len(cache[h]) == len(sents):
-            res[k] = cache[h]
-        elif sents:
-            todo[k] = (h, sents)
+    for k, units in texts.items():
+        h = hashlib.md5((kind + "\n" + "\n".join(units)).encode("utf-8")).hexdigest()
+        v = cache.get(h)
+        if kind == "abstract" and v is None:   # 예전 캐시(초록, 역할만) 호환
+            v = cache.get(hashlib.md5("\n".join(units).encode("utf-8")).hexdigest())
+            v = [[x, ""] for x in v] if isinstance(v, list) and v and isinstance(v[0], str) else None
+        if isinstance(v, list) and len(v) == len(units):
+            res[k] = v
+        elif units:
+            todo[k] = (h, units)
         else:
             res[k] = []
     if todo and cfg.get("claude_text"):
-        blocks = ["<%s>\n" % k + "\n".join("[%d] %s" % (i + 1, s) for i, s in enumerate(sents)) for k, (h, sents) in todo.items()]
-        prompt = ("아래 초록들의 문장마다 수사적 역할을 하나씩 붙여라. 역할은 다음 여섯 가지 중 하나다:\n"
-                  "배경(분야·중요성·일반 사실), 공백(기존 연구의 한계·남은 문제·필요성), 목적(이 연구가 하려는 것·제안), "
-                  "방법(실험·모델·조건·재료·측정), 결과(발견·관찰·수치), 의의(기여·응용·결론적 함의).\n"
-                  "JSON 한 줄만 출력: {\"<키>\": [\"배경\", \"공백\", ...]} — 배열 길이는 그 초록의 문장 수와 같게.\n\n" + "\n\n".join(blocks))
-        out = cfg["claude_text"](prompt, timeout=240, model="sonnet") or ""
+        if level == "para":
+            blocks = ["<%s>\n" % k + "\n".join("[%d] %s" % (i + 1, " ".join(u.split()[:90])) for i, u in enumerate(units)) for k, (h, units) in todo.items()]
+            fmt = "JSON 한 줄만 출력: {\"<키>\": [[\"역할\", \"이 문단이 하는 일을 한국어 한 줄(25자 안팎)\"], ...]} — 배열 길이는 그 글의 문단 수와 같게."
+            what = "문단"
+        else:
+            blocks = ["<%s>\n" % k + "\n".join("[%d] %s" % (i + 1, u) for i, u in enumerate(units)) for k, (h, units) in todo.items()]
+            fmt = "JSON 한 줄만 출력: {\"<키>\": [\"역할\", ...]} — 배열 길이는 그 글의 문장 수와 같게."
+            what = "문장"
+        prompt = ("아래는 논문의 '%s' 부분들이다. %s마다 수사적 역할을 하나씩 붙여라. 역할은 다음 중 하나다:\n%s\n%s\n\n" %
+                  (SECTION_KINDS[kind]["name"], what, _ROLE_HELP[kind], fmt)) + "\n\n".join(blocks)
+        out = cfg["claude_text"](prompt, timeout=300, model="sonnet") or ""
         m = re.search(r"\{.*\}", out, re.S)
         parsed = {}
         if m:
@@ -1312,13 +1409,18 @@ def _label_moves(texts):
                 parsed = json.loads(m.group(0))
             except Exception:
                 parsed = {}
-        for k, (h, sents) in todo.items():
-            mv = parsed.get(k)
-            if isinstance(mv, list) and len(mv) == len(sents) and all(x in MOVES for x in mv):
-                res[k] = mv; cache[h] = mv
-    for k, (h, sents) in todo.items():
+        for k, (h, units) in todo.items():
+            v = parsed.get(k)
+            if isinstance(v, list) and len(v) == len(units):
+                if level == "para":
+                    v = [[x[0], str(x[1])[:60]] if isinstance(x, list) and len(x) >= 2 and x[0] in roles else None for x in v]
+                else:
+                    v = [[x, ""] if x in roles else None for x in v]
+                if all(v):
+                    res[k] = v; cache[h] = v
+    for k, (h, units) in todo.items():
         if k not in res:
-            res[k] = _heuristic_moves(sents)
+            res[k] = [[r, ""] for r in _heuristic_roles(kind, units)]
     try:
         with io.open(_exemplar_cache_path(), "w", encoding="utf-8") as fp:
             json.dump(cache, fp, ensure_ascii=False)
@@ -1327,9 +1429,9 @@ def _label_moves(texts):
     return res
 
 
-def _pattern(moves):
+def _pattern(roles):
     out = []
-    for m in moves:
+    for m in roles:
         if out and out[-1][0] == m:
             out[-1][1] += 1
         else:
@@ -1337,44 +1439,93 @@ def _pattern(moves):
     return " → ".join(m + (" ×%d" % c if c > 1 else "") for m, c in out)
 
 
+def _my_section(doc, kind):
+    """내 원고에서 그 부분: 초록·제목은 머리부, 나머지는 개요에서 제목이 맞는 1단계 절과 그 아래 소절의 초안(영문이 있으면 영문)."""
+    f = doc.get("front") or {}
+    if kind == "abstract":
+        return (f.get("abstract") or "").strip()
+    if kind == "title":
+        return (f.get("title") or doc.get("title") or "").strip()
+    outl, on, parts = doc.get("outline") or [], False, []
+    for nd in outl:
+        if nd.get("level", 1) == 1:
+            on = bool(re.search(_MINE_RX[kind], (nd.get("heading") or "").lower()))
+        if on:
+            t = (nd.get("draft_en") or "").strip() or (nd.get("draft") or "").strip()
+            if t:
+                parts.append(t)
+    return "\n\n".join(parts)
+
+
+def _units(kind, text, paras=None):
+    if SECTION_KINDS[kind]["level"] == "para":
+        return [p["text"] for p in paras] if paras is not None else [p.strip() for p in re.split(r"\n\s*\n", text or "") if len(p.split()) >= 12]
+    return _sentences(text)
+
+
 def exemplars(body):
-    """잘 쓴 논문의 초록 본보기 + 문장 역할 + 전형적 구조 요약 + 내 초록 비교."""
+    """잘 쓴 논문의 본보기 + 단위(문장·문단)마다 역할 + 전형적 구조 요약 + 내 원고 비교."""
     doc = load_ms(body.get("id")) or {"title": "", "front": {}, "outline": []}
+    kind = body.get("section") if body.get("section") in SECTION_KINDS else "abstract"
+    spec = SECTION_KINDS[kind]
     journals = [str(j).strip() for j in (body.get("journals") or []) if str(j).strip()] or ["IJMTM", "JMPT", "IJEM"]
     source = body.get("source") if body.get("source") in ("both", "library", "scopus") else "both"
-    n = max(4, min(20, int(body.get("n") or 10)))
+    if kind not in ("abstract", "title"):
+        source = "library"   # 본문은 전문이 필요 — 내 서재 PDF 에서만
+    n = max(3, min(20, int(body.get("n") or (6 if spec["level"] == "para" else 10))))
     topic = _topic_words(doc)
     items, notes = [], []
     if source in ("both", "library"):
-        items += _library_exemplars(journals, topic, n if source == "library" else (n + 1) // 2)
+        items += _library_exemplars(kind, journals, topic, n if source == "library" else (n + 1) // 2)
     if source in ("both", "scopus"):
-        sc, err = _scopus_exemplars(journals, topic, n if source == "scopus" else n - len(items))
+        sc, err = _scopus_exemplars(kind, journals, topic, n if source == "scopus" else n - len(items))
         if err:
             notes.append(err)
         seen = {re.sub(r"\W+", "", it["title"].lower())[:60] for it in items}
         items += [x for x in sc if re.sub(r"\W+", "", x["title"].lower())[:60] not in seen]
-    texts = {"E%d" % i: _sentences(it["abstract"]) for i, it in enumerate(items)}
-    mine_text = ((doc.get("front") or {}).get("abstract") or "").strip()
+    if kind not in ("abstract", "title") and not items:
+        notes.append("고른 저널의 논문이 내 서재에 없거나, PDF 에서 '%s' 절을 찾지 못했습니다 (본문은 전문이 필요해 내 서재 PDF 에서만 봅니다)" % spec["name"])
+    mine_text = _my_section(doc, kind)
+    if spec["level"] == "title":   # 제목은 역할 없이 목록과 특징만
+        for it in items:
+            t = it.pop("text", it["title"]); it["words"] = len(t.split()); it["colon"] = ":" in t
+        mine = {"title": mine_text, "words": len(mine_text.split()), "colon": ":" in mine_text} if mine_text else None
+        summ = {"n": len(items), "avg_words": round(sum(it["words"] for it in items) / len(items), 1) if items else 0,
+                "colon_share": round(100 * sum(1 for it in items if it["colon"]) / len(items)) if items else 0}
+        return {"section": kind, "level": "title", "roles": [], "items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
+    texts = {"E%d" % i: _units(kind, it.get("text"), it.get("paras")) for i, it in enumerate(items)}
     if mine_text:
-        texts["ME"] = _sentences(mine_text)
-    labels = _label_moves(texts) if texts else {}
+        texts["ME"] = _units(kind, mine_text)
+    labels = _label(kind, texts) if texts else {}
+    key = "paras" if spec["level"] == "para" else "sentences"
     for i, it in enumerate(items):
-        ss = texts["E%d" % i]; mv = labels.get("E%d" % i) or _heuristic_moves(ss)
-        it["sentences"] = [{"t": s, "m": m} for s, m in zip(ss, mv)]
-        it["pattern"] = _pattern(mv); it["words"] = len(it["abstract"].split())
-        it.pop("abstract", None)
+        us = texts["E%d" % i]; lb = labels.get("E%d" % i) or [[r, ""] for r in _heuristic_roles(kind, us)]
+        if spec["level"] == "para":
+            it["paras"] = [dict(p, role=l[0], gist=l[1]) for p, l in zip(it["paras"], lb)]
+        else:
+            it["sentences"] = [{"t": s, "m": l[0]} for s, l in zip(us, lb)]
+        it["pattern"] = _pattern([l[0] for l in lb]); it["words"] = len((it.get("text") or "").split()); it["cites"] = _cites(it.get("text"))
+        it.pop("text", None)
+        if spec["level"] != "para":
+            it.pop("paras", None)   # 문장 단위(결론)는 원문 문단이 필요 없음
     mine = None
     if mine_text:
-        ss = texts["ME"]; mv = labels.get("ME") or _heuristic_moves(ss)
-        mine = {"sentences": [{"t": s, "m": m} for s, m in zip(ss, mv)], "pattern": _pattern(mv),
-                "words": len(mine_text.split()), "missing": [m for m in MOVES if m not in mv]}
+        us = texts["ME"]; lb = labels.get("ME") or [[r, ""] for r in _heuristic_roles(kind, us)]
+        rl = [l[0] for l in lb]
+        mine = {"pattern": _pattern(rl), "words": len(mine_text.split()), "cites": _cites(mine_text), "missing": [r for r in spec["roles"] if r not in rl]}
+        if spec["level"] == "para":
+            mine["paras"] = [{"sub": "", "text": u, "role": l[0], "gist": l[1]} for u, l in zip(us, lb)]
+        else:
+            mine["sentences"] = [{"t": s, "m": l[0]} for s, l in zip(us, lb)]
     summ = {}
     if items:
         k = len(items)
-        summ = {"n": k, "avg_words": round(sum(it["words"] for it in items) / k), "avg_sents": round(sum(len(it["sentences"]) for it in items) / k, 1),
-                "moves": {m: {"avg": round(sum(sum(1 for s in it["sentences"] if s["m"] == m) for it in items) / k, 1),
-                              "share": round(100 * sum(1 for it in items if any(s["m"] == m for s in it["sentences"])) / k)} for m in MOVES}}
-    return {"items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
+        units_of = lambda it: [p["role"] for p in it.get("paras", [])] if spec["level"] == "para" else [s["m"] for s in it.get("sentences", [])]
+        summ = {"n": k, "avg_words": round(sum(it["words"] for it in items) / k), "avg_units": round(sum(len(units_of(it)) for it in items) / k, 1),
+                "avg_cites": round(sum(it["cites"] for it in items) / k, 1),
+                "roles": {r: {"avg": round(sum(units_of(it).count(r) for it in items) / k, 1), "share": round(100 * sum(1 for it in items if r in units_of(it)) / k)} for r in spec["roles"]}}
+    return {"section": kind, "level": spec["level"], "unit": "문단" if spec["level"] == "para" else "문장", "roles": spec["roles"],
+            "items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
 
 
 def handle_get(h, url):
