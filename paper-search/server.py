@@ -1042,12 +1042,12 @@ def app_version():
     return APP_VERSION
 
 
-def claude_text(prompt, timeout=240, model="opus"):
+def claude_text(prompt, timeout=240, model="opus", effort=None):
     exe = find_claude()
     if not exe:
         return None
     try:
-        r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"],
+        r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"] + (["--effort", effort] if effort else []),
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
         out = r.stdout.decode("utf-8", "replace").strip()
         _note_claude(r.returncode, out, r.stderr.decode("utf-8", "replace"))

@@ -2066,8 +2066,41 @@ def _src_text(doc, sid):
         return ""
 
 
+_SRC_EXT = (".md", ".markdown", ".txt")
+
+
+def _dir_files(path):
+    """연결한 폴더의 글 파일(.md·.txt) → [(이름, 글, 고친 시각)]. 없는 폴더면 None. 바로 아래와 한 단계 아래 폴더까지, 많으면 최근에 고친 40개."""
+    path = os.path.expandvars(os.path.expanduser(str(path or "").strip().strip('"')))
+    if not path or not os.path.isdir(path):
+        return None
+    cands = []
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [] if root != path else [d for d in dirs if not d.startswith((".", "_"))]
+        cands += [os.path.join(root, f) for f in files if f.lower().endswith(_SRC_EXT)]
+    cands.sort(key=lambda fp: os.path.getmtime(fp), reverse=True)
+    out = []
+    for fp in cands[:40]:
+        try:
+            if os.path.getsize(fp) > 2 * 1024 * 1024:
+                continue
+            with open(fp, "rb") as f:
+                text = re.sub(r"\r\n?", "\n", _file_text(fp, f.read())).strip()
+            if text:
+                out.append((os.path.relpath(fp, path).replace("\\", "/"), text, os.path.getmtime(fp)))
+        except OSError:
+            continue
+    out.sort(key=lambda x: x[0].lower())
+    return out
+
+
 def source_op(doc, body):
     op = body.get("op")
+    if op == "scan":   # 연결한 폴더에 지금 무엇이 있나
+        files = _dir_files(body.get("path"))
+        if files is None:
+            return {"error": "폴더를 찾지 못했습니다: " + str(body.get("path") or "")}
+        return {"files": [{"name": n, "chars": len(t), "mtime": m} for n, t, m in files]}
     if op == "add":
         import base64
         name = os.path.basename(str(body.get("name") or "자료.md"))
@@ -2114,6 +2147,10 @@ def _src(doc, query=""):
     """켜 둔 자료를 프롬프트 앞에 붙일 글로. 합쳐서 예산 안이면 통째로, 넘으면 물음과 낱말이 많이 겹치는 대목(제목·문단 묶음 단위)만."""
     items = [(x, _src_text(doc, x.get("id"))) for x in (doc.get("sources") or []) if x.get("on", True)]
     items = [(x, t.strip()) for x, t in items if t.strip()]
+    for d in doc.get("source_dirs") or []:   # 연결한 폴더는 물을 때마다 새로 읽는다 — 밖에서(Claude 데스크톱 등) 고친 것이 바로 반영된다
+        if d.get("on", True):
+            base = os.path.basename(str(d.get("path") or "").rstrip("\\/")) or "폴더"
+            items += [({"name": base + "/" + n}, t) for n, t, _ in (_dir_files(d.get("path")) or [])]
     if not items:
         return ""
     head = ("[저자가 넣어 둔 작업 자료 — 이 논문을 두고 저자가 (Claude 와) 정리해 둔 글이다. 여기 적힌 사실·결정·용어·문체 방침을 알고 답하라. "
@@ -2180,6 +2217,7 @@ def ask_selection(doc, body):
         "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고에서 글의 한 부분을 골라 묻거나, 고쳐 달라고 하거나, 제 생각(\"이렇게 바꾸면 어때?\")을 말한다. JSON 으로만 답하라:\n"
         "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"]}\n"
         "규칙:\n"
+        "- 저자가 '짧게', '숫자만' 이라고 해도 형식은 이 JSON 이다 (짧은 답을 answer 에 넣는다).\n"
         "- alternatives 는 고쳐 쓰기를 바라거나 표현을 묻는 경우에만 1~3개. 뜻·사실·근거만 묻는 질문이면 빈 배열.\n"
         "- 각 대안은 [고른 부분]과 정확히 같은 범위를 대체한다. 앞뒤 글과 그대로 이어져야 하므로 고른 부분 밖의 글을 넣거나 빼지 마라. 글은 %s, 학술 문체.\n"
         "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
@@ -2189,9 +2227,18 @@ def ask_selection(doc, body):
         % ("영어로" if lang_en else "한국어로", doc.get("title", ""), (node or {}).get("heading", ""), ctx[:6000], quote[:4000],
            ("\n[지금까지의 대화]\n" + hist + "\n") if hist else "", question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
-    r = cfg["claude_json"](_src(doc, quote + " " + question + " " + para[:3000]) + prompt, timeout=600, model=model, effort=effort)
-    if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):
+    raw = (cfg["claude_text"](_src(doc, quote + " " + question + " " + para[:3000]) + prompt, timeout=600, model=model, effort=effort) or "").strip()
+    if not raw:
         return {"error": "Claude 응답이 없습니다" + _why()}
+    r = None
+    m = re.search(r"\{.*\}", raw, re.S)
+    if m:
+        try:
+            r = json.loads(m.group(0))
+        except ValueError:
+            r = None
+    if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):   # '숫자만' 같은 말에 JSON 없이 답한 경우 — 그 글을 답으로
+        r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip(), "alternatives": []}
     alts = [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
     return {"answer": str(r.get("answer") or "").strip(), "alternatives": alts}
 
