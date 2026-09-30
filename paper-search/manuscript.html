@@ -217,6 +217,14 @@
   .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; }
   .card.srcf { border-left-color: var(--line-2); margin-bottom: var(--s1); } .card.srcf.on { border-left-color: var(--green); }
   .card.srcf .rvtext { max-height: 420px; overflow-y: auto; font-family: var(--font); }
+  .card.srcf .frow { display: flex; gap: 8px; cursor: pointer; } .card.srcf .frow:hover { color: var(--accent); }
+  .card.srcf textarea.fedit { font-size: 12.5px; line-height: 1.6; min-height: 220px; margin-top: 4px; }
+  #decPop { position: fixed; right: 36px; bottom: 36px; width: 500px; max-width: calc(100vw - 48px); background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; z-index: 32; padding: 10px 14px 8px; display: none; font-size: 12.5px; color: var(--text-2); }
+  #decPop .mh { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-3); } #decPop .mh b { font-size: 13px; color: var(--text); }
+  #decPop select, #decPop input[type=text] { border: 1px solid var(--line); border-radius: var(--r); padding: 3px 6px; font: inherit; font-size: 12px; background: var(--surface); color: var(--text); max-width: 100%; }
+  #decPop .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; } #decPop .row > span { flex: none; width: 34px; color: var(--text-3); }
+  #decPop textarea { font-size: 13px; line-height: 1.6; min-height: 0; margin-top: 6px; }
+  #decPop .mfoot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
   .wsbox { padding: 0 0 8px; font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
   .wsbox input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 3px 6px; font: inherit; font-size: 12px; background: var(--surface); }
   .wsbox label { display: block; cursor: pointer; }
@@ -309,7 +317,7 @@ async function openDoc(id) {
   doc.meta = doc.meta || {}; if (doc.meta.journal) ensureJournalOption(doc.meta.journal, doc.meta.journal); $("journalSel").value = doc.meta.journal || "";
   cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
-  closeMath(); closeSel(); wsShow(null); mathWarm();
+  closeMath(); closeSel(); closeDecision(); srcEdit = null; wsShow(null); mathWarm();
   renderAll();
 }
 function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
@@ -655,7 +663,7 @@ function revItemHtml(it, r) {
     "<div class='t rvg' data-toggle='" + esc(it.id) + "'>" + esc(it.gist || normWs(it.text).slice(0, 110) + (it.text.length > 110 ? "…" : "")) + "</div>";
   if (!open) return h + "</div>";
   h += "<div class='rvtext'>" + esc(it.text) + "</div>" +
-    "<label class='f'>방침 <span class='hint' style='font-weight:400'>이 지적에 어떻게 대응하기로 했는지 (논의 뒤 한두 줄)</span></label><textarea class='rvPlan' data-iid='" + esc(it.id) + "' rows='2' placeholder='예: 수용. 3.2 절에 반복 수와 표준편차를 넣고 그림 5 에 오차 막대 추가'>" + esc(it.plan || "") + "</textarea>" +
+    "<label class='f'>방침 <span class='hint' style='font-weight:400'>이 지적에 어떻게 대응하기로 했는지 (논의 뒤 한두 줄)</span> <a href='#' class='act rvDec' style='font-weight:400' title='이 방침을 작업 자료 폴더의 결정 파일에 한 줄로 남깁니다 (Claude 채팅에서도 같은 파일을 봅니다)'>결정 파일에 기록</a></label><textarea class='rvPlan' data-iid='" + esc(it.id) + "' rows='2' placeholder='예: 수용. 3.2 절에 반복 수와 표준편차를 넣고 그림 5 에 오차 막대 추가'>" + esc(it.plan || "") + "</textarea>" +
     "<div class='rvnodes'><span class='hint' style='display:inline'>고칠 절</span> " +
       linked.map(x => "<span class='chip'><a href='#' data-go='" + x + "' title='이 절을 가운데에 열기'>" + esc(by[x].heading.slice(0, 30)) + "</a><a href='#' data-unlink='" + x + "' title='연결 끊기'>×</a></span>").join("") +
       sug.map(x => "<a href='#' class='chip sug' data-link='" + x + "' title='Claude 가 짚은 후보 — 누르면 연결'>+ " + esc(by[x].heading.slice(0, 30)) + "</a>").join("") +
@@ -723,6 +731,7 @@ function renderRev() {
   card.querySelectorAll("textarea").forEach(autogrow);
   cq(".rvPlan").oninput = e => { it.plan = e.target.value; if (it.status === "todo" && it.plan.trim()) it.status = "plan"; save(); };
   cq(".rvResp").oninput = e => { it.response = e.target.value; save(); };
+  cq(".rvDec").onclick = e => { e.preventDefault(); if (!(it.plan || "").trim()) { alert("먼저 방침을 적어 주세요."); return; } openDecision({ prefill: "[" + it.id + "] " + it.plan.trim().replace(/\s*\n\s*/g, " "), section: "심사 대응 방침" }); };
   card.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; if (msMode === "doc") setMode("para"); renderTree(); renderEditor(); });
   card.querySelectorAll("[data-unlink]").forEach(a => a.onclick = e => { e.preventDefault(); it.nodes = (it.nodes || []).filter(x => x !== a.dataset.unlink); save(); renderRev(); });
   card.querySelectorAll("[data-link]").forEach(a => a.onclick = e => { e.preventDefault(); it.nodes = (it.nodes || []).concat(a.dataset.link); save(); renderRev(); });
@@ -1251,8 +1260,89 @@ function renderEn() {
     busy = false; renderEn(); renderEditor();
   };
 }
+// ---------- 결정으로 기록: 여기서 정한 것을 작업 자료 폴더의 결정 파일에 한 줄로 (Claude 채팅과 같은 파일을 같이 고친다) ----------
+let decCtx = null;
+function closeDecision() { const p = $("decPop"); if (p) p.style.display = "none"; decCtx = null; }
+async function openDecision(ctx) {   // ctx = {thread, quote, where, note} (Claude 가 한 줄로 정리) 또는 {prefill, section} (그대로 넣기)
+  if (!doc) return;
+  let pop = $("decPop");
+  if (!pop) {
+    pop = document.createElement("div"); pop.id = "decPop";
+    pop.innerHTML = "<div class='mh'><b>결정으로 기록</b><span>작업 자료의 결정 파일에 한 줄 — Claude 채팅에서도 이 파일을 봅니다</span><span style='margin-left:auto'></span><button class='btn' id='decX'>닫기</button></div>" +
+      "<div id='decBody'></div>";
+    document.body.appendChild(pop);
+    $("decX").onclick = closeDecision;
+  }
+  decCtx = ctx; pop.style.display = "block";
+  const body = $("decBody"), dirs = doc.source_dirs || [];
+  if (!dirs.length) {
+    body.innerHTML = "<div class='hint' style='padding:8px 0'>먼저 작업 자료 폴더가 있어야 합니다. 「자료」 탭에서 폴더를 연결하거나, 여기서 바로 만드세요.</div><div class='mfoot'><button class='btn pri' id='decMk'>이 원고의 폴더를 만들고 계속</button></div>";
+    $("decMk").onclick = async () => { await saveNow(); const r = await api("/api/ms/source", { id: doc.id, op: "mkdir" }); if (r.path) { doc.source_dirs = [{ path: r.path, on: true }]; save(true); renderSrc(); openDecision(ctx); } };
+    return;
+  }
+  body.innerHTML = "<div class='hint' style='padding:8px 0'>폴더를 읽는 중…</div>";
+  await saveNow();   // 폴더 목록이 서버에 있어야 한다
+  const files = [];
+  for (const d of dirs) { let r; try { r = await api("/api/ms/source", { id: doc.id, op: "scan", path: d.path }); } catch (e) { r = {}; } srcScan[d.path] = r; (r.files || []).filter(f => /\.(md|markdown)$/i.test(f.name)).forEach(f => files.push({ path: d.path, name: f.name })); }
+  if (decCtx !== ctx) return;
+  const key = f => f.path + "|" + f.name, fresh = { path: dirs[0].path, name: "결정사항.md", fresh: true };
+  const saved = doc.decision_file && files.find(f => key(f) === key(doc.decision_file));
+  let cur = saved || files.find(f => /결정|decision|plan|방침/i.test(f.name)) || files[0] || fresh;
+  const opts = files.concat(files.some(f => key(f) === key(fresh)) ? [] : [fresh]);
+  body.innerHTML = "<div class='row'><span>파일</span><select id='decFile' style='flex:1'>" + opts.map((f, k) => "<option value='" + k + "'" + (key(f) === key(cur) ? " selected" : "") + ">" + esc((f.fresh ? "새 파일: " : "") + f.path.split(/[\\/]/).pop() + "/" + f.name) + "</option>").join("") + "</select></div>" +
+    "<div class='row'><span>제목</span><select id='decSec' style='flex:1'></select><input type='text' id='decSecNew' placeholder='새 제목' style='flex:1;display:none'></div>" +
+    "<textarea id='decText' rows='3' placeholder='결정 내용 한 줄'></textarea>" +
+    "<div id='decRep' class='hint' style='padding:2px 0'></div>" +
+    "<div class='mfoot'><span class='hint' id='decMsg' style='display:inline;flex:1'></span><button class='btn' id='decAsk' title='이 대화에서 정해진 것을 Claude 가 한 줄로 정리합니다 (약 10초)'>Claude 가 정리</button><button class='btn pri' id='decSave'>기록</button></div>";
+  let replaces = "", fileText = "";
+  const setRep = r => { replaces = r || ""; $("decRep").innerHTML = replaces ? "이 줄을 바꿉니다: <span style='text-decoration:line-through'>" + esc(replaces) + "</span> <a href='#' class='act' id='decNoRep'>바꾸지 않고 새로 넣기</a>" : ""; const a = $("decNoRep"); if (a) a.onclick = e => { e.preventDefault(); setRep(""); }; };
+  const setSecs = want => {
+    const heads = (fileText.match(/^#{2,4}\s+.+$/gm) || []).map(h => h.replace(/^#+\s+/, "").trim());
+    const sel = $("decSec"); sel.innerHTML = heads.map(h => "<option>" + esc(h) + "</option>").join("") + "<option value='__new'>새 제목…</option>";
+    const hit = want && heads.find(h => normWs(h) === normWs(want));
+    sel.value = hit || (want || !heads.length ? "__new" : heads[0]);
+    $("decSecNew").style.display = sel.value === "__new" ? "" : "none"; if (sel.value === "__new") $("decSecNew").value = want || "";
+    sel.onchange = () => { $("decSecNew").style.display = sel.value === "__new" ? "" : "none"; };
+  };
+  const loadFile = async want => {
+    cur = opts[+$("decFile").value]; fileText = "";
+    if (!cur.fresh) { const r = await api("/api/ms/source", { id: doc.id, op: "read_file", path: cur.path, name: cur.name }); fileText = r.text || ""; }
+    setSecs(want);
+  };
+  const draft = async () => {
+    $("decMsg").textContent = "Claude 가 정리하는 중… (직접 적어도 됩니다)"; $("decAsk").disabled = true;
+    let r; try { r = await api("/api/ms/source", { id: doc.id, op: "decide", path: cur.path, name: cur.fresh ? "" : cur.name, thread: ctx.thread || [], quote: ctx.quote || "", where: ctx.where || "", note: ctx.note || "" }); } catch (e) { r = { error: "서버 연결 실패" }; }
+    if (decCtx !== ctx || !$("decAsk")) return;
+    $("decAsk").disabled = false;
+    if (r.error) { $("decMsg").textContent = "⚠ " + r.error; return; }
+    if (!r.text) { $("decMsg").textContent = "이 대화에서 정해진 것을 찾지 못했습니다. 직접 적어 주세요."; return; }
+    if (!$("decText").value.trim()) $("decText").value = r.text;
+    setSecs(r.section); setRep(r.replaces); $("decMsg").textContent = "고쳐서 기록하세요";
+  };
+  $("decFile").onchange = () => loadFile(ctx.section);
+  await loadFile(ctx.section);
+  if (decCtx !== ctx) return;
+  $("decAsk").onclick = draft;
+  if (ctx.prefill) { $("decText").value = ctx.prefill; $("decAsk").style.display = (ctx.thread || []).length ? "" : "none"; }
+  else if ((ctx.thread || []).length || ctx.note) draft();
+  $("decText").focus();
+  $("decSave").onclick = async () => {
+    const text = $("decText").value.trim(); if (!text) { $("decText").focus(); return; }
+    const section = $("decSec").value === "__new" ? $("decSecNew").value.trim() : $("decSec").value;
+    $("decSave").disabled = true;
+    const r = await api("/api/ms/source", { id: doc.id, op: "add_decision", path: cur.path, name: cur.name, section, text, replaces });
+    if ($("decSave")) $("decSave").disabled = false;
+    if (r.error) { $("decMsg").textContent = "⚠ " + r.error; return; }
+    doc.decision_file = { path: cur.path, name: cur.name }; save(true);
+    delete srcScan[cur.path]; if (srcEdit && srcEdit.path === cur.path && srcEdit.name === cur.name && !srcEdit.dirty) { srcEdit.text = r.text; srcEdit.mtime = r.mtime; }
+    renderSrc();
+    $("decMsg").textContent = "기록했습니다: " + r.line; setTimeout(() => { if (decCtx === ctx) closeDecision(); }, 1600);
+  };
+  $("decText").onkeydown = e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); $("decSave").click(); } else if (e.key === "Escape") closeDecision(); };
+}
+
 // ---------- 자료: 원고에 같이 넣어 두는 작업 자료(.md 등). 켜 둔 것은 Claude 에게 물을 때 함께 간다 ----------
-let srcOpen = null, srcNote = ""; const srcCache = {}, srcScan = {};   // srcScan[폴더 경로] = {files} | {error}
+let srcOpen = null, srcNote = "", srcEdit = null; const srcCache = {}, srcScan = {};   // srcEdit = {path, name, text, mtime, dirty, msg} 고치는 중인 폴더 파일   // srcScan[폴더 경로] = {files} | {error}
 function renderSrc() {
   const el = $("tab-src"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
   const ss = doc.sources || [], on = ss.filter(x => x.on !== false), dirs = doc.source_dirs || [];
@@ -1270,7 +1360,8 @@ function renderSrc() {
     dirs.map((d, k) => { const sc = srcScan[d.path];
       return "<div class='card srcf" + (d.on !== false ? " on" : "") + "'><div class='m'><b style='word-break:break-all'>" + esc(d.path) + "</b><span style='margin-left:auto'></span><label class='hint' style='cursor:pointer;white-space:nowrap'><input type='checkbox' class='srcDirOn' data-k='" + k + "'" + (d.on !== false ? " checked" : "") + "> Claude 에게</label></div>" +
         (!sc ? "<div class='t hint'>읽는 중…</div>" : sc.error ? "<div class='t' style='color:var(--amber)'>⚠ " + esc(sc.error) + "</div>"
-          : sc.files.length ? sc.files.map(f => "<div class='t' style='display:flex;gap:8px'><span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(f.name) + "</span><span class='hint' style='white-space:nowrap'>" + f.chars.toLocaleString() + "자 · " + new Date(f.mtime * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "</span></div>").join("")
+          : sc.files.length ? sc.files.map(f => "<div class='t frow' data-dfile='" + k + "' data-name='" + esc(f.name) + "' title='눌러서 보기·고치기'><span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(f.name) + "</span><span class='hint' style='white-space:nowrap'>" + f.chars.toLocaleString() + "자 · " + new Date(f.mtime * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "</span></div>" +
+              (srcEdit && srcEdit.path === d.path && srcEdit.name === f.name ? "<textarea class='fedit' id='srcFedit' spellcheck='false'>" + esc(srcEdit.text) + "</textarea><div class='acts'><button class='btn pri' id='srcFsave'>저장</button><button class='btn' id='srcFclose'>닫기</button><span class='hint' id='srcFmsg' style='display:inline'>" + esc(srcEdit.msg || "Claude 채팅에서 고치는 파일과 같은 파일입니다") + "</span></div>" : "")).join("")
           : "<div class='t hint'>이 폴더에 .md · .txt 파일이 없습니다</div>") +
         "<div class='acts'><button class='btn' data-dscan='" + k + "'>새로 읽기</button><button class='btn' data-dcopy='" + k + "' title='이 경로를 복사해 Claude 데스크톱의 폴더 추가에 붙여 넣으세요'>경로 복사</button><button class='btn' data-dopen='" + k + "'>폴더 열기</button><button class='btn warn' data-ddel='" + k + "'>연결 끊기</button></div></div>"; }).join("") +
     (ss.length ? "<div class='sec' style='padding-left:0'>넣어 둔 파일</div>" : "") +
@@ -1287,6 +1378,30 @@ function renderSrc() {
     doc.source_dirs = (doc.source_dirs || []).concat({ path: p, on: true }); delete srcScan[p]; save(true); renderSrc();
   };
   $("srcDirAdd").onclick = addDir; $("srcDirIn").onkeydown = e => { if (e.key === "Enter") addDir(); };
+  el.querySelectorAll("[data-dfile]").forEach(row => row.onclick = async () => {
+    const d = doc.source_dirs[+row.dataset.dfile], name = row.dataset.name;
+    if (srcEdit && srcEdit.path === d.path && srcEdit.name === name) return;
+    if (srcEdit && srcEdit.dirty && !confirm("고치던 「" + srcEdit.name + "」 를 저장하지 않고 닫을까요?")) return;
+    const r = await api("/api/ms/source", { id: doc.id, op: "read_file", path: d.path, name });
+    if (r.error) { srcNote = "⚠ " + r.error; renderSrc(); return; }
+    srcEdit = { path: d.path, name, text: r.text, mtime: r.mtime, dirty: false, msg: "" }; renderSrc();
+  });
+  const fe = $("srcFedit");
+  if (fe) {
+    autogrow(fe); fe.oninput = () => { srcEdit.text = fe.value; srcEdit.dirty = true; $("srcFmsg").textContent = "고침 — 저장 전"; };
+    const saveFile = async force => {
+      const e = srcEdit, r = await api("/api/ms/source", { id: doc.id, op: "write_file", path: e.path, name: e.name, text: e.text, mtime: e.mtime, force });
+      if (r.conflict) {   // 그 사이 Claude 채팅 쪽에서 고쳤다
+        if (confirm("그 사이 이 파일이 밖에서(Claude 채팅 등) 고쳐졌습니다.\n\n확인 = 내 글로 덮어쓰기\n취소 = 밖에서 고친 내용을 불러오기 (내가 고친 것은 버림)")) return saveFile(true);
+        srcEdit = { path: e.path, name: e.name, text: r.text, mtime: r.mtime, dirty: false, msg: "밖에서 고친 내용을 불러왔습니다" }; renderSrc(); return;
+      }
+      if (r.error) { $("srcFmsg").textContent = "⚠ " + r.error; return; }
+      e.mtime = r.mtime; e.dirty = false; e.msg = "저장됨 " + new Date().toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }); delete srcScan[e.path]; renderSrc();
+    };
+    $("srcFsave").onclick = () => saveFile(false);
+    $("srcFclose").onclick = () => { if (srcEdit.dirty && !confirm("저장하지 않고 닫을까요?")) return; srcEdit = null; renderSrc(); };
+    fe.addEventListener("keydown", ev => { if (ev.ctrlKey && (ev.key === "s" || ev.key === "S")) { ev.preventDefault(); saveFile(false); } });
+  }
   $("srcDirMk").onclick = async () => {
     const mid = doc.id; await saveNow();
     const r = await api("/api/ms/source", { id: mid, op: "mkdir" });
@@ -1389,7 +1504,7 @@ function openSel(ctx, memo, mode) {   // ctx = {nid, key, start, end, quote} · 
       "<textarea id='selIn' rows='2' placeholder='메모를 적거나, Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)'></textarea>" +
       "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-k='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>" +
       "<div class='mfoot'><select id='selEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'><option value='xhigh'>Opus · 엑스트라</option><option value='high'>Opus · 보통</option><option value='fast'>Sonnet · 빠름</option></select>" +
-      "<a href='#' class='hint' id='selSrc' style='display:inline' title='자료 탭에 넣어 둔 작업 자료를 Claude 가 함께 봅니다'></a><span style='margin-left:auto'></span><button class='btn' id='selMemoBtn' title='적은 글을 이 부분의 메모로 남깁니다'>메모로 남기기</button><button class='btn pri' id='selAskBtn'>Claude 에게</button></div>";
+      "<a href='#' class='hint' id='selSrc' style='display:inline' title='자료 탭에 넣어 둔 작업 자료를 Claude 가 함께 봅니다'></a><span style='margin-left:auto'></span><button class='btn' id='selDecBtn' title='이 대화에서 정해진 것을 작업 자료 폴더의 결정 파일에 한 줄로 남깁니다 — Claude 채팅에서도 같은 파일을 봅니다'>결정으로 기록</button><button class='btn' id='selMemoBtn' title='적은 글을 이 부분의 메모로 남깁니다'>메모로 남기기</button><button class='btn pri' id='selAskBtn'>Claude 에게</button></div>";
     document.body.appendChild(pop);
     $("selX").onclick = closeSel;
     $("selEffort").value = localStorage.getItem("ms_sel_effort") || "xhigh";
@@ -1398,6 +1513,7 @@ function openSel(ctx, memo, mode) {   // ctx = {nid, key, start, end, quote} · 
     pop.querySelectorAll(".mpal button").forEach(b => b.onclick = () => selAsk(SEL_CHIPS[+b.dataset.k][1]));
     $("selAskBtn").onclick = () => selAsk();
     $("selMemoBtn").onclick = selSaveMemo;
+    $("selDecBtn").onclick = () => { if (!selCtx) return; const m = selMemo || {}; openDecision({ thread: m.thread || [], quote: (selMemo || selCtx).quote, where: selHeading(selCtx.nid), note: [m.note, $("selIn").value.trim()].filter(Boolean).join("\n") }); };
     $("selGo").onclick = () => selGoto(selMemo || selCtx);
   }
   selMemo = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글에 남긴 메모가 있으면 이어서

@@ -2094,8 +2094,121 @@ def _dir_files(path):
     return out
 
 
+def _linked_file(doc, path, name, must_exist=True):
+    """연결한 폴더 안의 글 파일 경로 (폴더 밖·다른 확장자는 None). 밖에서 온 이름을 그대로 믿지 않는다."""
+    dirs = [os.path.normpath(str(d.get("path") or "")) for d in doc.get("source_dirs") or []]
+    base = os.path.normpath(str(path or ""))
+    name = str(name or "").replace("\\", "/").strip("/")
+    if base not in dirs or not name or ".." in name.split("/") or not name.lower().endswith(_SRC_EXT):
+        return None
+    fp = os.path.normpath(os.path.join(base, *name.split("/")))
+    if os.path.commonpath([base, fp]) != base or (must_exist and not os.path.isfile(fp)):
+        return None
+    return fp
+
+
+def _write_text(fp, text):
+    """임시 파일에 쓴 뒤 바꿔치기 (Claude 데스크톱이 같은 파일을 읽는 중이어도 반쯤 쓴 파일이 보이지 않게)."""
+    os.makedirs(os.path.dirname(fp), exist_ok=True)
+    tmp = "%s.%d.tmp" % (fp, os.getpid())
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text if text.endswith("\n") else text + "\n")
+    for i in range(6):
+        try:
+            os.replace(tmp, fp)
+            return
+        except PermissionError:
+            if i == 5:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
+            time.sleep(0.05 * (i + 1))
+
+
+def _read_text(fp):
+    with open(fp, "rb") as f:
+        return re.sub(r"\r\n?", "\n", _file_text(fp, f.read()))
+
+
+def add_decision(text, section, line, replaces=""):
+    """결정 파일 글에 한 줄을 넣는다: 바뀌는 옛 줄이 있으면 그 줄을 바꾸고, 아니면 그 제목(## …) 아래 끝에, 제목이 없으면 맨 끝에 새 제목으로."""
+    lines = text.split("\n")
+    rp = _norm_ws(replaces)
+    if rp:
+        for k, ln in enumerate(lines):
+            if _norm_ws(ln) == rp:
+                lines[k] = line
+                return "\n".join(lines)
+    sec = _norm_ws(section)
+    if sec:
+        for k, ln in enumerate(lines):
+            m = re.match(r"^(#{1,4})\s*(.+?)\s*$", ln)
+            if m and _norm_ws(m.group(2)) == sec:
+                end = next((j for j in range(k + 1, len(lines)) if re.match(r"^#{1,6}\s", lines[j])), len(lines))   # 다음 제목(아래 단계 포함) 앞
+                while end > k + 1 and not lines[end - 1].strip():
+                    end -= 1
+                lines[end:end] = [line]
+                return "\n".join(lines)
+        return text.rstrip("\n") + "\n\n## " + section.strip() + "\n" + line + "\n"
+    return text.rstrip("\n") + "\n" + line + "\n"
+
+
+def decision_draft(doc, body):
+    """대화(고른 글을 놓고 나눈 것)에서 확정된 결정을 작업 자료 파일에 남길 한 줄로. → {text, section, replaces}"""
+    fp = _linked_file(doc, body.get("path"), body.get("name"))
+    cur = _read_text(fp) if fp else ""
+    thread = "\n".join("[%s] %s%s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1200],
+                                      ("\n  (대안: " + " / ".join(str(a)[:200] for a in m.get("alts") or []) + ")") if m.get("alts") else "")
+                       for m in (body.get("thread") or [])[-10:])
+    prompt = ("저자와 Claude 가 논문 원고의 한 부분을 놓고 나눈 대화다. 이 대화에서 **정해진 것**을, 이 논문의 작업 자료 파일(결정 사항 기록)에 남길 한 줄로 정리하라. JSON 으로만 답하라:\n"
+              "{\"text\": \"- 결정 내용 한 줄 (이유가 있으면 짧게 덧붙임)\", \"section\": \"넣을 제목\", \"replaces\": \"이 결정이 파일의 기존 줄을 뒤집거나 고치는 것이면 그 줄을 글자 그대로, 아니면 빈 문자열\"}\n"
+              "규칙:\n- 다음 대화에서도 지켜야 할 것만 적는다: 용어·표기·문체 방침, 무엇을 넣고 뺄지, 수치를 어떻게 적을지, 심사 대응 방침 등. 그 문장 하나의 단순한 다듬기는 결정이 아니다.\n"
+              "- 저자가 받아들였거나 분명히 정한 것만. '(대안으로 바꿈)' 은 저자가 그 대안을 골랐다는 뜻이다. 정해진 것이 없으면 text 를 빈 문자열로.\n"
+              "- section 은 아래 파일의 제목(## …) 가운데 알맞은 것의 글자 그대로. 맞는 제목이 없으면 짧은 새 제목.\n"
+              "- 파일의 말투와 형식을 따른다. 날짜는 붙이지 마라(프로그램이 붙인다). Claude 의 의견이 아니라 결정된 내용을 적는다.\n\n"
+              "[결정 파일: %s]\n%s\n\n[원고에서 고른 글 — %s]\n%s\n\n[대화]\n%s%s"
+              % (body.get("name") or "(새 파일)", cur[:12000] or "(아직 비어 있음)", str(body.get("where") or ""), str(body.get("quote") or "")[:2000], thread or "(없음)",
+                 ("\n\n[저자의 메모]\n" + str(body.get("note"))[:1000]) if body.get("note") else ""))
+    raw = (cfg["claude_text"](prompt, timeout=120, model="sonnet") or "").strip()
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        r = json.loads(m.group(0)) if m else None
+    except ValueError:
+        r = None
+    if not isinstance(r, dict):
+        return {"error": "정리하지 못했습니다" + _why()}
+    return {"text": str(r.get("text") or "").strip(), "section": str(r.get("section") or "").strip(), "replaces": str(r.get("replaces") or "").strip()}
+
+
 def source_op(doc, body):
     op = body.get("op")
+    if op in ("read_file", "write_file", "add_decision"):   # 연결한 폴더의 파일을 여기서도 읽고 고친다 (Claude 채팅과 같은 파일)
+        fp = _linked_file(doc, body.get("path"), body.get("name"), must_exist=(op == "read_file"))
+        if not fp:
+            return {"error": "연결한 폴더의 .md · .txt 파일만 다룰 수 있습니다"}
+        exists = os.path.isfile(fp)
+        if op == "read_file":
+            return {"text": _read_text(fp), "mtime": os.path.getmtime(fp)}
+        if op == "write_file":
+            if exists and body.get("mtime") and abs(os.path.getmtime(fp) - float(body["mtime"])) > 1.0 and not body.get("force"):
+                return {"conflict": True, "text": _read_text(fp), "mtime": os.path.getmtime(fp)}   # 그 사이 밖에서(Claude 채팅 등) 고쳐졌다
+            _write_text(fp, re.sub(r"\r\n?", "\n", str(body.get("text") or "")))
+            return {"ok": True, "mtime": os.path.getmtime(fp)}
+        line = re.sub(r"\s*\n\s*", " ", str(body.get("text") or "")).strip()
+        if not line:
+            return {"error": "기록할 글이 없습니다"}
+        if not re.match(r"^[-*•]\s", line):
+            line = "- " + line
+        if body.get("date", True) and not re.search(r"\(\d{4}-\d{2}-\d{2}\)\s*$", line):
+            line += " (%s)" % time.strftime("%Y-%m-%d")
+        cur = _read_text(fp) if exists else "# 결정 사항\n"
+        new = add_decision(cur, str(body.get("section") or ""), line, str(body.get("replaces") or ""))
+        _write_text(fp, new)
+        return {"ok": True, "mtime": os.path.getmtime(fp), "text": new, "line": line}
+    if op == "decide":
+        return decision_draft(doc, body)
     if op == "mkdir":   # 이 원고의 작업 자료 폴더를 Athenaeum 안에 만든다: 원고\작업자료\<제목>
         name = re.sub(r'[\\/:*?"<>|\s]+', " ", doc.get("title") or "").strip()[:40].strip(" .") or doc["id"]
         path = os.path.join(cfg["MS_DIR"], "작업자료", name)
