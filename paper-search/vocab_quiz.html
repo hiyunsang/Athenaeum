@@ -48,7 +48,7 @@
   #ex .ko { margin-top: 2px; }
   #ex .pos { color: var(--text-3); font-size: 0.95rem; margin-right: var(--s2); }
   #ex .rel { margin-top: var(--s1); font-size: 0.95rem; color: var(--text-2); }
-  #ex .rel .k { color: var(--text-3); margin-right: 2px; }
+  #ex .rel .k { color: var(--text-3); margin-right: 2px; user-select: none; }
   #ex .rel span + span { margin-left: var(--s3); }
   footer { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0.4rem var(--s3); border-top: 1px solid var(--line); font-size: 0.95rem; color: var(--text-3); min-height: 2.4rem; }
   footer .act { padding: 0; font-size: 0.95rem; }
@@ -254,12 +254,27 @@
   // ---- 예문에서 드래그한 낱말을 단어장에 담기
   let selTerm = "";
   function hideAdd() { $("addsel").hidden = true; selTerm = ""; }
+  // 선택을 낱말 경계로 넓힌다 — 반쯤 드래그해도, 클릭만 해도 그 낱말 전체가 잡힌다
+  const WORDCH = /[A-Za-z'\-]/;
+  function snapToWords(sel) {
+    if (!sel.rangeCount) return;
+    const r = sel.getRangeAt(0).cloneRange();
+    let sc = r.startContainer, so = r.startOffset, ec = r.endContainer, eo = r.endOffset;
+    if (sc.nodeType === 3) { const t = sc.textContent; while (so > 0 && WORDCH.test(t[so - 1])) so--; }
+    if (ec.nodeType === 3) { const t = ec.textContent; while (eo < t.length && WORDCH.test(t[eo])) eo++; }
+    r.setStart(sc, so); r.setEnd(ec, eo);
+    sel.removeAllRanges(); sel.addRange(r);
+  }
+  let selFrom = "";
   function checkSelection() {
     const sel = window.getSelection();
+    const en = document.querySelector("#ex .en"), rel = document.querySelector("#ex .rel");
+    const inEl = el => el && sel.rangeCount && el.contains(sel.anchorNode) && el.contains(sel.focusNode);
+    selFrom = inEl(en) ? "en" : inEl(rel) ? "rel" : "";
+    if (!selFrom) { hideAdd(); return; }
+    snapToWords(sel);
     const txt = String(sel).replace(/\s+/g, " ").trim().replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
-    const en = document.querySelector("#ex .en");
-    if (!txt || !en || !sel.rangeCount || !en.contains(sel.anchorNode) || !en.contains(sel.focusNode) ||
-        txt.split(" ").length > 4 || !/^[A-Za-z][A-Za-z' -]*$/.test(txt)) { hideAdd(); return; }
+    if (!txt || txt.split(" ").length > 4 || !/^[A-Za-z][A-Za-z' -]*$/.test(txt)) { hideAdd(); return; }
     selTerm = txt;
     const r = sel.getRangeAt(0).getBoundingClientRect(), b = $("addsel");
     b.textContent = "‘" + txt + "’ 담기";
@@ -273,15 +288,27 @@
   $("addsel").addEventListener("mousedown", e => e.preventDefault());   // 누를 때 선택이 풀리지 않게
   $("addsel").onclick = async () => {
     const term = selTerm; if (!term) return;
-    const exNow = (cur && (cur.examples || [])[0]) || {};
+    const fromRel = selFrom === "rel";
+    const exNow = fromRel ? {} : ((cur && (cur.examples || [])[0]) || {});
+    const hint = fromRel && cur ? "'" + cur.term + "'(" + (cur.meaning || "") + ") 와 관련된 낱말(동의어·반의어·파생어 줄에 있던 것)" : "";
     hideAdd(); window.getSelection().removeAllRanges();
     $("note").textContent = "‘" + term + "’ 뜻 찾는 중… (10초쯤)";
     try {
       const r = await (await fetch("/api/vocab/add_word", { method: "POST",
-        body: JSON.stringify({ term: term, deck: $("deck").value || "시험단어", en: exNow.en || "", ko: exNow.ko || "" }) })).json();
+        body: JSON.stringify({ term: term, deck: $("deck").value || "시험단어", en: exNow.en || "", ko: exNow.ko || "", hint: hint }) })).json();
       if (r.error) { $("note").textContent = r.error; return; }
       const w = r.word || {};
-      if (r.new && w.term && w.meaning) { words.push(w); }
+      if (r.new && w.term && w.meaning) {
+        words.push(w);
+        // 발음·동의어·예문은 서버가 뒤에서 채운다 → 조금 뒤 다시 받아 바꿔 끼운다
+        setTimeout(async () => {
+          try {
+            const d2 = await (await fetch("/api/vocab")).json();
+            const nw = (d2.words || []).find(x => x.id === w.id);
+            if (nw) { const i = words.findIndex(x => x.id === w.id); if (i >= 0) words[i] = nw; const j = pool.findIndex(x => x.id === w.id); if (j >= 0) pool[j] = nw; }
+          } catch (e) {}
+        }, 40000);
+      }
       $("note").textContent = (r.new ? "담았습니다: " : "이미 있습니다: ") + (w.term || term) + " — " + (w.meaning || "") + " · Enter 로 다음";
     } catch (e) { $("note").textContent = "담지 못했습니다"; }
   };

@@ -169,7 +169,8 @@ def add_from_quiz(body):
     deck = (body.get("deck") or "시험단어").strip()
     field = {"toefl": "토플 학술 영어", "toeic": "토익 비즈니스 영어"}.get(deck_style(d, deck), "")
     en, ko = str(body.get("en") or "")[:600], str(body.get("ko") or "")[:600]
-    info = lookup_meaning(term, en, field)
+    hint = str(body.get("hint") or "")[:200]          # 동의어 줄에서 담을 때: "'sustain'(지탱하다)의 동의어" 같은 문맥
+    info = lookup_meaning(term, hint or en, field)
     d = load()                      # 뜻을 찾는 동안(10초쯤) 다른 저장이 있었을 수 있다
     w = find_word(d, term)
     if w is None:
@@ -182,6 +183,10 @@ def add_from_quiz(body):
         if deck not in d["decks"]:
             d["decks"].append(deck)
         save(d)
+        # 발음·동의어·반의어·파생어(예문이 없으면 예문도)는 뒤에서 채운다 — 담기 응답을 기다리게 하지 않는다
+        style = deck_style(d, deck)
+        chunk = [(w["id"], w["term"], w.get("meaning") or "")]
+        threading.Thread(target=lambda: _apply_fill(_fill_chunk(chunk, style)), daemon=True).start()
     return {"ok": True, "word": w, "new": True, "total": len(d["words"])}
 
 
