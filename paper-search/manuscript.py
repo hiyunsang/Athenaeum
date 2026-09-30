@@ -2048,6 +2048,52 @@ def exemplars(body):
             "items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
 
 
+# ---------- 고른 글: 원고에서 드래그한 부분을 놓고 묻거나 고쳐 달라고 하기 ----------
+_SEL_EFFORT = {"xhigh": ("opus", "xhigh"), "high": ("opus", None), "fast": ("sonnet", None)}   # 화면의 엑스트라·보통·빠름
+
+
+def ask_selection(doc, body):
+    """저자가 고른 부분(quote)에 대해 묻거나("이 말이 맞나"), 고쳐 달라거나("더 간결하게"), 제 생각을 말하면("이렇게 바꾸면 어때")
+    → {answer: 한국어 답·평가, alternatives: 고른 부분을 그대로 대체할 글들}. 대화는 화면이 메모에 남긴다."""
+    quote = str(body.get("quote") or "").strip()
+    question = str(body.get("question") or "").strip()
+    if not quote or not question:
+        return {"error": "고른 글과 물을 말이 필요합니다"}
+    nid = body.get("node")
+    node = _rev_node(doc, nid)
+    if nid == "front":
+        text = (doc.get("front") or {}).get("abstract") or ""
+    else:
+        text = (node or {}).get(body.get("key") or "draft") or ""
+    para = next((p for p in re.split(r"\n\s*\n", text) if quote in p), "")
+    if not para and quote in text:   # 고른 글이 문단을 넘는다
+        k = text.find(quote)
+        para = text[max(0, k - 1200):k + len(quote) + 1200]
+    ctx = para.replace(quote, "\u27ea" + quote + "\u27eb", 1) if para else "(고른 글이 든 문단을 찾지 못함 — 그 사이 글이 바뀌었을 수 있다)"
+    lang_en = doc.get("meta", {}).get("lang") == "en" or sum(1 for ch in quote if ord(ch) < 128) > len(quote) * 0.8
+    hist = "\n".join("[%s] %s%s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1500],
+                                    ("\n  (내놓은 대안: " + " / ".join(str(a)[:300] for a in m.get("alts") or []) + ")") if m.get("alts") else "")
+                     for m in (body.get("thread") or [])[-8:])
+    prompt = (
+        "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고에서 글의 한 부분을 골라 묻거나, 고쳐 달라고 하거나, 제 생각(\"이렇게 바꾸면 어때?\")을 말한다. JSON 으로만 답하라:\n"
+        "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"]}\n"
+        "규칙:\n"
+        "- alternatives 는 고쳐 쓰기를 바라거나 표현을 묻는 경우에만 1~3개. 뜻·사실·근거만 묻는 질문이면 빈 배열.\n"
+        "- 각 대안은 [고른 부분]과 정확히 같은 범위를 대체한다. 앞뒤 글과 그대로 이어져야 하므로 고른 부분 밖의 글을 넣거나 빼지 마라. 글은 %s, 학술 문체.\n"
+        "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
+        "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
+        "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
+        "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
+        % ("영어로" if lang_en else "한국어로", doc.get("title", ""), (node or {}).get("heading", ""), ctx[:6000], quote[:4000],
+           ("\n[지금까지의 대화]\n" + hist + "\n") if hist else "", question[:2000]))
+    model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
+    r = cfg["claude_json"](prompt, timeout=600, model=model, effort=effort)
+    if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):
+        return {"error": "Claude 응답이 없습니다" + _why()}
+    alts = [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
+    return {"answer": str(r.get("answer") or "").strip(), "alternatives": alts}
+
+
 # ---------- 리비전: 심사 의견(편집자·심사위원)을 하나씩 같이 처리 ----------
 # doc["revision"] = {"rounds": [{id, title, file, created, decision, raw, base: {절 id: {draft, draft_en}}, items: [...]}]}
 # item = {id(R1.2), reviewer, no, kind(major|minor|praise), text(원문 그대로), status(todo|plan|applied|done), gist, work, suggest: [절 id],
@@ -2653,6 +2699,11 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, rev_op(doc, body))
+        if p == "/api/ms/ask_sel":   # 고른 글을 놓고 Claude 에게 묻기·고쳐 달라기
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            return h._send(200, ask_selection(doc, body))
         if p == "/api/ms/math":   # 수식 미리보기: LaTeX → MathML (브라우저가 직접 그린다)
             items = (body.get("items") or [])[:400]
             return h._send(200, {"mml": [mathtex.to_mathml(str(it.get("tex") or "")[:4000], bool(it.get("display"))) for it in items]})

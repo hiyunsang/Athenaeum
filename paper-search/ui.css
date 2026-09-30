@@ -46,7 +46,7 @@
 /* 환경설정 값 (ui.js 가 localStorage 로 설정): 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 */
 :root { --read-scale: 1; --ms-scale: 1; --read-width: 760px; --read-lh: 1.8; }
 #uiSettings { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1000; display: flex; align-items: flex-start; justify-content: flex-end; padding: 52px var(--s4); }
-#uiSettings .ubox { width: 440px; max-width: 100%; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; padding: var(--s3) var(--s4) var(--s4); font-size: 13px; color: var(--text); }
+#uiSettings .ubox { width: 460px; max-width: 100%; max-height: calc(100vh - 70px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; padding: var(--s3) var(--s4) var(--s4); font-size: 13px; color: var(--text); }
 #uiSettings .uhead { display: flex; align-items: baseline; gap: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); margin-bottom: var(--s2); }
 #uiSettings .uhead b { font-size: 14px; }
 #uiSettings .uclose { margin-left: auto; background: none; border: 0; color: var(--text-3); cursor: pointer; font-size: 14px; }

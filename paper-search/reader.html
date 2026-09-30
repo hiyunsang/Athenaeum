@@ -73,6 +73,10 @@
   table.abbr td.k { white-space: nowrap; font-weight: 600; color: var(--text); width: 1%; }
   #pdfcol { flex: 1; min-width: 360px; overflow-y: auto; background: #56554f; display: none; position: relative; }
   #pdfcol.on { display: block; }
+  #split { flex: none; width: 6px; cursor: col-resize; background: var(--line-2); }   /* 끌어서 한국어 글 / PDF 창의 폭을 나눈다 */
+  #split:hover, #split.drag { background: var(--accent); }
+  #split:has(+ #pdfcol:not(.on)) { display: none; }
+  #read { font-family: var(--read-font, inherit); }
   #pdftools { position: sticky; top: 0; z-index: 3; background: #3a3936; color: #ddd; font-size: 12px; padding: 4px var(--s2); display: flex; gap: var(--s2); align-items: center; }
   #pdftools button { background: #55544f; color: #fff; border: 0; border-radius: var(--r); padding: 2px 8px; cursor: pointer; font-size: 12px; }
   #pdftools button.on { background: var(--accent); }
@@ -133,9 +137,10 @@
     <div id="notes"></div>
   </div>
   <div id="read">불러오는 중…</div>
+  <div id="split" title="끌어서 PDF 창의 폭을 조절 (두 번 누르면 반반)"></div>
   <div id="pdfcol" class="on">
     <div id="pdftools">
-      <button id="zoomOut" title="축소">−</button><span id="zoomLbl">100%</span><button id="zoomIn" title="확대">+</button>
+      <button id="zoomOut" title="축소">−</button><span id="zoomLbl">100%</span><button id="zoomIn" title="확대 (Ctrl+휠로도)">+</button><button id="zoomFit" title="PDF 쪽이 창 폭에 꽉 차게">폭 맞춤</button>
       <button id="regionBtn" title="켜고 그림 위를 드래그하면 그 부분이 크게 뜹니다">영역 확대</button>
       <button id="followBtn" class="on" title="한국어 본문을 스크롤하면 PDF가 원문의 해당 위치로 따라갑니다 (절 번호로 맞추고, 문단의 영문 용어·숫자로 보정). PDF를 직접 스크롤하면 잠시 멈춥니다">원문 따라가기</button>
       <label style="cursor:pointer"><input type="checkbox" id="capTog" checked> 캡션 번역 표시</label>
@@ -571,14 +576,36 @@ function placeCaptions() {
 document.getElementById("capTog").onchange = placeCaptions;
 
 // ---------- 확대 ----------
-function setZoom(f) {
-  zoomF = Math.min(2.4, Math.max(0.5, f));
+function setZoom(f, quiet) {   // quiet = 환경설정에서 온 값 (다시 저장하지 않는다)
+  const mid = pdfcol.scrollHeight ? (pdfcol.scrollTop + pdfcol.clientHeight / 2) / pdfcol.scrollHeight : 0;   // 보던 자리를 지킨다
+  zoomF = Math.min(2.4, Math.max(0.5, Math.round(f * 100) / 100));
   pdfpages.style.zoom = zoomF;
   document.getElementById("zoomLbl").textContent = Math.round(zoomF * 100) + "%";
+  if (mid) pdfcol.scrollTop = mid * pdfcol.scrollHeight - pdfcol.clientHeight / 2;
   rerenderVisible();
+  if (!quiet && Math.abs(uiGet("ui_pdf_zoom") - zoomF) > 0.001) uiSet("ui_pdf_zoom", zoomF);   // 다음에 열어도 같은 크기
 }
+window.onUiChange = () => { const z = uiGet("ui_pdf_zoom"); if (Math.abs(z - zoomF) > 0.001) setZoom(z, true); };   // ⚙ 환경설정의 '영문(PDF) 크기'
+setZoom(uiGet("ui_pdf_zoom"), true);
 document.getElementById("zoomIn").onclick = () => setZoom(zoomF + 0.15);
 document.getElementById("zoomOut").onclick = () => setZoom(zoomF - 0.15);
+document.getElementById("zoomFit").onclick = () => { if (pages.length) setZoom((pdfcol.clientWidth - 28) / pages[0].vp.width); };
+pdfcol.addEventListener("wheel", e => { if (!e.ctrlKey) return; e.preventDefault(); setZoom(zoomF + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false });
+// 한국어 글과 PDF 사이의 막대를 끌어 폭을 나눈다 (영문을 크게 보려면 PDF 쪽을 넓게)
+(() => {
+  const split = document.getElementById("split"), readEl = document.getElementById("read");
+  const clamp = fr => Math.min(0.8, Math.max(0.2, fr));
+  const apply = fr => { readEl.style.flex = (1 - fr) + " 1 0"; pdfcol.style.flex = fr + " 1 0"; };
+  apply(clamp(parseFloat(localStorage.getItem("reader_pdf_frac")) || 0.5));
+  split.addEventListener("pointerdown", e => {
+    e.preventDefault(); split.setPointerCapture(e.pointerId); split.classList.add("drag");
+    let fr = null;
+    const move = ev => { const x0 = readEl.getBoundingClientRect().left, x1 = pdfcol.getBoundingClientRect().right; fr = clamp((x1 - ev.clientX) / (x1 - x0)); apply(fr); };
+    const up = () => { split.classList.remove("drag"); split.removeEventListener("pointermove", move); split.removeEventListener("pointerup", up); if (fr) localStorage.setItem("reader_pdf_frac", fr); };
+    split.addEventListener("pointermove", move); split.addEventListener("pointerup", up);
+  });
+  split.ondblclick = () => { apply(0.5); localStorage.setItem("reader_pdf_frac", 0.5); };
+})();
 document.getElementById("regionBtn").onclick = () => {
   regionMode = !regionMode;
   document.getElementById("regionBtn").classList.toggle("on", regionMode);

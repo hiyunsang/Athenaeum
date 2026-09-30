@@ -39,7 +39,8 @@
   textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; font: inherit; font-size: 14px; line-height: 1.7; background: var(--surface); resize: vertical; }
   textarea:focus { outline: none; border-color: var(--accent); }
   #draft { min-height: 220px; font-size: calc(15px * var(--ms-scale, 1)); line-height: 1.8; }
-  #draftEn { min-height: 160px; font-family: var(--font-serif); font-size: calc(14.5px * var(--ms-scale, 1)); }
+  #draftEn { min-height: 160px; font-family: var(--ms-font, var(--font-serif)); font-size: calc(14.5px * var(--ms-scale, 1)); }
+  #draft, #fAbs, #fTitle, #claim, .docmode textarea.para { font-family: var(--ms-font, inherit); }   /* ⚙ 환경설정의 '원고 글꼴 모양' */
   #fAbs, #fTitle { font-size: calc(14px * var(--ms-scale, 1)); }
   .card .t, .card .src, .issue { font-size: calc(12.5px * var(--ms-scale, 1)); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
@@ -67,7 +68,7 @@
   .fbtheme { padding: 6px 9px; border-left: 3px solid var(--amber); margin: 4px 0; font-size: 12.5px; line-height: 1.5; background: var(--surface); }
   .fbtheme .k { color: var(--text-3); font-size: 11px; margin-left: 6px; }
   .card.dim { opacity: .55; }
-  .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; overflow-x: auto; scrollbar-width: thin; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 3; overflow-x: auto; scrollbar-width: thin; flex: none; }   /* flex:none — 세로 flex 안에서 overflow 가 있으면 높이가 0 까지 눌린다 */
   .tabs div { padding: 8px 9px; font-size: 12px; color: var(--text-2); cursor: pointer; white-space: nowrap; flex: none; }   /* 탭이 많아도 글자가 세로로 꺾이지 않게 */
   .tabs div.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
   .tab { display: none; padding: var(--s2) var(--s3) var(--s8); }
@@ -201,6 +202,19 @@
   #mathPop .mfoot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
   #mathPop .mfoot input[type=text] { width: 64px; border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; font: inherit; font-size: 12px; background: var(--surface); }
   #wsState { font-size: 12px; color: var(--text-3); } #wsState.warn { color: var(--amber); }
+  /* 고른 글: 글 칸에서 드래그하면 뜨는 작은 막대와, 메모·Claude 창 */
+  #selBar { position: fixed; z-index: 31; display: none; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 4px 14px #0003; padding: 1px 2px; white-space: nowrap; }
+  #selBar button { font-size: 12.5px; padding: 4px 9px; }
+  #selPop { position: fixed; right: 24px; bottom: 24px; width: 520px; max-width: calc(100vw - 48px); max-height: calc(100vh - 90px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; z-index: 30; padding: 10px 14px 8px; display: none; }
+  #selPop .mh { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-3); } #selPop .mh b { font-size: 13px; color: var(--text); }
+  #selPop .rvtext { max-height: 110px; overflow-y: auto; font-size: calc(12.5px * var(--ms-scale, 1)); }
+  #selPop textarea { font-size: 13px; line-height: 1.6; min-height: 0; margin-top: 4px; }
+  #selPop .mpal { display: flex; flex-wrap: wrap; gap: 0 2px; } #selPop .mpal button { padding: 3px 7px; font-size: 12px; }
+  #selPop .mfoot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+  #selPop .mfoot select { font-size: 12px; border-color: transparent; background: transparent; color: var(--text-2); }
+  .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
+  .selalt .acts { margin-left: -8px; }
+  .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; }
   .wsbox { padding: 0 0 8px; font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
   .wsbox input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 3px 6px; font: inherit; font-size: 12px; background: var(--surface); }
   .wsbox label { display: block; cursor: pointer; }
@@ -252,7 +266,7 @@
     <div class="hint" style="padding:0">지금 원고(BUE)라면: ① 피드백 탭에서 교수님 주석부터 처리 → ② 원고 모드로 통독하며 고치기 → ③ 점검 → ④ 내보내기.</div>
   </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
-    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록·제목·서론·방법·결과·결론을 어떤 구조로 썼는지 — 문장·문단마다 역할">본보기</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="rev" title="심사 의견(편집자·심사위원)을 파일로 넣고 하나씩 같이 처리: 논의 → 고칠 안 → 반영 → 답변서">리비전</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록·제목·서론·방법·결과·결론을 어떤 구조로 썼는지 — 문장·문단마다 역할">본보기</div><div data-t="notes" title="내 메모(글을 드래그해 남긴 것·Claude 에게 물은 것)와, 워드에서 가져온 교수님·공저자 주석">메모·피드백</div><div data-t="rev" title="심사 의견(편집자·심사위원)을 파일로 넣고 하나씩 같이 처리: 논의 → 고칠 안 → 반영 → 답변서">리비전</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
     <div class="tab on" id="tab-cards"></div>
     <div class="tab" id="tab-figs"></div>
     <div class="tab" id="tab-check"></div>
@@ -292,7 +306,7 @@ async function openDoc(id) {
   doc.meta = doc.meta || {}; if (doc.meta.journal) ensureJournalOption(doc.meta.journal, doc.meta.journal); $("journalSel").value = doc.meta.journal || "";
   cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
-  closeMath(); wsShow(null); mathWarm();
+  closeMath(); closeSel(); wsShow(null); mathWarm();
   renderAll();
 }
 function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
@@ -453,7 +467,9 @@ function renderDocMode() {
       "<div class='pm'><span class='wcn'>" + wc(n[key]) + " 단어</span><span>카드 " + (n.cards || []).length + "</span><span class='st " + (n.status || "") + "'></span>" +
       (n.review && n.review.result && (n.review.result.issues || []).length ? "<span style='color:var(--amber)'>검토 지적 " + n.review.result.issues.length + "</span>" : "") +
       (commentsFor(n.id).length ? "<span style='color:var(--amber)'>피드백 " + commentsFor(n.id).length + "</span>" : "") +
+      (memosFor(n.id).length ? "<a href='#' data-memos='" + n.id + "' style='color:var(--accent)'>메모 " + memosFor(n.id).length + "</a>" : "") +
       "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
+  ed.querySelectorAll("[data-memos]").forEach(a => a.onclick = e => { e.preventDefault(); memoJump(a.dataset.memos); });
   $("docLang").onchange = e => { localStorage.setItem("ms_doclang", e.target.value); renderDocMode(); };
   autogrow($("docTitle")); $("docTitle").oninput = () => { f.title = $("docTitle").value.replace(/\n/g, " "); doc.title = f.title; save(); $("msSel").options[$("msSel").selectedIndex].text = f.title; };
   ed.querySelectorAll("textarea[data-front]").forEach(t => { autogrow(t); t.oninput = () => { f[t.dataset.front] = t.value; save(); }; });
@@ -1007,7 +1023,7 @@ function renderNotes() {
   const el = $("tab-notes"); if (!doc) { el.innerHTML = ""; return; }
   const cs = doc.comments || []; const open = cs.filter(c => c.status !== "done").length;
   const plan = doc.feedback_plan && doc.feedback_plan.result;
-  let h = "<div class='sec' style='display:flex;gap:8px;align-items:baseline'>피드백 " + cs.length + "개 <span class='hint' style='font-weight:400'>미해결 " + open + " · 워드 주석에서 가져옴</span><span style='margin-left:auto'></span>" +
+  let h = memosHtml() + "<div class='sec' style='display:flex;gap:8px;align-items:baseline'>피드백 " + cs.length + "개 <span class='hint' style='font-weight:400'>미해결 " + open + " · 워드 주석에서 가져옴</span><span style='margin-left:auto'></span>" +
     (cs.length ? "<button class='btn' id='fbPlan' title='주석 전체를 주제별로 묶어 우선순위와 할 일을 정리합니다 (~1분)'>" + (plan ? "다시 정리" : "전체 정리") + "</button>" : "") + "</div>";
   if (plan) h += planHtml(plan);
   if (!cs.length) h += "<div class='hint'>워드 원고를 가져오면 교수님·공저자 주석이 여기에 옵니다.</div>";
@@ -1023,7 +1039,7 @@ function renderNotes() {
       (fbOpen === c0.id ? threadHtml(c0) : "") +
       "<textarea class='fbReply' data-cid='" + esc(c0.id) + "' rows='1' placeholder='교수님께 드릴 답변 메모 (내보내기 때 함께 정리)'>" + esc(c0.reply || "") + "</textarea></div>";
   }).join("");
-  el.innerHTML = h;
+  el.innerHTML = h; memosBind(el);
   const pb = $("fbPlan"); if (pb) pb.onclick = fbPlanRun;
   el.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; renderTree(); renderEditor(); });
   el.querySelectorAll(".fbDone").forEach(cb => cb.onchange = () => { (commentThreads().find(g => String(g[0].id) === cb.dataset.cid) || []).forEach(c => c.status = cb.checked ? "done" : "open"); save(); renderNotes(); });
@@ -1231,6 +1247,188 @@ function renderEn() {
     busy = false; renderEn(); renderEditor();
   };
 }
+// ---------- 고른 글: 글 칸에서 드래그 → 메모로 남기거나, Claude 에게 묻기·고쳐 달라기 (대안을 받으면 그 자리에 바꿔 넣는다) ----------
+// doc.memos = [{id, node, key, quote, note, thread: [{role: user|claude, text, alts, base}], t, done}]
+let selCtx = null, selMemo = null, selBusy = false;
+const memosFor = nid => (doc.memos || []).filter(m => m.node === nid && !m.done);
+function taTarget(ta) {   // 글 칸이 어느 절의 어느 글인가
+  if (!ta || ta.tagName !== "TEXTAREA") return null;
+  if (ta.id === "draft") return { nid: cur, key: "draft" };
+  if (ta.id === "draftEn") return { nid: cur, key: "draft_en" };
+  if (ta.id === "fAbs" || ta.dataset.front === "abstract") return { nid: "front", key: "abstract" };
+  if (ta.dataset.p) return { nid: ta.dataset.p, key: (localStorage.getItem("ms_doclang") || "ko") === "en" ? "draft_en" : "draft" };
+  return null;
+}
+function taFor(nid, key) {   // 그 글이 지금 화면의 어느 글 칸에 있나 (없으면 null)
+  if (nid === "front") return $("fAbs") || document.querySelector(".docmode textarea[data-front='abstract']");
+  if (msMode === "doc") { const t = document.querySelector(".docmode textarea[data-p='" + nid + "']"); return t && taTarget(t).key === key ? t : null; }
+  return cur === nid ? $(key === "draft_en" ? "draftEn" : "draft") : null;
+}
+const selText = (nid, key) => nid === "front" ? ((doc.front || {}).abstract || "") : ((node(nid) || {})[key] || "");
+const selHeading = nid => nid === "front" ? "초록" : ((node(nid) || {}).heading || "");
+function selBarHide() { const b = $("selBar"); if (b) b.style.display = "none"; }
+document.addEventListener("mouseup", e => {
+  if (e.target.closest && (e.target.closest("#selBar") || e.target.closest("#selPop"))) return;
+  const ta = e.target, tg = taTarget(ta);
+  if (!doc || !tg || ta.selectionEnd - ta.selectionStart < 2 || !ta.value.slice(ta.selectionStart, ta.selectionEnd).trim()) { selBarHide(); return; }
+  let bar = $("selBar");
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "selBar";
+    bar.innerHTML = "<button class='btn' data-a='memo' title='고른 글에 메모를 남깁니다'>메모</button><button class='btn pri' data-a='ask' title='고른 글을 놓고 Claude 에게 묻거나 고쳐 달라고 합니다 (Ctrl+K)'>Claude 에게</button>";
+    document.body.appendChild(bar);
+    bar.addEventListener("mousedown", ev => ev.preventDefault());   // 누를 때 글 칸의 선택이 풀리지 않게
+    bar.querySelectorAll("button").forEach(b => b.onclick = () => { const c = bar._ctx; selBarHide(); if (c) openSel(c, null, b.dataset.a); });
+  }
+  bar._ctx = Object.assign({ start: ta.selectionStart, end: ta.selectionEnd, quote: ta.value.slice(ta.selectionStart, ta.selectionEnd) }, tg);
+  bar.style.display = "block";
+  bar.style.left = Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, e.clientX - 20)) + "px";
+  bar.style.top = Math.max(50, e.clientY - 40) + "px";
+});
+document.addEventListener("mousedown", e => { if (!(e.target.closest && e.target.closest("#selBar"))) selBarHide(); });
+document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA" && e.target.id !== "selIn") selBarHide(); });
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && !e.altKey && (e.key === "k" || e.key === "K")) {   // 고른 글이 있으면 바로 Claude 창
+    const ta = document.activeElement, tg = taTarget(ta);
+    if (tg && ta.selectionEnd - ta.selectionStart >= 2) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, end: ta.selectionEnd, quote: ta.value.slice(ta.selectionStart, ta.selectionEnd) }, tg), null, "ask"); }
+  }
+});
+const SEL_CHIPS = [["더 간결하게", "더 간결하게 줄여 줘"], ["더 자연스럽게", "뜻은 그대로 두고 더 자연스러운 학술 문체로 고쳐 줘"], ["다른 표현", "같은 뜻의 다른 표현을 보여 줘"], ["논리 점검", "이 부분의 논리와 근거에 빈 곳이 있는지 봐 줘"], ["심사자라면", "심사자라면 이 부분에서 무엇을 물을까?"], ["영어로", "영어 학술 문체로 옮겨 줘"]];
+function closeSel() { const p = $("selPop"); if (p) p.style.display = "none"; selCtx = null; selMemo = null; }
+function openSel(ctx, memo, mode) {   // ctx = {nid, key, start, end, quote} · memo = 이어서 볼 메모(있으면)
+  if (!doc) return;
+  closeMath();
+  let pop = $("selPop");
+  if (!pop) {
+    pop = document.createElement("div"); pop.id = "selPop";
+    pop.innerHTML = "<div class='mh'><b>고른 글</b><span id='selWhere'></span><span style='margin-left:auto'></span><button class='btn' id='selGo' title='원고에서 이 글이 있는 자리로'>그 자리로</button><button class='btn' id='selX'>닫기</button></div>" +
+      "<div class='rvtext' id='selQuote'></div><div id='selNote'></div><div id='selThread'></div><div id='selProg'></div>" +
+      "<textarea id='selIn' rows='2' placeholder='메모를 적거나, Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)'></textarea>" +
+      "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-k='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>" +
+      "<div class='mfoot'><select id='selEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'><option value='xhigh'>Opus · 엑스트라</option><option value='high'>Opus · 보통</option><option value='fast'>Sonnet · 빠름</option></select>" +
+      "<span style='margin-left:auto'></span><button class='btn' id='selMemoBtn' title='적은 글을 이 부분의 메모로 남깁니다'>메모로 남기기</button><button class='btn pri' id='selAskBtn'>Claude 에게</button></div>";
+    document.body.appendChild(pop);
+    $("selX").onclick = closeSel;
+    $("selEffort").value = localStorage.getItem("ms_sel_effort") || "xhigh";
+    $("selEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
+    $("selIn").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); selAsk(); } else if (e.key === "Escape") closeSel(); });
+    pop.querySelectorAll(".mpal button").forEach(b => b.onclick = () => selAsk(SEL_CHIPS[+b.dataset.k][1]));
+    $("selAskBtn").onclick = () => selAsk();
+    $("selMemoBtn").onclick = selSaveMemo;
+    $("selGo").onclick = () => selGoto(selMemo || selCtx);
+  }
+  selMemo = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글에 남긴 메모가 있으면 이어서
+  selCtx = memo ? { nid: memo.node, key: memo.key, quote: memo.quote } : ctx;
+  pop.style.display = "block"; selRender();
+  $("selIn").value = ""; $("selIn").placeholder = mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter) — 메모만 남겨도 됩니다";
+  $("selIn").focus();
+}
+function selRender() {
+  if (!selCtx) return;
+  const q = (selMemo || selCtx).quote;
+  $("selWhere").textContent = selHeading(selCtx.nid).slice(0, 40);
+  $("selQuote").textContent = q.length > 700 ? q.slice(0, 500) + " … " + q.slice(-150) : q;
+  $("selNote").innerHTML = selMemo && selMemo.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(selMemo.note) + "</div>" : "";
+  const th = (selMemo && selMemo.thread) || [];
+  $("selThread").innerHTML = th.map((m, i) => m.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(m.text) + "</div>"
+    : "<div class='fbmsg claude'>" + fbFmt(m.text || "") + (m.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(m.base || q, a) + "</div>" +
+        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
+  $("selThread").querySelectorAll("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); selApply(th[i].alts[k]); });
+  $("selThread").querySelectorAll("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(th[i].alts[k]); b.textContent = "복사됨"; });
+  $("selProg").innerHTML = selBusy ? "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + ({ xhigh: 50, high: 30, fast: 15 }[$("selEffort").value] || 40) + "초</span></div>" : "";
+  if (selBusy) animateBars($("selProg"));
+  $("selAskBtn").disabled = selBusy;
+}
+function selEnsureMemo() {   // 창에 떠 있는 고른 글을 원고의 메모로 (처음 남길 때 만든다)
+  if (selMemo) return selMemo;
+  doc.memos = doc.memos || [];
+  selMemo = { id: nextId(doc.memos, "m"), node: selCtx.nid, key: selCtx.key, quote: selCtx.quote, start: selCtx.start, note: "", thread: [], t: Date.now() / 1000, done: false };
+  doc.memos.push(selMemo);
+  return selMemo;
+}
+function selSaveMemo() {
+  const v = $("selIn").value.trim(); if (!v || !selCtx) return;
+  const m = selEnsureMemo(); m.note = m.note ? m.note + "\n" + v : v;
+  $("selIn").value = ""; save(true); selRender(); renderNotes(); renderDocMeta();
+}
+async function selAsk(text) {
+  if (selBusy || !selCtx) return;
+  const q = (text || $("selIn").value).trim(); if (!q) { $("selIn").focus(); return; }
+  const m = selEnsureMemo(), mid = doc.id;
+  m.thread.push({ role: "user", text: q }); if (!text) $("selIn").value = "";
+  selBusy = true; selRender(); $("selPop").scrollTop = $("selPop").scrollHeight;
+  await saveNow();   // 서버가 지금 글을 보게
+  let r; try { r = await api("/api/ms/ask_sel", { id: mid, node: m.node, key: m.key, quote: m.quote, question: q, thread: m.thread.slice(0, -1), effort: $("selEffort").value }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  selBusy = false;
+  if (!doc || doc.id !== mid) return;
+  if (r.error) { m.thread.pop(); if (!m.thread.length && !m.note) { doc.memos = doc.memos.filter(x => x !== m); if (selMemo === m) selMemo = null; } alert("⚠ " + r.error); if (!text) $("selIn").value = q; }
+  else m.thread.push({ role: "claude", text: r.answer || "", alts: r.alternatives || [], base: m.quote });
+  save(true); if (selMemo === m || !selMemo) selRender(); renderNotes();
+  const p = $("selPop"); if (p) p.scrollTop = p.scrollHeight;
+}
+function selFind(m) {   // 고른 글이 지금 글에서 어디 있나 → 시작 자리 (없으면 -1)
+  const text = selText(m.nid || m.node, m.key), q = m.quote;
+  if (m.start != null && text.slice(m.start, m.start + q.length) === q) return m.start;
+  return text.indexOf(q);
+}
+function selGoto(m) {
+  if (!m) return;
+  const nid = m.nid || m.node;
+  if (nid !== "front" && !node(nid)) { alert("그 절이 개요에서 없어졌습니다."); return; }
+  if (!taFor(nid, m.key)) { cur = nid; renderTree(); renderEditor(); }   // 그 글이 화면에 없으면 그 절을 연다
+  const ta = taFor(nid, m.key), a = selFind(m);
+  if (!ta) return;
+  if (a < 0) { ta.focus(); return; }
+  ta.focus(); ta.setSelectionRange(a, a + m.quote.length);
+  const c = $("center"), y = ta.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop + (a / Math.max(1, ta.value.length)) * ta.offsetHeight;
+  c.scrollTop = Math.max(0, y - c.clientHeight / 3);
+}
+function selApply(alt) {   // 대안을 고른 글 자리에 바꿔 넣는다
+  const m = selMemo; if (!m) return;
+  const a = selFind(m);
+  if (a < 0) { alert("고른 글을 원고에서 찾지 못했습니다 (그 사이 글이 바뀌었습니다). 다시 드래그해서 물어 주세요."); return; }
+  const ta = taFor(m.node, m.key);
+  if (ta) {
+    ta.focus(); ta.setSelectionRange(a, a + m.quote.length);
+    if (!document.execCommand("insertText", false, alt)) { ta.setRangeText(alt, a, a + m.quote.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); }   // Ctrl+Z 로 되돌릴 수 있다
+  } else {
+    const text = selText(m.node, m.key), next = text.slice(0, a) + alt + text.slice(a + m.quote.length);
+    if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
+  }
+  m.thread.push({ role: "user", text: "(대안으로 바꿈)" });
+  m.quote = alt; m.start = a; save(true); selRender(); renderNotes();
+}
+function memoJump(nid) { switchTab("notes"); const c = document.querySelector(".card.memo[data-node='" + nid + "']"); if (c) $("drawer").scrollTop = Math.max(0, c.offsetTop - 60); }
+function renderDocMeta() {   // 원고 모드의 절마다 '메모 n' 만 고쳐 그린다 (전체를 다시 그리면 쓰던 자리를 잃는다)
+  if (msMode !== "doc") return;
+  document.querySelectorAll(".docmode .dsec").forEach(sec => {
+    const nid = sec.dataset.n, pm = sec.querySelector(".pm"); if (!pm) return;
+    let a = pm.querySelector("[data-memos]"); const n = memosFor(nid).length;
+    if (!n) { if (a) a.remove(); return; }
+    if (!a) { a = document.createElement("a"); a.href = "#"; a.dataset.memos = nid; a.style.color = "var(--accent)"; a.onclick = e => { e.preventDefault(); memoJump(nid); }; pm.insertBefore(a, pm.querySelector("[data-go]")); }
+    a.textContent = "메모 " + n;
+  });
+}
+function memosHtml() {
+  const ms = doc.memos || [];
+  if (!ms.length) return "<div class='sec'>내 메모</div><div class='hint' style='padding-bottom:8px'>원고의 글을 드래그하면 「메모」「Claude 에게」가 뜹니다. 메모를 남기거나, 고른 부분을 놓고 묻고 고쳐 달라고 할 수 있습니다 (Ctrl+K).</div>";
+  return "<div class='sec'>내 메모 " + ms.length + "개 <span class='hint' style='font-weight:400'>남은 것 " + ms.filter(m => !m.done).length + "</span></div>" +
+    ms.slice().reverse().map(m => { const last = (m.thread || []).filter(x => x.role === "claude").pop();
+      return "<div class='card memo" + (m.done ? " done" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
+        "<div class='m'><a href='#' class='go' data-mgo='" + m.id + "' title='원고의 그 자리로'>" + esc(selHeading(m.node).slice(0, 30)) + " →</a><span>" + new Date((m.t || 0) * 1000).toLocaleDateString("ko", { month: "numeric", day: "numeric" }) + "</span>" +
+        "<span style='margin-left:auto'></span><label class='hint' style='cursor:pointer'><input type='checkbox' class='memoDone' data-mid='" + m.id + "'" + (m.done ? " checked" : "") + "> 끝</label></div>" +
+        "<div class='src'>“" + esc(normWs(m.quote).slice(0, 140)) + (m.quote.length > 140 ? "…" : "") + "”</div>" +
+        (m.note ? "<div class='t'>" + esc(m.note) + "</div>" : "") +
+        (last ? "<div class='t reply'>" + esc(normWs(last.text).slice(0, 130)) + (last.text.length > 130 ? "…" : "") + "</div>" : "") +
+        "<div class='acts'><button class='btn' data-mopen='" + m.id + "'>" + ((m.thread || []).length ? "대화 보기 (" + m.thread.filter(x => x.role === "claude").length + ")" : "열기") + "</button><button class='btn warn' data-mdel='" + m.id + "'>지우기</button></div></div>"; }).join("");
+}
+function memosBind(el) {
+  const by = id => (doc.memos || []).find(m => m.id === id);
+  el.querySelectorAll("[data-mgo]").forEach(a => a.onclick = e => { e.preventDefault(); selGoto(by(a.dataset.mgo)); });
+  el.querySelectorAll("[data-mopen]").forEach(b => b.onclick = () => { const m = by(b.dataset.mopen); if (m) openSel(null, m, "ask"); });
+  el.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { const m = by(b.dataset.mdel); if (!m || !confirm("이 메모" + ((m.thread || []).length ? "와 Claude 와의 대화" : "") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); if (selMemo === m) closeSel(); save(true); renderNotes(); renderDocMeta(); });
+  el.querySelectorAll(".memoDone").forEach(cb => cb.onchange = () => { const m = by(cb.dataset.mid); if (m) { m.done = cb.checked; save(); renderNotes(); renderDocMeta(); } });
+}
+
 // ---------- 수식: 글 속의 $LaTeX$ (한 줄 안) · $$LaTeX$$ (따로 한 줄). 서버가 MathML 로 바꿔 주고 브라우저가 그린다 ----------
 const MATH_RE = /\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<![\s\\])\$/g;
 const mathCache = new Map();
@@ -1286,6 +1484,7 @@ function closeMath() { const p = $("mathPop"); if (p) p.style.display = "none"; 
 function openMath(ta, eq) {   // eq 가 없으면 커서 자리에 새 수식 (커서가 수식 안이면 그 수식)
   ta = ta || lastTa;
   if (!doc || !ta || !document.body.contains(ta)) { alert("수식을 넣을 글 칸을 먼저 누르세요."); return; }
+  if ($("selPop")) $("selPop").style.display = "none";
   let pop = $("mathPop");
   if (!pop) {
     pop = document.createElement("div"); pop.id = "mathPop";

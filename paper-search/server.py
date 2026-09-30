@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
@@ -567,13 +567,14 @@ def claude_error():
     return CLAUDE_STATE["err"] if CLAUDE_STATE["err"] and time.time() - CLAUDE_STATE["t"] < 900 else ""
 
 
-def ask_claude_json(prompt, timeout=240):
-    """claude -p 로 질문하고 JSON 객체 하나를 파싱해 돌려준다. 실패하면 None (이유는 claude_error())."""
+def ask_claude_json(prompt, timeout=240, model="opus", effort=None):
+    """claude -p 로 질문하고 JSON 객체 하나를 파싱해 돌려준다. 실패하면 None (이유는 claude_error()).
+    effort = low·medium·high·xhigh·max (CLI 의 --effort; 없으면 기본)."""
     exe = find_claude()
     if not exe:
         return None
     try:
-        r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
+        r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"] + (["--effort", effort] if effort else []),
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
         out = r.stdout.decode("utf-8", "replace")
         _note_claude(r.returncode, out, r.stderr.decode("utf-8", "replace"))
@@ -2352,6 +2353,18 @@ fetch('/api/gentext?file=__FILE_Q__&kind=__KIND__').then(r => r.text()).then(md 
 </script></body></html>"""
 
 
+FONT_DIR = os.path.join(os.path.dirname(BASE), "글꼴")   # 사용자가 추가한 글꼴 파일 (데이터 — git·배포판 제외)
+_FONT_TYPES = {"woff2": "font/woff2", "woff": "font/woff", "ttf": "font/ttf", "otf": "font/otf"}
+
+
+def user_fonts():
+    """글꼴 폴더의 글꼴 파일 → [{name: 글꼴 이름(파일 이름에서), file}]"""
+    try:
+        return [{"name": os.path.splitext(f)[0], "file": f} for f in sorted(os.listdir(FONT_DIR)) if f.rsplit(".", 1)[-1].lower() in _FONT_TYPES]
+    except OSError:
+        return []
+
+
 def load_json(path, default):
     for i in range(4):
         try:
@@ -2802,6 +2815,23 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/ui.css":
             with open(os.path.join(BASE, "ui.css"), "rb") as f:
                 self._send(200, f.read(), "text/css; charset=utf-8")
+        elif url.path == "/api/fonts":   # 사용자가 추가한 글꼴 (저장소 옆 '글꼴' 폴더)
+            self._send(200, {"fonts": user_fonts()})
+        elif url.path.startswith("/userfont/"):
+            fname = os.path.basename(unquote(url.path))
+            fpath = os.path.join(FONT_DIR, fname)
+            ext = fname.rsplit(".", 1)[-1].lower()
+            if ext in _FONT_TYPES and os.path.isfile(fpath):
+                with open(fpath, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", _FONT_TYPES[ext])
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self._send(404, {"error": "no font"})
         elif url.path == "/api/version":   # 실행 bat(launch_check)·설치 도우미·환경설정이 어느 판이 도는지 확인
             self._send(200, {"version": app_version()})
         elif url.path == "/ui.js":
@@ -3068,6 +3098,22 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"error": str(e)[:300]})
                 return
             self._send(200, {"answer": answer})
+        elif self.path == "/api/fonts":   # 글꼴 파일 올리기 {name, b64}
+            import base64
+            name = re.sub(r'[\\/:*?"<>|]+', " ", os.path.basename(str(body.get("name") or ""))).strip()
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            if ext not in _FONT_TYPES:
+                return self._send(400, {"error": "글꼴 파일(.ttf · .otf · .woff · .woff2)만 넣을 수 있습니다"})
+            try:
+                raw = base64.b64decode(body.get("b64") or "")
+            except Exception:
+                raw = b""
+            if not raw or len(raw) > 40 * 1024 * 1024:
+                return self._send(400, {"error": "파일이 비었거나 너무 큽니다 (40MB 이하)"})
+            os.makedirs(FONT_DIR, exist_ok=True)
+            with open(os.path.join(FONT_DIR, name), "wb") as f:
+                f.write(raw)
+            self._send(200, {"ok": True, "fonts": user_fonts(), "added": os.path.splitext(name)[0]})
         elif self.path == "/api/settings":
             import mapper
             d = mapper.settings()
