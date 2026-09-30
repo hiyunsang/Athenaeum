@@ -155,6 +155,36 @@ def add_from_paper(body):
     return {"ok": True, "word": w, "new": made, "total": len(d["words"])}
 
 
+def add_from_quiz(body):
+    """맞추기 팝업의 예문에서 드래그한 낱말을 담는다. 뜻은 그 예문을 문맥으로 찾고, 예문을 그대로 붙인다."""
+    term = re.sub(r"\s+", " ", (body.get("term") or "")).strip(" .,;:()[]\"'")
+    if not term:
+        return {"error": "담을 말이 비어 있습니다"}
+    if len(term) > 60 or len(term.split()) > 4:
+        return {"error": "단어나 짧은 구(4낱말 이내)를 골라 주세요"}
+    d = load()
+    w = find_word(d, term)
+    if w is not None:
+        return {"ok": True, "word": w, "new": False, "total": len(d["words"])}
+    deck = (body.get("deck") or "시험단어").strip()
+    field = {"toefl": "토플 학술 영어", "toeic": "토익 비즈니스 영어"}.get(deck_style(d, deck), "")
+    en, ko = str(body.get("en") or "")[:600], str(body.get("ko") or "")[:600]
+    info = lookup_meaning(term, en, field)
+    d = load()                      # 뜻을 찾는 동안(10초쯤) 다른 저장이 있었을 수 있다
+    w = find_word(d, term)
+    if w is None:
+        w = {"id": _new_id(d["words"]), "term": term, "meaning": info["meaning"], "pos": info["pos"],
+             "gloss_en": info["gloss_en"], "note": info["note"],
+             "examples": ([{"en": en, "ko": ko, "source": "quiz"}] if en else []),
+             "deck": deck, "tags": ["담음"], "source": "quiz",
+             "t": time.time(), "status": "new", "seen": 0, "last": 0}
+        d["words"].append(w)
+        if deck not in d["decks"]:
+            d["decks"].append(deck)
+        save(d)
+    return {"ok": True, "word": w, "new": True, "total": len(d["words"])}
+
+
 # ---------- 목록으로 담기 (시험 단어) ----------
 
 def _parse_lines(text):
@@ -537,6 +567,8 @@ def handle_post(h, body):
     try:
         if p == "/api/vocab/from_paper":
             return h._send(200, add_from_paper(body))
+        if p == "/api/vocab/add_word":
+            return h._send(200, add_from_quiz(body))
         if p == "/api/vocab/bulk":
             return h._send(200, add_bulk(body))
         if p == "/api/vocab/edit":

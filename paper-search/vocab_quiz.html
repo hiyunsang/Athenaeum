@@ -60,6 +60,9 @@
   body[data-book="green"]  { --accent: #0B7358; --accent-bg: #DDF1E6; --surface: #F8FCF9; --bg: #EDF6F0; --line: #D6E9DE; --hover: #ECF7F0; }
   body[data-book] header { border-top: 4px solid var(--accent); background: var(--accent-bg); }
   body[data-book] header h1 { color: var(--accent); }
+  /* 예문에서 드래그한 낱말 담기 — 선택 바로 위에 뜨는 작은 버튼 */
+  #addsel { position: fixed; z-index: 30; background: var(--accent); color: #fff; border: 0; border-radius: var(--r); padding: 0.3rem 0.6rem; font-size: 0.95rem; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  #addsel[hidden] { display: none; }
   @media (prefers-reduced-motion: no-preference) { .ch { transition: background .08s; } }
 </style>
 <script src="/ui.js"></script>
@@ -81,6 +84,7 @@
 </div>
 <div id="choices"></div>
 <div id="ex"></div>
+<button id="addsel" type="button" hidden></button>
 <footer>
   <span class="note" id="note">1~4 로 고르고 모르면 5, S 는 듣기, Enter 로 다음</span>
   <button class="act" id="auto" title="새 단어가 나올 때마다 읽어 줍니다">자동 듣기</button>
@@ -246,6 +250,41 @@
     const el = e.target.closest(".ch"); if (el) answer(el.dataset.id);
   });
   $("skip").onclick = () => { locked = false; next(); };
+
+  // ---- 예문에서 드래그한 낱말을 단어장에 담기
+  let selTerm = "";
+  function hideAdd() { $("addsel").hidden = true; selTerm = ""; }
+  function checkSelection() {
+    const sel = window.getSelection();
+    const txt = String(sel).replace(/\s+/g, " ").trim().replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+    const en = document.querySelector("#ex .en");
+    if (!txt || !en || !sel.rangeCount || !en.contains(sel.anchorNode) || !en.contains(sel.focusNode) ||
+        txt.split(" ").length > 4 || !/^[A-Za-z][A-Za-z' -]*$/.test(txt)) { hideAdd(); return; }
+    selTerm = txt;
+    const r = sel.getRangeAt(0).getBoundingClientRect(), b = $("addsel");
+    b.textContent = "‘" + txt + "’ 담기";
+    b.hidden = false;
+    const bw = b.offsetWidth, bh = b.offsetHeight;
+    b.style.left = Math.max(4, Math.min(innerWidth - bw - 4, r.left + r.width / 2 - bw / 2)) + "px";
+    b.style.top = Math.max(4, r.top - bh - 6) + "px";
+  }
+  document.addEventListener("mouseup", e => { if (e.target.id !== "addsel") setTimeout(checkSelection, 0); });
+  document.addEventListener("selectionchange", () => { if (!String(window.getSelection()).trim()) hideAdd(); });
+  $("addsel").addEventListener("mousedown", e => e.preventDefault());   // 누를 때 선택이 풀리지 않게
+  $("addsel").onclick = async () => {
+    const term = selTerm; if (!term) return;
+    const exNow = (cur && (cur.examples || [])[0]) || {};
+    hideAdd(); window.getSelection().removeAllRanges();
+    $("note").textContent = "‘" + term + "’ 뜻 찾는 중… (10초쯤)";
+    try {
+      const r = await (await fetch("/api/vocab/add_word", { method: "POST",
+        body: JSON.stringify({ term: term, deck: $("deck").value || "시험단어", en: exNow.en || "", ko: exNow.ko || "" }) })).json();
+      if (r.error) { $("note").textContent = r.error; return; }
+      const w = r.word || {};
+      if (r.new && w.term && w.meaning) { words.push(w); }
+      $("note").textContent = (r.new ? "담았습니다: " : "이미 있습니다: ") + (w.term || term) + " — " + (w.meaning || "") + " · Enter 로 다음";
+    } catch (e) { $("note").textContent = "담지 못했습니다"; }
+  };
   $("prompt").onclick = () => { if (cur && ($("dir").value === "en" || locked)) speak(cur.term); };
   function paintAuto() { $("auto").textContent = pref.auto ? "자동 듣기 켬" : "자동 듣기"; $("auto").style.color = pref.auto ? "var(--accent)" : ""; }
   $("auto").onclick = () => { pref.auto = !pref.auto; savePref(); paintAuto(); if (pref.auto && cur) speak(cur.term); };
