@@ -183,6 +183,27 @@
   body.focus #editor { max-width: 880px; margin: 0 auto; padding: 0 var(--s4); }
   #draft { min-height: 420px; overflow: hidden; }
   input.inl:focus { outline: none; border-bottom-color: var(--accent); }
+  /* 수식: 글 속 $LaTeX$ 를 글 칸 아래에 그려 보여 준다 (누르면 고침) */
+  math { font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", serif; }
+  math .mover { border-top: 1px solid currentColor; padding-top: 1px; } math .munder { border-bottom: 1px solid currentColor; }
+  math .mErr { color: var(--red); } math mtd.mL { text-align: left; } math mtd.mR { text-align: right; }
+  .mprev { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; padding: 3px 6px 4px; font-size: calc(14px * var(--ms-scale, 1)); color: var(--text); border-left: 2px solid var(--line-2); margin: 2px 0 2px 2px; }
+  .mprev .mq { cursor: pointer; padding: 2px 6px; border-radius: var(--r); } .mprev .mq:hover { background: var(--hover); }
+  .mprev .mq.d { flex-basis: 100%; text-align: center; padding: 4px 6px; position: relative; }
+  .mprev .mnum { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text-2); font-size: 13px; }
+  .mprev .mleg { font-size: 12px; flex-basis: 100%; }
+  #mathPop { position: fixed; right: 24px; bottom: 24px; width: 560px; max-width: calc(100vw - 48px); background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; z-index: 30; padding: 10px 14px 8px; display: none; }
+  #mathPop .mh { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-3); } #mathPop .mh b { font-size: 13px; color: var(--text); }
+  #mathPop textarea { font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.5; margin-top: 6px; min-height: 0; }
+  #mathView { min-height: 46px; padding: 8px 4px; text-align: center; font-size: 17px; overflow-x: auto; color: var(--text); }
+  #mathPop .mpal { display: flex; flex-wrap: wrap; gap: 0 2px; border-top: 1px solid var(--line); padding-top: 4px; }
+  #mathPop .mpal button { padding: 3px 6px; font-size: 12.5px; min-width: 24px; }
+  #mathPop .mfoot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+  #mathPop .mfoot input[type=text] { width: 64px; border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; font: inherit; font-size: 12px; background: var(--surface); }
+  #wsState { font-size: 12px; color: var(--text-3); } #wsState.warn { color: var(--amber); }
+  .wsbox { padding: 0 0 8px; font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
+  .wsbox input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 3px 6px; font: inherit; font-size: 12px; background: var(--surface); }
+  .wsbox label { display: block; cursor: pointer; }
 </style>
 <script src="/ui.js"></script>
 </head>
@@ -196,11 +217,12 @@
   <input type="file" id="importFile" accept=".docx" style="display:none">
   <select id="journalSel" title="투고 저널 (규격 점검·머리부 생성에 반영). 목록은 내 논문모음의 저널들"><option value="">저널 선택…</option><option value="JMPT">JMPT (Elsevier)</option></select>
   <span id="modeSeg"><button class="btn" data-m="para" onclick="setMode('para')" title="주장·근거 카드·초안·검토를 문단 하나씩">문단 모드</button><button class="btn" data-m="doc" onclick="setMode('doc')" title="전체 원고를 펼쳐 놓고 이어서 쓰기">원고 모드</button></span>
+  <button class="btn" id="mathBtn" onclick="openMath()" title="수식 넣기·고치기 (Alt+=). 글 속에 $…$ 로 들어가고, 워드로 내보내면 워드 수식이 됩니다">수식</button>
   <button class="btn" id="focusBtn" onclick="toggleFocus()" title="개요·서랍을 숨기고 글에만 집중 (다시 누르면 복귀)">집중</button>
   <button class="btn" id="guideBtn" onclick="toggleGuide()" title="이 화면이 어떻게 돌아가는지 (워드·LaTeX 와 비교)">안내</button>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
-  <span class="sp" id="saveState"></span>
+  <span class="sp" id="saveState"></span><a href="#" id="wsState" onclick="switchTab('out');return false" title="워드 파일에 반영 (내보내기 탭)"></a>
   <span id="uiCtlHost"></span>
 </header>
 <div id="layout">
@@ -270,6 +292,7 @@ async function openDoc(id) {
   doc.meta = doc.meta || {}; if (doc.meta.journal) ensureJournalOption(doc.meta.journal, doc.meta.journal); $("journalSel").value = doc.meta.journal || "";
   cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
+  closeMath(); wsShow(null); mathWarm();
   renderAll();
 }
 function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
@@ -281,7 +304,7 @@ function pushSave() {
   saveBusy = (async () => {
     let r;
     do { saveAgain = false; try { r = doc ? await api("/api/ms/save", { data: doc }) : { ok: true }; } catch (e) { r = { ok: false }; } } while (saveAgain);
-    saveBusy = null; return r;
+    saveBusy = null; if (r && r.ok) wsSchedule(); return r;
   })();
   return saveBusy;
 }
@@ -358,6 +381,7 @@ function renderFront() {
   const bind = (id, fn) => { const el = $(id); el.oninput = () => { fn(el.value); save(); }; };
   bind("fTitle", v => f.title = v); bind("fAuthors", v => f.authors = v); bind("fAbs", v => f.abstract = v);
   bind("fKw", v => f.keywords = v.split(/;\s*/).map(x => x.trim()).filter(Boolean)); bind("fHl", v => f.highlights = v.split("\n").map(x => x.trim()).filter(Boolean));
+  attachMath($("fAbs"));
   $("frontGen").onclick = async () => {
     if (busy) return; busy = true;
     $("frontprog").innerHTML = "<div class='prog'><span>본문 읽고 머리부 작성 중</span>" + pbarHtml(0.05, 0) + "<span class='eta'>~60초</span></div>";
@@ -440,6 +464,7 @@ function renderDocMode() {
   });
   ed.querySelectorAll("input[data-h]").forEach(i => i.oninput = () => { node(i.dataset.h).heading = i.value; save(); renderTree(); });
   ed.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; setMode("para"); });
+  ed.querySelectorAll("textarea[data-p], textarea[data-front]").forEach(attachMath);
   const secEl = cur && ed.querySelector(".dsec[data-n='" + cur + "']"); if (secEl && cur !== (doc.outline[0] || {}).id) secEl.scrollIntoView({ block: "start" });
 }
 function renderEditor() {
@@ -466,6 +491,7 @@ function renderEditor() {
   bind("headIn", "heading", renderTree); bind("claim", "claim"); bind("draft", "draft"); bind("draftEn", "draft_en");
   ed.querySelectorAll("[data-exk]").forEach(a => a.onclick = e => { e.preventDefault(); openEx(a.dataset.exk); });
   autogrow($("draft")); autogrow($("draftEn"));   // 내용만큼 늘어나는 칸
+  attachMath($("draft")); attachMath($("draftEn"));
   $("status").onchange = e => { n.status = e.target.value; save(); renderTree(); };
   ed.querySelectorAll("[data-m]").forEach(b => b.onclick = () => runClaude(b.dataset.m));
   $("revPara").onclick = () => reviewPara(n);
@@ -1205,12 +1231,219 @@ function renderEn() {
     busy = false; renderEn(); renderEditor();
   };
 }
+// ---------- 수식: 글 속의 $LaTeX$ (한 줄 안) · $$LaTeX$$ (따로 한 줄). 서버가 MathML 로 바꿔 주고 브라우저가 그린다 ----------
+const MATH_RE = /\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<![\s\\])\$/g;
+const mathCache = new Map();
+let lastTa = null;   // 마지막으로 쓰던 글 칸 (수식을 넣을 곳)
+function mathFind(text) {   // 글 속의 수식들 [{tex, display, start, end}]
+  const out = []; let m; MATH_RE.lastIndex = 0;
+  while ((m = MATH_RE.exec(text || ""))) out.push({ tex: (m[1] !== undefined ? m[1] : m[2]).trim(), display: m[1] !== undefined, start: m.index, end: m.index + m[0].length });
+  return out;
+}
+async function mathRender(items) {   // [{tex, display}] → MathML 문자열들 (한 번 그린 것은 기억)
+  const key = it => (it.display ? "D" : "I") + it.tex;
+  const need = items.filter((it, k) => !mathCache.has(key(it)) && items.findIndex(x => key(x) === key(it)) === k);
+  if (need.length) { try { const r = await api("/api/ms/math", { items: need.map(it => ({ tex: it.tex, display: it.display })) }); (r.mml || []).forEach((m, k) => mathCache.set(key(need[k]), m)); } catch (e) {} }
+  return items.map(it => mathCache.get(key(it)) || "<span class='hint'>" + esc(it.tex) + "</span>");
+}
+function mathWarm() {   // 원고를 열 때 수식을 한꺼번에 그려 둔다 (글 칸마다 따로 묻지 않게)
+  if (!doc) return;
+  const all = []; doc.outline.forEach(n => { all.push(...mathFind(n.draft), ...mathFind(n.draft_en)); }); all.push(...mathFind((doc.front || {}).abstract));
+  if (all.length) mathRender(all);
+}
+function attachMath(ta) {   // 글 칸 아래에 그 안의 수식을 그려 보여 준다. 누르면 고치는 창
+  if (!ta) return;
+  if (!ta._mathBox) { const box = document.createElement("div"); box.className = "mprev"; box.style.display = "none"; ta.insertAdjacentElement("afterend", box); ta._mathBox = box; }
+  const box = ta._mathBox; let timer = null, last = null;
+  const draw = async () => {
+    const text = ta.value, eqs = mathFind(text), legacy = (text.match(/\u27e6[^\u27e7]*\u27e7/g) || []).length;
+    const key = eqs.map(e => (e.display ? "D" : "I") + e.tex).join("\u0001") + "|" + legacy;
+    if (key === last) return;
+    if (!eqs.length && !legacy) { last = key; box.innerHTML = ""; box.style.display = "none"; return; }
+    const mml = await mathRender(eqs);
+    if (ta.value !== text) return;   // 그리는 사이 또 바뀌었으면 다음 번에
+    last = key; box.style.display = "";
+    const numOf = e => { const m = e.display && /^[ 	]*(\([\w.\-]+\))/.exec(text.slice(e.end)); return m ? "<span class='mnum'>" + esc(m[1]) + "</span>" : ""; };
+    box.innerHTML = eqs.map((e, k) => "<span class='mq" + (e.display ? " d" : "") + "' data-k='" + k + "' title='눌러서 고치기'>" + mml[k] + numOf(e) + "</span>").join("") +
+      (legacy && doc && doc.source_docx ? "<a href='#' class='act mleg' title='가져온 워드 파일을 다시 읽어, 글자만 남은 수식을 분수·첨자가 살아 있는 수식으로 바꿉니다'>워드에서 온 수식 \u27e6…\u27e7 " + legacy + "개 → 고칠 수 있는 수식으로 바꾸기</a>" : "");
+    box.querySelectorAll(".mq").forEach(el => el.onclick = () => { const e = mathFind(ta.value)[+el.dataset.k]; if (e) openMath(ta, e); });
+    const lg = box.querySelector(".mleg"); if (lg) lg.onclick = ev => { ev.preventDefault(); upgradeEquations(); };
+  };
+  if (!ta._mathBound) {
+    ta._mathBound = true;
+    ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => ta._mathDraw && ta._mathDraw(), 250); });
+    ta.addEventListener("focus", () => { lastTa = ta; });
+  }
+  ta._mathDraw = draw; draw();
+}
+const MATH_PAL = [["분수", "\\frac{}{}"], ["x²", "^{}"], ["x₂", "_{}"], ["√", "\\sqrt{}"], ["∑", "\\sum_{}^{}"], ["∫", "\\int_{}^{}"], ["lim", "\\lim_{}"], ["( )", "\\left(  \\right)"], ["[ ]", "\\left[  \\right]"],
+  ["ẋ", "\\dot{}"], ["x̄", "\\bar{}"], ["x̂", "\\hat{}"], ["벡터", "\\vec{}"], ["윗줄", "\\overline{}"], ["곧은 글자", "\\mathrm{}"], ["굵게", "\\mathbf{}"], ["글", "\\text{}"],
+  ["×", "\\times "], ["·", "\\cdot "], ["±", "\\pm "], ["≤", "\\leq "], ["≥", "\\geq "], ["≈", "\\approx "], ["≠", "\\neq "], ["∝", "\\propto "], ["→", "\\to "], ["∞", "\\infty "], ["∂", "\\partial "], ["°", "^{\\circ}"], ["간격", "\\, "],
+  ["α", "\\alpha "], ["β", "\\beta "], ["γ", "\\gamma "], ["δ", "\\delta "], ["ε", "\\varepsilon "], ["θ", "\\theta "], ["λ", "\\lambda "], ["μ", "\\mu "], ["ν", "\\nu "], ["π", "\\pi "], ["ρ", "\\rho "], ["σ", "\\sigma "], ["τ", "\\tau "], ["φ", "\\phi "], ["ω", "\\omega "], ["Δ", "\\Delta "], ["Σ", "\\Sigma "], ["Ω", "\\Omega "],
+  ["경우 나누기", "\\begin{cases}  &  \\\\  &  \\end{cases}"], ["행렬", "\\begin{pmatrix}  &  \\\\  &  \\end{pmatrix}"]];
+let mathCtx = null;   // {ta, start, end} — 고치는 중인 자리
+function closeMath() { const p = $("mathPop"); if (p) p.style.display = "none"; mathCtx = null; }
+function openMath(ta, eq) {   // eq 가 없으면 커서 자리에 새 수식 (커서가 수식 안이면 그 수식)
+  ta = ta || lastTa;
+  if (!doc || !ta || !document.body.contains(ta)) { alert("수식을 넣을 글 칸을 먼저 누르세요."); return; }
+  let pop = $("mathPop");
+  if (!pop) {
+    pop = document.createElement("div"); pop.id = "mathPop";
+    pop.innerHTML = "<div class='mh'><b>수식</b><span>LaTeX 로 쓰면 아래에 바로 그려집니다 · Enter 넣기 · Esc 닫기</span><span style='margin-left:auto'></span><button class='btn' id='mathX'>닫기</button></div>" +
+      "<textarea id='mathTex' rows='3' spellcheck='false' placeholder='예: \\dot{\\gamma} = \\frac{V_s}{\\Delta y}'></textarea><div id='mathView'></div>" +
+      "<div class='mpal'>" + MATH_PAL.map((p, k) => "<button class='btn' data-k='" + k + "' title='" + esc(p[1].trim()) + "'>" + esc(p[0]) + "</button>").join("") + "</div>" +
+      "<div class='mfoot'><label><input type='checkbox' id='mathDisp'> 따로 한 줄로 (문단 수식)</label><input type='text' id='mathNum' placeholder='번호' title='문단 수식 오른쪽에 붙일 번호. 비우면 번호 없음'>" +
+      "<span style='margin-left:auto'></span><button class='btn warn' id='mathDel'>수식 지우기</button><button class='btn pri' id='mathOk'>넣기</button></div>";
+    document.body.appendChild(pop);
+    const tex = $("mathTex"); let tm = null;
+    const view = async () => { const t = tex.value.trim(); if (!t) { $("mathView").innerHTML = ""; return; } const m = await mathRender([{ tex: t, display: true }]); if (tex.value.trim() === t) $("mathView").innerHTML = m[0]; };
+    tex.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(view, 120); }); pop._view = view;
+    tex.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("mathOk").click(); } else if (e.key === "Escape") { e.preventDefault(); closeMath(); } });
+    pop.querySelectorAll(".mpal button").forEach(b => b.onclick = () => {
+      const t = MATH_PAL[+b.dataset.k][1], a = tex.selectionStart, z = tex.selectionEnd, sel = tex.value.slice(a, z);
+      let ins = t, caret = t.indexOf("{}") >= 0 ? t.indexOf("{}") + 1 : (t.indexOf("  ") >= 0 ? t.indexOf("  ") + 1 : t.length);
+      if (sel && t.indexOf("{}") >= 0) { ins = t.replace("{}", "{" + sel + "}"); caret = ins.indexOf("{}") >= 0 ? ins.indexOf("{}") + 1 : ins.length; }   // 고른 글을 첫 칸에 넣는다
+      tex.focus(); tex.setRangeText(ins, a, z, "end"); tex.setSelectionRange(a + caret, a + caret); view();
+    });
+    $("mathX").onclick = closeMath;
+    $("mathOk").onclick = () => mathCommit(false);
+    $("mathDel").onclick = () => mathCommit(true);
+    $("mathDisp").onchange = () => { $("mathNum").style.display = $("mathDisp").checked ? "" : "none"; };
+  }
+  if (!eq) { const p = ta.selectionStart; eq = mathFind(ta.value).find(x => p > x.start && p < x.end) || null; }
+  let start = ta.selectionStart, end = ta.selectionEnd, tex0 = ta.value.slice(start, end), disp = false, num = "";
+  if (eq) {
+    start = eq.start; end = eq.end; tex0 = eq.tex; disp = eq.display;
+    const m = disp && /^[ \t]*\(([\w.\-]+)\)/.exec(ta.value.slice(end)); if (m) { num = m[1]; end += m[0].length; }   // 뒤에 붙은 번호 (3)
+  }
+  mathCtx = { ta, start, end, isNew: !eq };
+  $("mathTex").value = tex0; $("mathDisp").checked = disp; $("mathNum").value = num; $("mathNum").style.display = disp ? "" : "none";
+  $("mathDel").style.display = eq ? "" : "none"; $("mathOk").textContent = eq ? "고치기" : "넣기";
+  pop.style.display = "block"; pop._view(); $("mathTex").focus();
+}
+function mathCommit(remove) {
+  if (!mathCtx) return;
+  const { ta, start, end } = mathCtx, tex = $("mathTex").value.replace(/\s*\n\s*/g, " ").trim();
+  if (!document.body.contains(ta)) { closeMath(); return; }
+  if (!remove && !tex) { closeMath(); ta.focus(); return; }
+  let tok = "";
+  if (!remove) {
+    if ($("mathDisp").checked) {
+      const num = $("mathNum").value.trim(), before = ta.value.slice(0, start), after = ta.value.slice(end);
+      tok = (before.trim() === "" || /\n[ \t]*\n[ \t]*$/.test(before) ? "" : "\n\n") + "$$" + tex + "$$" + (num ? " (" + num.replace(/[()]/g, "") + ")" : "") + (after.trim() === "" || /^[ \t]*\n[ \t]*\n/.test(after) ? "" : "\n\n");
+    } else tok = "$" + tex + "$";
+  }
+  ta.focus(); ta.setSelectionRange(start, end);
+  if (!document.execCommand("insertText", false, tok)) { ta.setRangeText(tok, start, end, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); }   // Ctrl+Z 로 되돌릴 수 있게
+  closeMath();
+}
+document.addEventListener("keydown", e => {
+  if (e.altKey && !e.ctrlKey && (e.key === "=" || e.code === "Equal")) { e.preventDefault(); const a = document.activeElement; openMath(a && a.tagName === "TEXTAREA" && a.id !== "mathTex" && a._mathBound ? a : null); }
+});
+async function upgradeEquations() {   // 예전에 가져와 글자만 남은 수식 ⟦…⟧ → 워드 파일을 다시 읽어 $LaTeX$ 로
+  if (!doc) return;
+  const mid = doc.id; await saveNow();
+  const r = await api("/api/ms/wordsync", { id: mid, op: "upgrade" });
+  if (!doc || doc.id !== mid) return;
+  if (r.error) { alert("⚠ " + r.error); return; }
+  if (!r.count) { alert("바꿀 수 있는 수식을 찾지 못했습니다. (워드 파일의 수식과 글자가 달라진 것은 그대로 둡니다)"); return; }
+  Object.entries(r.nodes || {}).forEach(([nid, kv]) => { const n = node(nid); if (n) Object.assign(n, kv); });
+  if (r.abstract != null) doc.front.abstract = r.abstract;
+  Object.entries(r.captions || {}).forEach(([fid, kv]) => { const f = (doc.figures || []).find(x => x.id === fid); if (f) Object.assign(f, kv); });
+  save(true); mathWarm(); renderAll();
+  alert("수식 " + r.count + "개를 고칠 수 있는 수식으로 바꿨습니다." + (r.left > 0 ? "\n글자가 달라져 못 바꾼 것 " + r.left + "개는 그대로 두었습니다." : ""));
+}
+
+// ---------- 워드 반영: 여기서 고친 글을 가져온 워드 파일(사본)에 — 서식·그림·수식은 워드 것 그대로, 바뀐 문단만 ----------
+let wsTimer = null, wsBusy = false, wsLast = null;
+const wsCfg = () => (doc.word_sync = doc.word_sync || { on: false, mark: false, path: "" });
+function wsSchedule() { if (!doc || !doc.source_docx || !(doc.word_sync || {}).on) return; clearTimeout(wsTimer); wsTimer = setTimeout(() => wsRun(false), 2500); }
+function wsShow(r) {
+  wsLast = r; const st = $("wsState"); if (!st) return;
+  if (!r || !doc || !doc.source_docx) { st.textContent = ""; st.className = ""; }
+  else if (r.error) { st.textContent = r.locked ? "· 워드가 파일을 열고 있음" : r.checked ? "" : "· 워드 반영 실패"; st.className = "warn"; }
+  else if (!r.ok) { st.textContent = (r.swallowed || []).length ? "· 본문에서 빠진 문단 " + r.swallowed.length : ""; st.className = "warn"; }   // 살펴보기만 한 결과
+  else { st.textContent = "· 워드 반영 " + new Date((r.t || Date.now() / 1000) * 1000).toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }); st.className = ""; }
+  const box = $("wsMsg"); if (box) box.innerHTML = wsMsgHtml(r);
+  const fix = $("wsFix"); if (fix) fix.onclick = e => { e.preventDefault(); wsRestore(r.swallowed); };
+  if (r && r.locked && (doc.word_sync || {}).on) { clearTimeout(wsTimer); wsTimer = setTimeout(() => wsRun(false), 10000); }   // 워드가 닫힐 때까지 10초마다 다시
+}
+function wsMsgHtml(r) {
+  if (!r) return "";
+  if (r.error && !r.locked) return "<span style='color:var(--amber)'>⚠ " + esc(r.error) + "</span>";
+  const n = r.changed + r.inserted + r.deleted;
+  let h = (r.locked ? "<span style='color:var(--amber)'>" + esc(r.error) + "</span><br>반영할 것: " : !r.ok ? (n ? "아직 반영 전 — 워드와 다른 곳: " : "워드와 같습니다 · ") : (n ? "반영됨 · " : "워드와 같습니다 · ")) +
+    "고친 문단 " + r.changed + " · 새 문단 " + r.inserted + " · 지운 문단 " + r.deleted + (r.sec ? " (" + r.sec + "초)" : "");
+  if (r.path) h += "<br><span class='hint'>" + esc(r.path) + "</span>";
+  if (r.backup) h += "<br>처음 덮어쓰는 파일이라 원래 것을 옆에 남겼습니다: " + esc(r.backup.split(/[\\/]/).pop());
+  if (r.fields) h += "<br><span style='color:var(--amber)'>고친 자리에 있던 인용·참조 필드 " + r.fields + "개는 일반 글자가 됐습니다 (EndNote·Zotero 연결이 끊김).</span>";
+  if (r.tables) h += "<br>표 " + r.tables + "개는 글이 달라졌지만 워드의 표는 그대로 두었습니다 (표는 워드에서 고치세요).";
+  if (r.skipped) h += "<br>글상자 안 등 손대기 어려운 문단 " + r.skipped + "개는 건너뛰었습니다.";
+  if (r.cards) h += "<br>근거 카드 표시 [cN] " + r.cards + "개가 글자 그대로 들어갔습니다.";
+  if ((r.word_only || []).length) h += "<br>워드에만 있는 절(여기서 지웠거나 제목이 크게 바뀜)은 그대로 두었습니다: " + r.word_only.map(esc).join(", ");
+  if ((r.swallowed || []).length) h += "<br><span style='color:var(--amber)'>가져올 때 그림 캡션으로 잘못 들어가 본문에서 빠진 문단이 " + r.swallowed.length + "개 있습니다 (워드에는 그대로 있습니다).</span> <a href='#' class='act' id='wsFix'>본문에 되살리기</a>";
+  return h;
+}
+async function wsRun(manual, op) {
+  if (!doc || !doc.source_docx) return;
+  if (wsBusy) { if (!manual) wsSchedule(); return; }
+  const mid = doc.id; wsBusy = true;
+  if (manual) { const b = $("wsMsg"); if (b) b.textContent = "반영하는 중…"; await saveNow(); clearTimeout(wsTimer); }
+  let r; try { r = await api("/api/ms/wordsync", { id: mid, op: op || "run" }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  wsBusy = false;
+  if (op === "check") r.checked = true;
+  if (doc && doc.id === mid) wsShow(r);
+  return r;
+}
+function wsRestore(list) {   // 가져오기가 그림 캡션으로 삼킨 본문 문단을 제자리에 되돌린다
+  let n = 0;
+  (list || []).forEach(s => {
+    const nd = node(s.node); if (!nd) return;
+    const key = (nd.draft || "").trim() || !(nd.draft_en || "").trim() ? "draft" : "draft_en";
+    const ps = (nd[key] || "").split(/\n\s*\n/), k = s.after ? ps.findIndex(p => normWs(p) === normWs(s.after)) : -1;
+    if (ps.some(p => normWs(p) === normWs(s.text))) return;
+    if (s.after && k < 0) ps.push(s.text); else ps.splice(k + 1, 0, s.text);
+    nd[key] = ps.join("\n\n"); n++;
+    const fakes = (doc.figures || []).filter(f => f.id === s.fig), fake = fakes[0];
+    if (fake) {   // 가짜 그림은 지우고, 그 그림이 가져간 이미지는 같은 번호의 진짜 그림에 돌려준다
+      const real = (doc.figures || []).find(f => f.num === fake.num && f.id !== fake.id);
+      if (real && !real.png && fake.png) { real.png = fake.png; real.w = fake.w; real.h = fake.h; }
+      if (real || !fake.png) doc.figures = doc.figures.filter(f => f.id !== fake.id);
+    }
+  });
+  if (n) { save(true); renderAll(); alert("문단 " + n + "개를 본문에 되살렸습니다."); wsRun(true, (doc.word_sync || {}).on ? "run" : "check"); }
+}
+function wsPanelHtml() {
+  if (!doc.source_docx) return "<div class='sec'>워드 파일에 반영</div><div class='hint'>「워드 가져오기」로 들여온 원고는, 여기서 고친 글을 그 워드 파일(사본)에 그대로 반영할 수 있습니다. 이 원고는 워드에서 가져온 것이 아닙니다.</div>";
+  const c = wsCfg(), name = doc.source_docx.split(/[\\/]/).pop();
+  return "<div class='sec'>워드 파일에 반영</div><div class='hint'>가져온 워드 파일 <b>" + esc(name) + "</b> 의 사본에 여기서 고친 글만 갈아 끼웁니다. 서식·그림·수식·표는 워드 것 그대로입니다. " +
+    "본문·절 제목·초록·제목·그림 캡션이 반영되고, 표·참고문헌·키워드는 반영되지 않습니다. 가져온 원본은 건드리지 않습니다.</div>" +
+    "<div class='wsbox'><label><input type='checkbox' id='wsOn'" + (c.on ? " checked" : "") + "> 저장할 때마다 자동으로 반영 <span class='hint' style='display:inline'>(글을 멈추고 몇 초 뒤)</span></label>" +
+    "<label><input type='checkbox' id='wsMark'" + (c.mark ? " checked" : "") + "> 워드와 달라진 글자를 파란색으로</label>" +
+    "<div style='margin-top:4px'>반영할 파일 <span class='hint' style='display:inline'>비우면 원고 폴더의 「워드반영」 안</span></div><input type='text' id='wsPath' value='" + esc(c.path || "") + "' placeholder='예: C:\\Users\\…\\Desktop\\논문.docx'>" +
+    "<div class='ctl' style='padding:6px 0 2px;margin-left:-8px'><button class='btn pri' id='wsRunBtn'>지금 반영</button><button class='btn' id='wsOpenFile' title='반영된 파일을 워드로 엽니다. 열어 둔 동안은 워드가 파일을 잠가 새로 반영되지 않습니다 — 닫으면 다음 저장 때 반영'>워드로 열기</button><button class='btn' id='wsOpenDir'>폴더 열기</button></div>" +
+    "<div id='wsMsg' class='hint' style='padding:0'>" + wsMsgHtml(wsLast) + "</div></div>";
+}
+function wsBind(el) {
+  if (!doc.source_docx) return;
+  const c = wsCfg(), q = id => el.querySelector("#" + id);
+  q("wsOn").onchange = e => { c.on = e.target.checked; save(true); if (!c.on) { clearTimeout(wsTimer); } };
+  q("wsMark").onchange = e => { c.mark = e.target.checked; save(true); if (!c.on) wsRun(true); };
+  q("wsPath").onchange = e => { c.path = e.target.value.trim().replace(/^"|"$/g, ""); save(true); };
+  q("wsRunBtn").onclick = () => wsRun(true);
+  const open = async file => { const r = await api("/api/ms/wordsync", { id: doc.id, op: "open", file }); if (r.error) q("wsMsg").innerHTML = "<span style='color:var(--amber)'>" + esc(r.error) + "</span>"; };
+  q("wsOpenFile").onclick = () => open(true); q("wsOpenDir").onclick = () => open(false);
+  const fix = q("wsFix"); if (fix) fix.onclick = e => { e.preventDefault(); wsRestore(wsLast.swallowed); };
+  if (!wsLast && !wsBusy) wsRun(false, "check");   // 원고를 열면 워드와 다른 곳을 한 번 살펴 둔다 (쓰지는 않음)
+}
+
 function renderOut() {
   const el = $("tab-out"); if (!doc) { el.innerHTML = ""; return; }
   const refs = new Set(); doc.outline.forEach(n => (n.draft || "").replace(/\[c(\d+)\]/g, (m, k) => { const c = doc.cards.find(x => x.id === "c" + k); if (c && c.source.file) refs.add(c.source.file); return m; }));
   el.innerHTML = "<div class='sec'>내보내기 (.docx)</div><div class='hint'>제목 → 절 제목 → 문단 → 그림(캡션 포함) → 참고문헌 순으로 워드 파일을 만듭니다. 초안의 [c3] 표시는 출처 논문의 등장 순서로 [1], [2]… 인용 번호가 되고, 참고문헌 목록이 자동으로 붙습니다. 서식(저널 템플릿)·공저자 교정은 워드에서.</div>" +
     "<div class='ctl' style='padding:8px 0;margin-left:-8px'><button class='btn pri' data-lang='ko'>한국어 .docx</button><button class='btn pri' data-lang='en'>영문 .docx</button><button class='btn' id='openFolder'>폴더 열기</button></div><div id='outmsg' class='hint'></div>" +
-    "<div class='sec'>인용될 논문 " + refs.size + "편</div><div class='hint'>" + [...refs].map(short).join(" · ") + "</div>";
+    "<div class='sec'>인용될 논문 " + refs.size + "편</div><div class='hint'>" + [...refs].map(short).join(" · ") + "</div>" + wsPanelHtml();
+  wsBind(el);
   el.querySelectorAll("[data-lang]").forEach(b => b.onclick = async () => { $("outmsg").textContent = "만드는 중…"; const r = await api("/api/ms/export", { id: doc.id, lang: b.dataset.lang }); $("outmsg").textContent = r.error ? "⚠ " + r.error : "저장됨: " + r.path; });
   $("openFolder").onclick = () => api("/api/ms/open_folder", {});
 }

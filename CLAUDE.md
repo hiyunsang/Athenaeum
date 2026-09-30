@@ -17,7 +17,9 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
   paper-search\               프로그램
     server.py        (2.5k줄) 표준 라이브러리 ThreadingHTTPServer. 라우트·PDF 추출·요약/번역 생성·라벨링·탐색·읽기 기록
     intake.py        (1.0k줄) 수집: Downloads 감시 → DOI → Crossref → '연도_저널약어_저자_제목.pdf' 로 보관
-    manuscript.py    (1.5k줄) 원고: 근거 카드·개요·초안·검토·영문화·.docx 입출력·교수님 주석 논의·도식·본보기(잘 쓴 초록의 문장 역할)
+    manuscript.py    (2.7k줄) 원고: 근거 카드·개요·초안·검토·영문화·.docx 입출력·교수님 주석 논의·도식·본보기·리비전·워드 반영
+    mathtex.py       (0.8k줄) 수식: LaTeX(부분집합) → MathML(화면 미리보기)·OMML(워드 수식), OMML → LaTeX(워드에서 가져오기)
+    wordsync.py      (0.5k줄) 워드 문단 ↔ 글 변환(가져오기와 공유), 바뀐 글만 원본 문단에 갈아 끼우기
     vocab.py         (360줄)  단어장: 논문에서 담기·목록 담기·Anki 내보내기
     mapper.py                  관련 논문 맵 (OpenAlex)
     rules.py                   규칙 기반 라벨 분류 (Claude 실패 시 폴백)
@@ -144,6 +146,15 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 - **규칙 나누기**(Claude 실패 시): 심사위원 블록 단위 — 한 줄 머리(`Reviewer #1`)와 글과 붙은 머리(`Reviewer #1: This manuscript …`, Editorial Manager) 모두, 번호 없는 심사위원은 문단마다, 글머리표 목록(`Minor points:` 아래 `- …`)은 표마다, 편집자 편지는 통째로 하나. Claude 나누기도 조각 끝의 맺음말(`Yours sincerely`)·다음 묶음 머리를 뗀다(`_REV_TAIL`).
 - **워드 가져오기**: 수식(`m:oMath`)은 글자만 `⟦…⟧` 로(구조는 못 옮김), 표는 `| a | b |` 글로 그 절에, 한국어 캡션(그림 1., 표 1.)·머리부(초록·키워드). `/api/ms/import {into: id}` = 열려 있는 원고에 덮어쓰기(`merge_docx`: 절 번호·제목으로 맞춰 글만 갱신, 카드·리비전·그림 유지, 언어가 다르면 거절). `list_ms` 는 `_` 로 시작하는 보조 파일을 건너뜀.
 - **Claude 호출 문제 알림**: `_note_claude` 가 로그인 만료(`OAuth session expired`)·한도를 `CLAUDE_STATE` 에 적고 `claude_error()` 로 알림 → 홈 `claudeProblem` 안내, 원고 오류 글 뒤에 이유. 조용히 None 만 돌려주지 말 것.
+
+### 원고 '수식' (`mathtex.py`)
+글 속의 `$LaTeX$`(줄 안)·`$$LaTeX$$`(따로 한 줄, 뒤에 `(3)` 을 붙이면 번호) 가 수식이다. **화면**: 글 칸(textarea) 아래에 그 안의 수식을 그려 보여 준다(`attachMath`) — `POST /api/ms/math` 가 MathML 을 주고 브라우저가 직접 그린다(외부 라이브러리 없음. MathML Core 는 mathvariant 를 거의 안 받아 굵게·필기체는 유니코드 수학 글자로, 그냥 쓴 괄호는 `stretchy=false` — 안 그러면 분수 높이만큼 늘어난다). 머리줄 「수식」(Alt+=) = 편집 창(LaTeX 입력·바로 그림·틀 단추). 미리보기의 수식을 누르면 그 수식을 고친다. 글 칸에 넣을 때는 `execCommand("insertText")` (Ctrl+Z 가 살아 있게). **내보내기**: `_runs` → `wordsync.runs_xml` 이 `$…$` 를 워드 수식(OMML)으로, `^x^`·`_x_` 를 위·아래 첨자로. 번호 붙은 문단 수식은 테두리 없는 표(빈칸 | 수식 | 번호, `wordsync.display_block`) — 수식과 번호를 한 문단에 두면 워드가 줄 안 수식으로 작게 그린다. **가져오기**: 워드 수식 → `$LaTeX$`(`wordsync.math_token`; 변환이 안 되면 예전처럼 글자만 `⟦…⟧`), 위 표 배치는 `$$…$$ (3)` 한 문단으로 읽는다(`eq_table_md`). 예전에 가져와 `⟦…⟧` 로 남은 수식은 미리보기 줄의 「고칠 수 있는 수식으로 바꾸기」(`upgrade_equations`: 가져온 워드를 다시 읽어 문단을 맞추고 그 문단의 수식 순서대로 바꿈). 변환을 고치면 확인할 것: 워드 수식 → LaTeX → 워드 수식 왕복에서 글자가 같고, 두 번째 변환에서 LaTeX 가 더 안 변하는지. Claude 프롬프트(초안·다시 쓰기·리비전)에는 '수식은 그대로 둔다'가 들어 있다.
+- **워드에서 실제로 어떻게 보이는지 확인하는 법**: `win32com.client.DispatchEx("Word.Application")` 로 **따로 띄운 보이지 않는 워드**에서 읽기 전용(`OpenAndRepair=False` — 깨진 문서면 오류)으로 열어 PDF 로 뽑고 PyMuPDF 로 이미지를 만들어 본다. 사용자가 쓰는 워드 창(`Dispatch`·`GetActiveObject`)에는 붙지 말 것. 시간 제한을 걸고, 멈추면 새로 뜬 WINWORD pid 만 끈다.
+
+### 원고 '워드 반영' (`manuscript.sync_docx` + `wordsync.py`, `POST /api/ms/wordsync {op: run|check|open|upgrade}`)
+여기서 고친 글을 **가져온 워드 파일의 사본**에 반영한다(서식·그림·수식·표는 워드 것 그대로). 원본(`doc.source_docx`)을 매번 저장 없이 다시 가져와(`import_docx(dry=True, trace=…)` — 문단마다 원문 위치와 역할 head·body·table·abstract·title·figcap) 지금 원고와 문단 단위로 맞추고(`_align`: 수식 표기만 다른 것은 같은 것으로, 바뀐 구간은 닮은 것끼리 짝짓고 남은 것은 자리 순서대로), 바뀐 문단만 `wordsync.patch_paragraph` 로 고쳐 쓴다: 문단의 자식(런·수식·필드 덩어리)의 글과 새 글을 글자 단위로 견줘 **글자가 그대로인 자식은 원문 XML 그대로** 두고 달라진 곳만 새 런으로. 안 바뀐 문단·표·그림·구역은 한 글자도 바뀌지 않는다. 새 문단은 이웃 문단의 문단 속성·글꼴을 본뜨고, 지운 문단은 없앤다(구역 나누기·그림이 든 문단은 껍데기만 남김). 제목·캡션·초록 머리처럼 서식 표시 없이 글만 있는 자리는 `inherit`(앞 글 모양을 이어받음). 원본에서 매번 다시 만들므로 여러 번 돌려도 어긋남이 쌓이지 않는다. 결과 XML 은 `ET.fromstring` 으로 확인한 뒤에만 쓴다. 출력: 기본 `원고\워드반영\<원본 이름>`, 사용자가 경로를 정하면 거기(원본과 같은 파일은 거절, 내가 만든 적 없는 파일을 처음 덮어쓸 때는 옆에 백업 — `원고\_워드반영기록.json`). 워드가 그 파일을 열고 있으면 PermissionError → `locked`(화면이 10초마다 다시 시도). 화면: 내보내기 탭의 패널, 「저장할 때마다 자동으로」(`pushSave` 뒤 2.5초 → `wsRun`), 머리줄 `#wsState`, 「달라진 글자를 파란색으로」. 원고를 열면 `check`(쓰지 않고 살펴보기만)를 한 번 돈다.
+- **하지 않는 것**: 표·참고문헌·키워드 반영, 절 순서 바꾸기, 열려 있는 워드 창에 글자가 실시간으로 바뀌는 것(COM 으로 가능하지만 워드 창이 포커스를 뺏고 사용자의 열린 문서를 건드려 위험해 넣지 않았다).
+- **과거에 깨졌던 곳**: (1) 캡션 판정이 'Fig. 10과 Fig. 11은 …' 으로 시작하는 **본문 문장을 그림 캡션으로 삼켜** 본문에서 빠졌다 → `_CAP_RE`(번호 바로 뒤가 한글이거나, 구두점 없이 소문자 낱말이 오면 본문). 그때 가져온 원고는 반영 결과의 `swallowed` 로 알려 「본문에 되살리기」. 이 문단을 워드에서 지우면 안 된다(사용자가 지운 게 아니다). (2) 문단 하나에 고친 곳이 둘이면 그 사이가 통째로 다시 만들어져 파란색도 통째로 → 여러 구간 diff. (3) 새 제목이 굵지 않게 들어감 → `inherit`. (4) 다시 가져온 글의 수식 앞뒤 빈칸·표기 차이(`V_s` ↔ `V_{s}`)로 매번 '바뀜' → `_eqv` 로 견줌.
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다

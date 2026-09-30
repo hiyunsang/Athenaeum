@@ -6,6 +6,9 @@
 server.py 가 init() 으로 경로와 Claude 호출 함수를 넘겨 준다 (순환 import 방지).
 """
 import os, io, re, json, time, zipfile, subprocess, threading, urllib.parse
+import difflib
+import wordsync
+import mathtex
 
 cfg = {}
 
@@ -111,58 +114,19 @@ def add_card(mid, text, source, note=""):
 
 # ---------- 워드(.docx) 가져오기 ----------
 _HEAD_RE = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+([A-Z가-힣][^\n]{1,88})$")
-_CAP_RE = re.compile(r"^(Fig\.?|Figure|Table|그림|표)\s*(\d+)\.?\s*(.*)$", re.I)
+# 캡션: 'Fig. 3. …' · '그림 3 …'. 번호에 조사가 바로 붙거나('Fig. 10과 Fig. 11은 …') 번호 뒤가 소문자 낱말이면('Fig. 3 shows …') 본문 문장이다
+_CAP_RE = re.compile(r"^(Fig\.?|Figure|Table|그림|표)\s*(\d+)(?![\d가-힣])\s*([.:)]?)\s*(.*)$", re.I)
 
 
 def _docx_para_md(p):
-    """<w:p> 하나를 마크다운 문장으로 (굵게/기울임 유지, 탭·줄바꿈 처리)"""
-    out = []
-    for r in re.findall(r"<m:oMath[ >].*?</m:oMath>|<w:r[ >].*?</w:r>", p, re.S):
-        if r.startswith("<m:oMath"):   # 워드 수식: 구조(분수·첨자)는 못 옮기고 글자만 — ⟦ ⟧ 로 감싸 눈에 띄게
-            eq = "".join(re.findall(r"<m:t[^>]*>([^<]*)</m:t>", r)).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").strip()
-            if eq:
-                out.append((" \u27e6" + eq + "\u27e7 ", False, False))
-            continue
-        rpr = re.search(r"<w:rPr>(.*?)</w:rPr>", r, re.S)
-        rpr = rpr.group(1) if rpr else ""
-        b = bool(re.search(r"<w:b(?:\s[^>]*)?/>", rpr)) and 'w:val="0"' not in rpr and 'w:val="false"' not in rpr
-        i = bool(re.search(r"<w:i(?:\s[^>]*)?/>", rpr)) and 'w:val="0"' not in rpr
-        sup = 'w:val="superscript"' in rpr; sub = 'w:val="subscript"' in rpr
-        pieces = []
-        for m in re.finditer(r"<w:t[^>]*>([^<]*)</w:t>|<w:tab/>|<w:br/>", r):
-            if m.group(0) == "<w:tab/>": pieces.append(" ")
-            elif m.group(0) == "<w:br/>": pieces.append("\n")
-            else: pieces.append(m.group(1))
-        t = "".join(pieces)
-        if not t:
-            continue
-        t = t.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
-        if sup: t = "^" + t + "^"
-        if sub: t = "_" + t + "_"
-        out.append((t, b, i))
-    # 같은 서식의 이웃 런 합치기
-    merged = []
-    for t, b, i in out:
-        if merged and merged[-1][1] == b and merged[-1][2] == i:
-            merged[-1] = (merged[-1][0] + t, b, i)
-        else:
-            merged.append((t, b, i))
-    txt = ""
-    for t, b, i in merged:
-        core = t.strip()
-        if not core:
-            txt += t; continue
-        lead = t[:len(t) - len(t.lstrip())]; trail = t[len(t.rstrip()):]
-        if b and i: core = "***" + core + "***"
-        elif b: core = "**" + core + "**"
-        elif i: core = "*" + core + "*"
-        txt += lead + core + trail
-    return " ".join(txt.split(" ")).strip()
+    """<w:p> 하나를 마크다운 문장으로 (굵게/기울임·첨자 유지, 수식은 $LaTeX$) — 규칙은 wordsync 에 있다(워드 반영과 공유)."""
+    return wordsync.para_md(p)
 
 
-def import_docx(path, title=None):
+def import_docx(path, title=None, dry=False, trace=None):
     """워드 원고 → 새 원고. 번호 절 제목 → 개요, 문단 → 초안, Fig. N 캡션+그림 → 그림 목록, [n] 참고문헌 → refs_text,
-    제목·저자·초록·키워드 → front, 공저자 주석 → comments. 영어 원고는 meta.lang = en."""
+    제목·저자·초록·키워드 → front, 공저자 주석 → comments. 영어 원고는 meta.lang = en.
+    dry = 저장·그림 추출 없이 읽기만(워드 반영이 '워드에 지금 든 글'을 볼 때). trace(dict) 를 주면 문단마다 원문 위치와 어디로 갔는지를 담는다."""
     import zipfile
     z = zipfile.ZipFile(path)
     names = z.namelist()
@@ -173,30 +137,43 @@ def import_docx(path, title=None):
         a = m.group(1)
         i = re.search(r'Id="([^"]+)"', a); t = re.search(r'Target="([^"]+)"', a)
         if i and t: rid2t[i.group(1)] = t.group(1)
-    body = re.search(r"<w:body>(.*)</w:body>", docxml, re.S)
-    body = body.group(1) if body else docxml
-    tables_md = []
+    bm = re.search(r"<w:body>(.*)</w:body>", docxml, re.S)
+    body = bm.group(1) if bm else docxml
+    tables_md, tables_xml, eq_md, eq_xml = [], [], [], []
 
     def _tbl(m):
+        eq = wordsync.eq_table_md(m.group(0))
+        if eq:   # 번호 붙은 문단 수식을 담은 표 → '$$…$$ (3)' 한 문단으로 (워드 반영 때는 표 그대로 되돌린다)
+            eq_md.append(eq); eq_xml.append(m.group(0))
+            return "<w:p><w:r><w:t>\u27e6EQ %d\u27e7</w:t></w:r></w:p>" % (len(eq_md) - 1)
         rows = []
         for tr in re.findall(r"<w:tr[ >].*?</w:tr>", m.group(0), re.S):
             cells = [" ".join(x for x in (re.sub(r"\*+", "", _docx_para_md(cp)).strip() for cp in re.findall(r"<w:p[ >].*?</w:p>", tc, re.S)) if x)
                      for tc in re.findall(r"<w:tc[ >].*?</w:tc>", tr, re.S)]
             if any(cells):
                 rows.append("| " + " | ".join(c.replace("|", "/") for c in cells) + " |")
-        tables_md.append("\n".join(rows))
+        tables_md.append("\n".join(rows)); tables_xml.append(m.group(0))
         return "<w:p><w:r><w:t>\u27e6TABLE %d\u27e7</w:t></w:r></w:p>" % (len(tables_md) - 1)
 
     body = re.sub(r"<w:tbl>.*?</w:tbl>", _tbl, body, flags=re.S)
-    paras = re.findall(r"<w:p[ >].*?</w:p>", body, re.S)
+    pms = list(re.finditer(r"<w:p[ >].*?</w:p>", body, re.S))
     items = []   # (text_md, image_rid or None, raw)
-    for p in paras:
+    for pm in pms:
+        p = pm.group(0)
         md = _docx_para_md(p)
         rid = re.search(r'r:embed="([^"]+)"', p)
         items.append((md, rid.group(1) if rid else None, p))
+    roles = []   # (문단 번호, 종류, 대상, 글) — 종류: head·body·table·abstract·title·figcap
+    if trace is not None:
+        trace.update({"docxml": docxml, "body_span": bm.span(1) if bm else (0, len(docxml)), "body": body, "tables": tables_xml, "eqtables": eq_xml, "eq_idx": set(),
+                      "spans": [pm.span() for pm in pms], "raw": [it[2] for it in items], "roles": roles})
     all_text = " ".join(t for t, _, _ in items)
     is_en = len(re.findall(r"[A-Za-z]", all_text)) > len(re.findall(r"[가-힣]", all_text)) * 3
-    doc = new_ms(title or "")
+    if dry:
+        doc = {"id": "_dry", "title": title or "", "created": time.time(), "updated": time.time(), "meta": {"journal": "", "kind": "research", "lang": "ko"},
+               "cards": [], "outline": [], "figures": [], "glossary": [], "versions": []}
+    else:
+        doc = new_ms(title or "")
     doc["outline"] = []
     doc["meta"]["lang"] = "en" if is_en else "ko"
     doc["front"] = {"title": "", "authors": "", "abstract": "", "keywords": [], "highlights": []}
@@ -212,25 +189,36 @@ def import_docx(path, title=None):
             fig_pending.append((idx, rid))
         if not t:
             continue
+        me = re.match(r"^\u27e6EQ (\d+)\u27e7$", t)
+        if me:   # 수식 표 → 그 절의 본문 문단
+            if cur is not None and not in_refs:
+                t = eq_md[int(me.group(1))]
+                cur["draft"] = (cur["draft"] + "\n\n" + t).strip()
+                roles.append((idx, "body", cur["id"], t))
+                if trace is not None:
+                    trace["eq_idx"].add(idx)
+            continue
         # 판정용 평문: 워드에서 제목·캡션이 굵게/기울임으로 들어오면 **1. Introduction** 꼴이므로 서식 표시를 벗기고 본다
         plain = re.sub(r"\*+", "", t).strip()
         mt = re.match(r"^\u27e6TABLE (\d+)\u27e7$", plain)
         if mt:   # 표는 그 절의 글에 표 글로 넣는다
             if cur is not None and not in_refs and tables_md[int(mt.group(1))]:
                 cur["draft"] = (cur["draft"] + "\n\n" + tables_md[int(mt.group(1))]).strip()
+                roles.append((idx, "table", cur["id"], tables_md[int(mt.group(1))]))
             continue
         cap = _CAP_RE.match(plain)
-        if cap and len(plain) > 7:
+        if cap and len(plain) > 7 and (cap.group(3) or not re.match(r"[a-z(,]", cap.group(4))):
             kind = "table" if cap.group(1).lower().startswith("t") or cap.group(1) == "표" else "fig"
-            num = int(cap.group(2)); text = cap.group(3).strip()
+            num = int(cap.group(2)); text = cap.group(4).strip()
             if kind == "fig":
                 fig = {"id": _next_id(doc["figures"], "f"), "num": num, "caption": "" if is_en else text, "caption_en": text if is_en else "",
                        "source": {"type": "docx", "file": os.path.basename(path)}, "png": "", "svg": ""}
+                roles.append((idx, "figcap", num, text))
                 near = [r for (i2, r) in fig_pending if idx - 4 <= i2 <= idx + 1]
                 if near:
                     target = rid2t.get(near[-1], "")
                     mpath = "word/" + target if not target.startswith("/") else target.lstrip("/")
-                    if mpath in names:
+                    if mpath in names and not dry:
                         img_n += 1
                         ext = os.path.splitext(mpath)[1].lower()
                         base = "%s_img%d" % (doc["id"], img_n)
@@ -261,10 +249,12 @@ def import_docx(path, title=None):
             cur = {"id": _next_id(doc["outline"], "n"), "level": level, "heading": h.group(1) + ". " + h.group(2).strip() if level == 1 else h.group(1) + " " + h.group(2).strip(),
                    "claim": "", "cards": [], "draft": "", "draft_en": "", "status": "drafted"}
             doc["outline"].append(cur); mode = "body"; in_refs = False
+            roles.append((idx, "head", cur["id"], plain))
             continue
         if re.match(r"^(acknowledg|declaration|funding|data availability|credit author|appendix|supplementary)", plain, re.I) and len(plain) < 60:
             cur = {"id": _next_id(doc["outline"], "n"), "level": 1, "heading": plain, "claim": "", "cards": [], "draft": "", "draft_en": "", "status": "drafted"}
             doc["outline"].append(cur); mode = "body"; in_refs = False
+            roles.append((idx, "head", cur["id"], plain))
             continue
         if mode == "front":
             f = doc["front"]
@@ -272,7 +262,9 @@ def import_docx(path, title=None):
             ma = re.match(r"^(abstract|초록|요약|국문\s*초록)\s*[:.\-]?\s*", plain, re.I)
             if ma and (len(plain) < 12 or plain[ma.end() - 1] in ":.- " or low.startswith("abstract")):
                 abs_mode = True; rest = plain[ma.end():].strip(" :.-")
-                if rest: f["abstract"] = rest
+                if rest:
+                    f["abstract"] = rest
+                    roles.append((idx, "abstract", None, rest))
                 continue
             if re.match(r"^(key\s?words|키워드|주요어|핵심어|주제어)(?![가-힣A-Za-z])", low):
                 abs_mode = False
@@ -281,9 +273,11 @@ def import_docx(path, title=None):
             if low.startswith("highlights") or plain.startswith("하이라이트"):
                 abs_mode = False; mode = "highlights"; continue
             if abs_mode:
-                f["abstract"] = (f["abstract"] + "\n\n" + plain).strip(); continue
+                f["abstract"] = (f["abstract"] + "\n\n" + plain).strip()
+                roles.append((idx, "abstract", None, plain)); continue
             if not f["title"]:
-                f["title"] = plain; continue
+                f["title"] = plain
+                roles.append((idx, "title", None, plain)); continue
             f["authors"] = (f["authors"] + "\n" + plain).strip()
             continue
         if mode == "highlights":
@@ -293,6 +287,7 @@ def import_docx(path, title=None):
         if in_refs or cur is None:
             continue
         cur["draft"] = (cur["draft"] + "\n\n" + t).strip()
+        roles.append((idx, "body", cur["id"], t))
     # 공저자 주석
     if "word/comments.xml" in names:
         cx = z.read("word/comments.xml").decode("utf-8")
@@ -310,7 +305,8 @@ def import_docx(path, title=None):
     if not doc["title"] or doc["title"] == "제목 없는 원고":
         doc["title"] = (doc["front"]["title"] or os.path.splitext(os.path.basename(path))[0])[:120]
     doc["source_docx"] = path
-    save_ms(doc)
+    if not dry:
+        save_ms(doc)
     return doc
 
 
@@ -353,6 +349,8 @@ def merge_docx(doc, path):
                 n["status"] = "drafted"
         else:
             stat["same"] += 1
+    doc["outline"] = [n for i, n in enumerate(doc["outline"]) if i in used or n.get("heading") not in ("서론", "실험 방법", "결과 및 고찰", "결론")
+                      or (n.get("draft") or n.get("draft_en") or n.get("claim") or n.get("cards"))]
     f, tf = doc.setdefault("front", {}), tmp.get("front") or {}
     for k in ("title", "authors", "abstract", "keywords", "highlights"):
         if tf.get(k):
@@ -373,6 +371,429 @@ def merge_docx(doc, path):
     doc["source_docx"] = path
     save_ms(doc)
     return dict(stat, id=doc["id"], nodes=len(doc["outline"]), comments=len(doc["comments"]))
+
+
+# ---------- 워드 반영: 여기서 고친 글을 가져온 워드 파일에 (서식·그림·수식은 그대로, 바뀐 문단만) ----------
+_MATH_ANY = re.compile(r"\$\$.+?\$\$|\$(?!\s)[^$\n]+?(?<![\s\\])\$|\u27e6[^\u27e7]*\u27e7", re.S)
+_LEGACY = re.compile(r"\u27e6[^\u27e7]*\u27e7")
+_SYNC_BLUE = "1F4FD1"
+_SYNC_LOCK = threading.Lock()
+
+
+_TEX_NORM = {}
+
+
+def _eqv(text):
+    """견줄 때 쓰는 꼴: 수식은 워드 수식으로 바꿨다 되돌린 표준 표기로(같은 수식을 다르게 적어도 같게), 수식 앞뒤 빈칸은 무시."""
+    def sub(m):
+        tok = m.group(0)
+        if tok.startswith("\u27e6"):
+            return "\x01" + tok + "\x01"
+        tex = tok.strip("$").strip()
+        if tex not in _TEX_NORM:
+            _TEX_NORM[tex] = mathtex.omml_to_latex(mathtex.to_omml(tex)) or tex
+        return "\x01" + _TEX_NORM[tex] + "\x01"
+    return re.sub(r"\s*\x01\s*", "\x01", _norm_ws(_MATH_ANY.sub(sub, text or "")))
+
+
+def _legacy_pairs(raw):
+    """문단 원문의 수식들 → [(예전 표기 ⟦글자⟧, 지금 표기 $LaTeX$)] 순서대로."""
+    out = []
+    for e in re.findall(r"<m:oMathPara[ >].*?</m:oMathPara>|<m:oMath[ >].*?</m:oMath>", raw or "", re.S):
+        tok = wordsync.math_token(e)
+        for one in re.findall(r"<m:oMath[ >].*?</m:oMath>", e, re.S):
+            flat = mathtex.omml_flat(one)
+            if flat:
+                out.append(("\u27e6" + flat + "\u27e7", tok))
+    return out
+
+
+def _upgrade_text(text, pairs, fallback):
+    """글 속의 ⟦글자⟧ 를 그 문단의 워드 수식 순서(pairs)에 맞춰 $LaTeX$ 로. 못 맞추면 전체 표(fallback)에서."""
+    if "\u27e6" not in (text or ""):
+        return text
+    k = [0]
+
+    def sub(m):
+        tok = m.group(0)
+        for q in range(k[0], len(pairs)):
+            if pairs[q][0] == tok and pairs[q][1].startswith("$"):
+                k[0] = q + 1
+                return pairs[q][1]
+        return fallback.get(tok, tok)
+    return _LEGACY.sub(sub, text)
+
+
+def _align(O, N):
+    """워드 문단 글 O 와 지금 문단 글 N 을 맞춘다 → (짝 {o: n}, 새 문단 [(앞의 o 또는 -1, n)], 없어진 o 목록).
+    수식 표기(⟦…⟧ ↔ $…$)만 다른 문단은 같은 것으로 본다."""
+    canon = lambda t: re.sub(r"\s*\u27e6\u27e7\s*", "\u27e6\u27e7", _norm_ws(_MATH_ANY.sub("\u27e6\u27e7", t or "")))
+    co, cn = [canon(x) for x in O], [canon(x) for x in N]
+    pairs, ins, gone = {}, [], []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, co, cn, autojunk=False).get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                pairs[i1 + k] = j1 + k
+        elif tag == "delete":
+            gone += range(i1, i2)
+        elif tag == "insert":
+            ins += [(i1 - 1, j) for j in range(j1, j2)]
+        else:   # 바뀐 구간: 닮은 것끼리 순서를 지키며 짝짓고, 그 사이에 남은 것은 자리 순서대로
+            anchors, j = [], j1
+            for i in range(i1, i2):
+                best, bj = 0.0, None
+                for q in range(j, j2):
+                    sm = difflib.SequenceMatcher(None, co[i], cn[q], autojunk=False)
+                    r = sm.ratio() if sm.real_quick_ratio() >= 0.5 and sm.quick_ratio() >= 0.5 else 0.0
+                    if r > best:
+                        best, bj = r, q
+                if bj is not None and best >= 0.5:
+                    anchors.append((i, bj)); j = bj + 1
+            oi, nj = i1, j1
+            for ai, aj in anchors + [(i2, j2)]:
+                os_, ns_ = list(range(oi, ai)), list(range(nj, aj))
+                for k in range(min(len(os_), len(ns_))):   # 통째로 고쳐 쓴 문단: 제자리에서 바꾼다
+                    pairs[os_[k]] = ns_[k]
+                gone += os_[len(ns_):]
+                last = os_[min(len(os_), len(ns_)) - 1] if os_ and ns_ else (oi - 1)
+                ins += [(last, q) for q in ns_[len(os_):]]
+                if ai < i2:
+                    pairs[ai] = aj
+                oi, nj = ai + 1, aj + 1
+    return pairs, ins, gone
+
+
+def _match_nodes(tmp, doc):
+    """워드의 절 ↔ 지금 원고의 절: 절 번호나 제목이 같으면, 아니면 글이 많이 닮았으면. → {tmp 절 id: 원고 절}"""
+    num = lambda h: (re.match(r"^\s*(\d+(?:\.\d+)*)", h or "") or [None, None])[1]
+    key = lambda h: _tokens(re.sub(r"^\s*\d+(?:\.\d+)*\.?\s*", "", h or ""))
+    used, out = set(), {}
+    for tn in tmp["outline"]:   # 1) 제목이 그대로인 절
+        for n in doc.get("outline", []):
+            if n["id"] not in used and _norm_ws(n.get("heading")) == _norm_ws(tn["heading"]):
+                out[tn["id"]] = n; used.add(n["id"]); break
+    for tn in tmp["outline"]:   # 2) 번호 또는 제목 낱말이 같고, 3) 글이 닮은 절
+        if tn["id"] in out:
+            continue
+        cands = [n for n in doc.get("outline", []) if n["id"] not in used]
+        hit = next((n for n in cands if (key(tn["heading"]) and key(tn["heading"]) == key(n.get("heading")))), None) \
+            or next((n for n in cands if num(tn["heading"]) and num(tn["heading"]) == num(n.get("heading"))), None)
+        if hit is None and len(tn.get("draft") or "") > 200:
+            a = _norm_ws(tn["draft"])[:3000]
+            best = max(cands, key=lambda n: difflib.SequenceMatcher(None, a, _norm_ws(n.get("draft"))[:3000], autojunk=False).quick_ratio(), default=None)
+            if best is not None and difflib.SequenceMatcher(None, a, _norm_ws(best.get("draft"))[:3000], autojunk=False).ratio() >= 0.6:
+                hit = best
+        if hit is not None:
+            out[tn["id"]] = hit; used.add(hit["id"])
+    return out
+
+
+def _sync_plan(doc):
+    """가져온 워드 파일을 다시 읽어, 지금 원고와 달라진 곳을 문단 단위로 찾는다.
+    → (trace, tmp, edits) — edits = [{idx, kind: edit|delete|insert, text, like, where, pairs, seq}] (idx = 워드 문단 번호)"""
+    src = doc.get("source_docx") or ""
+    tr = {}
+    tmp = import_docx(src, dry=True, trace=tr)
+    roles, raws = tr["roles"], tr["raw"]
+    fb = {}
+    for raw in raws:
+        for old, new in _legacy_pairs(raw):
+            if new.startswith("$"):
+                fb.setdefault(old, new)
+    edits, notes = [], {"tables": 0, "skipped": 0, "word_only": [], "new_nodes": 0, "swallowed": []}
+    old_cap = re.compile(r"^(Fig\.?|Figure|그림)\s*(\d+)\.?\s*(.*)$", re.I)   # 예전 캡션 판정 (본문 문장도 삼켰다)
+    fig_caps = {(fg.get("num"), _norm_ws(_MATH_ANY.sub("\u27e6\u27e7", (fg.get("caption") or fg.get("caption_en") or "")))): fg for fg in doc.get("figures", [])}
+
+    def swallowed(text):
+        """이 워드 문단이 예전 가져오기 때 그림 캡션으로 잘못 들어가 원고 본문에 없는 것인가 → 그 가짜 그림"""
+        m = old_cap.match(re.sub(r"\*+", "", text).strip())
+        return fig_caps.get((int(m.group(2)), _norm_ws(_MATH_ANY.sub("\u27e6\u27e7", m.group(3).strip())))) if m else None
+    unstar = lambda raw: re.sub(r"\*+", "", wordsync.para_md(raw)).strip()
+    body_like = next((raws[i] for i, k, _, t in roles if k == "body" and len(t) > 80 and wordsync.patchable(raws[i])), "")
+    tr["body_like"] = body_like
+    head_like = {}
+    lvl = {n["id"]: n.get("level", 1) for n in tmp["outline"]}
+    for i, k, ref, _ in roles:
+        if k == "head":
+            head_like.setdefault(lvl.get(ref, 1), raws[i])
+
+    def part_change(idx, old_text, new_text, where):
+        """문단의 일부(초록 머리 뒤의 글, 캡션의 번호 뒤 글, 제목)가 바뀜 → 그 부분만 갈아 끼운 문단 글."""
+        base = unstar(raws[idx])
+        k = base.find(old_text)
+        if k < 0 or not wordsync.patchable(raws[idx]):
+            notes["skipped"] += 1
+            return
+        edits.append({"idx": idx, "kind": "edit", "text": base[:k] + new_text + base[k + len(old_text):], "where": where, "inherit": True})
+
+    def align_block(rl, new_text, where):
+        """rl = 이 구역의 역할들 [(idx, 종류, 글)], new_text = 지금 글. 문단을 맞춰 바뀐 것을 edits 에."""
+        flat = []   # (역할 번호, 글, 옛 표기 글)
+        for r, (idx, kind, text) in enumerate(rl):
+            leg = wordsync.para_md(raws[idx], legacy=True) if kind == "body" and idx not in tr["eq_idx"] else text
+            lp = leg.split("\n\n")
+            for k, part in enumerate(text.split("\n\n")):
+                flat.append((r, part, lp[k] if k < len(lp) else part))
+        N = [x.strip() for x in re.split(r"\n\s*\n", new_text or "") if x.strip()]
+        pairs, ins, gone = _align([f[1] for f in flat], N)
+        last_part = {}
+        for k, f in enumerate(flat):
+            last_part[f[0]] = k
+        for r, (idx, kind, text) in enumerate(rl):
+            mine = [k for k, f in enumerate(flat) if f[0] == r]
+            seq, same = [], True
+            for k in mine:
+                if k in pairs:
+                    seq.append(N[pairs[k]])
+                    if _norm_ws(N[pairs[k]]) not in (_norm_ws(flat[k][1]), _norm_ws(flat[k][2])) and _eqv(N[pairs[k]]) != _eqv(flat[k][1]):
+                        same = False
+                else:
+                    same = False
+                inner = [N[j] for a, j in ins if a == k and k != last_part[r]]
+                if inner:
+                    seq += inner; same = False
+            if same:
+                continue
+            if idx in tr["eq_idx"] and seq and seq[0].lstrip().startswith("|"):
+                continue   # 예전 가져오기는 이 수식 표를 '| 수식 | 번호 |' 글로 넣었다 — 고친 게 아니다
+            if kind == "table":
+                notes["tables"] += 1
+                continue
+            if not wordsync.patchable(raws[idx]):
+                notes["skipped"] += 1
+                continue
+            if not seq:
+                fake = swallowed(text) if kind == "body" else None
+                if fake is not None:   # 사용자가 지운 게 아니라 가져오기가 놓친 문단 — 워드에 그대로 두고 알린다
+                    prev = next((N[pairs[k]] for k in range(mine[0] - 1, -1, -1) if k in pairs), "")
+                    notes["swallowed"].append({"node": where, "text": text, "after": prev, "fig": fake.get("id"), "num": fake.get("num")})
+                    continue
+                edits.append({"idx": idx, "kind": "delete", "where": where})
+            else:
+                edits.append({"idx": idx, "kind": "edit", "text": _upgrade_text("\n\n".join(seq), _legacy_pairs(raws[idx]), fb), "where": where})
+        for a, j in ins:   # 문단 뒤(또는 구역 맨 앞)에 들어온 새 문단
+            if a >= 0 and a != last_part[flat[a][0]]:
+                continue   # 문단 안쪽에 끼운 것은 위에서 처리
+            yield_after = rl[flat[a][0]][0] if a >= 0 else None
+            edits.append({"idx": yield_after, "kind": "insert", "text": _upgrade_text(N[j], [], fb), "like": body_like, "where": where, "seq": j})
+        return [e for e in edits if e.get("where") == where and e["kind"] == "insert" and e["idx"] is None]
+
+    match = _match_nodes(tmp, doc)
+    last_idx = {}   # tmp 절 id → 그 절의 마지막 문단 번호 (새 문단·새 절을 넣을 자리)
+    head_idx = {}
+    for i, k, ref, _ in roles:
+        if k in ("head", "body", "table"):
+            last_idx[ref] = i
+        if k == "head":
+            head_idx[ref] = i
+    prev_anchor = None
+    order = {n["id"]: k for k, n in enumerate(doc.get("outline", []))}
+    matched_ids = {n["id"] for n in match.values()}
+    for tn in tmp["outline"]:
+        n = match.get(tn["id"])
+        if n is None:
+            notes["word_only"].append(tn["heading"])
+            prev_anchor = last_idx.get(tn["id"], prev_anchor)
+            continue
+        if _norm_ws(n.get("heading")) != _norm_ws(tn["heading"]) and tn["id"] in head_idx and wordsync.patchable(raws[head_idx[tn["id"]]]):
+            edits.append({"idx": head_idx[tn["id"]], "kind": "edit", "text": n.get("heading", ""), "where": n["id"], "inherit": True})
+        rl = [(i, k, t) for i, k, ref, t in roles if k in ("body", "table") and ref == tn["id"]]
+        key = "draft" if (n.get("draft") or "").strip() or not (n.get("draft_en") or "").strip() else "draft_en"
+        firsts = align_block(rl, n.get(key) or "", n["id"])
+        for e in firsts:   # 절 맨 앞에 넣을 문단 → 절 제목 문단 뒤
+            e["idx"] = head_idx.get(tn["id"], prev_anchor)
+        prev_anchor = last_idx.get(tn["id"], prev_anchor)
+        # 이 절 바로 뒤에 새로 생긴 절들 (워드에 없던 것) — 글이 있는 것만
+        k = order[n["id"]] + 1
+        while k < len(doc["outline"]) and doc["outline"][k]["id"] not in matched_ids:
+            nn = doc["outline"][k]
+            txt = (nn.get("draft") or nn.get("draft_en") or "").strip()
+            if txt and prev_anchor is not None:
+                notes["new_nodes"] += 1
+                edits.append({"idx": prev_anchor, "kind": "insert", "text": nn.get("heading", ""), "like": head_like.get(nn.get("level", 1)) or head_like.get(1, ""), "where": nn["id"], "seq": 1000 + k * 100, "inherit": True})
+                for q, para in enumerate(x.strip() for x in re.split(r"\n\s*\n", txt) if x.strip()):
+                    edits.append({"idx": prev_anchor, "kind": "insert", "text": _upgrade_text(para, [], fb), "like": body_like, "where": nn["id"], "seq": 1000 + k * 100 + 1 + q})
+            k += 1
+    # 머리부: 제목·초록
+    f = doc.get("front") or {}
+    for i, k, ref, t in roles:
+        if k == "title" and (f.get("title") or "").strip() and _norm_ws(f["title"]) != _norm_ws(t):
+            part_change(i, t, f["title"].strip(), "front")
+    arl = [(i, "abstract", t) for i, k, ref, t in roles if k == "abstract"]
+    if arl and (f.get("abstract") or "").strip():
+        N = [x.strip() for x in re.split(r"\n\s*\n", f["abstract"]) if x.strip()]
+        pairs, ins, gone = _align([t for _, _, t in arl], N)
+        for r, (i, _, t) in enumerate(arl):
+            if r in pairs and _norm_ws(N[pairs[r]]) != _norm_ws(t):
+                part_change(i, t, N[pairs[r]], "front")
+            elif r not in pairs and r > 0:
+                edits.append({"idx": i, "kind": "delete", "where": "front"})
+        for a, j in ins:
+            if a >= 0:
+                edits.append({"idx": arl[a][0], "kind": "insert", "text": N[j], "like": raws[arl[a][0]], "where": "front", "seq": j})
+    # 그림 캡션
+    is_en = tmp["meta"].get("lang") == "en"
+    caps = {}   # 그림 번호 → 그 번호의 캡션들 (같은 번호가 둘이면 나온 순서대로 짝짓는다)
+    for fg in doc.get("figures", []):
+        caps.setdefault(fg.get("num"), []).append((fg.get("caption_en") if is_en else fg.get("caption")) or "")
+    seen = {}
+    for i, k, num, t in roles:
+        if k != "figcap":
+            continue
+        q = seen.get(num, 0); seen[num] = q + 1
+        mine = caps.get(num) or []
+        want = next((c for c in mine if _norm_ws(_upgrade_text(c, _legacy_pairs(raws[i]), fb)) == _norm_ws(t)), None)   # 그대로인 캡션이 있으면 안 바뀐 것
+        if want is None and q < len(mine) and len(mine) == sum(1 for r in roles if r[1] == "figcap" and r[2] == num) and mine[q].strip():
+            part_change(i, t, _upgrade_text(mine[q].strip(), _legacy_pairs(raws[i]), fb), "fig%s" % num)
+    return tr, tmp, edits, notes
+
+
+def sync_default_path(doc):
+    return os.path.join(cfg["MS_DIR"], "워드반영", os.path.basename(doc.get("source_docx") or "원고.docx"))
+
+
+def sync_docx(doc, mark=False, check_only=False):
+    """지금 원고의 글을 가져온 워드 파일 사본에 반영한다. 원본(가져오기 폴더의 파일)은 건드리지 않고 매번 거기서부터 다시 만든다 →
+    여러 번 돌려도 어긋남이 쌓이지 않는다. 반영하는 것: 본문 문단·절 제목·초록·제목·그림 캡션. 표·참고문헌·키워드는 워드 것 그대로."""
+    import xml.etree.ElementTree as ET
+    src = doc.get("source_docx") or ""
+    if not src or not os.path.isfile(src):
+        return {"error": "가져온 워드 파일이 없습니다 (「워드 가져오기」로 들여온 원고만 워드에 반영할 수 있습니다)" + ((" — " + src) if src else "")}
+    ws = doc.get("word_sync") or {}
+    out = (ws.get("path") or "").strip().strip('"') or sync_default_path(doc)
+    if not out.lower().endswith(".docx"):
+        return {"error": "반영할 파일 이름이 .docx 로 끝나야 합니다"}
+    if os.path.normcase(os.path.abspath(out)) == os.path.normcase(os.path.abspath(src)):
+        return {"error": "가져온 원본과 같은 파일에는 쓸 수 없습니다 (원본은 기준으로 남겨 둡니다). 다른 이름이나 폴더를 고르세요"}
+    if not os.path.isdir(os.path.dirname(out) or "."):
+        if ws.get("path"):
+            return {"error": "그 폴더가 없습니다: " + os.path.dirname(out)}
+        if not check_only:   # 살펴보기만 할 때는 폴더도 만들지 않는다
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+    t0 = time.time()
+    tr, tmp, edits, notes = _sync_plan(doc)
+    color = _SYNC_BLUE if mark else None
+    body, spans, raws = tr["body"], tr["spans"], tr["raw"]
+    ops, stat, fields = [], {"edit": 0, "insert": 0, "delete": 0}, 0
+    for e in edits:
+        if e["idx"] is None:
+            continue
+        a, b = spans[e["idx"]]
+        if e["kind"] == "edit" and e["idx"] in tr["eq_idx"]:   # 수식 표: 통째로 다시 만든다
+            ops.append((a, 1, 0, b, wordsync.new_paragraph(e["text"], tr.get("body_like") or "", color)))
+        elif e["kind"] == "edit":
+            new, info = wordsync.patch_paragraph(raws[e["idx"]], e["text"], color, e.get("inherit", False))
+            if new is None:
+                continue
+            fields += info["fields"]
+            ops.append((a, 1, 0, b, new))
+        elif e["kind"] == "delete":
+            ops.append((a, 1, 0, b, "" if e["idx"] in tr["eq_idx"] else wordsync.emptied_paragraph(raws[e["idx"]])))
+        else:
+            ops.append((b, 0, e.get("seq", 0), b, wordsync.new_paragraph(e["text"], e.get("like") or "", color, e.get("inherit", False))))
+        stat[e["kind"]] += 1
+    res = {"changed": stat["edit"], "inserted": stat["insert"], "deleted": stat["delete"], "fields": fields, "tables": notes["tables"],
+           "skipped": notes["skipped"], "word_only": notes["word_only"][:8], "new_nodes": notes["new_nodes"], "swallowed": notes["swallowed"], "path": out,
+           "cards": len(re.findall(r"\[c\d+\]", " ".join(e.get("text") or "" for e in edits)))}
+    if check_only:
+        return res
+    ops.sort(key=lambda o: (o[0], o[1], o[2]))
+    parts, cur = [], 0
+    for a, _, _, b, new in ops:
+        if a < cur:
+            continue   # 같은 문단을 두 번 고치려는 경우 — 첫 것만
+        parts.append(body[cur:a]); parts.append(new); cur = b
+    parts.append(body[cur:])
+    body = "".join(parts)
+    for k, tx in enumerate(tr["tables"]):   # 가져올 때 자리 표시로 바꿔 둔 표를 제자리에
+        body = body.replace("<w:p><w:r><w:t>\u27e6TABLE %d\u27e7</w:t></w:r></w:p>" % k, tx, 1)
+    for k, tx in enumerate(tr["eqtables"]):
+        body = body.replace("<w:p><w:r><w:t>\u27e6EQ %d\u27e7</w:t></w:r></w:p>" % k, tx, 1)
+    docxml = tr["docxml"]
+    bs, be = tr["body_span"]
+    new_xml = docxml[:bs] + body + docxml[be:]
+    if "<m:oMath" in new_xml and "xmlns:m=" not in new_xml[:new_xml.find(">", new_xml.find("<w:document"))]:
+        new_xml = new_xml.replace("<w:document ", '<w:document xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ', 1)
+    try:
+        ET.fromstring(new_xml.encode("utf-8"))
+    except ET.ParseError as ex:   # 깨진 문서는 절대 쓰지 않는다
+        return {"error": "워드 문서를 만들다 구조가 어긋나 멈췄습니다 (파일은 그대로) — " + str(ex)[:120]}
+    log_p = os.path.join(cfg["MS_DIR"], "_워드반영기록.json")
+    log = cfg["load_json"](log_p, {}) or {}
+    k = os.path.normcase(os.path.abspath(out))
+    if os.path.isfile(out) and k not in log:   # 내가 만든 적 없는 파일을 처음 덮어쓸 때는 옆에 백업
+        bak = "%s.백업_%s.docx" % (out[:-5], time.strftime("%Y%m%d_%H%M%S"))
+        import shutil
+        shutil.copy2(out, bak)
+        res["backup"] = bak
+    try:
+        wordsync.write_docx(src, out, new_xml)
+    except PermissionError:
+        return dict(res, locked=True, error="워드가 그 파일을 열고 있어 쓰지 못했습니다 — 워드에서 파일을 닫으면 다음 저장 때 반영됩니다")
+    log[k] = {"t": time.time(), "backup": res.get("backup") or (log.get(k) or {}).get("backup", "")}
+    cfg["save_json"](log_p, log)
+    res.update(ok=True, t=time.time(), sec=round(time.time() - t0, 2))
+    return res
+
+
+def upgrade_equations(doc):
+    """예전에 가져와 글자만 남은 수식 ⟦…⟧ 를, 가져온 워드 파일을 다시 읽어 고칠 수 있는 수식 $LaTeX$ 로 바꾼 글을 돌려준다 (저장은 화면이 한다)."""
+    src = doc.get("source_docx") or ""
+    if not src or not os.path.isfile(src):
+        return {"error": "가져온 워드 파일이 없어 수식을 다시 읽을 수 없습니다"}
+    tr = {}
+    tmp = import_docx(src, dry=True, trace=tr)
+    roles, raws = tr["roles"], tr["raw"]
+    fb = {}
+    for raw in raws:
+        for old, new in _legacy_pairs(raw):
+            if new.startswith("$"):
+                fb.setdefault(old, new)
+    match = _match_nodes(tmp, doc)
+    out = {"nodes": {}, "captions": {}, "abstract": None, "count": 0}
+    cnt = lambda t: len(_LEGACY.findall(t or "")) - len(re.findall(r"\u27e6TABLE \d+\u27e7", t or ""))
+    for tn in tmp["outline"]:
+        n = match.get(tn["id"])
+        if n is None:
+            continue
+        rl = [(i, t) for i, k, ref, t in roles if k == "body" and ref == tn["id"]]
+        for key in ("draft", "draft_en"):
+            text = n.get(key) or ""
+            if "\u27e6" not in text:
+                continue
+            N = [x for x in re.split(r"(\n\s*\n)", text)]   # 구분자 유지
+            paras = [x for x in N[0::2]]
+            pairs, _, _ = _align([wordsync.para_md(raws[i], legacy=True) for i, _ in rl], [p.strip() for p in paras])
+            back = {j: o for o, j in pairs.items()}
+            new = [_upgrade_text(p, _legacy_pairs(raws[rl[back[j]][0]]) if j in back else [], fb) for j, p in enumerate(paras)]
+            N[0::2] = new
+            text2 = "".join(N)
+            if text2 != text:
+                out["nodes"].setdefault(n["id"], {})[key] = text2
+                out["count"] += cnt(text) - cnt(text2)
+    for n in doc.get("outline", []):   # 워드와 짝이 안 맞은 절은 전체 표로
+        for key in ("draft", "draft_en"):
+            text = n.get(key) or ""
+            if "\u27e6" in text and key not in out["nodes"].get(n["id"], {}):
+                text2 = _upgrade_text(text, [], fb)
+                if text2 != text:
+                    out["nodes"].setdefault(n["id"], {})[key] = text2
+                    out["count"] += cnt(text) - cnt(text2)
+    ab = (doc.get("front") or {}).get("abstract") or ""
+    if "\u27e6" in ab and _upgrade_text(ab, [], fb) != ab:
+        out["abstract"] = _upgrade_text(ab, [], fb); out["count"] += cnt(ab) - cnt(out["abstract"])
+    capraw = {num: raws[i] for i, k, num, t in roles if k == "figcap"}
+    for fg in doc.get("figures", []):
+        for key in ("caption", "caption_en"):
+            t = fg.get(key) or ""
+            if "\u27e6" in t:
+                t2 = _upgrade_text(t, _legacy_pairs(capraw.get(fg.get("num"), "")), fb)
+                if t2 != t:
+                    out["captions"].setdefault(fg["id"], {})[key] = t2; out["count"] += cnt(t) - cnt(t2)
+    total = (sum(cnt(n.get("draft")) + cnt(n.get("draft_en")) for n in doc.get("outline", [])) + cnt(ab)
+             + sum(cnt(fg.get("caption")) + cnt(fg.get("caption_en")) for fg in doc.get("figures", [])))
+    out["left"] = total - out["count"]
+    return out
 
 
 # ---------- Claude ----------
@@ -455,6 +876,8 @@ def claude_paragraph(doc, nid, mode):
             "[한국어 문단]\n" + node.get("draft", ""))
     else:
         raise RuntimeError("알 수 없는 작업: " + str(mode))
+    if "$" in (node.get("draft") or ""):
+        prompt += "\n\n(주의: 글 속의 $…$ · $$…$$ 는 LaTeX 수식이다. 고치라는 말이 없으면 한 글자도 바꾸지 말고 그 자리에 둔다.)"
     out = cfg["claude"](prompt, timeout=300).strip()
     out = re.sub(r"^```[a-z]*\n|\n```$", "", out).strip()
     return out
@@ -796,22 +1219,16 @@ def _xml(s):
 
 
 def _runs(text, color=None):
-    """**굵게**, *기울임* 을 런으로. color = 'RRGGBB' 면 글자색."""
-    if color:
-        col = '<w:color w:val="%s"/>' % color
-        return "".join(r.replace("<w:rPr>", "<w:rPr>" + col) if "<w:rPr>" in r else r.replace("<w:r>", "<w:r><w:rPr>" + col + "</w:rPr>", 1)
-                       for r in re.findall(r"<w:r>.*?</w:r>", _runs(text), re.S))
-    out = []
-    for tok in re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", text):
-        if not tok:
-            continue
-        if tok.startswith("**"):
-            out.append('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r>' % _xml(tok[2:-2]))
-        elif tok.startswith("*"):
-            out.append('<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r>' % _xml(tok[1:-1]))
-        else:
-            out.append('<w:r><w:t xml:space="preserve">%s</w:t></w:r>' % _xml(tok))
-    return "".join(out)
+    """**굵게**, *기울임*, ^위첨자^, _아래첨자_, $수식$(LaTeX → 워드 수식) 을 런으로. color = 'RRGGBB' 면 글자색."""
+    return wordsync.runs_xml(wordsync.md_units(text), "", color)
+
+
+def _body_para(text, color=None):
+    """본문 문단. '$$ 수식 $$ (3)' 처럼 문단 수식뿐인 글은 수식 배치로 (번호가 있으면 테두리 없는 표)."""
+    m = wordsync.DISP_EQ.match(text.strip())
+    if m:
+        return wordsync.display_block(m.group(1).strip(), m.group(2) or "", "", color)
+    return _para(text, color=color)
 
 
 def _para(text, style=None, align=None, color=None):
@@ -876,7 +1293,7 @@ def export_docx(doc, lang="ko", mark=None):
     for n, txt in paras:
         body.append(_para(n.get("heading", ""), "Heading1" if n.get("level", 1) == 1 else "Heading2"))
         for p in [x.strip() for x in re.split(r"\n\s*\n", txt) if x.strip()]:
-            body.append(_para(p, color="1F4FD1" if _is_new(n, p) else None))
+            body.append(_body_para(p, color="1F4FD1" if _is_new(n, p) else None))
     media, rels = [], []
     figs = [f for f in doc.get("figures", []) if f.get("png") and os.path.isfile(os.path.join(cfg["FIG_DIR"], f["png"]))]
     if figs:
@@ -906,7 +1323,8 @@ def export_docx(doc, lang="ko", mark=None):
     document = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
                 '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
                 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
-                'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+                'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+                'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
                 '<w:body>%s<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>'
                 % "".join(body))
     doc_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -1208,7 +1626,7 @@ def revise_for_feedback(doc, cid, note=""):
               "규칙:\n- 문단은 %s로. 지적과 무관한 문장은 그대로 둔다. [해당 문단] 만 다루고 절의 다른 문단은 쓰지 마라.\n"
               "- 원고에 없는 수치·결과를 지어내지 마라. 필요한 데이터가 없으면 그 자리에 %s 처럼 표시한다.\n"
               "- 지적과 무관한 수치는 절대 바꾸지 마라. 수치가 서로 안 맞는 것을 발견하면 고치지 말고 문단 끝에 %s 처럼 한 줄로만 적어라.\n"
-              "- 논의에서 정해진 방향이 있으면 그것을 따른다. 카드 번호 [cN] 이 있으면 그대로 둔다.\n- 고친 문단만 출력. 설명·제목·따옴표 금지.\n\n"
+              "- 논의에서 정해진 방향이 있으면 그것을 따른다. 카드 번호 [cN] 과 수식($…$ 안의 LaTeX)은 그대로 둔다.\n- 고친 문단만 출력. 설명·제목·따옴표 금지.\n\n"
               % ("영어 학술 문체" if lang_en else "한국어 학술 문체",
                  "(DATA NEEDED: repetitions per condition)" if lang_en else "(데이터 필요: 조건별 반복 수)",
                  "(CHECK: 104 µm vs 0.8h₀ inconsistent)" if lang_en else "(확인: 104 µm 와 0.8h₀ 가 서로 안 맞음)")
@@ -2002,7 +2420,7 @@ def rev_propose(doc, rid, iid, nid, note=""):
         "규칙:\n- 글은 %s로. 지적과 무관한 문단·문장은 건드리지 마라. 꼭 필요한 문단만 edits 에 넣는다.\n"
         "- edits 의 text 는 그 번호 문단 자신을 고친 글이어야 한다. 문단을 없애거나 합칠 때는 없어지는 번호를 deletes 에 넣고, 뒤 문단의 내용을 앞 번호로 밀어 옮겨 쓰지 마라. 문단 순서는 바꾸지 마라.\n"
         "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 필요한 데이터가 없으면 그 자리에 %s 처럼 표시한다.\n"
-        "- 지적과 무관한 수치는 절대 바꾸지 마라. 카드 번호 [cN], 인용 번호 [n], 그림 번호는 그대로 둔다.\n"
+        "- 지적과 무관한 수치는 절대 바꾸지 마라. 카드 번호 [cN], 인용 번호 [n], 그림 번호, 수식($…$ 안의 LaTeX)은 그대로 둔다.\n"
         "- 저자가 정한 방침과 논의에서 정해진 방향이 있으면 그것을 따른다. 고칠 것이 이 절에 없으면 edits·inserts·deletes 를 비우고 note 에 이유를 적어라.\n%s\n"
         % ("영어 학술 문체" if lang_en else "한국어 학술 문체", "(DATA NEEDED: …)" if lang_en else "(데이터 필요: …)",
            "- 이 절은 초록이다. 저널의 단어 수 제한이 있으니 길이를 거의 늘리지 말고, 넣는 만큼 덜 중요한 말을 줄여라.\n" if nid == "front" else "")
@@ -2087,7 +2505,7 @@ def rev_export_response(doc, rid):
             body.append(_para(it["reviewer"], "Heading1")); last = it["reviewer"]
         body.append(_para("**Comment %s**" % it["id"]))
         for p in [x.strip() for x in re.split(r"\n\s*\n", it["text"]) if x.strip()]:
-            body.append(_para("*" + p.replace("*", "") + "*"))
+            body.append(_para("\n".join("*" + ln.strip().replace("*", "") + "*" for ln in p.split("\n") if ln.strip())))
         resp = (it.get("response") or "").strip()
         body.append(_para("**Response:** " + (resp.split("\n\n")[0] if resp else ("We thank the reviewer for this comment." if it.get("kind") == "praise" else "[TO WRITE]"))))
         for p in resp.split("\n\n")[1:]:
@@ -2112,7 +2530,8 @@ def rev_export_response(doc, rid):
 def _write_simple_docx(out, body):
     import zipfile
     document = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>%s'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+                'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>%s'
                 '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>' % "".join(body))
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -2234,6 +2653,24 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, rev_op(doc, body))
+        if p == "/api/ms/math":   # 수식 미리보기: LaTeX → MathML (브라우저가 직접 그린다)
+            items = (body.get("items") or [])[:400]
+            return h._send(200, {"mml": [mathtex.to_mathml(str(it.get("tex") or "")[:4000], bool(it.get("display"))) for it in items]})
+        if p == "/api/ms/wordsync":   # 워드 반영: 여기서 고친 글을 가져온 워드 파일(사본)에
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            op = body.get("op") or "run"
+            if op == "upgrade":
+                return h._send(200, upgrade_equations(doc))
+            if op == "open":
+                path = ((doc.get("word_sync") or {}).get("path") or "").strip().strip('"') or sync_default_path(doc)
+                if not os.path.isfile(path):
+                    return h._send(200, {"error": "아직 만든 파일이 없습니다 — 먼저 「지금 반영」"})
+                os.startfile(path if body.get("file") else os.path.dirname(path))
+                return h._send(200, {"ok": True})
+            with _SYNC_LOCK:
+                return h._send(200, sync_docx(doc, mark=bool((doc.get("word_sync") or {}).get("mark")), check_only=(op == "check")))
         if p == "/api/ms/exemplars":   # 본보기: 잘 쓴 논문의 초록 구조
             return h._send(200, exemplars(body))
         if p == "/api/ms/claude":
