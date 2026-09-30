@@ -27,10 +27,10 @@ def _path(mid):
 def list_ms():
     out = []
     for f in os.listdir(cfg["MS_DIR"]):
-        if not f.endswith(".json"):
+        if not f.endswith(".json") or f.startswith("_"):   # _본보기캐시.json 같은 보조 파일은 원고가 아니다
             continue
         d = cfg["load_json"](os.path.join(cfg["MS_DIR"], f), None)
-        if not d:
+        if not d or not isinstance(d, dict) or "outline" not in d:
             continue
         out.append({"id": d.get("id", f[:-5]), "title": d.get("title", ""), "updated": d.get("updated", 0),
                     "cards": len(d.get("cards", [])), "nodes": len(d.get("outline", [])), "figures": len(d.get("figures", []))})
@@ -111,13 +111,18 @@ def add_card(mid, text, source, note=""):
 
 # ---------- 워드(.docx) 가져오기 ----------
 _HEAD_RE = re.compile(r"^(\d+(?:\.\d+)*)\.?\s+([A-Z가-힣][^\n]{1,88})$")
-_CAP_RE = re.compile(r"^(Fig\.?|Figure|Table)\s*(\d+)\.?\s*(.*)$", re.I)
+_CAP_RE = re.compile(r"^(Fig\.?|Figure|Table|그림|표)\s*(\d+)\.?\s*(.*)$", re.I)
 
 
 def _docx_para_md(p):
     """<w:p> 하나를 마크다운 문장으로 (굵게/기울임 유지, 탭·줄바꿈 처리)"""
     out = []
-    for r in re.findall(r"<w:r[ >].*?</w:r>", p, re.S):
+    for r in re.findall(r"<m:oMath[ >].*?</m:oMath>|<w:r[ >].*?</w:r>", p, re.S):
+        if r.startswith("<m:oMath"):   # 워드 수식: 구조(분수·첨자)는 못 옮기고 글자만 — ⟦ ⟧ 로 감싸 눈에 띄게
+            eq = "".join(re.findall(r"<m:t[^>]*>([^<]*)</m:t>", r)).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").strip()
+            if eq:
+                out.append((" \u27e6" + eq + "\u27e7 ", False, False))
+            continue
         rpr = re.search(r"<w:rPr>(.*?)</w:rPr>", r, re.S)
         rpr = rpr.group(1) if rpr else ""
         b = bool(re.search(r"<w:b(?:\s[^>]*)?/>", rpr)) and 'w:val="0"' not in rpr and 'w:val="false"' not in rpr
@@ -170,6 +175,19 @@ def import_docx(path, title=None):
         if i and t: rid2t[i.group(1)] = t.group(1)
     body = re.search(r"<w:body>(.*)</w:body>", docxml, re.S)
     body = body.group(1) if body else docxml
+    tables_md = []
+
+    def _tbl(m):
+        rows = []
+        for tr in re.findall(r"<w:tr[ >].*?</w:tr>", m.group(0), re.S):
+            cells = [" ".join(x for x in (re.sub(r"\*+", "", _docx_para_md(cp)).strip() for cp in re.findall(r"<w:p[ >].*?</w:p>", tc, re.S)) if x)
+                     for tc in re.findall(r"<w:tc[ >].*?</w:tc>", tr, re.S)]
+            if any(cells):
+                rows.append("| " + " | ".join(c.replace("|", "/") for c in cells) + " |")
+        tables_md.append("\n".join(rows))
+        return "<w:p><w:r><w:t>\u27e6TABLE %d\u27e7</w:t></w:r></w:p>" % (len(tables_md) - 1)
+
+    body = re.sub(r"<w:tbl>.*?</w:tbl>", _tbl, body, flags=re.S)
     paras = re.findall(r"<w:p[ >].*?</w:p>", body, re.S)
     items = []   # (text_md, image_rid or None, raw)
     for p in paras:
@@ -196,9 +214,14 @@ def import_docx(path, title=None):
             continue
         # 판정용 평문: 워드에서 제목·캡션이 굵게/기울임으로 들어오면 **1. Introduction** 꼴이므로 서식 표시를 벗기고 본다
         plain = re.sub(r"\*+", "", t).strip()
+        mt = re.match(r"^\u27e6TABLE (\d+)\u27e7$", plain)
+        if mt:   # 표는 그 절의 글에 표 글로 넣는다
+            if cur is not None and not in_refs and tables_md[int(mt.group(1))]:
+                cur["draft"] = (cur["draft"] + "\n\n" + tables_md[int(mt.group(1))]).strip()
+            continue
         cap = _CAP_RE.match(plain)
-        if cap and len(plain) > 12:
-            kind = "table" if cap.group(1).lower().startswith("t") else "fig"
+        if cap and len(plain) > 7:
+            kind = "table" if cap.group(1).lower().startswith("t") or cap.group(1) == "표" else "fig"
             num = int(cap.group(2)); text = cap.group(3).strip()
             if kind == "fig":
                 fig = {"id": _next_id(doc["figures"], "f"), "num": num, "caption": "" if is_en else text, "caption_en": text if is_en else "",
@@ -246,15 +269,16 @@ def import_docx(path, title=None):
         if mode == "front":
             f = doc["front"]
             low = plain.lower()
-            if low.startswith("abstract"):
-                abs_mode = True; rest = plain[8:].strip(" :.-")
+            ma = re.match(r"^(abstract|초록|요약|국문\s*초록)\s*[:.\-]?\s*", plain, re.I)
+            if ma and (len(plain) < 12 or plain[ma.end() - 1] in ":.- " or low.startswith("abstract")):
+                abs_mode = True; rest = plain[ma.end():].strip(" :.-")
                 if rest: f["abstract"] = rest
                 continue
-            if low.startswith("keywords") or low.startswith("key words"):
+            if re.match(r"^(key\s?words|키워드|주요어|핵심어|주제어)(?![가-힣A-Za-z])", low):
                 abs_mode = False
-                kw = re.split(r"[;,]\s*", re.sub(r"^key\s?words\s*[:.]?\s*", "", plain, flags=re.I))
+                kw = re.split(r"[;,]\s*", re.sub(r"^(key\s?words|키워드|주요어|핵심어|주제어)\s*[:.]?\s*", "", plain, flags=re.I))
                 f["keywords"] = [k.strip() for k in kw if k.strip()]; continue
-            if low.startswith("highlights"):
+            if low.startswith("highlights") or plain.startswith("하이라이트"):
                 abs_mode = False; mode = "highlights"; continue
             if abs_mode:
                 f["abstract"] = (f["abstract"] + "\n\n" + plain).strip(); continue
@@ -288,6 +312,67 @@ def import_docx(path, title=None):
     doc["source_docx"] = path
     save_ms(doc)
     return doc
+
+
+def merge_docx(doc, path):
+    """워드 파일을 다시 읽어 **지금 원고의 본문만** 갱신한다: 절 번호(1., 2.1)나 절 제목이 같은 절의 글을 바꾸고, 새 절은 끼워 넣는다.
+    근거 카드·주장·리비전·그림은 그대로. 이전 개요는 판 이력에 남긴다. 워드와 여기를 오가며 쓸 때."""
+    tmp = import_docx(path)
+    try:
+        os.remove(_path(tmp["id"]))   # 읽기용으로 만든 임시 원고는 지운다
+    except OSError:
+        pass
+    if (tmp.get("meta", {}).get("lang") or "ko") != (doc.get("meta", {}).get("lang") or "ko"):
+        return {"error": "워드 파일의 언어(%s)가 이 원고(%s)와 달라 덮어쓰지 않았습니다. 「새 원고로」 가져오세요." %
+                ("영어" if tmp["meta"].get("lang") == "en" else "한국어", "영어" if doc.get("meta", {}).get("lang") == "en" else "한국어")}
+    num = lambda h: (re.match(r"^\s*(\d+(?:\.\d+)*)", h or "") or [None, None])[1]
+    key = lambda h: _tokens(re.sub(r"^\s*\d+(?:\.\d+)*\.?\s*", "", h or ""))
+    doc.setdefault("versions", [])
+    doc["versions"] = (doc["versions"] + [{"t": doc.get("updated", time.time()), "outline": json.loads(json.dumps(doc["outline"]))}])[-20:]
+    stat = {"updated": 0, "same": 0, "added": 0}
+    used, last_idx = set(), -1
+    for tn in tmp["outline"]:
+        match = None
+        for i, n in enumerate(doc["outline"]):
+            if i in used:
+                continue
+            if (num(tn["heading"]) and num(tn["heading"]) == num(n.get("heading"))) or (key(tn["heading"]) and key(tn["heading"]) == key(n.get("heading"))):
+                match = i; break
+        if match is None:
+            new = dict(tn, id=_next_id(doc["outline"], "n"))
+            last_idx += 1
+            doc["outline"].insert(last_idx, new)
+            used = {(i + 1 if i >= last_idx else i) for i in used} | {last_idx}
+            stat["added"] += 1
+            continue
+        n = doc["outline"][match]; used.add(match); last_idx = match
+        n["heading"] = tn["heading"]; n["level"] = tn.get("level", n.get("level", 1))
+        if _norm_ws(tn.get("draft")) != _norm_ws(n.get("draft")):
+            n["draft"] = tn.get("draft", ""); stat["updated"] += 1
+            if n.get("status") == "todo":
+                n["status"] = "drafted"
+        else:
+            stat["same"] += 1
+    f, tf = doc.setdefault("front", {}), tmp.get("front") or {}
+    for k in ("title", "authors", "abstract", "keywords", "highlights"):
+        if tf.get(k):
+            f[k] = tf[k]
+    if tmp.get("refs_text"):
+        doc["refs_text"] = tmp["refs_text"]
+    old = {(c.get("author"), _norm_ws(c.get("text"))): c for c in doc.get("comments", [])}
+    for c in tmp.get("comments", []):   # 새 주석으로 바꾸되, 같은 주석의 논의·답변 메모는 이어 간다
+        o = old.get((c.get("author"), _norm_ws(c.get("text"))))
+        if o:
+            for k in ("thread", "reply", "status"):
+                if o.get(k):
+                    c[k] = o[k]
+    doc["comments"] = tmp.get("comments", [])
+    have = {fg.get("num") for fg in doc.get("figures", [])}
+    doc.setdefault("figures", []).extend(fg for fg in tmp.get("figures", []) if fg.get("num") not in have)
+    doc["figures"].sort(key=lambda fg: fg.get("num") or 0)
+    doc["source_docx"] = path
+    save_ms(doc)
+    return dict(stat, id=doc["id"], nodes=len(doc["outline"]), comments=len(doc["comments"]))
 
 
 # ---------- Claude ----------
@@ -710,8 +795,12 @@ def _xml(s):
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _runs(text):
-    """**굵게**, *기울임* 을 런으로"""
+def _runs(text, color=None):
+    """**굵게**, *기울임* 을 런으로. color = 'RRGGBB' 면 글자색."""
+    if color:
+        col = '<w:color w:val="%s"/>' % color
+        return "".join(r.replace("<w:rPr>", "<w:rPr>" + col) if "<w:rPr>" in r else r.replace("<w:r>", "<w:r><w:rPr>" + col + "</w:rPr>", 1)
+                       for r in re.findall(r"<w:r>.*?</w:r>", _runs(text), re.S))
     out = []
     for tok in re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", text):
         if not tok:
@@ -725,11 +814,11 @@ def _runs(text):
     return "".join(out)
 
 
-def _para(text, style=None, align=None):
+def _para(text, style=None, align=None, color=None):
     ppr = ""
     if style or align:
         ppr = "<w:pPr>%s%s</w:pPr>" % ('<w:pStyle w:val="%s"/>' % style if style else "", '<w:jc w:val="%s"/>' % align if align else "")
-    return "<w:p>%s%s</w:p>" % (ppr, _runs(text))
+    return "<w:p>%s%s</w:p>" % (ppr, _runs(text, color))
 
 
 def _image_para(rid, cx, cy, n):
@@ -754,8 +843,20 @@ STYLES_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </w:styles>"""
 
 
-def export_docx(doc, lang="ko"):
+def export_docx(doc, lang="ko", mark=None):
+    """mark = 리비전 라운드 → 그 라운드의 base(심사 의견을 받은 시점의 본문)와 달라진 문단을 파란색으로 표시한 원고."""
     paras, refs = citations(doc, lang)
+    _ck = lambda p: _norm_ws(re.sub(r"\[(?:c?\d+(?:\s*[,\u2013\-]\s*c?\d+)*)\]", "", p))   # 인용 번호는 빼고 비교
+    base_key = "draft_en" if lang == "en" else "draft"
+
+    def _is_new(n, p):
+        if not mark:
+            return False
+        b = (mark.get("base") or {}).get(n["id"])
+        if b is None:
+            return True   # 그 뒤에 생긴 절
+        old = {_ck(x) for x in re.split(r"\n\s*\n", b.get(base_key) or b.get("draft") or "") if x.strip()}
+        return _ck(p) not in old
     f = doc.get("front") or {}
     body = [_para(f.get("title") or doc.get("title", ""), "Title")]
     if f.get("authors"):
@@ -774,7 +875,7 @@ def export_docx(doc, lang="ko"):
     for n, txt in paras:
         body.append(_para(n.get("heading", ""), "Heading1" if n.get("level", 1) == 1 else "Heading2"))
         for p in [x.strip() for x in re.split(r"\n\s*\n", txt) if x.strip()]:
-            body.append(_para(p))
+            body.append(_para(p, color="1F4FD1" if _is_new(n, p) else None))
     media, rels = [], []
     figs = [f for f in doc.get("figures", []) if f.get("png") and os.path.isfile(os.path.join(cfg["FIG_DIR"], f["png"]))]
     if figs:
@@ -824,7 +925,7 @@ def export_docx(doc, lang="ko"):
                  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
                  '</Relationships>')
     safe = re.sub(r'[\\/:*?"<>|]+', " ", doc.get("title", "원고")).strip()[:60] or "원고"
-    out = os.path.join(cfg["EXPORT_DIR"], "%s_%s_%s.docx" % (safe, "EN" if lang == "en" else "KO", time.strftime("%Y%m%d_%H%M")))
+    out = os.path.join(cfg["EXPORT_DIR"], "%s_%s%s_%s.docx" % (safe, "EN" if lang == "en" else "KO", "_수정표시" if mark else "", time.strftime("%Y%m%d_%H%M")))
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", content_types)
         z.writestr("_rels/.rels", root_rels)
@@ -1528,6 +1629,435 @@ def exemplars(body):
             "items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
 
 
+# ---------- 리비전: 심사 의견(편집자·심사위원)을 하나씩 같이 처리 ----------
+# doc["revision"] = {"rounds": [{id, title, file, created, decision, raw, base: {절 id: {draft, draft_en}}, items: [...]}]}
+# item = {id(R1.2), reviewer, no, kind(major|minor|praise), text(원문 그대로), status(todo|plan|applied|done), gist, work, suggest: [절 id],
+#         plan(내가 정한 방침), nodes: [절 id], thread: [{role, text, t}], response(영문 답변), changes: [{node, key, before, after, t}]}
+_REV_HEAD = re.compile(r"^\s*(?:#+\s*)?(?:comments? (?:from|of|by|to the author[s]? from) )?(reviewer|referee|editor|associate editor|handling editor|guest editor|area editor)\s*[#:]?\s*(\d+)?\b[^\n]{0,40}$", re.I)
+_REV_NUM = re.compile(r"^\s*(?:comment|point|question|remark|issue|q|c)?\s*[#(]?(\d{1,2})[.):]\s+\S", re.I)
+
+
+def _file_text(name, raw):
+    """심사 의견 파일(.docx·.pdf·.txt·.md) → 글. 문단은 빈 줄로."""
+    ext = os.path.splitext(name or "")[1].lower()
+    if ext == ".docx":
+        import zipfile, io as _io
+        z = zipfile.ZipFile(_io.BytesIO(raw))
+        x = z.read("word/document.xml").decode("utf-8")
+        body = re.search(r"<w:body>(.*)</w:body>", x, re.S)
+        paras = re.findall(r"<w:p[ >].*?</w:p>", body.group(1) if body else x, re.S)
+        return "\n\n".join(t for t in (re.sub(r"\*+", "", _docx_para_md(p)).strip() for p in paras) if t)
+    if ext == ".pdf":
+        import fitz
+        d = fitz.open(stream=raw, filetype="pdf")
+        try:
+            return "\n\n".join(pg.get_text() for pg in d)
+        finally:
+            d.close()
+    for enc in ("utf-8-sig", "utf-8", "cp949"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", "replace")
+
+
+def _why():
+    """Claude 가 답하지 않은 이유(로그인 만료·한도)가 있으면 오류 글 뒤에 붙인다."""
+    fn = cfg.get("claude_error")
+    r = fn() if fn else ""
+    return (" — " + r) if r else ""
+
+
+def _rev_label(reviewer):
+    m = re.search(r"(\d+)", reviewer or "")
+    low = (reviewer or "").lower()
+    if "editor" in low:
+        return "E" + (m.group(1) if m else "")
+    return "R" + (m.group(1) if m else "1")
+
+
+def _split_review_regex(text):
+    """Claude 없이 나누기: 'Reviewer #1' 머리 아래 번호 붙은 문단(1. / (1) / Comment 1:)마다, 번호가 없으면 빈 줄 문단마다."""
+    items, reviewer, cur = [], "Editor", None
+    seq = {}
+
+    def push():
+        if cur and len(cur["text"].strip()) >= 25:
+            cur["text"] = cur["text"].strip(); items.append(cur)
+
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    numbered = sum(1 for p in paras if _REV_NUM.match(p)) >= 2
+    started = False   # 이 심사위원 블록에서 번호 붙은 지적이 시작됐나
+    for p in paras:
+        first = p.split("\n")[0]
+        h = _REV_HEAD.match(first) if len(first) < 70 else None
+        if h:
+            push(); cur = None; started = False
+            who = h.group(1).lower()
+            reviewer = ("Editor" if "editor" in who else "Reviewer") + (" " + h.group(2) if h.group(2) else ("" if "editor" in who else " 1"))
+            rest = "\n".join(p.split("\n")[1:]).strip()
+            if not rest:
+                continue
+            p = rest
+        m = _REV_NUM.match(p)
+        if numbered and not m and not started:   # 번호 앞의 인사·총평: 하나로 모아 .0 (답변이 필요 없을 때가 많다)
+            if cur is None:
+                cur = {"reviewer": reviewer, "no": "0", "text": p, "kind": "praise"}
+            else:
+                cur["text"] += "\n\n" + p
+            continue
+        if m or not numbered:
+            push(); started = True
+            seq[reviewer] = seq.get(reviewer, 0) + 1
+            cur = {"reviewer": reviewer, "no": m.group(1) if m else str(seq[reviewer]), "text": p, "kind": ""}
+        else:
+            cur["text"] += "\n\n" + p
+    push()
+    return items
+
+
+def _split_review_claude(text):
+    """Claude 가 지적마다 '누구·번호·종류·첫 낱말들'만 알려 주면 원문에서 그 자리를 찾아 자른다 — 글을 다시 쓰게 하지 않아 빠르고 원문이 그대로 남는다."""
+    r = cfg["claude_json"](
+        "아래는 저널 심사 결과(편집자 편지와 심사위원 의견)다. 저자가 하나씩 답해야 할 지적의 경계를 찾아 JSON 으로만 답하라:\n"
+        "{\"decision\": \"major revision|minor revision|reject and resubmit|accept|unknown\", "
+        "\"items\": [{\"reviewer\": \"Editor 또는 Reviewer 1 …\", \"no\": \"그 심사위원 안에서의 번호\", \"kind\": \"major|minor|praise\", \"start\": \"그 지적이 시작하는 첫 8~12 낱말을 원문 그대로\"}]}\n"
+        "규칙: 글에 나온 순서대로. 인사·절차 안내(마감일, 제출 방법)는 넣지 마라. 전체 평가·칭찬뿐인 문단은 kind=praise 로 하나만. "
+        "한 번호 안에 요구가 여럿이어도 나누지 말고 하나로. 번호가 없으면 문단마다 하나. start 는 반드시 원문에 있는 글자 그대로(번호·기호 포함).\n\n[심사 결과]\n" + text[:45000],
+        timeout=400) or {}
+    raw_items = r.get("items") if isinstance(r, dict) else None
+    if not raw_items:
+        return [], ""
+    norm_map, norm = [], []
+    for i, ch in enumerate(text):   # 공백을 하나로 줄인 글과 원래 위치의 대응
+        if ch.isspace():
+            if norm and norm[-1] == " ":
+                continue
+            norm.append(" "); norm_map.append(i)
+        else:
+            norm.append(ch); norm_map.append(i)
+    ntext = "".join(norm)
+    cuts, pos = [], 0
+    for it in raw_items:
+        s = re.sub(r"\s+", " ", str(it.get("start") or "")).strip()
+        if len(s) < 8:
+            continue
+        j = -1
+        for probe in (s, s[:60], s[:35], s[:20]):
+            j = ntext.find(probe, pos)
+            if j >= 0:
+                break
+        if j < 0:
+            continue
+        cuts.append((norm_map[j], it)); pos = j + 5
+    items = []
+    for k, (start, it) in enumerate(cuts):
+        end = cuts[k + 1][0] if k + 1 < len(cuts) else len(text)
+        seg = text[start:end].strip()
+        seg = re.split(r"\n\s*(?:reviewer|referee)\s*#?\s*\d+\s*[:\n]", seg, flags=re.I)[0].strip()   # 다음 심사위원 머리가 끝에 붙으면 뗀다
+        if len(seg) >= 20:
+            items.append({"reviewer": str(it.get("reviewer") or "Reviewer 1")[:40], "no": str(it.get("no") or "")[:6],
+                          "kind": it.get("kind") if it.get("kind") in ("major", "minor", "praise") else "", "text": seg})
+    return items, str(r.get("decision") or "")
+
+
+def _round(doc, rid=None):
+    rounds = (doc.get("revision") or {}).get("rounds") or []
+    if not rounds:
+        return None
+    for r in rounds:
+        if r["id"] == rid:
+            return r
+    return rounds[-1]
+
+
+def _rev_item(rnd, iid):
+    for it in (rnd or {}).get("items", []):
+        if it["id"] == iid:
+            return it
+    return None
+
+
+def rev_import(doc, name, raw=None, text=""):
+    """심사 의견을 읽어 지적마다 나누고 새 라운드를 만든다. 그 시점의 원고 본문을 base 로 남겨 나중에 '수정 표시 원고'에 쓴다."""
+    text = (text or "").strip() or _file_text(name, raw or b"").strip()
+    text = re.sub(r"\r\n?", "\n", text)
+    if len(text) < 40:
+        return {"error": "심사 의견 글을 읽지 못했습니다 (빈 파일이거나 스캔 PDF)"}
+    items, decision, how = [], "", "claude"
+    try:
+        items, decision = _split_review_claude(text)
+    except Exception:
+        items = []
+    if len(items) < 2:
+        items, how = _split_review_regex(text), "규칙"
+    if not items:
+        return {"error": "지적을 나누지 못했습니다. 글을 붙여 넣어 다시 시도해 보세요"}
+    seen = {}
+    for it in items:
+        lab = _rev_label(it["reviewer"])
+        seen[lab] = seen.get(lab, 0) + 1
+        no = it.get("no") or str(seen[lab])
+        iid = "%s.%s" % (lab, no)
+        while any(x.get("id") == iid for x in items if x is not it):
+            iid += "'"
+        it.update({"id": iid, "no": no, "status": "todo", "gist": "", "work": "", "suggest": [], "plan": "", "nodes": [], "thread": [], "response": "", "changes": []})
+    rev = doc.setdefault("revision", {"rounds": []})
+    rid = "r%d" % (len(rev["rounds"]) + 1)
+    rnd = {"id": rid, "title": "%d차 심사" % (len(rev["rounds"]) + 1), "file": os.path.basename(name or "붙여 넣은 글"), "created": time.time(),
+           "decision": decision, "raw": text[:80000], "split": how, "split_note": (_why().strip(" —") if how == "규칙" else ""),
+           "base": {n["id"]: {"heading": n.get("heading", ""), "draft": n.get("draft", ""), "draft_en": n.get("draft_en", "")} for n in doc.get("outline", [])},
+           "items": items}
+    rnd["base"]["_front"] = {"abstract": (doc.get("front") or {}).get("abstract", "")}
+    rev["rounds"].append(rnd)
+    save_ms(doc)
+    return {"round": rnd}
+
+
+def _outline_brief(doc, n_chars=160):
+    return "\n".join("%s%s [%s] %s — %s" % ("  " if n.get("level", 1) > 1 else "", n["id"], n.get("heading", ""), "", _norm_ws(n.get("draft") or n.get("draft_en") or "")[:n_chars])
+                     for n in doc.get("outline", []))
+
+
+def rev_triage(doc, rid):
+    """지적 전체를 훑어 뜻(한국어 한 줄)·작업 종류·고칠 절 후보·권하는 순서를 붙인다 — 무엇부터 어떻게 할지 협의의 출발점."""
+    rnd = _round(doc, rid)
+    if not rnd:
+        return {"error": "라운드 없음"}
+    lst = "\n\n".join("<%s> (%s) %s" % (it["id"], it["reviewer"], _norm_ws(it["text"])[:700]) for it in rnd["items"])
+    r = cfg["claude_json"](
+        "당신은 기계가공 분야 국제 저널 논문의 공저자다. 심사 의견에 어떻게 대응할지 정리한다. JSON 으로만 답하라:\n"
+        "{\"items\": {\"<지적 id>\": {\"gist\": \"이 지적이 요구하는 것 한국어 한 줄(40자 안팎)\", \"work\": \"문장 수정|설명 보강|데이터·분석 추가|추가 실험|그림·표 수정|문헌 추가|반박·해명|답변만\", "
+        "\"effort\": 1, \"nodes\": [\"고칠 절 id (개요에서, 최대 3개)\"]}}, "
+        "\"order\": [\"먼저 처리하기를 권하는 순서대로 지적 id\"], \"note\": \"지적 사이의 연관·충돌, 편집자가 특히 강조한 것 (한국어 두세 문장, 없으면 빈 문자열)\"}\n"
+        "effort 는 1(문장만) 2(분석·그림 손봄) 3(새 실험·큰 구조 변경). 절 id 는 아래 개요의 id 만 쓴다. 칭찬뿐인 지적은 work=답변만.\n\n"
+        "논문 제목: %s\n\n[원고 개요: id [절 제목] — 첫머리]\n%s\n\n[심사 의견]\n%s" % (doc.get("title", ""), _outline_brief(doc), lst), timeout=400)
+    if not isinstance(r, dict) or not isinstance(r.get("items"), dict):
+        return {"error": "정리 실패 (Claude 응답 없음)" + _why()}
+    ids = {n["id"] for n in doc.get("outline", [])}
+    for it in rnd["items"]:
+        v = r["items"].get(it["id"]) or {}
+        it["gist"] = str(v.get("gist") or it.get("gist") or "")[:120]
+        it["work"] = str(v.get("work") or "")[:20]
+        it["effort"] = v.get("effort") if v.get("effort") in (1, 2, 3) else 0
+        it["suggest"] = [x for x in (v.get("nodes") or []) if x in ids][:3]
+    rnd["triage"] = {"t": time.time(), "order": [x for x in (r.get("order") or []) if _rev_item(rnd, x)], "note": str(r.get("note") or "")[:600]}
+    save_ms(doc)
+    return {"round": rnd}
+
+
+def _rev_context(doc, rnd, it, max_nodes=3):
+    ids = (it.get("nodes") or it.get("suggest") or [])[:max_nodes]
+    lines = ["논문 제목: %s" % doc.get("title", ""), "투고 저널: %s" % (doc.get("meta", {}).get("journal") or "미정"),
+             "", "[심사 의견 %s — %s]" % (it["id"], it["reviewer"]), it["text"][:5000]]
+    if it.get("plan"):
+        lines += ["", "[저자가 정한 방침]", it["plan"]]
+    if ids:
+        for nid in ids:
+            n = _node(doc, nid)
+            if n:
+                lines += ["", "[관련 절 %s: %s]" % (nid, n.get("heading", "")), (n.get("draft") or n.get("draft_en") or "(비어 있음)")[:3500]]
+    else:
+        lines += ["", "[원고 개요: id [절 제목] — 첫머리]", _outline_brief(doc, 220)]
+    if it.get("changes"):
+        lines += ["", "[이 지적으로 이미 반영한 수정]"] + ["- %s: %s" % ((_node(doc, c["node"]) or {}).get("heading", c["node"]), _norm_ws(c["after"])[:400]) for c in it["changes"][-4:]]
+    return "\n".join(lines)
+
+
+def rev_discuss(doc, rid, iid, question=""):
+    """지적 하나를 놓고 같이 논의. 첫 번에는 뜻·대응 방안·고칠 곳·필요한 것·답변 방향, 그 뒤로는 질문에 답. 한국어."""
+    rnd = _round(doc, rid); it = _rev_item(rnd, iid)
+    if not it:
+        return {"error": "지적을 찾지 못했습니다"}
+    thread = it.setdefault("thread", [])
+    hist = _thread_text(it)
+    if not thread and not question:
+        ask = ("이 지적을 처음 검토한다. 다섯 항목을 한국어로 쓰고 각 항목은 줄 첫머리에 **뜻**, **대응 방안**, **고칠 곳**, **필요한 것**, **답변 방향** 이라고 표시해라.\n"
+               "- 뜻: 심사위원이 실제로 문제 삼는 것이 무엇인지 한두 문장. 표면 요구 뒤의 우려(타당성·신규성·재현성 등)가 있으면 짚어라.\n"
+               "- 대응 방안: 2~3가지를 번호로(수용해 고침 / 일부 수용 / 근거를 들어 해명 등). 각각 무엇을 어떻게 하는지 구체적으로, 끝에 어느 쪽을 권하는지와 이유.\n"
+               "- 고칠 곳: 어느 절의 어느 문단·그림·표를 고치거나 더해야 하는지. 절 제목으로 가리켜라.\n"
+               "- 필요한 것: 추가 실험·데이터·분석·문헌 중 무엇이 필요한지. 원고에 이미 있는 것으로 되면 '없음'.\n"
+               "- 답변 방향: 답변서에 쓸 요지 한두 문장.\n"
+               "원고에 없는 결과를 있는 것처럼 말하지 마라. 문단을 다시 쓰지는 마라 (그건 별도 기능이다).")
+    else:
+        ask = "지금까지의 논의를 이어서 아래 질문에 한국어로 답하라. 문장 예시가 필요하면 원고의 언어로 들어도 된다.\n[질문]\n" + (question or "계속 논의해 주세요.")
+    prompt = ("당신은 기계가공 분야 국제 저널 논문의 공저자로, 심사 의견에 어떻게 대응할지 저자와 함께 정한다. 솔직하고 구체적으로, 군말 없이. "
+              "심사위원이 틀렸다고 보면 그렇게 말하되 정중히 해명하는 길도 같이 보여라.\n\n" + _rev_context(doc, rnd, it) +
+              (("\n\n[지금까지의 논의]\n" + hist) if hist else "") + "\n\n" + ask)
+    try:
+        out = (cfg["claude"](prompt, timeout=300) or "").strip()
+    except Exception as e:
+        return {"error": str(e)[:200]}
+    if not out:
+        return {"error": "Claude 응답이 없습니다" + _why()}
+    if question:
+        thread.append({"role": "user", "text": question, "t": time.time()})
+    thread.append({"role": "claude", "text": out, "t": time.time()})
+    save_ms(doc)
+    return {"item": it}
+
+
+def rev_propose(doc, rid, iid, nid, note=""):
+    """지적을 반영해 그 절의 문단을 고치는 안. 문단 번호로 고칠 것·새로 넣을 것을 받아 before/after 로 돌려준다 (반영은 화면에서)."""
+    rnd = _round(doc, rid); it = _rev_item(rnd, iid); node = _node(doc, nid)
+    if not it or not node:
+        return {"error": "지적 또는 절을 찾지 못했습니다"}
+    key = "draft" if (node.get("draft") or "").strip() else "draft_en"
+    paras = [x.strip() for x in re.split(r"\n\s*\n", node.get(key) or "") if x.strip()]
+    if not paras:
+        return {"error": "이 절에는 아직 글이 없습니다"}
+    sample = " ".join(paras)[:2000]
+    lang_en = doc.get("meta", {}).get("lang") == "en" or sum(1 for ch in sample if ord(ch) < 128) > len(sample) * 0.8
+    hist = _thread_text(it, 6)
+    r = cfg["claude_json"](
+        "당신은 기계가공 분야 국제 저널 논문의 공저자다. 아래 심사 의견을 반영해 [절]의 문단을 고쳐라. JSON 으로만 답하라:\n"
+        "{\"edits\": [{\"para\": 문단 번호, \"text\": \"고친 문단 전체\"}], \"inserts\": [{\"after\": 문단 번호(맨 앞이면 0), \"text\": \"새 문단\"}], \"note\": \"무엇을 왜 고쳤는지 한국어 한두 문장\"}\n"
+        "규칙:\n- 글은 %s로. 지적과 무관한 문단·문장은 건드리지 마라. 꼭 필요한 문단만 edits 에 넣는다.\n"
+        "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 필요한 데이터가 없으면 그 자리에 %s 처럼 표시한다.\n"
+        "- 지적과 무관한 수치는 절대 바꾸지 마라. 카드 번호 [cN], 인용 번호 [n], 그림 번호는 그대로 둔다.\n"
+        "- 저자가 정한 방침과 논의에서 정해진 방향이 있으면 그것을 따른다. 고칠 것이 이 절에 없으면 edits·inserts 를 비우고 note 에 이유를 적어라.\n\n"
+        % ("영어 학술 문체" if lang_en else "한국어 학술 문체", "(DATA NEEDED: …)" if lang_en else "(데이터 필요: …)")
+        + _rev_context(doc, rnd, dict(it, nodes=[]), 0).split("[원고 개요")[0]
+        + "\n[절 %s: %s — 문단 번호]\n" % (nid, node.get("heading", "")) + "\n\n".join("[%d] %s" % (i + 1, p) for i, p in enumerate(paras))
+        + (("\n\n[논의 요약]\n" + hist) if hist else "") + (("\n\n[추가 지시]\n" + note) if note else ""), timeout=400)
+    if not isinstance(r, dict):
+        return {"error": "Claude 응답이 없습니다" + _why()}
+    edits = []
+    for e in r.get("edits") or []:
+        try:
+            k = int(e.get("para")) - 1
+        except (TypeError, ValueError):
+            continue
+        t = str(e.get("text") or "").strip()
+        if 0 <= k < len(paras) and t and _norm_ws(t) != _norm_ws(paras[k]):
+            edits.append({"type": "edit", "para": k + 1, "before": paras[k], "after": t})
+    for e in r.get("inserts") or []:
+        try:
+            k = int(e.get("after"))
+        except (TypeError, ValueError):
+            continue
+        t = str(e.get("text") or "").strip()
+        if 0 <= k <= len(paras) and t:
+            edits.append({"type": "insert", "para": k, "before": paras[k - 1] if k >= 1 else "", "after": t})
+    return {"node": nid, "key": key, "heading": node.get("heading", ""), "edits": edits, "note": str(r.get("note") or "")[:500]}
+
+
+def rev_response(doc, rid, iid, note=""):
+    """답변서에 들어갈 이 지적의 답변(영문). 반영한 수정을 근거로, 어디를 어떻게 고쳤는지 가리킨다."""
+    rnd = _round(doc, rid); it = _rev_item(rnd, iid)
+    if not it:
+        return {"error": "지적을 찾지 못했습니다"}
+    changes = "\n".join("- Section '%s': %s" % ((_node(doc, c["node"]) or {}).get("heading", c["node"]), _norm_ws(c["after"])[:900]) for c in (it.get("changes") or [])[-6:])
+    prompt = ("You are a co-author writing the point-by-point response letter for a manuscript under revision at an international manufacturing journal.\n"
+              "Write the response to ONE reviewer comment, in English. Rules:\n"
+              "- 1 to 3 short paragraphs. Open by acknowledging the point in one clause (no flattery, vary the wording), then state exactly what was done.\n"
+              "- Point to where the change is (section title; say 'revised paragraph' or 'new paragraph'), and quote at most one or two key revised sentences in quotation marks.\n"
+              "- Use only what is given below. Do NOT invent results, numbers, experiments, or references. If a needed item is missing, write [TO ADD: …].\n"
+              "- If the authors chose not to change the manuscript, explain the reasoning respectfully and concretely.\n"
+              "- Output only the response text. No heading, no 'Response:' label.\n\n"
+              "Manuscript title: %s\n\n[Reviewer comment %s — %s]\n%s\n\n[Authors' decision (may be in Korean)]\n%s\n\n[Discussion summary (Korean)]\n%s\n\n[Changes made in the manuscript]\n%s%s"
+              % (doc.get("title", ""), it["id"], it["reviewer"], it["text"][:5000], it.get("plan") or "(not stated)", _thread_text(it, 4) or "(none)",
+                 changes or "(no change recorded yet)", ("\n\n[Extra instruction]\n" + note) if note else ""))
+    fn = cfg.get("claude_text")
+    out = (fn(prompt, timeout=240, model="opus") if fn else cfg["claude"](prompt, timeout=300)) or ""
+    out = out.strip()
+    if not out:
+        return {"error": "Claude 응답이 없습니다" + _why()}
+    it["response"] = out
+    save_ms(doc)
+    return {"item": it}
+
+
+def _changed_paras(doc, rnd, n, key):
+    """base(심사 의견을 받은 시점) 와 달라진 문단의 집합 (공백 무시)."""
+    base = (rnd.get("base") or {}).get(n["id"]) or {}
+    old = {_norm_ws(x) for x in re.split(r"\n\s*\n", base.get(key) or "") if x.strip()}
+    return {_norm_ws(x) for x in re.split(r"\n\s*\n", n.get(key) or "") if x.strip()} - old
+
+
+def rev_export_response(doc, rid):
+    """답변서(.docx): 심사위원마다, 지적(기울임) → 답변 → 원고에서 바뀐 글(파란색)."""
+    import zipfile
+    rnd = _round(doc, rid)
+    if not rnd:
+        return {"error": "라운드 없음"}
+    body = [_para("Response to Reviewers", "Title"), _para(doc.get("front", {}).get("title") or doc.get("title", "")),
+            _para("We thank the editor and the reviewers for their careful reading and constructive comments. Our point-by-point responses are given below. "
+                  "Reviewer comments are shown in italics, and text revised in the manuscript is shown in blue.")]
+    last = None
+    for it in rnd["items"]:
+        if it["reviewer"] != last:
+            body.append(_para(it["reviewer"], "Heading1")); last = it["reviewer"]
+        body.append(_para("**Comment %s**" % it["id"]))
+        for p in [x.strip() for x in re.split(r"\n\s*\n", it["text"]) if x.strip()]:
+            body.append(_para("*" + p.replace("*", "") + "*"))
+        resp = (it.get("response") or "").strip()
+        body.append(_para("**Response:** " + (resp.split("\n\n")[0] if resp else ("We thank the reviewer for this comment." if it.get("kind") == "praise" else "[TO WRITE]"))))
+        for p in resp.split("\n\n")[1:]:
+            if p.strip():
+                body.append(_para(p.strip()))
+        if it.get("changes"):
+            body.append(_para("**Changes in the manuscript:**"))
+            for c in it["changes"]:
+                n = _node(doc, c["node"])
+                body.append(_para("Section: " + (n.get("heading", "") if n else c["node"])))
+                for p in [x.strip() for x in re.split(r"\n\s*\n", c["after"]) if x.strip()]:
+                    body.append(_para(re.sub(r"\[c\d+\]", "", p), color="1F4FD1"))
+    safe = re.sub(r'[\\/:*?"<>|]+', " ", doc.get("title", "원고")).strip()[:50] or "원고"
+    out = os.path.join(cfg["EXPORT_DIR"], "%s_Response_%s_%s.docx" % (safe, rnd["id"], time.strftime("%Y%m%d_%H%M")))
+    _write_simple_docx(out, body)
+    return {"path": out}
+
+
+def _write_simple_docx(out, body):
+    import zipfile
+    document = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>%s'
+                '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>' % "".join(body))
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+                   '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+                   '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')
+        z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        z.writestr("word/document.xml", document)
+        z.writestr("word/styles.xml", STYLES_XML)
+        z.writestr("word/_rels/document.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
+
+
+def rev_op(doc, body):
+    op = body.get("op")
+    rid = body.get("rid")
+    if op == "import":
+        import base64
+        raw = base64.b64decode(body["b64"]) if body.get("b64") else None
+        return rev_import(doc, body.get("name") or "", raw, body.get("text") or "")
+    if op == "triage":
+        return rev_triage(doc, rid)
+    if op == "discuss":
+        return rev_discuss(doc, rid, body.get("iid"), body.get("question", ""))
+    if op == "propose":
+        return rev_propose(doc, rid, body.get("iid"), body.get("node"), body.get("note", ""))
+    if op == "response":
+        return rev_response(doc, rid, body.get("iid"), body.get("note", ""))
+    if op == "export_response":
+        return rev_export_response(doc, rid)
+    if op == "export_marked":
+        rnd = _round(doc, rid)
+        if not rnd:
+            return {"error": "라운드 없음"}
+        return {"path": export_docx(doc, body.get("lang", "ko"), mark=rnd)}
+    if op == "delete_round":
+        rev = doc.get("revision") or {}
+        rev["rounds"] = [r for r in rev.get("rounds", []) if r["id"] != rid]
+        save_ms(doc)
+        return {"ok": True}
+    return {"error": "알 수 없는 동작"}
+
+
 def handle_get(h, url):
     p = url.path
     if p == "/ms":
@@ -1584,6 +2114,11 @@ def handle_post(h, body):
                 path = body.get("path", "")
             if not os.path.isfile(path):
                 return h._send(400, {"error": "파일을 찾을 수 없습니다: " + path})
+            if body.get("into"):   # 열려 있는 원고에 덮어쓰기 (본문만 갱신)
+                cur_doc = load_ms(body["into"])
+                if not cur_doc:
+                    return h._send(400, {"error": "원고를 찾지 못했습니다"})
+                return h._send(200, merge_docx(cur_doc, path))
             d = import_docx(path, body.get("title"))
             if body.get("journal"):
                 d["meta"]["journal"] = body["journal"]; save_ms(d)
@@ -1593,6 +2128,11 @@ def handle_post(h, body):
             return h._send(200, find_evidence(load_ms(body.get("id")), body.get("node"), body.get("query", "")))
         if p == "/api/ms/check":
             return h._send(200, check_manuscript(load_ms(body.get("id"))))
+        if p == "/api/ms/revision":    # 리비전: 심사 의견 가져오기·정리·논의·고칠 안·답변·내보내기
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            return h._send(200, rev_op(doc, body))
         if p == "/api/ms/exemplars":   # 본보기: 잘 쓴 논문의 초록 구조
             return h._send(200, exemplars(body))
         if p == "/api/ms/claude":

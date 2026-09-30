@@ -88,6 +88,26 @@
   .exs[data-m='결과'] { border-left-color: var(--green); } .exs[data-m='결과'] .mv { color: var(--green); }
   .exs[data-m='의의'] { border-left-color: var(--text-2); } .exs[data-m='의의'] .mv { color: var(--text); font-weight: 600; }
   .ex.mine { background: var(--sel-bg); padding-left: 8px; padding-right: 8px; margin: 0 4px; }
+  /* 리비전 */
+  .rvimp { padding: 0 12px 12px; } .rvimp textarea { width: 100%; }
+  .rvrev { padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--text); }
+  .card.rv { margin: 0 12px 6px; border-left-color: var(--line-2); }
+  .card.rv.st-plan { border-left-color: var(--amber); } .card.rv.st-applied { border-left-color: var(--accent); } .card.rv.st-done { border-left-color: var(--green); }
+  .card.rv.st-done:not(.open) { opacity: .6; }
+  .card.rv .rvh, .card.rv .rvg { cursor: pointer; }
+  .card.rv .k { font-size: 10.5px; } .card.rv .k.major { color: var(--amber); font-weight: 600; } .card.rv .k.praise { color: var(--green); }
+  .card.rv select { font-size: 11.5px; border-color: transparent; color: var(--text-2); background: transparent; }
+  .rvtext { margin: 6px 0; padding: 8px 10px; background: var(--panel); border-radius: var(--r); font-family: var(--font-serif); font-size: calc(13px * var(--ms-scale, 1)); line-height: 1.6; white-space: pre-wrap; color: var(--text); }
+  .rvnodes { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 12px; }
+  .rvnodes .chip { border: 1px solid var(--line-2); border-radius: var(--r); padding: 1px 6px; color: var(--text-2); text-decoration: none; display: inline-flex; gap: 6px; }
+  .rvnodes .chip a { color: inherit; text-decoration: none; } .rvnodes .chip a:hover { color: var(--accent); }
+  .rvnodes .chip.sug { border-style: dashed; color: var(--amber); }
+  .rvprop { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--amber); border-radius: var(--r); }
+  .rvedit { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .rvdiff { font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.65; white-space: pre-wrap; color: var(--text); }
+  .rvdiff del { color: var(--red); text-decoration: line-through; }
+  .rvdiff ins { color: var(--green); text-decoration: none; background: var(--sel-bg); }
+  .rvch { margin-top: 8px; } .rvc { font-size: 12px; color: var(--text-2); padding: 1px 0; }
   .exkinds { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 2px 0 8px; }
   .exkinds .act { padding: 2px 6px; font-size: 12.5px; }
   .exkinds .act.on { color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
@@ -208,12 +228,13 @@
     <div class="hint" style="padding:0">지금 원고(BUE)라면: ① 피드백 탭에서 교수님 주석부터 처리 → ② 원고 모드로 통독하며 고치기 → ③ 점검 → ④ 내보내기.</div>
   </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
-    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록·제목·서론·방법·결과·결론을 어떤 구조로 썼는지 — 문장·문단마다 역할">본보기</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록·제목·서론·방법·결과·결론을 어떤 구조로 썼는지 — 문장·문단마다 역할">본보기</div><div data-t="notes" title="워드에서 가져온 교수님·공저자 주석을 Claude 와 논의하고 문단에 반영">피드백</div><div data-t="rev" title="심사 의견(편집자·심사위원)을 파일로 넣고 하나씩 같이 처리: 논의 → 고칠 안 → 반영 → 답변서">리비전</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
     <div class="tab on" id="tab-cards"></div>
     <div class="tab" id="tab-figs"></div>
     <div class="tab" id="tab-check"></div>
     <div class="tab" id="tab-ex"></div>
     <div class="tab" id="tab-notes"></div>
+    <div class="tab" id="tab-rev"></div>
     <div class="tab" id="tab-idea"></div>
     <div class="tab" id="tab-en"></div>
     <div class="tab" id="tab-out"></div>
@@ -283,9 +304,13 @@ $("importFile").onchange = async e => {
   if (f.size > 60 * 1024 * 1024) { alert("60MB 이하 파일만 가져올 수 있습니다."); return; }
   $("saveState").textContent = "가져오는 중… (" + Math.round(f.size / 1024) + "KB)";
   const b64 = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result.split(",")[1]); rd.readAsDataURL(f); });
-  const r = await api("/api/ms/import", { name: f.name, b64, journal: $("journalSel").value || "JMPT" });
+  // 원고가 열려 있으면: 그 원고의 본문만 새 워드 내용으로 갱신할지(카드·리비전·그림 유지), 새 원고로 만들지
+  const into = doc && confirm("지금 열려 있는 「" + doc.title.slice(0, 40) + "」 의 본문을 이 워드 파일 내용으로 갱신할까요?\n\n확인 = 이 원고에 덮어쓰기 (절 번호·제목으로 맞춰 글만 바꿈. 카드·리비전·그림은 그대로, 이전 글은 판 이력에)\n취소 = 새 원고로 가져오기") ? doc.id : "";
+  if (into) await saveNow();
+  const r = await api("/api/ms/import", { name: f.name, b64, journal: $("journalSel").value || "JMPT", into });
   e.target.value = "";
   if (r.error) { alert("⚠ " + r.error); $("saveState").textContent = ""; return; }
+  if (into) { alert("이 원고에 반영했습니다.\n글이 바뀐 절 " + r.updated + "개 · 그대로 " + r.same + "개 · 새 절 " + r.added + "개 · 주석 " + r.comments + "개"); await openDoc(into); return; }
   alert("가져왔습니다.\n절 " + r.nodes + "개 · 그림 " + r.figures + "장 · 참고문헌 " + r.refs + "편 · 공저자 주석 " + r.comments + "개");
   await loadList(r.id);
 };
@@ -502,6 +527,179 @@ async function runClaude(mode) {
   save(); renderTree();
 }
 
+// ---------- 리비전: 심사 의견을 하나씩 같이 처리 (논의 → 고칠 안 → 반영 → 답변) ----------
+let revState = { rid: null, open: null, props: {}, busy: null, importing: false, showImport: false };
+const REV_ST = [["todo", "할 일"], ["plan", "방침 정함"], ["applied", "원고 반영"], ["done", "답변 끝"]];
+const revRounds = () => (doc && doc.revision && doc.revision.rounds) || [];
+const revRound = () => revRounds().find(r => r.id === revState.rid) || revRounds()[revRounds().length - 1] || null;
+const revItem = id => { const r = revRound(); return r ? r.items.find(x => x.id === id) : null; };
+async function saveNow() { if (!doc) return; clearTimeout(saveTimer); const r = await api("/api/ms/save", { data: doc }); $("saveState").textContent = r.ok ? "저장됨" : "⚠ 저장 실패"; }
+function revMerge(r) {   // 서버가 돌려준 라운드·지적을 내 문서에 끼워 넣는다
+  if (r.round) { doc.revision = doc.revision || { rounds: [] }; const i = doc.revision.rounds.findIndex(x => x.id === r.round.id); if (i >= 0) doc.revision.rounds[i] = r.round; else doc.revision.rounds.push(r.round); revState.rid = r.round.id; }
+  if (r.item) { const rd = revRound(); const i = rd.items.findIndex(x => x.id === r.item.id); if (i >= 0) rd.items[i] = r.item; }
+}
+async function revCall(body, busyKey) {   // 서버 호출 전에 내 글을 먼저 저장(서버가 최신 본문을 보게) → 결과를 합침
+  if (revState.busy) return null;
+  revState.busy = busyKey; renderRev();
+  await saveNow();
+  let r; try { r = await api("/api/ms/revision", Object.assign({ id: doc.id, rid: revState.rid || (revRound() || {}).id }, body)); } catch (e) { r = { error: "서버 연결 실패" }; }
+  revState.busy = null;
+  if (r.error) { alert("⚠ " + r.error); renderRev(); return null; }
+  revMerge(r); renderRev(); return r;
+}
+function wordDiff(a, b) {   // 낱말 단위 비교: 지운 것 <del>, 넣은 것 <ins>
+  const A = a.split(/(\s+)/), B = b.split(/(\s+)/), n = A.length, m = B.length;
+  if (n * m > 4e6) return "<del>" + esc(a) + "</del> <ins>" + esc(b) + "</ins>";
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  let i = 0, j = 0, out = "", buf = "", mode = "";
+  const flush = () => { if (buf) out += mode ? "<" + mode + ">" + esc(buf) + "</" + mode + ">" : esc(buf); buf = ""; };
+  const put = (md, t) => { if (md !== mode) { flush(); mode = md; } buf += t; };
+  while (i < n && j < m) { if (A[i] === B[j]) { put("", A[i]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) { put("del", A[i]); i++; } else { put("ins", B[j]); j++; } }
+  while (i < n) put("del", A[i++]); while (j < m) put("ins", B[j++]);
+  flush(); return out;
+}
+function revBusyHtml(label, sec) { return "<div class='prog'><span>" + label + "</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + sec + "초</span></div>"; }
+function revImportHtml() {
+  return "<div class='rvimp'><div class='hint'>심사 결과 파일(편집자 편지·심사위원 의견)을 넣으면 지적마다 나눠 목록으로 만듭니다. 그 시점의 원고를 기억해 두었다가 나중에 「수정 표시 원고」로 바뀐 곳을 표시합니다.</div>" +
+    "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='rvFileBtn'>파일 고르기 (.docx · .pdf · .txt)</button><input type='file' id='rvFile' accept='.docx,.pdf,.txt,.md' style='display:none'></div>" +
+    "<textarea id='rvPaste' rows='4' placeholder='또는 심사 의견 글을 여기에 붙여 넣기 (메일 본문 그대로)'></textarea>" +
+    "<div class='ctl' style='padding:4px 0;margin-left:-8px'><button class='btn' id='rvPasteBtn'>붙여 넣은 글로 시작</button>" + (revRounds().length ? "<button class='btn' id='rvImpCancel'>취소</button>" : "") + "</div>" +
+    (revState.importing ? revBusyHtml("지적을 나누는 중 (Claude)", 60) : "") + "</div>";
+}
+function revItemHtml(it, r) {
+  const open = revState.open === it.id, by = Object.fromEntries(doc.outline.map(n => [n.id, n]));
+  const linked = (it.nodes || []).filter(x => by[x]), sug = (it.suggest || []).filter(x => by[x] && !linked.includes(x));
+  const prop = revState.props[it.id], busy = revState.busy && revState.busy.startsWith(it.id + ":") ? revState.busy.split(":")[1] : "";
+  let h = "<div class='card rv st-" + it.status + (open ? " open" : "") + "' data-iid='" + esc(it.id) + "'>" +
+    "<div class='m rvh' data-toggle='" + esc(it.id) + "'><span class='id'>" + esc(it.id) + "</span>" + (it.kind ? "<span class='k " + it.kind + "'>" + it.kind + "</span>" : "") + (it.work ? "<span>" + esc(it.work) + "</span>" : "") +
+    (linked.length ? "<span title='연결된 절'>" + linked.map(x => esc(by[x].heading.slice(0, 18))).join(", ") + "</span>" : "") + "<span style='margin-left:auto'></span>" +
+    "<select class='rvSt' data-iid='" + esc(it.id) + "' onclick='event.stopPropagation()'>" + REV_ST.map(([v, nm]) => "<option value='" + v + "'" + (it.status === v ? " selected" : "") + ">" + nm + "</option>").join("") + "</select></div>" +
+    "<div class='t rvg' data-toggle='" + esc(it.id) + "'>" + esc(it.gist || normWs(it.text).slice(0, 110) + (it.text.length > 110 ? "…" : "")) + "</div>";
+  if (!open) return h + "</div>";
+  h += "<div class='rvtext'>" + esc(it.text) + "</div>" +
+    "<label class='f'>방침 <span class='hint' style='font-weight:400'>이 지적에 어떻게 대응하기로 했는지 (논의 뒤 한두 줄)</span></label><textarea class='rvPlan' data-iid='" + esc(it.id) + "' rows='2' placeholder='예: 수용. 3.2 절에 반복 수와 표준편차를 넣고 그림 5 에 오차 막대 추가'>" + esc(it.plan || "") + "</textarea>" +
+    "<div class='rvnodes'><span class='hint' style='display:inline'>고칠 절</span> " +
+      linked.map(x => "<span class='chip'><a href='#' data-go='" + x + "' title='이 절을 가운데에 열기'>" + esc(by[x].heading.slice(0, 30)) + "</a><a href='#' data-unlink='" + x + "' title='연결 끊기'>×</a></span>").join("") +
+      sug.map(x => "<a href='#' class='chip sug' data-link='" + x + "' title='Claude 가 짚은 후보 — 누르면 연결'>+ " + esc(by[x].heading.slice(0, 30)) + "</a>").join("") +
+      "<select class='rvAdd'><option value=''>절 연결…</option>" + doc.outline.map(n => "<option value='" + n.id + "'>" + (n.level > 1 ? "· " : "") + esc(n.heading.slice(0, 40)) + "</option>").join("") + "</select></div>";
+  h += busy ? revBusyHtml({ discuss: "같이 생각하는 중", propose: "지적을 반영해 고칠 안을 만드는 중", response: "답변 초안 쓰는 중" }[busy] || "처리 중", busy === "propose" ? 50 : 40)
+    : "<div class='acts'><button class='btn' data-rvact='discuss'>" + ((it.thread || []).length ? "논의 이어서" : "논의 시작") + "</button>" +
+      (linked.length > 1 ? "<select class='rvNode'>" + linked.map(x => "<option value='" + x + "'>" + esc(by[x].heading.slice(0, 24)) + "</option>").join("") + "</select>" : "") +
+      "<button class='btn' data-rvact='propose' title='연결된 절에서 고칠 문단을 찾아 고친 안을 만듭니다. 반영은 하나씩 확인하고'>고칠 안 만들기</button>" +
+      "<button class='btn' data-rvact='response' title='반영한 수정을 근거로 답변서에 넣을 영문 답변을 씁니다'>답변 초안</button></div>";
+  if ((it.thread || []).length) h += "<div class='rvthread'>" + it.thread.map(m => "<div class='fbmsg " + m.role + "'>" + (m.role === "user" ? "<b>나:</b> " : "") + fbFmt(m.text) + "</div>").join("") + "</div>";
+  h += "<div class='fbq'><input class='rvQ' placeholder='이어서 묻거나 지시 (예: 2번 방안으로 가면 어느 문단을 고쳐야 해?)'><button class='btn' data-rvact='ask'>보내기</button></div>";
+  if (prop) {
+    h += "<div class='rvprop'><div class='hint'>고칠 안 · " + esc(prop.heading) + (prop.note ? " — " + esc(prop.note) : "") + (prop.edits.length ? "" : " (이 절에서 고칠 곳을 찾지 못했습니다)") + "</div>" +
+      prop.edits.map((e, k) => "<div class='rvedit'><div class='hint'>" + (e.type === "insert" ? (e.para ? "문단 " + e.para + " 뒤에 새 문단" : "맨 앞에 새 문단") : "문단 " + e.para + " 고침") + "</div>" +
+        "<div class='rvdiff'>" + (e.type === "insert" ? "<ins>" + esc(e.after) + "</ins>" : wordDiff(e.before, e.after)) + "</div>" +
+        "<div class='acts'><button class='btn pri' data-apply='" + k + "'>원고에 반영</button><button class='btn' data-drop='" + k + "'>버리기</button></div></div>").join("") +
+      "<div class='acts'><button class='btn' data-dropall='1'>고칠 안 닫기</button></div></div>";
+  }
+  if ((it.changes || []).length) h += "<div class='rvch'><div class='hint'>반영한 수정 " + it.changes.length + "건</div>" +
+    it.changes.map((c, k) => "<div class='rvc'><span>" + esc(((by[c.node] || {}).heading || c.node).slice(0, 28)) + " · " + (c.type === "insert" ? "새 문단" : "문단 고침") + "</span> <a href='#' class='act' data-go='" + c.node + "'>보기</a> <a href='#' class='act' data-undo='" + k + "'>되돌리기</a></div>").join("") + "</div>";
+  h += "<label class='f'>답변 <span class='hint' style='font-weight:400'>답변서에 들어갈 글 (영문). 직접 고쳐도 됩니다</span></label><textarea class='rvResp' data-iid='" + esc(it.id) + "' rows='3' placeholder='「답변 초안」으로 시작하거나 직접 쓰기'>" + esc(it.response || "") + "</textarea>";
+  return h + "</div>";
+}
+function renderRev() {
+  const el = $("tab-rev"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
+  const r = revRound(), rounds = revRounds();
+  if (!r || revState.showImport) { el.innerHTML = "<div class='sec'>리비전 — 심사 의견을 같이 처리</div>" + revImportHtml(); revBindImport(el); return; }
+  const cnt = Object.fromEntries(REV_ST.map(([v]) => [v, r.items.filter(x => x.status === v).length]));
+  const tri = r.triage, busyTop = revState.busy === "top:triage";
+  let h = "<div class='sec' style='display:flex;gap:8px;align-items:baseline;flex-wrap:wrap'>리비전 " +
+    (rounds.length > 1 ? "<select id='rvRound'>" + rounds.map(x => "<option value='" + x.id + "'" + (x.id === r.id ? " selected" : "") + ">" + esc(x.title) + "</option>").join("") + "</select>" : "<span class='hint' style='font-weight:400'>" + esc(r.title) + "</span>") +
+    "<span class='hint' style='font-weight:400'>" + r.items.length + "개 · 할 일 " + cnt.todo + " · 방침 " + cnt.plan + " · 반영 " + cnt.applied + " · 끝 " + cnt.done + (r.decision && r.decision !== "unknown" ? " · " + esc(r.decision) : "") + "</span></div>" +
+    "<div class='ctl' style='padding:0 12px 6px;margin-left:-8px;flex-wrap:wrap'>" +
+      "<button class='btn' id='rvTriage' title='지적 전체를 훑어 뜻·작업 종류·고칠 절·권하는 순서를 붙입니다 (~1분)'>" + (tri ? "다시 정리" : "할 일 정리") + "</button>" +
+      "<button class='btn' id='rvExpResp' title='지적 → 답변 → 바뀐 글(파란색) 순의 답변서 워드 파일'>답변서 .docx</button>" +
+      "<button class='btn' id='rvExpMark' title='심사 의견을 받은 뒤 바뀐 문단을 파란색으로 표시한 원고'>수정 표시 원고 .docx</button>" +
+      "<button class='btn' id='rvNew'>+ 새 심사 의견</button><button class='btn warn' id='rvDel' title='이 라운드(지적·논의·답변)를 지웁니다. 원고 본문은 그대로'>라운드 삭제</button></div><div id='rvMsg' class='hint' style='padding:0 12px'></div>" +
+    (r.split === "규칙" ? "<div class='hint' style='padding:0 12px 4px;color:var(--amber)'>지적을 규칙(번호·심사위원 머리)으로 나눴습니다" + (r.split_note ? " — " + esc(r.split_note) : "") + ". 경계가 어긋났으면 라운드를 지우고 다시 가져오세요.</div>" : "") +
+    (busyTop ? "<div style='padding:0 12px'>" + revBusyHtml("지적 전체를 정리하는 중", 70) + "</div>" : "") +
+    (tri && (tri.note || (tri.order || []).length) ? "<div class='exsum'>" + (tri.note ? esc(tri.note) + "<br>" : "") + ((tri.order || []).length ? "<b>권하는 순서</b> " + tri.order.map(x => "<a href='#' class='act' data-open='" + esc(x) + "'>" + esc(x) + "</a>").join(" → ") : "") + "</div>" : "");
+  let last = null;
+  for (const it of r.items) {
+    if (it.reviewer !== last) { h += "<div class='rvrev'>" + esc(it.reviewer) + " <span class='hint' style='display:inline;font-weight:400'>" + r.items.filter(x => x.reviewer === it.reviewer).length + "개</span></div>"; last = it.reviewer; }
+    h += revItemHtml(it, r);
+  }
+  el.innerHTML = h; animateBars(el);
+  const q = s => el.querySelector(s);
+  if (q("#rvRound")) q("#rvRound").onchange = e => { revState.rid = e.target.value; revState.open = null; renderRev(); };
+  q("#rvTriage").onclick = () => revCall({ op: "triage" }, "top:triage");
+  q("#rvNew").onclick = () => { revState.showImport = true; renderRev(); };
+  q("#rvDel").onclick = async () => { if (!confirm("「" + r.title + "」의 지적·논의·답변을 지울까요? 원고 본문과 이미 반영한 수정은 그대로입니다.")) return; await saveNow(); await api("/api/ms/revision", { id: doc.id, op: "delete_round", rid: r.id }); doc.revision.rounds = doc.revision.rounds.filter(x => x.id !== r.id); revState.rid = null; renderRev(); };
+  const exp = async (op, extra) => { q("#rvMsg").textContent = "만드는 중…"; await saveNow(); const x = await api("/api/ms/revision", Object.assign({ id: doc.id, op, rid: r.id }, extra || {})); q("#rvMsg").innerHTML = x.error ? "⚠ " + esc(x.error) : "저장됨: " + esc(x.path) + " <a href='#' class='act' id='rvFolder'>폴더 열기</a>"; const f = $("rvFolder"); if (f) f.onclick = e => { e.preventDefault(); api("/api/ms/open_folder", {}); }; };
+  q("#rvExpResp").onclick = () => exp("export_response");
+  q("#rvExpMark").onclick = () => exp("export_marked", { lang: doc.meta.lang === "en" ? "en" : "ko" });
+  el.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); revState.open = a.dataset.open; renderRev(); const c = el.querySelector(".card.rv[data-iid='" + a.dataset.open + "']"); if (c) c.scrollIntoView({ block: "nearest" }); });
+  el.querySelectorAll("[data-toggle]").forEach(d => d.onclick = () => { revState.open = revState.open === d.dataset.toggle ? null : d.dataset.toggle; renderRev(); });
+  el.querySelectorAll(".rvSt").forEach(s => s.onchange = () => { revItem(s.dataset.iid).status = s.value; save(); renderRev(); });
+  const card = el.querySelector(".card.rv.open"); if (!card) return;
+  const it = revItem(card.dataset.iid), cq = s => card.querySelector(s);
+  card.querySelectorAll("textarea").forEach(autogrow);
+  cq(".rvPlan").oninput = e => { it.plan = e.target.value; if (it.status === "todo" && it.plan.trim()) it.status = "plan"; save(); };
+  cq(".rvResp").oninput = e => { it.response = e.target.value; save(); };
+  card.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; if (msMode === "doc") setMode("para"); renderTree(); renderEditor(); });
+  card.querySelectorAll("[data-unlink]").forEach(a => a.onclick = e => { e.preventDefault(); it.nodes = (it.nodes || []).filter(x => x !== a.dataset.unlink); save(); renderRev(); });
+  card.querySelectorAll("[data-link]").forEach(a => a.onclick = e => { e.preventDefault(); it.nodes = (it.nodes || []).concat(a.dataset.link); save(); renderRev(); });
+  cq(".rvAdd").onchange = e => { if (e.target.value && !(it.nodes || []).includes(e.target.value)) { it.nodes = (it.nodes || []).concat(e.target.value); save(); renderRev(); } };
+  const ask = () => { const v = cq(".rvQ").value.trim(); if (v) revCall({ op: "discuss", iid: it.id, question: v }, it.id + ":discuss"); };
+  if (cq(".rvQ")) cq(".rvQ").onkeydown = e => { if (e.key === "Enter") ask(); };
+  card.querySelectorAll("[data-rvact]").forEach(b => b.onclick = async () => {
+    const a = b.dataset.rvact;
+    if (a === "ask") return ask();
+    if (a === "discuss") return revCall({ op: "discuss", iid: it.id, question: "" }, it.id + ":discuss");
+    if (a === "response") { if (it.response && !confirm("지금 답변을 새 초안으로 바꿀까요?")) return; return revCall({ op: "response", iid: it.id }, it.id + ":response"); }
+    if (a === "propose") {
+      const nid = (cq(".rvNode") && cq(".rvNode").value) || (it.nodes || [])[0] || (it.suggest || [])[0];
+      if (!nid) { alert("먼저 「고칠 절」을 연결하세요. (할 일 정리를 돌리면 후보가 붙습니다)"); return; }
+      if (!(it.nodes || []).includes(nid)) it.nodes = (it.nodes || []).concat(nid);
+      const r2 = await revCall({ op: "propose", iid: it.id, node: nid, note: it.plan || "" }, it.id + ":propose");
+      if (r2) { revState.props[it.id] = r2; renderRev(); }
+    }
+  });
+  const prop = revState.props[it.id];
+  card.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => {
+    const e = prop.edits[+b.dataset.apply], nn = node(prop.node); if (!nn) return;
+    const cur0 = nn[prop.key] || "";
+    if (e.type === "edit") { if (!cur0.includes(e.before)) { alert("그 사이 문단이 바뀌어 자리를 찾지 못했습니다. 「고칠 안 만들기」를 다시 눌러 주세요."); return; } nn[prop.key] = cur0.replace(e.before, () => e.after); }
+    else if (!e.para) nn[prop.key] = e.after + "\n\n" + cur0;
+    else { if (!cur0.includes(e.before)) { alert("새 문단을 넣을 자리를 찾지 못했습니다. 다시 만들어 주세요."); return; } nn[prop.key] = cur0.replace(e.before, () => e.before + "\n\n" + e.after); }
+    it.changes = (it.changes || []).concat({ node: prop.node, key: prop.key, type: e.type, before: e.type === "edit" ? e.before : "", after: e.after, t: Date.now() / 1000 });
+    if (it.status === "todo" || it.status === "plan") it.status = "applied";
+    prop.edits.splice(+b.dataset.apply, 1); if (!prop.edits.length) delete revState.props[it.id];
+    save(true); renderTree(); if (cur === nn.id) renderEditor(); renderRev();
+  });
+  card.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => { prop.edits.splice(+b.dataset.drop, 1); if (!prop.edits.length) delete revState.props[it.id]; renderRev(); });
+  card.querySelectorAll("[data-dropall]").forEach(b => b.onclick = () => { delete revState.props[it.id]; renderRev(); });
+  card.querySelectorAll("[data-undo]").forEach(a => a.onclick = e => {
+    e.preventDefault(); const c = it.changes[+a.dataset.undo], nn = node(c.node); if (!nn) return;
+    const cur0 = nn[c.key] || "";
+    if (!cur0.includes(c.after)) { alert("그 뒤로 이 문단이 또 바뀌어 자동으로 되돌릴 수 없습니다. 절을 열어 직접 고쳐 주세요."); return; }
+    if (!confirm("이 수정을 되돌릴까요?")) return;
+    nn[c.key] = c.type === "edit" ? cur0.replace(c.after, () => c.before) : cur0.replace(c.after, "").replace(/\n{3,}/g, "\n\n").trim();
+    it.changes.splice(+a.dataset.undo, 1); save(true); if (cur === nn.id) renderEditor(); renderRev();
+  });
+}
+function revBindImport(el) {
+  const start = async (payload) => {
+    if (revState.importing) return; revState.importing = true; renderRev();
+    await saveNow();
+    let r; try { r = await api("/api/ms/revision", Object.assign({ id: doc.id, op: "import" }, payload)); } catch (e) { r = { error: "서버 연결 실패" }; }
+    revState.importing = false;
+    if (r.error) { alert("⚠ " + r.error); renderRev(); return; }
+    revState.showImport = false; revMerge(r); renderRev();
+  };
+  const fb = el.querySelector("#rvFileBtn"), fi = el.querySelector("#rvFile");
+  fb.onclick = () => fi.click();
+  fi.onchange = async e => { const f = e.target.files[0]; if (!f) return; const b64 = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result.split(",")[1]); rd.readAsDataURL(f); }); start({ name: f.name, b64 }); };
+  el.querySelector("#rvPasteBtn").onclick = () => { const t = el.querySelector("#rvPaste").value.trim(); if (t.length < 40) { alert("심사 의견 글을 붙여 넣어 주세요."); return; } start({ name: "붙여 넣은 글", text: t }); };
+  const c = el.querySelector("#rvImpCancel"); if (c) c.onclick = () => { revState.showImport = false; renderRev(); };
+  animateBars(el);
+}
+
 // ---------- 본보기: 잘 쓴 논문이 그 부분(초록·제목·서론·방법·결과·논의·결론)을 어떻게 썼나 ----------
 const EX_KINDS = [["abstract", "초록"], ["title", "제목"], ["intro", "서론"], ["methods", "방법"], ["results", "결과·논의"], ["conclusion", "결론"]];
 const EX_MINE_RX = { intro: /서론|introduc/i, methods: /방법|실험|재료|장치|method|experiment|material|set-?up/i, results: /결과|고찰|논의|result|discussion/i, conclusion: /결론|conclu/i };
@@ -604,7 +802,7 @@ function drawEx() {
 
 // ---------- 서랍 ----------
 const activeTab = () => (document.querySelector(".tabs div.on") || {}).dataset ? document.querySelector(".tabs div.on").dataset.t : "cards";
-function switchTab(name) { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x.dataset.t === name)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name)); $("drawer").classList.toggle("wide", name === "ex"); }
+function switchTab(name) { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x.dataset.t === name)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name)); $("drawer").classList.toggle("wide", name === "ex" || name === "rev"); }
 document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => {
   switchTab(t.dataset.t);
   // 그림 탭이면 가운데를 그림 작업대로, 다른 탭이면 문단 편집으로
@@ -647,7 +845,7 @@ function renderFigWorkspace() {
   const wc = $("wCode"); if (wc) wc.onclick = () => { const b = $("wCodeBox"); b.style.display = b.style.display === "none" ? "block" : "none"; };
   const wr = $("wRefine"); if (wr) wr.onclick = () => { const fb = $("wFb").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } refineFigure(f.id, fb, $("wProg")); };
 }
-function renderDrawer() { renderCards(); renderFigs(); renderCheck(); renderEx(); renderNotes(); renderIdea(); renderEn(); renderOut(); }
+function renderDrawer() { renderCards(); renderFigs(); renderCheck(); renderEx(); renderNotes(); renderRev(); renderIdea(); renderEn(); renderOut(); }
 function issuesHtml(list) { return (list || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + esc(i.text) + "</div>").join("") || "<div class='hint'>문제 없음</div>"; }
 function renderCheck() {
   const el = $("tab-check"); if (!doc) { el.innerHTML = ""; return; }

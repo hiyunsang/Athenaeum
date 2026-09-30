@@ -156,6 +156,7 @@
   <div id="summary"></div>
 </header>
 <div id="catalogNotice" class="notice" hidden></div>
+<div id="claudeProblem" class="notice" hidden><b>Claude 에 문제가 있습니다.</b> <span></span> — 그동안 요약·번역·탐색 선별·원고 도우미가 되지 않습니다. 해결되면 이 안내는 다음 호출 뒤 사라집니다.</div>
 <div id="claudeNotice" class="notice" hidden><b>Claude Code 가 설치되어 있지 않습니다.</b> 요약·번역·라벨 분류가 되지 않습니다.
   <a href="https://claude.com/claude-code" target="_blank">claude.com/claude-code</a> 에서 설치하고 터미널에서 <code>claude</code> → <code>/login</code> 으로 로그인하세요. 설치가 끝나면 이 안내는 저절로 사라집니다 (재시작 불필요).</div>
 <div id="chips"></div>
@@ -271,6 +272,8 @@ async function loadData() {
   clsInfo = d.classifying ? { n: d.classifying_n || 1, start: clsInfo ? clsInfo.start : Date.now() } : null;
   const cn = document.getElementById("claudeNotice");
   if (cn) { cn.hidden = d.claude !== false; if (d.claude === false) setTimeout(loadData, 30000); }   // 미설치면 30초마다 다시 확인
+  const cp = document.getElementById("claudeProblem");   // 로그인 만료·사용량 한도: 요약·번역·탐색이 조용히 실패하지 않게 알림
+  if (cp) { cp.hidden = !d.claude_problem; if (d.claude_problem) { cp.querySelector("span").textContent = d.claude_problem; setTimeout(loadData, 60000); } }
   renderCatalogNudge(d.catalog_nudge);
   render();
   // 서버가 새 논문을 Claude로 분류하는 중이면 15초 뒤 다시 받아 라벨을 채움 (새로고침 없이)

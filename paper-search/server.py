@@ -544,15 +544,40 @@ LABEL_NOTES = {
 }
 
 
+CLAUDE_STATE = {"err": "", "t": 0}   # 마지막 Claude 호출 실패 이유 (로그인 만료·한도). 성공하면 지워진다
+
+
+def _note_claude(rc, out, err=""):
+    """claude -p 결과를 보고 문제를 기억한다. 조용히 None 을 돌려주던 호출들이 '왜 안 됐는지' 알릴 수 있게."""
+    low = ((out or "") + " " + (err or "")).lower()
+    if rc == 0 and (out or "").strip() and "failed to authenticate" not in low:
+        CLAUDE_STATE.update(err="", t=time.time())
+        return
+    if "authenticate" in low or "oauth" in low or "/login" in low or "not logged in" in low:
+        msg = "Claude Code 로그인이 만료됐습니다 — 터미널에서 claude 를 실행하고 /login 으로 다시 로그인하세요"
+    elif "usage limit" in low or "rate limit" in low or "limit reached" in low:
+        msg = "Claude 구독 사용량 한도에 걸렸습니다 — 잠시 뒤 다시 시도하세요"
+    else:
+        msg = "Claude 호출 실패: " + ((err or out or "응답 없음").strip()[:120])
+    CLAUDE_STATE.update(err=msg, t=time.time())
+
+
+def claude_error():
+    """최근 15분 안의 Claude 호출 문제 (없으면 빈 문자열)."""
+    return CLAUDE_STATE["err"] if CLAUDE_STATE["err"] and time.time() - CLAUDE_STATE["t"] < 900 else ""
+
+
 def ask_claude_json(prompt, timeout=240):
-    """claude -p 로 질문하고 JSON 객체 하나를 파싱해 돌려준다. 실패하면 None."""
+    """claude -p 로 질문하고 JSON 객체 하나를 파싱해 돌려준다. 실패하면 None (이유는 claude_error())."""
     exe = find_claude()
     if not exe:
         return None
     try:
         r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
-        m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
+        out = r.stdout.decode("utf-8", "replace")
+        _note_claude(r.returncode, out, r.stderr.decode("utf-8", "replace"))
+        m = re.search(r"\{.*\}", out, re.S)
         return json.loads(m.group(0)) if m else None
     except Exception:
         return None
@@ -1023,7 +1048,9 @@ def claude_text(prompt, timeout=240, model="opus"):
     try:
         r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"],
                            input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
-        return r.stdout.decode("utf-8", "replace").strip() or None
+        out = r.stdout.decode("utf-8", "replace").strip()
+        _note_claude(r.returncode, out, r.stderr.decode("utf-8", "replace"))
+        return (out or None) if r.returncode == 0 and "failed to authenticate" not in out.lower() else None
     except Exception:
         return None
 
@@ -1771,6 +1798,7 @@ def _claude(prompt, timeout=900):
                        input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
     out = r.stdout.decode("utf-8", "replace").strip()
     errtxt = r.stderr.decode("utf-8", "replace").strip()
+    _note_claude(r.returncode, out, errtxt)
     if r.returncode != 0 or not out:
         msg = (errtxt or out)[:300]
         low = msg.lower()
@@ -2473,7 +2501,7 @@ import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search,
         claude_text=claude_text, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
-        paper_body=lambda name: pdf_body_and_asides(name)[0])
+        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error)
 
 # ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------
 import vocab
@@ -2563,11 +2591,12 @@ class Handler(BaseHTTPRequestHandler):
                     save_json(LABELS_PATH, groups_now)
             self._send(200, {"papers": papers, "groups": groups_now, "classifying": classifying, "classifying_n": classifying_n,
                              "version": app_version(),
+                             "claude_problem": claude_error(),   # 로그인 만료·한도 등 최근 Claude 호출 문제 → 홈 안내
                              "claude": bool(find_claude()),                       # 홈 화면이 Claude Code 미설치 안내를 띄우는 데 씀
                              "catalog_nudge": catalog_nudge(groups_now, len(papers))})   # 체계 만들기 / 다시 분류 권유
         elif url.path == "/api/claude":
             p = find_claude()
-            self._send(200, {"found": bool(p), "path": p or "", "message": "" if p else CLAUDE_MISSING_MSG})
+            self._send(200, {"found": bool(p), "path": p or "", "message": "" if p else CLAUDE_MISSING_MSG, "problem": claude_error()})
         elif url.path == "/view":
             with open(os.path.join(BASE, "reader.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -2803,7 +2832,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 d = mapper._get(mapper.API + "/works", params)
                 # 단어를 전부 AND 로 묶어 5편도 안 나오면, OpenAlex 자체 관련도 검색(search 만)으로 느슨하게 다시 찾는다
-                if (d.get("meta", {}).get("count", 0) or 0) < 5 and len(q_clean.split()) > 2 and not re.search(r"(AND|OR|NOT)|\"", q_clean):
+                if (d.get("meta", {}).get("count", 0) or 0) < 5 and len(q_clean.split()) > 2 and not re.search(r"\b(AND|OR|NOT)\b|\"", q_clean):
                     loose = dict(params); loose["filter"] = ",".join(filters[1:]) if len(filters) > 1 else ""
                     if not loose["filter"]:
                         loose.pop("filter")

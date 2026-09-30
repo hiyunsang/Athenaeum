@@ -82,6 +82,7 @@ POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/label
 - **PowerShell 도구는 단순 명령에도 행**이 걸린다 → Bash(Git Bash) 사용
 - **한글 경로를 Git Bash 인자로 넘기면 깨진다** → 파이썬 스크립트나 Read/Glob 도구로
 - Bash heredoc 은 백슬래시를 뭉갠다(`\b` → 백스페이스, `\v` → 세로탭). **백슬래시·따옴표 많은 패치는 Write 도구로 .py 파일을 만들어 실행.** 파이썬 heredoc 첫 줄에 `# -*- coding: utf-8 -*-`
+- 이 함정에 실제로 두 번 당했다(탐색의 AND/OR/NOT 낱말 경계, 원고의 키워드 정규식 — 백슬래시-b 자리에 백스페이스 문자가 들어가 정규식이 조용히 안 맞음). 패치 뒤 파일에 `chr(8)` 이 0 개인지 확인할 것
 - Git Bash 의 `tasklist /FI` 는 `/FI` 가 경로로 바뀌어 깨짐. 프로세스 조회는 파이썬에서 `powershell -NoProfile -Command "Get-CimInstance Win32_Process ..."`
 - Git Bash 에서 cmd 를 부르면 GNU `timeout` 이 Windows `timeout.exe` 를 가린다 → 대기는 `python -c "import time;time.sleep(1)"`
 - 상시 프로세스는 `subprocess.Popen(creationflags=0x8|0x200|0x08000000)` 로 띄워야 세션이 끝나도 산다
@@ -133,6 +134,11 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 ### 원고 '본보기' (`manuscript.py` `exemplars` → `POST /api/ms/exemplars {section}`)
 부분(`SECTION_KINDS`): 초록·결론 = 문장 단위 역할, 서론·방법·결과·논의 = 문단 단위 역할 + 한국어 한 줄 요지, 제목 = 목록(단어 수·쌍점). 본문 부분은 전문이 필요해 **내 서재 PDF 에서만**: `_pdf_sections` 가 `pdf_body_and_asides` 본문을 1단계 절 제목(`1. Introduction`, `Conclusions` …)으로 나누고 소절 제목은 문단의 `sub` 로, 감사의 글·참고문헌 뒤는 버림. 내 원고 비교는 개요에서 제목이 맞는 1단계 절과 그 소절들의 초안(`_MINE_RX`). 결과·논의는 논문마다 30문단 넘어 느림(3편 2분) → 기본 4편. 개요 노드 편집의 '잘 쓴 ○○ 보기 →' 는 절 제목으로 부분을 짐작. 초록은:
 고른 저널(기본 IJMTM·JMPT·IJEM + 원고의 투고 저널)의 초록을 **내 서재 PDF**(`extract_abstract`, 원고 주제어와 겹치는 제목·최근 순)와 **Scopus**(Elsevier 키, 저널마다 고르게 — 한 번에 섞으면 IJMTM 만 나옴, 주제어로 모자라면 그 저널 피인용 상위)에서 모아, 문장마다 역할(배경·공백·목적·방법·결과·의의)을 Claude sonnet 한 번에 붙인다(캐시 `원고\_본보기캐시.json`, 실패하면 단서 규칙). 내 초록도 같은 기준으로 나눠 빠진 역할을 알린다. 첫 호출 1~2분, 캐시 뒤엔 빠름. 서버가 `claude_text`·`extract_abstract`·`elsevier_key` 를 `ms.init` 으로 주입
+
+### 원고 '리비전' (`manuscript.py` `rev_*` → `POST /api/ms/revision {op}`)
+심사 결과 파일(.docx·.pdf·.txt)이나 붙여 넣은 글 → `rev_import` 가 지적마다 나눔: Claude 에게는 **경계만**(누구·번호·첫 낱말들) 받아 원문에서 잘라 글이 그대로 남고, 안 되면 규칙(`Reviewer #1` 머리 + 번호, 번호 앞 총평은 `.0`). 라운드(`doc.revision.rounds[]`)는 그 시점 본문을 `base` 로 기억 → `export_docx(mark=라운드)` 가 달라진 문단을 파란색으로(수정 표시 원고). 지적 = `{id R1.2, text, status todo|plan|applied|done, gist, work, suggest[절], plan, nodes[절], thread, response, changes[{node,key,type,before,after}]}`. op: `triage`(뜻·작업 종류·고칠 절·순서) · `discuss`(한국어 논의) · `propose`(절의 문단 번호로 edits/inserts JSON → before/after, 반영은 화면에서 `before` 치환) · `response`(영문 답변) · `export_response`(지적 기울임 → 답변 → 바뀐 글 파란색) · `export_marked`. 화면은 서버를 부르기 전에 `saveNow()` 로 내 글을 먼저 저장하고 돌려받은 라운드·지적을 끼워 넣는다(안 그러면 서버가 옛 본문을 보고, 내 자동 저장이 서버 변경을 덮는다). **Claude 가 필요한 op(triage·discuss·propose·response)와 Claude 나누기는 2026-09-30 에 CLI 로그인 만료로 실제 호출 시험을 못 했다** — 규칙 나누기·반영·되돌리기·내보내기만 확인. 로그인 뒤 한 번 돌려 볼 것.
+- **워드 가져오기**: 수식(`m:oMath`)은 글자만 `⟦…⟧` 로(구조는 못 옮김), 표는 `| a | b |` 글로 그 절에, 한국어 캡션(그림 1., 표 1.)·머리부(초록·키워드). `/api/ms/import {into: id}` = 열려 있는 원고에 덮어쓰기(`merge_docx`: 절 번호·제목으로 맞춰 글만 갱신, 카드·리비전·그림 유지, 언어가 다르면 거절). `list_ms` 는 `_` 로 시작하는 보조 파일을 건너뜀.
+- **Claude 호출 문제 알림**: `_note_claude` 가 로그인 만료(`OAuth session expired`)·한도를 `CLAUDE_STATE` 에 적고 `claude_error()` 로 알림 → 홈 `claudeProblem` 안내, 원고 오류 글 뒤에 이유. 조용히 None 만 돌려주지 말 것.
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다
