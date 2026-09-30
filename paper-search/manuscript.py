@@ -2096,6 +2096,17 @@ def _dir_files(path):
 
 def source_op(doc, body):
     op = body.get("op")
+    if op == "mkdir":   # 이 원고의 작업 자료 폴더를 Athenaeum 안에 만든다: 원고\작업자료\<제목>
+        name = re.sub(r'[\\/:*?"<>|\s]+', " ", doc.get("title") or "").strip()[:40].strip(" .") or doc["id"]
+        path = os.path.join(cfg["MS_DIR"], "작업자료", name)
+        os.makedirs(path, exist_ok=True)
+        return {"path": os.path.normpath(path)}
+    if op == "open_dir":   # 연결해 둔 폴더만 탐색기로 연다
+        path = str(body.get("path") or "")
+        if path not in [d.get("path") for d in doc.get("source_dirs") or []] or not os.path.isdir(path):
+            return {"error": "폴더를 찾지 못했습니다"}
+        os.startfile(path)
+        return {"ok": True}
     if op == "scan":   # 연결한 폴더에 지금 무엇이 있나
         files = _dir_files(body.get("path"))
         if files is None:
