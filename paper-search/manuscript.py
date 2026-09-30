@@ -5,7 +5,7 @@
 그림: 절삭 도식 생성기(schematic.turning) 로 SVG 를 만들고 Edge headless 로 PNG 렌더.
 server.py 가 init() 으로 경로와 Claude 호출 함수를 넘겨 준다 (순환 import 방지).
 """
-import os, io, re, json, time, zipfile, subprocess, urllib.parse
+import os, io, re, json, time, zipfile, subprocess, threading, urllib.parse
 
 cfg = {}
 
@@ -868,8 +868,9 @@ def export_docx(doc, lang="ko", mark=None):
             body.append(_para("• " + h))
     if f.get("abstract"):
         body.append(_para("Abstract", "Heading1"))
+        old_abs = {_ck(x) for x in re.split(r"\n\s*\n", (((mark or {}).get("base") or {}).get("_front") or {}).get("abstract") or "") if x.strip()}
         for p in re.split(r"\n\s*\n", f["abstract"]):
-            if p.strip(): body.append(_para(p.strip()))
+            if p.strip(): body.append(_para(p.strip(), color="1F4FD1" if mark and _ck(p.strip()) not in old_abs else None))
     if f.get("keywords"):
         body.append(_para("Keywords: " + "; ".join(f["keywords"])))
     for n, txt in paras:
@@ -1634,6 +1635,9 @@ def exemplars(body):
 # item = {id(R1.2), reviewer, no, kind(major|minor|praise), text(원문 그대로), status(todo|plan|applied|done), gist, work, suggest: [절 id],
 #         plan(내가 정한 방침), nodes: [절 id], thread: [{role, text, t}], response(영문 답변), changes: [{node, key, before, after, t}]}
 _REV_HEAD = re.compile(r"^\s*(?:#+\s*)?(?:comments? (?:from|of|by|to the author[s]? from) )?(reviewer|referee|editor|associate editor|handling editor|guest editor|area editor)\s*[#:]?\s*(\d+)?\b[^\n]{0,40}$", re.I)
+_REV_TAIL = re.compile(r"\n\s*(?:(?:yours\s+)?(?:sincerely|faithfully)|(?:with\s+)?(?:best|kind|warm)\s+regards|reviewers?['’]?\s*comments?\s*:)", re.I)
+_REV_INLINE = re.compile(r"^\s*(?:reviewer|referee)\s*#?\s*(\d+)\s*[:.\u2013-]\s*(?=\S)", re.I)   # 'Reviewer #1: This manuscript …' (Editorial Manager)
+_REV_BUL = re.compile(r"^\s*(?:[-\u2022*\u00b7\u25aa]|\([a-z]\)|[a-z]\))\s+\S", re.I)
 _REV_NUM = re.compile(r"^\s*(?:comment|point|question|remark|issue|q|c)?\s*[#(]?(\d{1,2})[.):]\s+\S", re.I)
 
 
@@ -1669,6 +1673,45 @@ def _why():
     return (" — " + r) if r else ""
 
 
+def _rev_node(doc, nid):
+    """절 찾기 — 없으면 None (_node 는 예외를 던진다: 개요에서 지워진 절에 걸린 수정 기록 때문에 죽으면 안 된다). 'front' = 머리부의 초록."""
+    if nid == "front":
+        return {"id": "front", "heading": "Abstract", "level": 1, "abstract": (doc.get("front") or {}).get("abstract", "")}
+    for n in doc.get("outline", []):
+        if n["id"] == nid:
+            return n
+    return None
+
+
+def _rev_text(node):
+    """(글이 든 키, 글) — 초록은 abstract, 절은 draft(비었으면 draft_en)."""
+    if node.get("id") == "front":
+        return "abstract", node.get("abstract") or ""
+    key = "draft" if (node.get("draft") or "").strip() else "draft_en"
+    return key, node.get(key) or ""
+
+
+def _rev_heading(doc, nid):
+    return (_rev_node(doc, nid) or {}).get("heading") or nid
+
+
+_REV_LOCK = threading.Lock()
+
+
+def _rev_commit(doc, rid, iid, apply):
+    """Claude 를 기다리는 1분 남짓 동안 사용자가 본문·방침을 고쳐 저장했을 수 있다.
+    요청 첫머리에 읽은 doc 을 그대로 저장하면 그 글을 덮어쓰므로, 파일을 다시 읽어 그 위에 결과만 얹는다. iid 가 없으면 라운드에."""
+    with _REV_LOCK:
+        fresh = load_ms(doc["id"]) or doc
+        rnd = _round(fresh, rid)
+        target = _rev_item(rnd, iid) if iid else rnd
+        if target is None:
+            return None
+        apply(target)
+        save_ms(fresh)
+        return target
+
+
 def _rev_label(reviewer):
     m = re.search(r"(\d+)", reviewer or "")
     low = (reviewer or "").lower()
@@ -1678,42 +1721,69 @@ def _rev_label(reviewer):
 
 
 def _split_review_regex(text):
-    """Claude 없이 나누기: 'Reviewer #1' 머리 아래 번호 붙은 문단(1. / (1) / Comment 1:)마다, 번호가 없으면 빈 줄 문단마다."""
-    items, reviewer, cur = [], "Editor", None
-    seq = {}
-
-    def push():
-        if cur and len(cur["text"].strip()) >= 25:
-            cur["text"] = cur["text"].strip(); items.append(cur)
-
+    """Claude 없이 나누기. 심사위원 머리('Reviewer #1' 한 줄, 또는 'Reviewer #1: 글…' 처럼 글과 한 줄)로 블록을 가르고,
+    블록 안에서 번호 붙은 문단(1. / (1) / Comment 1:)마다, 번호가 없는 심사위원은 빈 줄 문단마다. 번호 앞 총평은 .0,
+    글머리표 목록(Minor points: - … - …)은 표마다, 편집자 편지는 통째로 하나."""
     paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    numbered = sum(1 for p in paras if _REV_NUM.match(p)) >= 2
-    started = False   # 이 심사위원 블록에서 번호 붙은 지적이 시작됐나
+    blocks, reviewer, cur = [], "Editor", []
     for p in paras:
         first = p.split("\n")[0]
         h = _REV_HEAD.match(first) if len(first) < 70 else None
-        if h:
-            push(); cur = None; started = False
-            who = h.group(1).lower()
-            reviewer = ("Editor" if "editor" in who else "Reviewer") + (" " + h.group(2) if h.group(2) else ("" if "editor" in who else " 1"))
-            rest = "\n".join(p.split("\n")[1:]).strip()
-            if not rest:
-                continue
-            p = rest
-        m = _REV_NUM.match(p)
-        if numbered and not m and not started:   # 번호 앞의 인사·총평: 하나로 모아 .0 (답변이 필요 없을 때가 많다)
-            if cur is None:
-                cur = {"reviewer": reviewer, "no": "0", "text": p, "kind": "praise"}
+        hi = None if h else _REV_INLINE.match(p)
+        if h or hi:
+            if cur:
+                blocks.append((reviewer, cur))
+            cur = []
+            if h:
+                who = h.group(1).lower()
+                reviewer = ("Editor" if "editor" in who else "Reviewer") + (" " + h.group(2) if h.group(2) else ("" if "editor" in who else " 1"))
+                rest = "\n".join(p.split("\n")[1:]).strip()
             else:
-                cur["text"] += "\n\n" + p
+                reviewer, rest = "Reviewer " + hi.group(1), p[hi.end():].strip()
+            if rest:
+                cur.append(rest)
             continue
-        if m or not numbered:
-            push(); started = True
-            seq[reviewer] = seq.get(reviewer, 0) + 1
-            cur = {"reviewer": reviewer, "no": m.group(1) if m else str(seq[reviewer]), "text": p, "kind": ""}
-        else:
-            cur["text"] += "\n\n" + p
-    push()
+        cur.append(p)
+    if cur:
+        blocks.append((reviewer, cur))
+
+    items = []
+
+    def push(it):
+        if it:
+            it["text"] = re.sub(r"\n\s*(?:\S+\s+){0,3}\S+:\s*\Z", "", _REV_TAIL.split(it["text"])[0]).strip()   # 맺음말·다음 묶음 머리
+            if len(it["text"]) >= 25:
+                items.append(it)
+
+    for reviewer, ps in blocks:
+        numbered = sum(1 for p in ps if _REV_NUM.match(p)) >= 2
+        if reviewer.startswith("Editor") and not numbered:   # 편집자 편지: 절차 안내가 섞여 있어 문단마다 나누면 잡음만 는다
+            push({"reviewer": reviewer, "no": "0", "text": "\n\n".join(ps), "kind": ""})
+            continue
+        it, last, started = None, 0, False
+        for p in ps:
+            lines = p.split("\n")
+            bl = [i for i, ln in enumerate(lines) if _REV_BUL.match(ln)]
+            if len(bl) >= 2 and bl[0] <= 1:   # 글머리표 목록 → 표마다 하나 (번호는 이어서)
+                push(it); it = None; started = True
+                for k, i in enumerate(bl):
+                    seg = "\n".join(lines[i:(bl[k + 1] if k + 1 < len(bl) else len(lines))]).strip()
+                    last += 1
+                    push({"reviewer": reviewer, "no": str(last), "text": seg, "kind": "minor"})
+                continue
+            m = _REV_NUM.match(p)
+            if numbered and not m and not started:   # 번호 앞의 인사·총평: 하나로 모아 .0 (답변이 필요 없을 때가 많다)
+                if it is None:
+                    it = {"reviewer": reviewer, "no": "0", "text": p, "kind": "praise"}
+                else:
+                    it["text"] += "\n\n" + p
+            elif m or not numbered:
+                push(it); started = True
+                last = int(m.group(1)) if m else last + 1
+                it = {"reviewer": reviewer, "no": str(last), "text": p, "kind": ""}
+            elif it is not None:
+                it["text"] += "\n\n" + p
+        push(it)
     return items
 
 
@@ -1756,6 +1826,8 @@ def _split_review_claude(text):
         end = cuts[k + 1][0] if k + 1 < len(cuts) else len(text)
         seg = text[start:end].strip()
         seg = re.split(r"\n\s*(?:reviewer|referee)\s*#?\s*\d+\s*[:\n]", seg, flags=re.I)[0].strip()   # 다음 심사위원 머리가 끝에 붙으면 뗀다
+        seg = _REV_TAIL.split(seg)[0].strip()                     # 편지 맺음말·'Reviewers' comments:' 머리
+        seg = re.sub(r"\n\s*(?:\S+\s+){0,3}\S+:\s*\Z", "", seg).strip()   # 끝에 붙은 다음 묶음 머리 ('Minor points:')
         if len(seg) >= 20:
             items.append({"reviewer": str(it.get("reviewer") or "Reviewer 1")[:40], "no": str(it.get("no") or "")[:6],
                           "kind": it.get("kind") if it.get("kind") in ("major", "minor", "praise") else "", "text": seg})
@@ -1803,20 +1875,23 @@ def rev_import(doc, name, raw=None, text=""):
         while any(x.get("id") == iid for x in items if x is not it):
             iid += "'"
         it.update({"id": iid, "no": no, "status": "todo", "gist": "", "work": "", "suggest": [], "plan": "", "nodes": [], "thread": [], "response": "", "changes": []})
-    rev = doc.setdefault("revision", {"rounds": []})
-    rid = "r%d" % (len(rev["rounds"]) + 1)
-    rnd = {"id": rid, "title": "%d차 심사" % (len(rev["rounds"]) + 1), "file": os.path.basename(name or "붙여 넣은 글"), "created": time.time(),
-           "decision": decision, "raw": text[:80000], "split": how, "split_note": (_why().strip(" —") if how == "규칙" else ""),
-           "base": {n["id"]: {"heading": n.get("heading", ""), "draft": n.get("draft", ""), "draft_en": n.get("draft_en", "")} for n in doc.get("outline", [])},
-           "items": items}
-    rnd["base"]["_front"] = {"abstract": (doc.get("front") or {}).get("abstract", "")}
-    rev["rounds"].append(rnd)
-    save_ms(doc)
+    with _REV_LOCK:
+        doc = load_ms(doc["id"]) or doc   # 나누는 동안 저장된 글 위에
+        rev = doc.setdefault("revision", {"rounds": []})
+        k = 1 + max([int(r["id"][1:]) for r in rev["rounds"] if r.get("id", "")[1:].isdigit()] or [0])   # 라운드를 지운 뒤에도 id 가 겹치지 않게
+        rnd = {"id": "r%d" % k, "title": "%d차 심사" % (len(rev["rounds"]) + 1), "file": os.path.basename(name or "붙여 넣은 글"), "created": time.time(),
+               "decision": decision, "raw": text[:80000], "split": how, "split_note": (_why().strip(" —") if how == "규칙" else ""),
+               "base": {n["id"]: {"heading": n.get("heading", ""), "draft": n.get("draft", ""), "draft_en": n.get("draft_en", "")} for n in doc.get("outline", [])},
+               "items": items}
+        rnd["base"]["_front"] = {"abstract": (doc.get("front") or {}).get("abstract", "")}
+        rev["rounds"].append(rnd)
+        save_ms(doc)
     return {"round": rnd}
 
 
 def _outline_brief(doc, n_chars=160):
-    return "\n".join("%s%s [%s] %s — %s" % ("  " if n.get("level", 1) > 1 else "", n["id"], n.get("heading", ""), "", _norm_ws(n.get("draft") or n.get("draft_en") or "")[:n_chars])
+    ab = _norm_ws((doc.get("front") or {}).get("abstract") or "")
+    return ("front [Abstract]  — %s\n" % ab[:n_chars] if ab else "") + "\n".join("%s%s [%s] %s — %s" % ("  " if n.get("level", 1) > 1 else "", n["id"], n.get("heading", ""), "", _norm_ws(n.get("draft") or n.get("draft_en") or "")[:n_chars])
                      for n in doc.get("outline", []))
 
 
@@ -1831,20 +1906,24 @@ def rev_triage(doc, rid):
         "{\"items\": {\"<지적 id>\": {\"gist\": \"이 지적이 요구하는 것 한국어 한 줄(40자 안팎)\", \"work\": \"문장 수정|설명 보강|데이터·분석 추가|추가 실험|그림·표 수정|문헌 추가|반박·해명|답변만\", "
         "\"effort\": 1, \"nodes\": [\"고칠 절 id (개요에서, 최대 3개)\"]}}, "
         "\"order\": [\"먼저 처리하기를 권하는 순서대로 지적 id\"], \"note\": \"지적 사이의 연관·충돌, 편집자가 특히 강조한 것 (한국어 두세 문장, 없으면 빈 문자열)\"}\n"
-        "effort 는 1(문장만) 2(분석·그림 손봄) 3(새 실험·큰 구조 변경). 절 id 는 아래 개요의 id 만 쓴다. 칭찬뿐인 지적은 work=답변만.\n\n"
+        "effort 는 1(문장만) 2(분석·그림 손봄) 3(새 실험·큰 구조 변경). 절 id 는 아래 개요의 id 만 쓴다(초록을 고쳐야 하면 front). 칭찬뿐인 지적은 work=답변만.\n\n"
         "논문 제목: %s\n\n[원고 개요: id [절 제목] — 첫머리]\n%s\n\n[심사 의견]\n%s" % (doc.get("title", ""), _outline_brief(doc), lst), timeout=400)
     if not isinstance(r, dict) or not isinstance(r.get("items"), dict):
         return {"error": "정리 실패 (Claude 응답 없음)" + _why()}
-    ids = {n["id"] for n in doc.get("outline", [])}
-    for it in rnd["items"]:
-        v = r["items"].get(it["id"]) or {}
-        it["gist"] = str(v.get("gist") or it.get("gist") or "")[:120]
-        it["work"] = str(v.get("work") or "")[:20]
-        it["effort"] = v.get("effort") if v.get("effort") in (1, 2, 3) else 0
-        it["suggest"] = [x for x in (v.get("nodes") or []) if x in ids][:3]
-    rnd["triage"] = {"t": time.time(), "order": [x for x in (r.get("order") or []) if _rev_item(rnd, x)], "note": str(r.get("note") or "")[:600]}
-    save_ms(doc)
-    return {"round": rnd}
+    ids = {n["id"] for n in doc.get("outline", [])} | {"front"}
+
+    def apply(rn):
+        for it in rn["items"]:
+            v = r["items"].get(it["id"]) or {}
+            it["gist"] = str(v.get("gist") or it.get("gist") or "")[:120]
+            it["work"] = str(v.get("work") or "")[:20]
+            it["effort"] = v.get("effort") if v.get("effort") in (1, 2, 3) else 0
+            it["suggest"] = [x for x in (v.get("nodes") or []) if x in ids][:3]
+        rn["triage"] = {"t": time.time(), "order": [x for x in (r.get("order") or []) if _rev_item(rn, x)], "note": str(r.get("note") or "")[:600]}
+    out = _rev_commit(doc, rnd["id"], None, apply)
+    if out is None:
+        return {"error": "라운드가 그 사이 지워졌습니다"}
+    return {"round": out, "round_fields": ["triage"], "item_fields": ["gist", "work", "effort", "suggest"]}
 
 
 def _rev_context(doc, rnd, it, max_nodes=3):
@@ -1853,16 +1932,21 @@ def _rev_context(doc, rnd, it, max_nodes=3):
              "", "[심사 의견 %s — %s]" % (it["id"], it["reviewer"]), it["text"][:5000]]
     if it.get("plan"):
         lines += ["", "[저자가 정한 방침]", it["plan"]]
-    if ids:
-        for nid in ids:
-            n = _node(doc, nid)
-            if n:
-                lines += ["", "[관련 절 %s: %s]" % (nid, n.get("heading", "")), (n.get("draft") or n.get("draft_en") or "(비어 있음)")[:3500]]
+    found = [n for n in (_rev_node(doc, nid) for nid in ids) if n]
+    if found:
+        for n in found:
+            lines += ["", "[관련 절 %s: %s]" % (n["id"], n.get("heading", "")), (_rev_text(n)[1] or "(비어 있음)")[:3500]]
     else:
         lines += ["", "[원고 개요: id [절 제목] — 첫머리]", _outline_brief(doc, 220)]
     if it.get("changes"):
-        lines += ["", "[이 지적으로 이미 반영한 수정]"] + ["- %s: %s" % ((_node(doc, c["node"]) or {}).get("heading", c["node"]), _norm_ws(c["after"])[:400]) for c in it["changes"][-4:]]
+        lines += ["", "[이 지적으로 이미 반영한 수정]"] + ["- %s: %s" % (_rev_heading(doc, c["node"]), _change_brief(c, 400)) for c in it["changes"][-4:]]
     return "\n".join(lines)
+
+
+def _change_brief(c, n):
+    if c.get("type") == "delete":
+        return "(문단 삭제) " + _norm_ws(c.get("before") or "")[:n // 2]
+    return _norm_ws(c.get("after") or "")[:n]
 
 
 def rev_discuss(doc, rid, iid, question=""):
@@ -1879,9 +1963,10 @@ def rev_discuss(doc, rid, iid, question=""):
                "- 고칠 곳: 어느 절의 어느 문단·그림·표를 고치거나 더해야 하는지. 절 제목으로 가리켜라.\n"
                "- 필요한 것: 추가 실험·데이터·분석·문헌 중 무엇이 필요한지. 원고에 이미 있는 것으로 되면 '없음'.\n"
                "- 답변 방향: 답변서에 쓸 요지 한두 문장.\n"
-               "원고에 없는 결과를 있는 것처럼 말하지 마라. 문단을 다시 쓰지는 마라 (그건 별도 기능이다).")
+               "원고에 없는 결과를 있는 것처럼 말하지 마라. 문단을 다시 쓰지는 마라 (그건 별도 기능이다). 맨 위에 제목 줄을 달지 말고 **뜻** 부터 바로 시작해라. 표는 쓰지 마라.")
     else:
-        ask = "지금까지의 논의를 이어서 아래 질문에 한국어로 답하라. 문장 예시가 필요하면 원고의 언어로 들어도 된다.\n[질문]\n" + (question or "계속 논의해 주세요.")
+        ask = ("지금까지의 논의를 이어서 아래 질문에 한국어로 답하라. 결론부터 짧게, 필요한 만큼만(대개 세 문단 안). 문장 예시가 필요하면 원고의 언어로 들어도 된다. "
+               "제목 줄(#)과 표는 쓰지 말고 강조는 **굵게** 만.\n[질문]\n" + (question or "계속 논의해 주세요."))
     prompt = ("당신은 기계가공 분야 국제 저널 논문의 공저자로, 심사 의견에 어떻게 대응할지 저자와 함께 정한다. 솔직하고 구체적으로, 군말 없이. "
               "심사위원이 틀렸다고 보면 그렇게 말하되 정중히 해명하는 길도 같이 보여라.\n\n" + _rev_context(doc, rnd, it) +
               (("\n\n[지금까지의 논의]\n" + hist) if hist else "") + "\n\n" + ask)
@@ -1891,20 +1976,20 @@ def rev_discuss(doc, rid, iid, question=""):
         return {"error": str(e)[:200]}
     if not out:
         return {"error": "Claude 응답이 없습니다" + _why()}
-    if question:
-        thread.append({"role": "user", "text": question, "t": time.time()})
-    thread.append({"role": "claude", "text": out, "t": time.time()})
-    save_ms(doc)
-    return {"item": it}
+    msgs = ([{"role": "user", "text": question, "t": time.time()}] if question else []) + [{"role": "claude", "text": out, "t": time.time()}]
+    it = _rev_commit(doc, rnd["id"], iid, lambda t: t.setdefault("thread", []).extend(msgs))
+    if it is None:
+        return {"error": "지적이 그 사이 지워졌습니다"}
+    return {"item": it, "fields": ["thread"]}
 
 
 def rev_propose(doc, rid, iid, nid, note=""):
     """지적을 반영해 그 절의 문단을 고치는 안. 문단 번호로 고칠 것·새로 넣을 것을 받아 before/after 로 돌려준다 (반영은 화면에서)."""
-    rnd = _round(doc, rid); it = _rev_item(rnd, iid); node = _node(doc, nid)
+    rnd = _round(doc, rid); it = _rev_item(rnd, iid); node = _rev_node(doc, nid)
     if not it or not node:
         return {"error": "지적 또는 절을 찾지 못했습니다"}
-    key = "draft" if (node.get("draft") or "").strip() else "draft_en"
-    paras = [x.strip() for x in re.split(r"\n\s*\n", node.get(key) or "") if x.strip()]
+    key, text = _rev_text(node)
+    paras = [x.strip() for x in re.split(r"\n\s*\n", text) if x.strip()]
     if not paras:
         return {"error": "이 절에는 아직 글이 없습니다"}
     sample = " ".join(paras)[:2000]
@@ -1912,34 +1997,43 @@ def rev_propose(doc, rid, iid, nid, note=""):
     hist = _thread_text(it, 6)
     r = cfg["claude_json"](
         "당신은 기계가공 분야 국제 저널 논문의 공저자다. 아래 심사 의견을 반영해 [절]의 문단을 고쳐라. JSON 으로만 답하라:\n"
-        "{\"edits\": [{\"para\": 문단 번호, \"text\": \"고친 문단 전체\"}], \"inserts\": [{\"after\": 문단 번호(맨 앞이면 0), \"text\": \"새 문단\"}], \"note\": \"무엇을 왜 고쳤는지 한국어 한두 문장\"}\n"
+        "{\"edits\": [{\"para\": 문단 번호, \"text\": \"고친 문단 전체\"}], \"inserts\": [{\"after\": 문단 번호(맨 앞이면 0), \"text\": \"새 문단\"}], "
+        "\"deletes\": [없앨 문단 번호], \"note\": \"무엇을 왜 고쳤는지 한국어 한두 문장\"}\n"
         "규칙:\n- 글은 %s로. 지적과 무관한 문단·문장은 건드리지 마라. 꼭 필요한 문단만 edits 에 넣는다.\n"
+        "- edits 의 text 는 그 번호 문단 자신을 고친 글이어야 한다. 문단을 없애거나 합칠 때는 없어지는 번호를 deletes 에 넣고, 뒤 문단의 내용을 앞 번호로 밀어 옮겨 쓰지 마라. 문단 순서는 바꾸지 마라.\n"
         "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 필요한 데이터가 없으면 그 자리에 %s 처럼 표시한다.\n"
         "- 지적과 무관한 수치는 절대 바꾸지 마라. 카드 번호 [cN], 인용 번호 [n], 그림 번호는 그대로 둔다.\n"
-        "- 저자가 정한 방침과 논의에서 정해진 방향이 있으면 그것을 따른다. 고칠 것이 이 절에 없으면 edits·inserts 를 비우고 note 에 이유를 적어라.\n\n"
-        % ("영어 학술 문체" if lang_en else "한국어 학술 문체", "(DATA NEEDED: …)" if lang_en else "(데이터 필요: …)")
+        "- 저자가 정한 방침과 논의에서 정해진 방향이 있으면 그것을 따른다. 고칠 것이 이 절에 없으면 edits·inserts·deletes 를 비우고 note 에 이유를 적어라.\n%s\n"
+        % ("영어 학술 문체" if lang_en else "한국어 학술 문체", "(DATA NEEDED: …)" if lang_en else "(데이터 필요: …)",
+           "- 이 절은 초록이다. 저널의 단어 수 제한이 있으니 길이를 거의 늘리지 말고, 넣는 만큼 덜 중요한 말을 줄여라.\n" if nid == "front" else "")
         + _rev_context(doc, rnd, dict(it, nodes=[]), 0).split("[원고 개요")[0]
         + "\n[절 %s: %s — 문단 번호]\n" % (nid, node.get("heading", "")) + "\n\n".join("[%d] %s" % (i + 1, p) for i, p in enumerate(paras))
         + (("\n\n[논의 요약]\n" + hist) if hist else "") + (("\n\n[추가 지시]\n" + note) if note else ""), timeout=400)
     if not isinstance(r, dict):
         return {"error": "Claude 응답이 없습니다" + _why()}
-    edits = []
+
+    def num(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+    gone = sorted({k - 1 for k in (num(x) for x in (r.get("deletes") or [])) if k and 0 < k <= len(paras)})
+    if len(gone) >= len(paras):
+        gone = []   # 절을 통째로 비우는 안은 받지 않는다
+    edits = []   # 새 문단·삭제의 기준은 바로 앞 문단(before·prev). 앞 문단이 먼저 고쳐지거나 지워지면 화면이 남은 안의 기준을 바꿔 준다
     for e in r.get("edits") or []:
-        try:
-            k = int(e.get("para")) - 1
-        except (TypeError, ValueError):
-            continue
+        k = num(e.get("para"))
         t = str(e.get("text") or "").strip()
-        if 0 <= k < len(paras) and t and _norm_ws(t) != _norm_ws(paras[k]):
-            edits.append({"type": "edit", "para": k + 1, "before": paras[k], "after": t})
+        if k and 0 < k <= len(paras) and (k - 1) not in gone and t and _norm_ws(t) != _norm_ws(paras[k - 1]):
+            edits.append({"type": "edit", "para": k, "before": paras[k - 1], "after": t})
     for e in r.get("inserts") or []:
-        try:
-            k = int(e.get("after"))
-        except (TypeError, ValueError):
-            continue
+        k = num(e.get("after"))
         t = str(e.get("text") or "").strip()
-        if 0 <= k <= len(paras) and t:
+        if k is not None and 0 <= k <= len(paras) and t:
             edits.append({"type": "insert", "para": k, "before": paras[k - 1] if k >= 1 else "", "after": t})
+    for k in gone:
+        edits.append({"type": "delete", "para": k + 1, "before": paras[k], "after": "", "prev": paras[k - 1] if k >= 1 else ""})
+    edits.sort(key=lambda e: (e["para"], {"edit": 0, "delete": 0, "insert": 1}[e["type"]]))
     return {"node": nid, "key": key, "heading": node.get("heading", ""), "edits": edits, "note": str(r.get("note") or "")[:500]}
 
 
@@ -1948,7 +2042,8 @@ def rev_response(doc, rid, iid, note=""):
     rnd = _round(doc, rid); it = _rev_item(rnd, iid)
     if not it:
         return {"error": "지적을 찾지 못했습니다"}
-    changes = "\n".join("- Section '%s': %s" % ((_node(doc, c["node"]) or {}).get("heading", c["node"]), _norm_ws(c["after"])[:900]) for c in (it.get("changes") or [])[-6:])
+    changes = "\n".join("- Section '%s'%s: %s" % (_rev_heading(doc, c["node"]), " (paragraph removed)" if c.get("type") == "delete" else (" (new paragraph)" if c.get("type") == "insert" else " (revised paragraph)"),
+                                                 _norm_ws(c.get("before") or "")[:300] if c.get("type") == "delete" else _norm_ws(c.get("after") or "")[:900]) for c in (it.get("changes") or [])[-6:])
     prompt = ("You are a co-author writing the point-by-point response letter for a manuscript under revision at an international manufacturing journal.\n"
               "Write the response to ONE reviewer comment, in English. Rules:\n"
               "- 1 to 3 short paragraphs. Open by acknowledging the point in one clause (no flattery, vary the wording), then state exactly what was done.\n"
@@ -1964,9 +2059,10 @@ def rev_response(doc, rid, iid, note=""):
     out = out.strip()
     if not out:
         return {"error": "Claude 응답이 없습니다" + _why()}
-    it["response"] = out
-    save_ms(doc)
-    return {"item": it}
+    it = _rev_commit(doc, rnd["id"], iid, lambda t: t.update({"response": out}))
+    if it is None:
+        return {"error": "지적이 그 사이 지워졌습니다"}
+    return {"item": it, "fields": ["response"]}
 
 
 def _changed_paras(doc, rnd, n, key):
@@ -2000,9 +2096,12 @@ def rev_export_response(doc, rid):
         if it.get("changes"):
             body.append(_para("**Changes in the manuscript:**"))
             for c in it["changes"]:
-                n = _node(doc, c["node"])
-                body.append(_para("Section: " + (n.get("heading", "") if n else c["node"])))
-                for p in [x.strip() for x in re.split(r"\n\s*\n", c["after"]) if x.strip()]:
+                body.append(_para("Section: " + _rev_heading(doc, c["node"])))
+                if c.get("type") == "delete":
+                    gone = _norm_ws(re.sub(r"\[c\d+\]", "", c.get("before") or ""))
+                    body.append(_para("Removed paragraph: “" + gone[:140] + ("…" if len(gone) > 140 else "") + "”"))
+                    continue
+                for p in [x.strip() for x in re.split(r"\n\s*\n", c.get("after") or "") if x.strip()]:
                     body.append(_para(re.sub(r"\[c\d+\]", "", p), color="1F4FD1"))
     safe = re.sub(r'[\\/:*?"<>|]+', " ", doc.get("title", "원고")).strip()[:50] or "원고"
     out = os.path.join(cfg["EXPORT_DIR"], "%s_Response_%s_%s.docx" % (safe, rnd["id"], time.strftime("%Y%m%d_%H%M")))
@@ -2090,12 +2189,14 @@ def handle_post(h, body):
             d = body.get("data")
             if not d or not d.get("id"):
                 return h._send(400, {"error": "data 필요"})
-            old = load_ms(d["id"]) or {}
-            # 개요가 바뀌면 이전 개요를 판 이력에 남김 (최근 20개)
-            if old.get("outline") and json.dumps(old.get("outline"), sort_keys=True) != json.dumps(d.get("outline"), sort_keys=True):
-                d.setdefault("versions", old.get("versions", []))
-                d["versions"] = (d["versions"] + [{"t": old.get("updated", time.time()), "outline": old["outline"]}])[-20:]
-            return h._send(200, {"ok": True, "updated": save_ms(d)["updated"]})
+            with _REV_LOCK:   # 리비전 결과를 파일에 얹는 동작(_rev_commit)과 겹치지 않게 한 번에 하나씩
+                old = load_ms(d["id"]) or {}
+                # 개요가 바뀌면 이전 개요를 판 이력에 남김 (최근 20개)
+                if old.get("outline") and json.dumps(old.get("outline"), sort_keys=True) != json.dumps(d.get("outline"), sort_keys=True):
+                    d.setdefault("versions", old.get("versions", []))
+                    d["versions"] = (d["versions"] + [{"t": old.get("updated", time.time()), "outline": old["outline"]}])[-20:]
+                upd = save_ms(d)["updated"]
+            return h._send(200, {"ok": True, "updated": upd})
         if p == "/api/ms/delete":
             fp = _path(body.get("id", ""))
             if os.path.isfile(fp):

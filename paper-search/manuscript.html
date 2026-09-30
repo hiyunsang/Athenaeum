@@ -59,6 +59,8 @@
   .fbmsg { margin: 6px 0; padding: 7px 9px; border-radius: 6px; font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.6; white-space: pre-wrap; }
   .fbmsg.user { background: var(--bg); color: var(--text-2); } .fbmsg.claude { background: var(--accent-bg, #e9eefb); }
   .fbmsg b { color: var(--text); }
+  .fbmsg .q { display: block; margin: 2px 0; padding-left: 9px; border-left: 2px solid var(--line-2); color: var(--text-2); }
+  .fbmsg code { font-family: inherit; color: var(--text); }
   .fbq { display: flex; gap: 6px; margin-top: 6px; } .fbq input { flex: 1; font-size: 12px; }
   .fbReply { width: 100%; margin-top: 6px; font-size: 12px; min-height: 28px; resize: none; overflow: hidden; box-sizing: border-box; }
   .fbprop { margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--amber); border-radius: 6px; font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.6; white-space: pre-wrap; }
@@ -271,10 +273,22 @@ async function openDoc(id) {
   renderAll();
 }
 function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
+// 저장은 한 번에 하나씩, 순서대로. 저장 중에 또 바뀌면 끝난 뒤 최신 글로 한 번 더 —
+// 요청이 겹치면 늦게 닿은 옛 글이 새 글을 덮거나 서버가 같은 파일을 동시에 써서 깨질 수 있다
+let saveBusy = null, saveAgain = false;
+function pushSave() {
+  if (saveBusy) { saveAgain = true; return saveBusy; }
+  saveBusy = (async () => {
+    let r;
+    do { saveAgain = false; try { r = doc ? await api("/api/ms/save", { data: doc }) : { ok: true }; } catch (e) { r = { ok: false }; } } while (saveAgain);
+    saveBusy = null; return r;
+  })();
+  return saveBusy;
+}
 function save(immediate) {
   if (!doc) return;
   clearTimeout(saveTimer); $("saveState").textContent = "저장 중…";
-  const run = async () => { const r = await api("/api/ms/save", { data: doc }); $("saveState").textContent = r.ok ? "저장됨 " + new Date().toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }) : "⚠ 저장 실패"; };
+  const run = async () => { const r = await pushSave(); $("saveState").textContent = r.ok ? "저장됨 " + new Date().toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }) : "⚠ 저장 실패"; };
   if (immediate) run(); else saveTimer = setTimeout(run, 700);
 }
 $("msSel").onchange = e => e.target.value ? openDoc(e.target.value) : showEmpty();
@@ -533,19 +547,36 @@ const REV_ST = [["todo", "할 일"], ["plan", "방침 정함"], ["applied", "원
 const revRounds = () => (doc && doc.revision && doc.revision.rounds) || [];
 const revRound = () => revRounds().find(r => r.id === revState.rid) || revRounds()[revRounds().length - 1] || null;
 const revItem = id => { const r = revRound(); return r ? r.items.find(x => x.id === id) : null; };
-async function saveNow() { if (!doc) return; clearTimeout(saveTimer); const r = await api("/api/ms/save", { data: doc }); $("saveState").textContent = r.ok ? "저장됨" : "⚠ 저장 실패"; }
-function revMerge(r) {   // 서버가 돌려준 라운드·지적을 내 문서에 끼워 넣는다
-  if (r.round) { doc.revision = doc.revision || { rounds: [] }; const i = doc.revision.rounds.findIndex(x => x.id === r.round.id); if (i >= 0) doc.revision.rounds[i] = r.round; else doc.revision.rounds.push(r.round); revState.rid = r.round.id; }
-  if (r.item) { const rd = revRound(); const i = rd.items.findIndex(x => x.id === r.item.id); if (i >= 0) rd.items[i] = r.item; }
+async function saveNow() { if (!doc) return; clearTimeout(saveTimer); const r = await pushSave(); $("saveState").textContent = r.ok ? "저장됨" : "⚠ 저장 실패"; }
+// 고칠 대상: 개요의 절 + 머리부의 초록("front")
+const revBy = () => Object.assign({ front: { id: "front", heading: "초록 (머리부)", level: 1 } }, Object.fromEntries(doc.outline.map(n => [n.id, n])));
+const revHas = nid => nid === "front" || !!node(nid);
+const revGet = (nid, key) => nid === "front" ? ((doc.front || {}).abstract || "") : ((node(nid) || {})[key] || "");
+const revSet = (nid, key, v) => { if (nid === "front") doc.front.abstract = v; else node(nid)[key] = v; };
+function revMerge(r) {   // 서버가 돌려준 것 중 그 동작이 만든 필드만 내 문서에 끼운다 — 기다리는 동안 내가 고친 방침·답변·본문은 그대로 둔다
+  if (r.round) {
+    doc.revision = doc.revision || { rounds: [] };
+    const mine = doc.revision.rounds.find(x => x.id === r.round.id);
+    if (!mine) doc.revision.rounds.push(r.round);
+    else {
+      (r.round_fields || []).forEach(k => mine[k] = r.round[k]);
+      r.round.items.forEach(s => { const m = mine.items.find(x => x.id === s.id); if (m) (r.item_fields || []).forEach(k => m[k] = s[k]); });
+    }
+    revState.rid = r.round.id;
+  }
+  if (r.item) { const m = revItem(r.item.id); if (m) (r.fields || []).forEach(k => m[k] = r.item[k]); }
 }
-async function revCall(body, busyKey) {   // 서버 호출 전에 내 글을 먼저 저장(서버가 최신 본문을 보게) → 결과를 합침
+async function revCall(body, busyKey) {   // 서버 호출 전에 내 글을 먼저 저장(서버가 최신 본문을 보게) → 결과를 합치고 다시 저장
   if (revState.busy) return null;
+  const mid = doc.id;
   revState.busy = busyKey; renderRev();
   await saveNow();
-  let r; try { r = await api("/api/ms/revision", Object.assign({ id: doc.id, rid: revState.rid || (revRound() || {}).id }, body)); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/ms/revision", Object.assign({ id: mid, rid: revState.rid || (revRound() || {}).id }, body)); } catch (e) { r = { error: "서버 연결 실패" }; }
   revState.busy = null;
+  if (!doc || doc.id !== mid) return null;   // 기다리는 동안 다른 원고를 열었다 (결과는 서버가 그 원고에 저장해 두었다)
   if (r.error) { alert("⚠ " + r.error); renderRev(); return null; }
-  revMerge(r); renderRev(); return r;
+  revMerge(r); if (r.round || r.item) save(true);
+  renderRev(); return r;
 }
 function wordDiff(a, b) {   // 낱말 단위 비교: 지운 것 <del>, 넣은 것 <ins>
   const A = a.split(/(\s+)/), B = b.split(/(\s+)/), n = A.length, m = B.length;
@@ -565,10 +596,11 @@ function revImportHtml() {
     "<div class='ctl' style='padding:6px 0;margin-left:-8px'><button class='btn pri' id='rvFileBtn'>파일 고르기 (.docx · .pdf · .txt)</button><input type='file' id='rvFile' accept='.docx,.pdf,.txt,.md' style='display:none'></div>" +
     "<textarea id='rvPaste' rows='4' placeholder='또는 심사 의견 글을 여기에 붙여 넣기 (메일 본문 그대로)'></textarea>" +
     "<div class='ctl' style='padding:4px 0;margin-left:-8px'><button class='btn' id='rvPasteBtn'>붙여 넣은 글로 시작</button>" + (revRounds().length ? "<button class='btn' id='rvImpCancel'>취소</button>" : "") + "</div>" +
-    (revState.importing ? revBusyHtml("지적을 나누는 중 (Claude)", 60) : "") + "</div>";
+    (revState.importing ? revBusyHtml("지적을 나누는 중 (Claude)", 40) : "") + "</div>";
 }
+const REV_EDIT_NM = { edit: "문단 고침", insert: "새 문단", delete: "문단 삭제" };
 function revItemHtml(it, r) {
-  const open = revState.open === it.id, by = Object.fromEntries(doc.outline.map(n => [n.id, n]));
+  const open = revState.open === it.id, by = revBy();
   const linked = (it.nodes || []).filter(x => by[x]), sug = (it.suggest || []).filter(x => by[x] && !linked.includes(x));
   const prop = revState.props[it.id], busy = revState.busy && revState.busy.startsWith(it.id + ":") ? revState.busy.split(":")[1] : "";
   let h = "<div class='card rv st-" + it.status + (open ? " open" : "") + "' data-iid='" + esc(it.id) + "'>" +
@@ -582,8 +614,8 @@ function revItemHtml(it, r) {
     "<div class='rvnodes'><span class='hint' style='display:inline'>고칠 절</span> " +
       linked.map(x => "<span class='chip'><a href='#' data-go='" + x + "' title='이 절을 가운데에 열기'>" + esc(by[x].heading.slice(0, 30)) + "</a><a href='#' data-unlink='" + x + "' title='연결 끊기'>×</a></span>").join("") +
       sug.map(x => "<a href='#' class='chip sug' data-link='" + x + "' title='Claude 가 짚은 후보 — 누르면 연결'>+ " + esc(by[x].heading.slice(0, 30)) + "</a>").join("") +
-      "<select class='rvAdd'><option value=''>절 연결…</option>" + doc.outline.map(n => "<option value='" + n.id + "'>" + (n.level > 1 ? "· " : "") + esc(n.heading.slice(0, 40)) + "</option>").join("") + "</select></div>";
-  h += busy ? revBusyHtml({ discuss: "같이 생각하는 중", propose: "지적을 반영해 고칠 안을 만드는 중", response: "답변 초안 쓰는 중" }[busy] || "처리 중", busy === "propose" ? 50 : 40)
+      "<select class='rvAdd'><option value=''>절 연결…</option><option value='front'>초록 (머리부)</option>" + doc.outline.map(n => "<option value='" + n.id + "'>" + (n.level > 1 ? "· " : "") + esc(n.heading.slice(0, 40)) + "</option>").join("") + "</select></div>";
+  h += busy ? revBusyHtml({ discuss: "같이 생각하는 중", propose: "지적을 반영해 고칠 안을 만드는 중", response: "답변 초안 쓰는 중" }[busy] || "처리 중", { discuss: 80, propose: 50 }[busy] || 40)
     : "<div class='acts'><button class='btn' data-rvact='discuss'>" + ((it.thread || []).length ? "논의 이어서" : "논의 시작") + "</button>" +
       (linked.length > 1 ? "<select class='rvNode'>" + linked.map(x => "<option value='" + x + "'>" + esc(by[x].heading.slice(0, 24)) + "</option>").join("") + "</select>" : "") +
       "<button class='btn' data-rvact='propose' title='연결된 절에서 고칠 문단을 찾아 고친 안을 만듭니다. 반영은 하나씩 확인하고'>고칠 안 만들기</button>" +
@@ -592,13 +624,13 @@ function revItemHtml(it, r) {
   h += "<div class='fbq'><input class='rvQ' placeholder='이어서 묻거나 지시 (예: 2번 방안으로 가면 어느 문단을 고쳐야 해?)'><button class='btn' data-rvact='ask'>보내기</button></div>";
   if (prop) {
     h += "<div class='rvprop'><div class='hint'>고칠 안 · " + esc(prop.heading) + (prop.note ? " — " + esc(prop.note) : "") + (prop.edits.length ? "" : " (이 절에서 고칠 곳을 찾지 못했습니다)") + "</div>" +
-      prop.edits.map((e, k) => "<div class='rvedit'><div class='hint'>" + (e.type === "insert" ? (e.para ? "문단 " + e.para + " 뒤에 새 문단" : "맨 앞에 새 문단") : "문단 " + e.para + " 고침") + "</div>" +
-        "<div class='rvdiff'>" + (e.type === "insert" ? "<ins>" + esc(e.after) + "</ins>" : wordDiff(e.before, e.after)) + "</div>" +
+      prop.edits.map((e, k) => "<div class='rvedit'><div class='hint'>" + (e.type === "insert" ? (e.para ? "문단 " + e.para + " 뒤에 새 문단" : "맨 앞에 새 문단") : "문단 " + e.para + (e.type === "delete" ? " 삭제" : " 고침")) + "</div>" +
+        "<div class='rvdiff'>" + (e.type === "insert" ? "<ins>" + esc(e.after) + "</ins>" : e.type === "delete" ? "<del>" + esc(e.before) + "</del>" : wordDiff(e.before, e.after)) + "</div>" +
         "<div class='acts'><button class='btn pri' data-apply='" + k + "'>원고에 반영</button><button class='btn' data-drop='" + k + "'>버리기</button></div></div>").join("") +
       "<div class='acts'><button class='btn' data-dropall='1'>고칠 안 닫기</button></div></div>";
   }
   if ((it.changes || []).length) h += "<div class='rvch'><div class='hint'>반영한 수정 " + it.changes.length + "건</div>" +
-    it.changes.map((c, k) => "<div class='rvc'><span>" + esc(((by[c.node] || {}).heading || c.node).slice(0, 28)) + " · " + (c.type === "insert" ? "새 문단" : "문단 고침") + "</span> <a href='#' class='act' data-go='" + c.node + "'>보기</a> <a href='#' class='act' data-undo='" + k + "'>되돌리기</a></div>").join("") + "</div>";
+    it.changes.map((c, k) => "<div class='rvc'><span>" + esc(((by[c.node] || {}).heading || c.node).slice(0, 28)) + " · " + (REV_EDIT_NM[c.type] || "문단 고침") + "</span> <a href='#' class='act' data-go='" + c.node + "'>보기</a> <a href='#' class='act' data-undo='" + k + "'>되돌리기</a></div>").join("") + "</div>";
   h += "<label class='f'>답변 <span class='hint' style='font-weight:400'>답변서에 들어갈 글 (영문). 직접 고쳐도 됩니다</span></label><textarea class='rvResp' data-iid='" + esc(it.id) + "' rows='3' placeholder='「답변 초안」으로 시작하거나 직접 쓰기'>" + esc(it.response || "") + "</textarea>";
   return h + "</div>";
 }
@@ -624,8 +656,13 @@ function renderRev() {
     if (it.reviewer !== last) { h += "<div class='rvrev'>" + esc(it.reviewer) + " <span class='hint' style='display:inline;font-weight:400'>" + r.items.filter(x => x.reviewer === it.reviewer).length + "개</span></div>"; last = it.reviewer; }
     h += revItemHtml(it, r);
   }
+  // 다시 그려도 쓰던 자리(방침·답변·물음 칸의 커서, 아직 안 보낸 물음)를 잃지 않게
+  const ae = document.activeElement, keep = ae && el.contains(ae) && /^(rvPlan|rvResp|rvQ)$/.test(ae.className) ? { cls: ae.className, iid: (ae.closest(".card.rv") || {}).dataset.iid, s: ae.selectionStart, e: ae.selectionEnd } : null;
+  const oldQ = el.querySelector(".card.rv.open .rvQ"), qKeep = oldQ && oldQ.value ? { iid: oldQ.closest(".card.rv").dataset.iid, v: oldQ.value } : null;
   el.innerHTML = h; animateBars(el);
   const q = s => el.querySelector(s);
+  if (qKeep && qKeep.iid === revState.open && q(".card.rv.open .rvQ")) q(".card.rv.open .rvQ").value = qKeep.v;
+  if (keep && keep.iid === revState.open) { const t = q(".card.rv.open ." + keep.cls); if (t) { t.focus(); try { t.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
   if (q("#rvRound")) q("#rvRound").onchange = e => { revState.rid = e.target.value; revState.open = null; renderRev(); };
   q("#rvTriage").onclick = () => revCall({ op: "triage" }, "top:triage");
   q("#rvNew").onclick = () => { revState.showImport = true; renderRev(); };
@@ -645,7 +682,12 @@ function renderRev() {
   card.querySelectorAll("[data-unlink]").forEach(a => a.onclick = e => { e.preventDefault(); it.nodes = (it.nodes || []).filter(x => x !== a.dataset.unlink); save(); renderRev(); });
   card.querySelectorAll("[data-link]").forEach(a => a.onclick = e => { e.preventDefault(); it.nodes = (it.nodes || []).concat(a.dataset.link); save(); renderRev(); });
   cq(".rvAdd").onchange = e => { if (e.target.value && !(it.nodes || []).includes(e.target.value)) { it.nodes = (it.nodes || []).concat(e.target.value); save(); renderRev(); } };
-  const ask = () => { const v = cq(".rvQ").value.trim(); if (v) revCall({ op: "discuss", iid: it.id, question: v }, it.id + ":discuss"); };
+  const ask = async () => {
+    const v = cq(".rvQ").value.trim(); if (!v || revState.busy) return;
+    cq(".rvQ").value = "";
+    const r2 = await revCall({ op: "discuss", iid: it.id, question: v }, it.id + ":discuss");
+    if (!r2) { const q2 = document.querySelector("#tab-rev .card.rv.open .rvQ"); if (q2 && !q2.value) q2.value = v; }   // 실패하면 물음을 되돌려 둔다
+  };
   if (cq(".rvQ")) cq(".rvQ").onkeydown = e => { if (e.key === "Enter") ask(); };
   card.querySelectorAll("[data-rvact]").forEach(b => b.onclick = async () => {
     const a = b.dataset.rvact;
@@ -662,25 +704,44 @@ function renderRev() {
   });
   const prop = revState.props[it.id];
   card.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => {
-    const e = prop.edits[+b.dataset.apply], nn = node(prop.node); if (!nn) return;
-    const cur0 = nn[prop.key] || "";
-    if (e.type === "edit") { if (!cur0.includes(e.before)) { alert("그 사이 문단이 바뀌어 자리를 찾지 못했습니다. 「고칠 안 만들기」를 다시 눌러 주세요."); return; } nn[prop.key] = cur0.replace(e.before, () => e.after); }
-    else if (!e.para) nn[prop.key] = e.after + "\n\n" + cur0;
-    else { if (!cur0.includes(e.before)) { alert("새 문단을 넣을 자리를 찾지 못했습니다. 다시 만들어 주세요."); return; } nn[prop.key] = cur0.replace(e.before, () => e.before + "\n\n" + e.after); }
-    it.changes = (it.changes || []).concat({ node: prop.node, key: prop.key, type: e.type, before: e.type === "edit" ? e.before : "", after: e.after, t: Date.now() / 1000 });
+    const e = prop.edits[+b.dataset.apply]; if (!revHas(prop.node)) { alert("그 절이 개요에서 없어졌습니다."); return; }
+    const cur0 = revGet(prop.node, prop.key); let next;
+    if (e.type === "insert" && !e.para) next = e.after + "\n\n" + cur0;
+    else if (!cur0.includes(e.before)) { alert("그 사이 문단이 바뀌어 자리를 찾지 못했습니다. 「고칠 안 만들기」를 다시 눌러 주세요."); return; }
+    else if (e.type === "edit") next = cur0.replace(e.before, () => e.after);
+    else if (e.type === "delete") next = cur0.replace(e.before, "").replace(/\n{3,}/g, "\n\n").trim();
+    else next = cur0.replace(e.before, () => e.before + "\n\n" + e.after);
+    revSet(prop.node, prop.key, next);
+    prop.edits.forEach(x => {   // 남은 안이 방금 바뀐 문단을 기준으로 삼고 있으면 기준을 새 글로 옮긴다
+      if (x === e) return;
+      if (e.type === "edit") { if (x.type === "insert" && x.before === e.before) x.before = e.after; if (x.type === "delete" && x.prev === e.before) x.prev = e.after; }
+      if (e.type === "delete") { if (x.type === "insert" && x.before === e.before) { x.before = e.prev || ""; if (!x.before) x.para = 0; } if (x.type === "delete" && x.prev === e.before) x.prev = e.prev || ""; }
+      if (e.type === "insert" && x.type === "insert" && !!x.para === !!e.para && x.before === e.before) { x.before = e.after; x.para = x.para || 1; }   // 같은 자리에 넣을 다음 문단은 방금 넣은 것 뒤로 (순서 유지)
+    });
+    const ch = { node: prop.node, key: prop.key, type: e.type, before: e.type === "insert" ? "" : e.before, after: e.after || "", t: Date.now() / 1000 };
+    if (e.type === "delete") ch.prev = e.prev || "";
+    it.changes = (it.changes || []).concat(ch);
     if (it.status === "todo" || it.status === "plan") it.status = "applied";
     prop.edits.splice(+b.dataset.apply, 1); if (!prop.edits.length) delete revState.props[it.id];
-    save(true); renderTree(); if (cur === nn.id) renderEditor(); renderRev();
+    save(true); renderTree(); if (cur === prop.node) renderEditor(); renderRev();
   });
   card.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => { prop.edits.splice(+b.dataset.drop, 1); if (!prop.edits.length) delete revState.props[it.id]; renderRev(); });
   card.querySelectorAll("[data-dropall]").forEach(b => b.onclick = () => { delete revState.props[it.id]; renderRev(); });
   card.querySelectorAll("[data-undo]").forEach(a => a.onclick = e => {
-    e.preventDefault(); const c = it.changes[+a.dataset.undo], nn = node(c.node); if (!nn) return;
-    const cur0 = nn[c.key] || "";
-    if (!cur0.includes(c.after)) { alert("그 뒤로 이 문단이 또 바뀌어 자동으로 되돌릴 수 없습니다. 절을 열어 직접 고쳐 주세요."); return; }
-    if (!confirm("이 수정을 되돌릴까요?")) return;
-    nn[c.key] = c.type === "edit" ? cur0.replace(c.after, () => c.before) : cur0.replace(c.after, "").replace(/\n{3,}/g, "\n\n").trim();
-    it.changes.splice(+a.dataset.undo, 1); save(true); if (cur === nn.id) renderEditor(); renderRev();
+    e.preventDefault(); const c = it.changes[+a.dataset.undo]; if (!revHas(c.node)) { alert("그 절이 개요에서 없어졌습니다."); return; }
+    const cur0 = revGet(c.node, c.key); let next;
+    if (c.type === "delete") {   // 지운 문단을 앞 문단 뒤에 되살린다
+      if (!confirm("지운 문단을 되살릴까요?")) return;
+      if (!c.prev) next = c.before + "\n\n" + cur0;
+      else if (cur0.includes(c.prev)) next = cur0.replace(c.prev, () => c.prev + "\n\n" + c.before);
+      else { next = cur0 + "\n\n" + c.before; alert("원래 자리를 찾지 못해 절 맨 끝에 되살렸습니다. 절을 열어 자리를 옮겨 주세요."); }
+    } else {
+      if (!cur0.includes(c.after)) { alert("그 뒤로 이 문단이 또 바뀌어 자동으로 되돌릴 수 없습니다. 절을 열어 직접 고쳐 주세요."); return; }
+      if (!confirm("이 수정을 되돌릴까요?")) return;
+      next = c.type === "edit" ? cur0.replace(c.after, () => c.before) : cur0.replace(c.after, "").replace(/\n{3,}/g, "\n\n").trim();
+    }
+    revSet(c.node, c.key, next);
+    it.changes.splice(+a.dataset.undo, 1); save(true); renderTree(); if (cur === c.node) renderEditor(); renderRev();
   });
 }
 function revBindImport(el) {
@@ -900,7 +961,8 @@ function commentThreads() {
 function commentsFor(nid) { return (doc.comments || []).filter(c => { const n = commentNode(c); return n && n.id === nid; }); }
 const cById = id => (doc.comments || []).find(c => String(c.id) === String(id));
 let fbOpen = null, fbProposal = null;   // 펼쳐진 논의 카드 / 고쳐 본 문단 제안
-const fbFmt = t => esc(t).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+// 논의 글: 굵게, 제목 줄(# …)은 굵은 줄로, 인용(> …)은 들여 쓴 글로, `코드`
+const fbFmt = t => esc(t).replace(/^#{1,4}\s*(.+)$/gm, "<b>$1</b>").replace(/^&gt; ?(.*)\n?/gm, "<span class='q'>$1</span>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
 function planHtml(pl) {
   const th = [...(pl.themes || [])].sort((a, b) => (a.priority || 9) - (b.priority || 9));
   return "<div style='margin:4px 0 10px'>" + (pl.first ? "<div class='hint' style='margin-bottom:4px'>먼저: " + esc(pl.first) + "</div>" : "") +

@@ -2353,18 +2353,42 @@ fetch('/api/gentext?file=__FILE_Q__&kind=__KIND__').then(r => r.text()).then(md 
 
 
 def load_json(path, default):
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return default
+    for i in range(4):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except PermissionError:   # 다른 요청이 막 바꿔치기하는 순간 (Windows) — 잠깐 뒤 다시
+            time.sleep(0.03 * (i + 1))
+        except (OSError, ValueError):
+            return default
+    return default
+
+
+_SAVE_LOCK = threading.Lock()
 
 
 def save_json(path, data):
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    """임시 파일에 쓴 뒤 바꿔치기. 한 번에 하나씩, 임시 파일 이름은 호출마다 다르게 —
+    예전엔 모두 같은 '.tmp' 에 써서, 저장 요청이 겹치면(원고 화면의 연속 저장) 두 글이 섞여 JSON 이 깨졌다(2026-09-30)."""
+    tmp = "%s.%d.%d.tmp" % (path, os.getpid(), threading.get_ident())
+    with _SAVE_LOCK:
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=1)
+            for i in range(6):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:   # 누가 읽는 중이거나 백신·색인기가 잠깐 잡고 있을 때
+                    if i == 5:
+                        raise
+                    time.sleep(0.04 * (i + 1))
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
 
 
 def archive_pdfs():
