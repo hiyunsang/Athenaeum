@@ -242,6 +242,21 @@
   .card.memo .chLibL input { margin: 0; }
   .card.memo .acts .brk { flex-basis: 100%; height: 0; }
   .card.memo.newq { border-left-color: var(--amber); background: var(--amber-bg); }
+  /* 대화를 글 옆에 (워드의 메모처럼): 카드를 그 글의 높이에 놓고, 가운데 칸을 스크롤하면 같이 움직인다 */
+  #tab-chat.side { padding: 0; }
+  #tab-chat.side.on { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #tab-chat .chhead { flex: none; padding: var(--s2) var(--s3) var(--s1); border-bottom: 1px solid var(--line); }
+  #tab-chat .chhead .sec { padding: 0; margin: 0 0 2px; }
+  #tab-chat .chhead .hint .act { padding: 0; }
+  #tab-chat .chview a { margin-left: 8px; color: var(--text-3); font-weight: 400; text-transform: none; letter-spacing: 0; text-decoration: none; }
+  #tab-chat .chview a.on { color: var(--text); font-weight: 600; }
+  #chLane { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+  #chLaneIn { position: absolute; left: var(--s3); right: var(--s3); top: 0; }
+  #chLaneIn .card.memo { position: absolute; left: 0; right: 0; margin: 0; }
+  .card.memo .chbody { position: relative; }
+  #tab-chat.side .card.memo .chbody { max-height: max(160px, calc(100vh - 330px)); overflow-y: auto; }   /* 긴 대화는 카드 안에서 굴린다 — 카드가 화면보다 길면 글과 같이 볼 수 없다 */
+  .card.memo.act { border-color: var(--accent); } .card.memo.newq.act { border-color: var(--amber); }
+  #chPad { height: 0; }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
   .selalt .acts { margin-left: -8px; }
   .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; } .card.memo.unread { background: var(--accent-bg); }
@@ -254,6 +269,8 @@
   .taback mark.new { border-bottom: 2px solid var(--accent); background: var(--accent-bg); }
   .taback mark.wait { border-bottom: 2px dotted var(--amber); background: var(--amber-bg); }
   .taback mark.err, .taback mark.lost { border-bottom: 2px dotted var(--red); }
+  .taback mark.hot, .taback mark.hov { border-bottom: 2px solid var(--accent); background: var(--accent-bg); }   /* 지금 보는 대화 · 마우스를 올린 카드의 글 */
+  .taback mark.sel { border-bottom: 2px solid var(--amber); background: var(--amber-bg); }   /* 방금 고른 글 (아직 묻기 전) */
   .tawrap > textarea { position: relative; z-index: 1; background: transparent !important; overflow: hidden; display: block; }
   .docmode .tawrap { background: transparent; border-radius: 0; } .docmode .tawrap:focus-within { background: var(--sel-bg); }
   .card.srcf { border-left-color: var(--line-2); margin-bottom: var(--s1); } .card.srcf.on { border-left-color: var(--green); }
@@ -319,7 +336,7 @@
       <tr><td>검토</td><td>사람 주석</td><td>컴파일 오류만</td><td>없음</td><td>문단 검토·전체 검토·규격 점검 + 교수님 주석 논의</td></tr>
       <tr><td>조판·제출</td><td>바로</td><td>PDF 컴파일</td><td>내보내기</td><td>.docx 로 내보내 워드에서 마무리</td></tr></table>
     <div class="hint" style="padding:0">지금 원고(BUE)라면: ① 피드백 탭에서 교수님 주석부터 처리 → ② 원고 모드로 통독하며 고치기 → ③ 점검 → ④ 내보내기.</div>
-  </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
+  </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div><div id="chPad"></div></div>
   <div id="drawer">
     <div id="tabbar"><div class="tabs" id="tabsTop"></div><div class="subtabs" id="tabsSub"></div></div>
     <div class="tab" id="tab-chat"></div>
@@ -1008,6 +1025,7 @@ function switchTab(name) {
   // 그림 탭이면 가운데를 그림 작업대로. 다른 탭끼리 오갈 때는 가운데를 다시 그리지 않는다 (쓰던 자리를 잃지 않게)
   if (doc && name === "figs" && was !== "figs") renderFigWorkspace();
   else if (doc && was === "figs" && name !== "figs") renderEditor();
+  if (doc && name === "chat") renderChat(); else if (name !== "chat") chatPad(0);   // 글 옆에 놓는 대화는 탭이 보일 때에야 자리를 잴 수 있다
 }
 function tabClick(name) {
   switchTab(name);
@@ -1708,6 +1726,8 @@ function renderSrc() {
 // ---------- 고른 글: 글 칸에서 드래그 → 메모로 남기거나, Claude 에게 묻기·고쳐 달라기 (대안을 받으면 그 자리에 바꿔 넣는다) ----------
 // doc.memos = [{id, node, key, quote, note, thread: [{role: user|claude, text, alts, base}], t, done}]
 let chatNew = null, chatShowDone = false, memoPollT = null;   // chatNew = 방금 드래그한 글 (아직 대화가 아님)
+let chatActive = null, chatLayT = null, chatSideT = null;   // chatActive = 지금 보는 대화 (글 옆 보기에서 제 글 바로 옆에 놓인다)
+const chatSide = () => localStorage.getItem("ms_chat_view") !== "list";   // 글 옆에(기본, 워드의 메모처럼) · 목록
 const chatOpen = new Set(), chatDraft = {}, memoLive = new Set();   // 펼쳐 둔 대화 · 대화마다 쓰던 입력 · 이 창에서 답을 기다리는 것
 const memosFor = nid => (doc.memos || []).filter(m => m.node === nid && !m.done);
 const memoById = id => (doc.memos || []).find(m => m.id === id);
@@ -1754,6 +1774,7 @@ document.addEventListener("mouseup", e => {
   }
   const hit = a === b && (ta._ranges || []).find(r => a >= r.a && a <= r.b);   // 밑줄 그어진 글을 누름 → 그 대화
   if (hit) {
+    if (activeTab() === "chat" && chatSide() && chatCard(hit.m.id)) { selBarHide(); chatActivate(hit.m.id); return; }
     const label = { wait: "Claude 가 생각하는 중 — 대화 보기", new: "새 답 보기", err: "답을 못 받음 — 대화 보기", lost: "답을 못 받음 — 대화 보기", seen: "대화 보기", note: "메모 보기" }[memoState(hit.m)];
     selBarShow(e, "<button class='btn pri'>" + label + "</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openSel(null, hit.m); });
     return;
@@ -1775,6 +1796,7 @@ function closeSel() { chatNew = null; }
 function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있는 대화(memo)를 서랍의 「대화」에 연다
   if (!doc) return;
   const m = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글의 대화가 있으면 이어서
+  if (chatSide()) chatOpen.clear();   // 글 옆 보기에서는 한 번에 하나만 펼친다 (좁은 여백에 긴 대화가 여럿이면 다른 카드가 제 글에서 멀어진다)
   if (m) { chatOpen.add(m.id); if (m.unread) { m.unread = false; save(); } if (m.done) chatShowDone = true; }
   else chatNew = Object.assign({ mode: mode || "ask" }, ctx);
   if (activeTab() !== "chat") switchTab("chat");
@@ -1783,9 +1805,10 @@ function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있
 }
 const chatCard = id => id === "new" ? $("chNew") : document.querySelector("#tab-chat .card.memo[data-mid='" + id + "']");
 function chatFocus(id) {   // 그 대화 카드를 보이게 하고 입력 칸에 커서
-  const card = chatCard(id); if (!card) return;
-  const d = $("drawer"); d.scrollTop = Math.max(0, d.scrollTop + card.getBoundingClientRect().top - d.getBoundingClientRect().top - 78);
-  const t = card.querySelector(".chIn"); if (t) t.focus();
+  let card = chatCard(id); if (!card) return;
+  if (chatSide()) { chatActivate(id); card = chatCard(id); chatReveal(card); }
+  else { const d = $("drawer"); d.scrollTop = Math.max(0, d.scrollTop + card.getBoundingClientRect().top - d.getBoundingClientRect().top - 78); }
+  const t = card.querySelector(".chIn"); if (t) t.focus({ preventScroll: true });
 }
 function chatThreadHtml(m) {
   const th = m.thread || [];
@@ -1801,7 +1824,7 @@ const chatInputHtml = (id, ph) => "<textarea class='chIn' data-id='" + id + "' r
 function chatCardHtml(m) {
   const st = memoState(m), open = chatOpen.has(m.id), th = m.thread || [];
   const chip = st === "wait" ? "<span style='color:var(--amber)'>생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 못 받음</span>" : "";
-  let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
+  let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + (m.id === chatActive ? " act" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
     "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>“" + esc(normWs(m.quote).slice(0, 90)) + "”</span>" +
     "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + "</span></div>";
   if (!open) {
@@ -1809,10 +1832,10 @@ function chatCardHtml(m) {
     const pv = st === "wait" && lastQ ? "나: " + lastQ.text : last ? last.text : m.note || (lastQ ? "나: " + lastQ.text : "");
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
-  h += "<div class='rvtext cq'>" + esc(m.quote) + "</div>" + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
+  h += "<div class='chbody'><div class='rvtext cq'>" + esc(m.quote) + "</div>" + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
   if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
-  h += chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)") +
+  h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)") +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
     "<button class='btn' data-dec='1' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다'>결정으로 기록</button><span style='margin-left:auto'></span>" +
     "<button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
@@ -1830,16 +1853,31 @@ function renderChat() {
   const ae = document.activeElement, keep = ae && el.contains(ae) && ae.classList.contains("chIn") ? { id: ae.dataset.id, s: ae.selectionStart, e: ae.selectionEnd } : null;
   const ms = doc.memos || [], live = ms.filter(m => !m.done), cnt = k => live.filter(m => k.includes(memoState(m))).length, dn = ms.length - live.length;
   const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
-  let h = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
-    (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>모두 접기</a>" : "") +
-    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
-    "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (nsrc ? " <a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "") + "</div>";
-  if (chatNew) h += "<div class='card memo open newq' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
-    "<div class='rvtext cq'>" + esc(chatNew.quote) + "</div>" + chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)") +
-    "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1'>메모로 남기기</button></div></div>";
-  chatGroups(false).forEach(g => { h += "<div class='rvrev' style='padding-left:0'><a href='#' data-ggo='" + esc(g.nid) + "' style='color:var(--text);text-decoration:none' title='이 절을 가운데에 열기'>" + esc(g.heading.slice(0, 44)) + "</a> <span class='hint' style='display:inline;font-weight:400'>" + g.memos.length + "</span></div>" + g.memos.map(chatCardHtml).join(""); });
-  if (dn) h += "<div class='rvrev' style='padding-left:0'><a href='#' class='act' id='chDoneT' style='font-weight:400'>" + (chatShowDone ? "끝낸 대화 접기" : "끝낸 대화 " + dn + "개 보기") + "</a></div>" + (chatShowDone ? chatGroups(true).map(g => g.memos.map(chatCardHtml).join("")).join("") : "");
+  const side = chatSide();
+  const top = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
+    (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>" + (side ? "접기" : "모두 접기") + "</a>" : "") +
+    "<span class='chview' title='글 옆에 = 워드의 메모처럼, 대화를 그 글 옆에 놓고 글을 따라 움직입니다 · 목록 = 모든 대화를 원고 순서대로 한 줄로'><a href='#' data-view='side'" + (side ? " class='on'" : "") + ">글 옆에</a><a href='#' data-view='list'" + (side ? "" : " class='on'") + ">목록</a></span>" +
+    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
+  const newCard = chatNew ? "<div class='card memo open newq" + (chatActive === "new" ? " act" : "") + "' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
+    "<div class='chbody'><div class='rvtext cq'>" + esc(chatNew.quote) + "</div></div>" + chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)") +
+    "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1'>메모로 남기기</button></div></div>" : "";
+  const srcLink = nsrc ? "<a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "";
+  const doneLink = dn ? "<a href='#' class='act' id='chDoneT' style='font-weight:400'>" + (chatShowDone ? "끝낸 대화 접기" : "끝낸 대화 " + dn + "개 보기") + "</a>" : "";
+  let h;
+  if (side) {   // 글 옆에: 지금 가운데 칸에 그 글이 있는 대화만, 그 글의 높이에
+    const here = m => !!taFor(m.node, m.key), order = done => chatGroups(done).reduce((a, g) => a.concat(g.memos), []).filter(here);
+    const on = order(false), away = live.length - on.length;
+    const notes = [!on.length && !chatNew ? "원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 대화는 그 글 옆에 놓이고 글을 따라 움직입니다" : "",
+      away ? "지금 화면에 없는 절의 대화 " + away + "개 — <a href='#' class='act' data-view='list'>목록으로 보기</a>" : "", doneLink, srcLink].filter(Boolean);
+    h = "<div class='chhead'>" + top + (notes.length ? "<div class='hint'>" + notes.join(" · ") + "</div>" : "") + "</div>" +
+      "<div id='chLane'><div id='chLaneIn'>" + newCard + on.concat(chatShowDone ? order(true) : []).map(chatCardHtml).join("") + "</div></div>";
+  } else {
+    h = top + "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (srcLink ? " " + srcLink : "") + "</div>" + newCard;
+    chatGroups(false).forEach(g => { h += "<div class='rvrev' style='padding-left:0'><a href='#' data-ggo='" + esc(g.nid) + "' style='color:var(--text);text-decoration:none' title='이 절을 가운데에 열기'>" + esc(g.heading.slice(0, 44)) + "</a> <span class='hint' style='display:inline;font-weight:400'>" + g.memos.length + "</span></div>" + g.memos.map(chatCardHtml).join(""); });
+    if (dn) h += "<div class='rvrev' style='padding-left:0'>" + doneLink + "</div>" + (chatShowDone ? chatGroups(true).map(g => g.memos.map(chatCardHtml).join("")).join("") : "");
+  }
   const d = $("drawer"), st = d.scrollTop;
+  el.classList.toggle("side", side);
   el.innerHTML = h;
   el.querySelectorAll(".card.memo").forEach(chatBind);
   const q = id => el.querySelector("#" + id);
@@ -1847,10 +1885,12 @@ function renderChat() {
   if (q("chFold")) q("chFold").onclick = e => { e.preventDefault(); chatOpen.clear(); renderChat(); };
   if (q("chSrc")) q("chSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
   if (q("chDoneT")) q("chDoneT").onclick = e => { e.preventDefault(); chatShowDone = !chatShowDone; renderChat(); };
+  el.querySelectorAll("[data-view]").forEach(a => a.onclick = e => { e.preventDefault(); localStorage.setItem("ms_chat_view", a.dataset.view); renderChat(); });
   el.querySelectorAll("[data-ggo]").forEach(a => a.onclick = e => { e.preventDefault(); const nid = a.dataset.ggo; if (nid !== "front" && !node(nid)) return; if (msMode === "doc" && nid !== "front") { const sec = document.querySelector(".docmode .dsec[data-n='" + nid + "']"); if (sec) { $("center").scrollTop = sec.offsetTop - 20; return; } } cur = nid; renderTree(); renderEditor(); });
   animateBars(el);
   if (activeTab() === "chat") d.scrollTop = st;
-  if (keep) { const t = el.querySelector(".chIn[data-id='" + keep.id + "']"); if (t) { t.focus(); try { t.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
+  if (side) { chatLaneBind(); el.querySelectorAll(".card.memo.open").forEach(chatBodyScroll); chatLayout(); } else chatPad(0);
+  if (keep) { const t = el.querySelector(".chIn[data-id='" + keep.id + "']"); if (t) { t.focus({ preventScroll: true }); try { t.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
 }
 function chatRefresh(id) {   // 그 대화 카드만 다시 그린다 (다른 카드에 쓰던 글·커서를 건드리지 않게)
   const card = chatCard(id), m = memoById(id);
@@ -1858,26 +1898,37 @@ function chatRefresh(id) {   // 그 대화 카드만 다시 그린다 (다른 �
   const ae = document.activeElement, keep = ae && card.contains(ae) && ae.classList.contains("chIn") ? { s: ae.selectionStart, e: ae.selectionEnd } : null;
   const tmp = document.createElement("div"); tmp.innerHTML = chatCardHtml(m); const fresh = tmp.firstChild;
   card.replaceWith(fresh); chatBind(fresh); animateBars(fresh);
+  if (chatSide()) { chatBodyScroll(fresh); chatLayout(); }
   if (keep) { const t = fresh.querySelector(".chIn"); if (t) { t.focus(); try { t.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
 }
 function chatBind(card) {
   const id = card.id === "chNew" ? "new" : card.dataset.mid, m = id === "new" ? null : memoById(id), cq = sel => card.querySelector(sel), all = sel => card.querySelectorAll(sel);
   const read = () => { if (m && m.unread) { m.unread = false; card.classList.remove("unread"); save(); memoUi(null, true); } };   // 손댄 대화는 읽은 것 (카드를 다시 그리지 않는다 — 누르던 단추가 사라지면 안 된다)
   card.addEventListener("mousedown", read);
-  all("[data-toggle]").forEach(x => x.onclick = () => { if (chatOpen.has(id)) chatOpen.delete(id); else chatOpen.add(id); if (m && m.unread) { m.unread = false; save(); } memoUi(id); });
+  all("[data-toggle]").forEach(x => x.onclick = () => {
+    const was = chatOpen.has(id), side = chatSide();
+    if (side) chatOpen.clear();   // 글 옆 보기: 하나를 펼치면 다른 것은 접는다
+    if (was) chatOpen.delete(id); else chatOpen.add(id);
+    if (m && m.unread) { m.unread = false; save(); }
+    chatActive = id; memoUi(side ? null : id);
+    if (side && !was) chatReveal(chatCard(id));   // 펼친 카드의 아래(입력 칸)가 화면 밖이면 글을 그만큼 굴린다
+  });
+  // 누른 카드가 '지금 보는 대화' — click 에서 한다 (mousedown 에서 카드를 옮기면 누르던 단추가 손 밑에서 달아난다)
+  card.addEventListener("click", () => { if (chatSide() && chatActive !== id && chatCard(id)) chatActivate(id); });
+  card.addEventListener("mouseenter", () => chatHover(id, true)); card.addEventListener("mouseleave", () => chatHover(id, false));
   const ta = cq(".chIn");
   if (ta) {
     autogrow(ta);
-    ta.oninput = () => { chatDraft[id] = ta.value; };
+    ta.oninput = () => { chatDraft[id] = ta.value; chatLayoutSoon(); };
     ta.onfocus = read;
-    ta.onkeydown = e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); chatAsk(id); } else if (e.key === "Escape" && id === "new") { chatNew = null; delete chatDraft.new; renderChat(); } };
+    ta.onkeydown = e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); chatAsk(id); } else if (e.key === "Escape" && id === "new") chatNewDrop(); };
   }
   all("[data-chip]").forEach(b => b.onclick = () => chatAsk(id, SEL_CHIPS[+b.dataset.chip][1]));
   if (cq("[data-ask]")) cq("[data-ask]").onclick = () => chatAsk(id);
   if (cq(".chWhole")) cq(".chWhole").onchange = e => { localStorage.setItem("ms_sel_whole", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chWhole").forEach(x => { x.checked = e.target.checked; }); };
   if (cq(".chLib")) cq(".chLib").onchange = e => { localStorage.setItem("ms_sel_lib", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chLib").forEach(x => { x.checked = e.target.checked; }); };
   if (cq("[data-memo]")) cq("[data-memo]").onclick = () => chatNote(id);
-  if (cq("[data-newx]")) cq("[data-newx]").onclick = () => { chatNew = null; delete chatDraft.new; renderChat(); };
+  if (cq("[data-newx]")) cq("[data-newx]").onclick = () => chatNewDrop();;
   if (!m) return;
   if (cq("[data-retry]")) cq("[data-retry]").onclick = e => { e.preventDefault(); chatAsk(id, null, true); };
   if (cq("[data-dec]")) cq("[data-dec]").onclick = () => openDecision({ thread: m.thread || [], quote: m.quote, where: selHeading(m.node), note: [m.note, (chatDraft[id] || "").trim()].filter(Boolean).join("\n") });
@@ -1887,10 +1938,90 @@ function chatBind(card) {
   all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k]); });
   all("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].alts[k]); b.textContent = "복사됨"; });
 }
+function chatNewDrop() { chatNew = null; delete chatDraft.new; if (chatActive === "new") chatActive = null; renderChat(); marksRefresh(); }
+// ---- 글 옆 보기: 카드마다 제 글의 높이에. 가운데 칸(#center)만 스크롤하고, 카드 줄은 그만큼 옮겨 그린다(transform) — 스크롤이 하나라 어긋나지 않는다
+function chatAnchorY(id) {   // 그 대화의 글이 가운데 칸에서 얼마나 아래에 있나 (스크롤 0 기준 px). 그 글 칸이 지금 화면에 없으면 null
+  const m = id === "new" ? chatNew : memoById(id); if (!m) return null;
+  const ta = taFor(m.nid || m.node, m.key); if (!ta || !ta.offsetParent) return null;
+  const c = $("center"), base = c.scrollTop - c.getBoundingClientRect().top;
+  const mk = ta._marks && ta._marks.querySelector("mark[data-mid='" + id + "']");
+  if (mk) return mk.getBoundingClientRect().top + base;
+  const a = selFind(m), r = ta.getBoundingClientRect();   // 밑줄이 없다(다른 대화와 겹침 · 글이 바뀌어 못 찾음) → 글 칸 안의 대강의 자리
+  return r.top + base + (a < 0 ? 0 : (a / Math.max(1, ta.value.length)) * r.height);
+}
+function chatPad(px) { const p = $("chPad"); if (p && p.offsetHeight !== px) p.style.height = px + "px"; }
+function chatScroll() { const inn = $("chLaneIn"); if (inn) inn.style.transform = "translateY(" + (-$("center").scrollTop) + "px)"; }
+function chatLayoutSoon() { clearTimeout(chatLayT); chatLayT = setTimeout(chatLayout, 60); }
+function chatSideSoon() { clearTimeout(chatSideT); chatSideT = setTimeout(() => { if (doc && activeTab() === "chat" && chatSide()) renderChat(); }, 80); }   // 가운데 칸이 다시 그려지면(절·모드 바꿈) 화면에 있는 글이 달라진다
+function chatLayout() {
+  const lane = $("chLane"), inn = $("chLaneIn"), c = $("center");
+  if (!lane || !inn || activeTab() !== "chat" || !chatSide()) { chatPad(0); return; }
+  const lr = lane.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  if (lr.width < 80 || cr.width < 80) return;   // 숨은 탭·접힌 창: 폭이 0 이라 높이를 잴 수 없다
+  const off = cr.top - lr.top, gap = 6, its = [];
+  inn.querySelectorAll(".card.memo").forEach(card => {
+    const id = card.id === "chNew" ? "new" : card.dataset.mid, y = chatAnchorY(id);
+    card.style.display = y == null ? "none" : "";
+    if (y != null) its.push({ card, id, want: Math.max(0, y + off - 4) });
+  });
+  its.forEach(it => { it.h = it.card.offsetHeight; });
+  its.sort((a, b) => a.want - b.want);
+  let bottom = 0;
+  its.forEach(it => { it.top = Math.max(it.want, bottom); bottom = it.top + it.h + gap; });   // 겹치면 아래로 민다
+  const k = its.findIndex(it => it.id === chatActive);
+  if (k > 0 && its[k].top > its[k].want) {   // 지금 보는 대화는 제 글 바로 옆에: 앞의 카드를 위로 올리고, 뒤의 카드를 다시 놓는다
+    its[k].top = its[k].want;
+    for (let i = k - 1; i >= 0; i--) its[i].top = Math.min(its[i].top, its[i + 1].top - its[i].h - gap);
+    if (its[0].top < 0) { const up = -its[0].top; for (let i = 0; i <= k; i++) its[i].top += up; }
+    for (let i = k + 1; i < its.length; i++) its[i].top = Math.max(its[i].want, its[i - 1].top + its[i - 1].h + gap);
+  }
+  its.forEach(it => { it.card.style.top = Math.round(it.top) + "px"; });
+  const last = its.reduce((a, it) => Math.max(a, it.top + it.h), 0);
+  inn.style.height = last + "px";
+  const pad = $("chPad"), base = c.scrollHeight - (pad ? pad.offsetHeight : 0);   // 글의 끝보다 아래로 내려간 카드까지 스크롤이 닿게, 가운데 칸 끝에 빈 자리
+  chatPad(Math.max(0, Math.ceil(last + 16 - lane.clientHeight - (base - c.clientHeight))));
+  chatScroll();
+}
+function chatActivate(id) {   // 지금 보는 대화: 카드를 제 글 옆에 놓고, 본문의 그 구절을 짙게
+  chatActive = id;
+  document.querySelectorAll("#tab-chat .card.memo").forEach(x => x.classList.toggle("act", (x.id === "chNew" ? "new" : x.dataset.mid) === id));
+  document.querySelectorAll(".taback mark").forEach(k => k.classList.toggle("hot", k.dataset.mid === id));
+  chatLayout();
+}
+function chatHover(id, on) { document.querySelectorAll(".taback mark[data-mid='" + id + "']").forEach(k => k.classList.toggle("hov", on)); }
+function chatReveal(card) {   // 카드가 줄 밖에 있으면 글을 굴려 보이게 (글과 카드는 같이 움직인다)
+  const lane = $("chLane"), c = $("center"); if (!lane || !card) return;
+  const lr = lane.getBoundingClientRect(), r = card.getBoundingClientRect();
+  if (r.top < lr.top + 4) c.scrollTop += r.top - lr.top - 12;
+  else if (r.bottom > lr.bottom - 4) c.scrollTop += Math.min(r.top - lr.top - 12, r.bottom - lr.bottom + 12);
+  chatScroll();
+}
+function chatBodyScroll(card) {   // 긴 대화는 카드 안에서 굴린다 — 펼치면 마지막 물음과 답이 보이게
+  const b = card && card.querySelector(".chbody"); if (!b || b.scrollHeight <= b.clientHeight + 1) return;
+  if (b.querySelector(".prog")) { b.scrollTop = b.scrollHeight; return; }
+  const ms = b.querySelectorAll(".fbmsg"); let t = ms[ms.length - 1]; if (!t) return;
+  const p = t.previousElementSibling; if (t.classList.contains("claude") && p && p.classList.contains("user")) t = p;
+  b.scrollTop = Math.max(0, t.offsetTop - 4);
+}
+function chatLaneBind() {
+  const lane = $("chLane"), c = $("center"); if (!lane) return;
+  lane.addEventListener("wheel", e => {   // 카드 줄 위에서 휠을 굴리면 글이 굴러간다 (카드 안의 긴 대화는 먼저 그 안에서)
+    for (let x = e.target; x && x !== lane; x = x.parentElement) {
+      if (x.scrollHeight > x.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(x).overflowY) && (e.deltaY < 0 ? x.scrollTop > 0 : x.scrollTop + x.clientHeight < x.scrollHeight - 1)) return;
+    }
+    c.scrollTop += e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+  }, { passive: true });
+  lane.addEventListener("scroll", () => { if (lane.scrollTop) { const dy = lane.scrollTop; lane.scrollTop = 0; c.scrollTop += dy; chatScroll(); } });   // 입력 칸에 커서가 가며 브라우저가 줄을 굴린 경우 → 글을 굴린다
+}
+$("center").addEventListener("scroll", chatScroll, { passive: true });
+window.addEventListener("resize", chatLayoutSoon);
+document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA" && e.target.closest("#center")) chatLayoutSoon(); });   // 글을 고치면 줄이 바뀌어 대화의 자리도 바뀐다
+new MutationObserver(chatSideSoon).observe($("editor"), { childList: true });
+if (window.ResizeObserver) { const ro = new ResizeObserver(chatLayoutSoon); ro.observe($("editor")); ro.observe($("drawer")); }
 function chatMake() {   // 새로 고른 글을 원고의 대화(메모)로
   doc.memos = doc.memos || [];
   const c = chatNew, m = { id: nextId(doc.memos, "m"), node: c.nid, key: c.key, quote: c.quote, start: c.start, note: "", thread: [], t: Date.now() / 1000, done: false };
-  doc.memos.push(m); chatNew = null; chatOpen.add(m.id);
+  doc.memos.push(m); chatNew = null; chatOpen.add(m.id); if (chatActive === "new") chatActive = m.id;
   return m;
 }
 function chatNote(id) {   // 적은 글을 메모로 남긴다
@@ -1947,10 +2078,10 @@ function memoUi(id, light) {   // 대화 상태가 바뀌면: 머리줄 · 탭�
   const nw = cnt(["wait"]), nn = cnt(["new"]), ne = cnt(["err", "lost"]);
   const st = $("memoState");
   if (st) { st.textContent = [nw ? "Claude 생각 중 " + nw : "", nn ? "새 답 " + nn : "", ne ? "답 못 받음 " + ne : ""].filter(Boolean).map(x => "· " + x).join(" "); st.className = nn ? "new" : ""; }
-  renderTabs();
+  renderTabs(); marksRefresh();
   if (!light) { if (id && chatCard(id)) chatRefresh(id); else renderChat(); }
   else { const top = document.querySelector("#tab-chat .chtop .hint"); if (top) top.textContent = [nn ? "새 답 " + nn : "", nw ? "생각 중 " + nw : ""].filter(Boolean).join(" · "); }
-  renderDocMeta(); marksRefresh(); memoPoll();
+  renderDocMeta(); memoPoll();
 }
 function selFind(m) {   // 고른 글이 지금 글에서 어디 있나 → 시작 자리 (없으면 -1)
   const text = selText(m.nid || m.node, m.key), q = m.quote;
@@ -1999,15 +2130,23 @@ function drawMarks(ta) {
   const back = ta._marks; if (!back || !doc) return;
   const tg = taTarget(ta), text = ta.value;
   const ms = tg ? (doc.memos || []).filter(m => !m.done && m.node === tg.nid && m.key === tg.key) : [];
+  const nw = tg && chatNew && chatNew.nid === tg.nid && chatNew.key === tg.key ? chatNew : null;   // 방금 고른 글 — 물을 말을 적는 동안에도 어디를 골랐는지 보이게
   ta._ranges = [];
-  if (!ms.length) { if (back.firstChild) back.textContent = ""; return; }
+  if (!ms.length && !nw) { if (back.firstChild) back.textContent = ""; return; }
   const cs = getComputedStyle(ta);
   ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "wordSpacing", "textAlign", "tabSize", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"].forEach(k => back.style[k] = cs[k]);
-  const rs = ms.map(m => { const a = (m.start != null && text.slice(m.start, m.start + m.quote.length) === m.quote) ? m.start : text.indexOf(m.quote); return a < 0 ? null : { a, b: a + m.quote.length, m }; })
-    .filter(Boolean).sort((x, y) => x.a - y.a);
+  const at = (q, st) => (st != null && text.slice(st, st + q.length) === q) ? st : text.indexOf(q);
+  const rs = ms.map(m => { const a = at(m.quote, m.start); return a < 0 ? null : { a, b: a + m.quote.length, m }; }).filter(Boolean);
+  if (nw) { const a = at(nw.quote, nw.start); if (a >= 0) rs.push({ a, b: a + nw.quote.length, m: null }); }
+  rs.sort((x, y) => x.a - y.a);
   let h = "", pos = 0;
-  rs.forEach(r => { if (r.a < pos) return; h += esc(text.slice(pos, r.a)) + "<mark class='" + memoState(r.m) + "'>" + esc(text.slice(r.a, r.b)) + "</mark>"; pos = r.b; ta._ranges.push(r); });
+  rs.forEach(r => {
+    if (r.a < pos) return;
+    const id = r.m ? r.m.id : "new";
+    h += esc(text.slice(pos, r.a)) + "<mark class='" + (r.m ? memoState(r.m) : "sel") + (id === chatActive ? " hot" : "") + "' data-mid='" + id + "'>" + esc(text.slice(r.a, r.b)) + "</mark>"; pos = r.b;
+    if (r.m) ta._ranges.push(r);
+  });
   back.innerHTML = h + esc(text.slice(pos)) + "\u200b";
 }
 function marksRefresh() { document.querySelectorAll(".tawrap > textarea").forEach(drawMarks); }
