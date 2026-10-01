@@ -238,6 +238,9 @@
   .card.memo .chIn { font-size: 13px; line-height: 1.6; min-height: 0; margin-top: 6px; resize: none; overflow: hidden; }
   .card.memo .mpal { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: -6px; } .card.memo .mpal button { padding: 2px 6px; font-size: 11.5px; color: var(--text-3); }
   .card.memo .acts { display: flex; align-items: center; flex-wrap: wrap; gap: 0 2px; }
+  .card.memo .chLibL { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px 0 4px; font-size: 12px; color: var(--text-2); cursor: pointer; white-space: nowrap; user-select: none; }
+  .card.memo .chLibL input { margin: 0; }
+  .card.memo .acts .brk { flex-basis: 100%; height: 0; }
   .card.memo.newq { border-left-color: var(--amber); background: var(--amber-bg); }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
   .selalt .acts { margin-left: -8px; }
@@ -1790,6 +1793,7 @@ function chatThreadHtml(m) {
     : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.looked ? "서재를 찾아봄" : "", (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
 }
+const chatLibHtml = () => "<label class='chLibL' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다. 끄면 원고와 자료만 보고 빨리 답합니다'><input type='checkbox' class='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>";
 const chatInputHtml = (id, ph) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
   "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-chip='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>";
 function chatCardHtml(m) {
@@ -1807,7 +1811,7 @@ function chatCardHtml(m) {
   if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)") +
-    "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button><button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button>" +
+    "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
     "<button class='btn' data-dec='1' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다'>결정으로 기록</button><span style='margin-left:auto'></span>" +
     "<button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
   return h + "</div>";
@@ -1826,12 +1830,11 @@ function renderChat() {
   const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
   let h = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>모두 접기</a>" : "") +
-    "<label class='hint' style='display:inline;cursor:pointer;font-weight:400;text-transform:none' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다'><input type='checkbox' id='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>" +
     "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
     "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (nsrc ? " <a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "") + "</div>";
   if (chatNew) h += "<div class='card memo open newq' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
     "<div class='rvtext cq'>" + esc(chatNew.quote) + "</div>" + chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)") +
-    "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button><button class='btn' data-memo='1'>메모로 남기기</button></div></div>";
+    "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1'>메모로 남기기</button></div></div>";
   chatGroups(false).forEach(g => { h += "<div class='rvrev' style='padding-left:0'><a href='#' data-ggo='" + esc(g.nid) + "' style='color:var(--text);text-decoration:none' title='이 절을 가운데에 열기'>" + esc(g.heading.slice(0, 44)) + "</a> <span class='hint' style='display:inline;font-weight:400'>" + g.memos.length + "</span></div>" + g.memos.map(chatCardHtml).join(""); });
   if (dn) h += "<div class='rvrev' style='padding-left:0'><a href='#' class='act' id='chDoneT' style='font-weight:400'>" + (chatShowDone ? "끝낸 대화 접기" : "끝낸 대화 " + dn + "개 보기") + "</a></div>" + (chatShowDone ? chatGroups(true).map(g => g.memos.map(chatCardHtml).join("")).join("") : "");
   const d = $("drawer"), st = d.scrollTop;
@@ -1839,7 +1842,6 @@ function renderChat() {
   el.querySelectorAll(".card.memo").forEach(chatBind);
   const q = id => el.querySelector("#" + id);
   if (q("chEffort")) q("chEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
-  if (q("chLib")) q("chLib").onchange = e => localStorage.setItem("ms_sel_lib", e.target.checked ? "1" : "0");
   if (q("chFold")) q("chFold").onclick = e => { e.preventDefault(); chatOpen.clear(); renderChat(); };
   if (q("chSrc")) q("chSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
   if (q("chDoneT")) q("chDoneT").onclick = e => { e.preventDefault(); chatShowDone = !chatShowDone; renderChat(); };
@@ -1870,6 +1872,7 @@ function chatBind(card) {
   }
   all("[data-chip]").forEach(b => b.onclick = () => chatAsk(id, SEL_CHIPS[+b.dataset.chip][1]));
   if (cq("[data-ask]")) cq("[data-ask]").onclick = () => chatAsk(id);
+  if (cq(".chLib")) cq(".chLib").onchange = e => { localStorage.setItem("ms_sel_lib", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chLib").forEach(x => { x.checked = e.target.checked; }); };
   if (cq("[data-memo]")) cq("[data-memo]").onclick = () => chatNote(id);
   if (cq("[data-newx]")) cq("[data-newx]").onclick = () => { chatNew = null; delete chatDraft.new; renderChat(); };
   if (!m) return;
