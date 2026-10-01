@@ -1650,6 +1650,7 @@ function renderLib() {
   if (it) {
     h += "<div class='sec' style='padding-left:0;margin-top:10px'>" + esc(it.topic.slice(0, 80)) + "</div>" +
       "<div class='hint'>서재 " + it.searched + "편 · 문장 " + (it.nsent || 0).toLocaleString() + "개에서 후보 " + it.ncand + "문장 → 논문 " + it.papers.length + "편 · " + esc(it.model || "") + (it.sec ? " · " + it.sec + "초" : "") + (tokNote(it.tok) ? " · " + tokNote(it.tok) : "") +
+      ((it.odd || []).length ? "<br><span style='color:var(--amber)'>뺀 문서 " + it.odd.length + "개 — 원문이 한국어라 논문 원본이 아닌 것으로 보입니다(파일 이름의 서지와 내용이 다를 수 있습니다): " + esc(it.odd.map(f => f.slice(0, 50)).join(", ")) + "</span>" : "") +
       "<br>찾은 낱말: " + esc((it.concepts || []).map(c => c.name + " (" + c.en.slice(0, 5).join(", ") + (c.en.length > 5 ? " …" : "") + ")").join(" + ")) + "</div>" +
       "<div class='ctl' style='padding:2px 0;margin-left:-8px'><button class='btn' id='libCopy'>글(md)로 복사</button><button class='btn' id='libSave' title='이 원고의 작업 자료 폴더 안 _서재뽑기 폴더에 md 파일로 저장합니다 (Claude 채팅이 읽을 수 있습니다)'>자료 폴더에 저장</button><button class='btn warn' id='libDel'>지우기</button><span class='hint' id='libMsg' style='display:inline'></span></div>" +
       "<div class='libsum'>" + esc(it.summary || "") + "</div>" + libUseHtml(it) +

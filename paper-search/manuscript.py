@@ -1267,20 +1267,24 @@ def _libx_scan(concepts):
     rx = [(_term_rx(c.get("en")), _term_rx(c.get("ko"), True)) for c in concepts]
     rx = [r for r in rx if r[0] or r[1]]
     if not rx:
-        return [], 0, 0
+        return [], 0, 0, []
     need = set(range(len(rx)))
     files = sorted(f[:-len(".번역.정렬.json")] + ".pdf" for f in os.listdir(cfg["GEN_DIR"]) if f.endswith(".번역.정렬.json"))
     try:   # 번역을 만들지 않은 논문은 PDF 본문에서 (문장 번호·번역 없이)
         bare = sorted(p for p in os.listdir(cfg["ARCHIVE"]) if p.lower().endswith(".pdf") and p not in files) if cfg.get("paper_body") else []
     except OSError:
         bare = []
-    groups, nsent, nfiles = [], 0, 0
+    groups, nsent, nfiles, odd = [], 0, 0, []
+    hangul = lambda t: sum(1 for ch in t if "\uac00" <= ch <= "\ud7a3") > len(t) * 0.2
     for pdf in files + bare:
         if pdf in bare:
             sents = _pdf_sentences(pdf)
         else:
             sents = sorted(_translation_sentences(pdf), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
         if not sents:
+            continue
+        if sum(1 for x in sents if hangul(x[1])) > len(sents) * 0.15:   # 원문이 한국어다 — 논문 원본이 아니라 번역본 PDF 가 논문 이름으로 들어온 것. 서지가 맞지 않아 근거로 쓰면 엉뚱한 논문의 말이 된다
+            odd.append(pdf)
             continue
         nfiles += 1
         nsent += len(sents)
@@ -1306,7 +1310,7 @@ def _libx_scan(concepts):
         for m in groups:
             if r < len(m) and len(out) < 320:
                 out.append(m[r])
-    return out, nfiles, nsent
+    return out, nfiles, nsent, odd
 
 
 _LIBX_KIND = {"direct": "직접 다룸", "mention": "지나가며 언급", "cites": "남의 연구를 들어 말함"}
@@ -1329,7 +1333,7 @@ def lib_extract(topic, effort="xhigh"):
     concepts = [c for c in concepts if c["en"] or c["ko"]]
     if not concepts:
         return {"error": "찾을 낱말을 정하지 못했습니다" + _why()}
-    cands, nfiles, nsent = _libx_scan(concepts)
+    cands, nfiles, nsent, odd = _libx_scan(concepts)
     if not cands:
         return {"error": "서재에서 그 낱말들이 함께 나오는 문장을 찾지 못했습니다 (찾은 낱말: %s)" % " / ".join(", ".join(c["en"][:6]) for c in concepts)}
     order = []
@@ -1384,7 +1388,7 @@ def lib_extract(topic, effort="xhigh"):
             meta = paper_meta(f)
             papers.append({"file": f, "short": paper_short(f), "title": meta.get("title") or "", "kind": p.get("kind") if p.get("kind") in _LIBX_KIND else "mention",
                            "gist": str(p.get("gist") or "").strip(), "sents": sents})
-    item = {"id": "x%d" % int(time.time() * 1000), "topic": topic, "t": time.time(), "concepts": concepts, "searched": nfiles, "nsent": nsent, "ncand": len(cands),
+    item = {"id": "x%d" % int(time.time() * 1000), "topic": topic, "t": time.time(), "concepts": concepts, "searched": nfiles, "nsent": nsent, "ncand": len(cands), "odd": odd,
             "summary": str(r.get("summary") or "").strip(), "papers": papers, "model": (res or {}).get("model", ""), "tok": (res or {}).get("tok"), "sec": round(time.time() - t0)}
     with _LIBX_LOCK:   # 창을 닫아도 남게 서버가 적어 둔다
         store = cfg["load_json"](_libx_path(), {}) or {}
