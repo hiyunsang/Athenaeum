@@ -1178,6 +1178,234 @@ def find_evidence(doc, nid, query=""):
     return {"phrases": phrases, "hits": out, "searched": len(files)}
 
 
+# ---------- 서재에서 뽑기: 주제를 적으면 내 논문들에서 그 내용을 말한 대목과 논문을 모은다 ----------
+# 번역 문장표(논문 197편·문장 10만 개, 읽는 데 2초)를 낱말로 훑어 후보를 추리고(_libx_scan), Claude 가 정말 그 내용인 문장만 골라 논문별로 묶는다.
+# 고른 문장이 인용한 선행 연구는 그 논문 PDF 의 참고문헌 목록에서 찾아 붙인다(_pdf_refs) — '누가 그 말을 했나'를 따라갈 수 있게.
+_LIBX_LOCK = threading.Lock()
+_pdf_refs_cache = {}
+
+
+def _libx_path():
+    return os.path.join(cfg["MS_DIR"], "_서재뽑기.json")
+
+
+def _pdf_refs(fname):
+    """논문 PDF 뒤쪽의 참고문헌 목록 → {번호: 글}. '[12] …' 나 '12. …' 로 번호가 붙은 목록만 (서재 207편 중 169편에서 읽힌다)."""
+    if fname in _pdf_refs_cache:
+        return _pdf_refs_cache[fname]
+    out = {}
+    try:
+        import fitz
+        d = fitz.open(os.path.join(cfg["ARCHIVE"], fname))
+        n = len(d)
+        text = "\n".join(d[i].get_text() for i in range(max(0, n - 8), n))
+        d.close()
+        k = max(text.rfind("\nReferences"), text.rfind("\nREFERENCES"), text.rfind("\nR E F E R E N C E S"))
+        if k >= 0:
+            tail = text[k:]
+            marks = list(re.finditer(r"(?m)^\s*\[(\d{1,3})\]\s*", tail))
+            if len(marks) < 5:
+                marks = list(re.finditer(r"(?m)^\s*(\d{1,3})\.\s+(?=[A-Z])", tail))
+            for i, m in enumerate(marks):
+                end = marks[i + 1].start() if i + 1 < len(marks) else min(len(tail), m.end() + 600)
+                body = re.sub(r"\s+", " ", tail[m.end():end]).strip()
+                if int(m.group(1)) not in out and 15 < len(body) < 700:
+                    out[int(m.group(1))] = body
+    except Exception:
+        out = {}
+    _pdf_refs_cache[fname] = out
+    return out
+
+
+def _term_rx(terms, korean=False):
+    """낱말들 → 정규식. 영어는 낱말 첫머리에서(어간이면 'detach' 가 detached·detachment 에 맞는다), 짧은 약어(BUE)는 낱말 전체로. 띄어쓰기·붙임표는 같은 것으로."""
+    parts = []
+    for t in terms or []:
+        t = str(t or "").strip().lower()
+        if len(t) < 2:
+            continue
+        if korean:
+            parts.append(re.escape(t))
+            continue
+        e = r"[\s\-]*".join(re.escape(w) for w in re.split(r"[\s\-]+", t) if w)
+        parts.append(r"\b" + e + (r"s?\b" if len(t) <= 4 else ""))
+    return re.compile("|".join(parts)) if parts else None
+
+
+def _libx_scan(concepts):
+    """개념(낱말 묶음)들이 모두 가까이(앞 두 문장~다음 문장) 있고, 그 가운데 적어도 (개념 수 − 1)개가 그 문장 안에 있는 문장을 후보로.
+    → (후보들, 훑은 논문 수, 문장 수). 논문마다 14문장까지, 전체 320문장까지(논문마다 돌아가며)."""
+    rx = [(_term_rx(c.get("en")), _term_rx(c.get("ko"), True)) for c in concepts]
+    rx = [r for r in rx if r[0] or r[1]]
+    if not rx:
+        return [], 0, 0
+    need = set(range(len(rx)))
+    files = sorted(f for f in os.listdir(cfg["GEN_DIR"]) if f.endswith(".번역.정렬.json"))
+    groups, nsent = [], 0
+    for f in files:
+        pdf = f[:-len(".번역.정렬.json")] + ".pdf"
+        sents = sorted(_translation_sentences(pdf), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+        nsent += len(sents)
+        hit = []
+        for sid, t, p, ko in sents:
+            low = t.lower()
+            hit.append({k for k, (re_en, re_ko) in enumerate(rx) if (re_en and re_en.search(low)) or (re_ko and ko and re_ko.search(ko))})
+        mine = []
+        for i, (sid, t, p, ko) in enumerate(sents):
+            if not hit[i] or len(hit[i]) < max(1, len(rx) - 1):
+                continue
+            win = set().union(*hit[max(0, i - 2):i + 2])
+            if not need <= win:
+                continue
+            mine.append({"file": pdf, "sent": "s" + str(sid), "n": int(sid) if str(sid).isdigit() else 0, "page": (p + 1) if p is not None else None, "en": t, "ko": ko,
+                         "score": len(hit[i]) * 2 + (2 if hit[i] == need else 0), "prev": sents[i - 1][1] if i and hit[i] != need else ""})
+        if mine:
+            mine.sort(key=lambda h: -h["score"])
+            groups.append(mine[:14])
+    groups.sort(key=lambda m: -sum(h["score"] for h in m[:5]))
+    out = []
+    for r in range(14):
+        for m in groups:
+            if r < len(m) and len(out) < 320:
+                out.append(m[r])
+    return out, len(files), nsent
+
+
+_LIBX_KIND = {"direct": "직접 다룸", "mention": "지나가며 언급", "cites": "남의 연구를 들어 말함"}
+
+
+def lib_extract(topic, effort="high"):
+    """주제(한국어·영어) → 서재에서 그 내용을 말한 대목. → {id, topic, summary, papers: [{file, short, title, kind, gist, sents: [{sent, page, en, ko, cited}]}], …}"""
+    topic = str(topic or "").strip()
+    if len(topic) < 2:
+        return {"error": "찾을 내용을 적어 주세요"}
+    t0 = time.time()
+    plan = cfg["claude_json"](
+        "연구자의 서재(영어 논문들, 문장마다 한국어 번역이 붙어 있다)에서 아래 주제를 말한 문장을 낱말로 찾으려 한다. 주제를 개념 1~3개로 나눠라"
+        "(예: 'BUE 탈락' → 대상 'BUE' + 현상 '탈락'. 나눌 것이 없으면 1개). 개념마다 논문 본문에 실제로 쓰이는 영어 표현 4~14개"
+        "(동의어·약어·다른 철자. 활용형을 한 번에 잡도록 어간으로: detach, shed, fractur, break; 소문자)와 한국어 번역문에 쓰일 표현 2~8개를 적어라. "
+        "너무 흔해서 아무 문장에나 걸리는 낱말(cutting, tool, surface 같은)은 그 개념의 핵심일 때만 넣는다.\n"
+        "JSON 으로만: {\"concepts\": [{\"name\": \"개념 이름(한국어)\", \"en\": [\"...\"], \"ko\": [\"...\"]}]}\n\n[주제]\n" + topic[:600], timeout=120, model="sonnet") or {}
+    concepts = [{"name": str(c.get("name") or "")[:30], "en": [str(x)[:40] for x in (c.get("en") or [])[:16] if str(x).strip()], "ko": [str(x)[:20] for x in (c.get("ko") or [])[:10] if str(x).strip()]}
+                for c in (plan.get("concepts") or [])[:3] if isinstance(c, dict)]
+    concepts = [c for c in concepts if c["en"] or c["ko"]]
+    if not concepts:
+        return {"error": "찾을 낱말을 정하지 못했습니다" + _why()}
+    cands, nfiles, nsent = _libx_scan(concepts)
+    if not cands:
+        return {"error": "서재에서 그 낱말들이 함께 나오는 문장을 찾지 못했습니다 (찾은 낱말: %s)" % " / ".join(", ".join(c["en"][:6]) for c in concepts)}
+    order = []
+    for h in cands:
+        if h["file"] not in order:
+            order.append(h["file"])
+    for k, h in enumerate(cands):
+        h["id"] = "c%d" % (k + 1)
+    blocks = []
+    for pi, f in enumerate(order):
+        mine = sorted((h for h in cands if h["file"] == f), key=lambda h: h["n"])
+        meta = paper_meta(f)
+        blocks.append("## P%d %s — %s\n" % (pi + 1, paper_short(f), str(meta.get("title") or "")[:140]) +
+                      "\n".join("%s (%s) %s%s" % (h["id"], h["sent"], h["en"][:420], ("   ⟨앞 문장: %s⟩" % h["prev"][:200]) if h["prev"] else "") for h in mine))
+    prompt = (
+        "연구자가 자기 서재(영어 논문들)에서 아래 [찾는 내용]을 말한 대목을 모으려 한다. 낱말로 추린 후보 문장을 논문별로 준다(P번호 = 논문, c번호 = 문장). "
+        "정말 그 내용을 말하는 문장만 고르고 논문별로 정리하라. JSON 으로만 답하라:\n"
+        "{\"summary\": \"서재 전체로 보아 이 내용에 대해 무엇이 알려져 있고 논문들이 어떻게 갈리는지 한국어 3~6문장. 어느 논문인지 (저자 연도)로 가리켜라\", "
+        "\"papers\": [{\"p\": 3, \"kind\": \"direct|mention|cites\", \"gist\": \"이 논문이 그 내용에 대해 말하는 것 한국어 1~2문장\", \"keep\": [\"c12\", \"c15\"]}]}\n"
+        "규칙:\n"
+        "- kind: direct = 그 논문이 자기 실험·해석으로 직접 다룬다 / mention = 지나가며 언급한다 / cites = 남의 연구를 들어 말한다(서론·리뷰).\n"
+        "- keep 에는 그 내용을 실제로 말하는 문장만, 중요한 순서로, 논문마다 많아야 6개. 낱말만 걸렸을 뿐 다른 이야기인 문장은 버린다. 남길 문장이 없는 논문은 papers 에 넣지 않는다.\n"
+        "- papers 는 그 내용을 가장 직접·깊게 다룬 논문부터. 후보에 없는 것을 지어내지 마라. gist 는 keep 에 든 문장이 말하는 것만.\n\n"
+        "[찾는 내용]\n%s\n\n[후보 문장]\n%s" % (topic[:600], "\n\n".join(blocks)))
+    model, eff = _SEL_EFFORT.get(effort, _SEL_EFFORT["high"])
+    run = cfg.get("claude_run")
+    res = run(prompt, timeout=900, model=model, effort=eff, tools="") if run else None
+    raw = (res or {}).get("text") or ""
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        r = json.loads(m.group(0)) if m else None
+    except ValueError:
+        r = None
+    if not isinstance(r, dict) or not isinstance(r.get("papers"), list):
+        return {"error": "Claude 가 고르지 못했습니다" + _why()}
+    by_id = {h["id"]: h for h in cands}
+    papers = []
+    for p in r["papers"][:60]:
+        try:
+            f = order[int(p.get("p")) - 1]
+        except (TypeError, ValueError, IndexError):
+            continue
+        sents = []
+        for cid in (p.get("keep") or [])[:8]:
+            h = by_id.get(str(cid))
+            if not h or h["file"] != f:
+                continue
+            refs = _pdf_refs(f)
+            cited = [{"n": n, "line": refs[int(n)][:400], "file": _ref_file(refs[int(n)])} for n in _cite_numbers(h["en"])[:6] if int(n) in refs] if refs else []
+            sents.append({"sent": h["sent"], "page": h["page"], "en": h["en"][:900], "ko": h["ko"][:600], "cited": cited})
+        if sents:
+            meta = paper_meta(f)
+            papers.append({"file": f, "short": paper_short(f), "title": meta.get("title") or "", "kind": p.get("kind") if p.get("kind") in _LIBX_KIND else "mention",
+                           "gist": str(p.get("gist") or "").strip(), "sents": sents})
+    item = {"id": "x%d" % int(time.time() * 1000), "topic": topic, "t": time.time(), "concepts": concepts, "searched": nfiles, "nsent": nsent, "ncand": len(cands),
+            "summary": str(r.get("summary") or "").strip(), "papers": papers, "model": (res or {}).get("model", ""), "tok": (res or {}).get("tok"), "sec": round(time.time() - t0)}
+    with _LIBX_LOCK:   # 창을 닫아도 남게 서버가 적어 둔다
+        store = cfg["load_json"](_libx_path(), {}) or {}
+        store["items"] = [item] + [x for x in store.get("items") or [] if x.get("id") != item["id"]][:39]
+        cfg["save_json"](_libx_path(), store)
+    return item
+
+
+def _libx_md(item):
+    out = ["# 서재에서 뽑기: %s" % item.get("topic", ""), "",
+           "> %s · 서재 %s편(문장 %s개)에서 후보 %s문장 → 논문 %d편" % (time.strftime("%Y-%m-%d %H:%M", time.localtime(item.get("t") or 0)), item.get("searched"), format(item.get("nsent") or 0, ","), item.get("ncand"), len(item.get("papers") or [])),
+           "", item.get("summary", ""), ""]
+    for p in item.get("papers") or []:
+        out += ["## %s — %s" % (p.get("short", ""), p.get("title", "")), "*%s* · %s" % (_LIBX_KIND.get(p.get("kind"), ""), p.get("gist", "")), ""]
+        for st in p.get("sents") or []:
+            out.append("- (%s%s) %s" % (st.get("sent", ""), (", p." + str(st["page"])) if st.get("page") else "", st.get("ko") or st.get("en", "")))
+            if st.get("ko"):
+                out.append("  - 원문: " + st.get("en", ""))
+            for c in st.get("cited") or []:
+                out.append("  - 인용 [%s] %s%s" % (c.get("n"), c.get("line", ""), " (내 서재에 있음)" if c.get("file") else ""))
+        out.append("")
+    return "\n".join(out)
+
+
+def lib_op(body):
+    op = body.get("op") or "list"
+    if op == "run":
+        return lib_extract(body.get("topic"), body.get("effort") or "high")
+    store = cfg["load_json"](_libx_path(), {}) or {}
+    items = store.get("items") or []
+    if op == "list":
+        return {"items": [{"id": x.get("id"), "topic": x.get("topic"), "t": x.get("t"), "papers": len(x.get("papers") or []), "sents": sum(len(p.get("sents") or []) for p in x.get("papers") or [])} for x in items]}
+    item = next((x for x in items if x.get("id") == body.get("xid")), None)
+    if not item:
+        return {"error": "그 결과를 찾지 못했습니다"}
+    if op == "get":
+        return item
+    if op == "delete":
+        with _LIBX_LOCK:
+            store = cfg["load_json"](_libx_path(), {}) or {}
+            store["items"] = [x for x in store.get("items") or [] if x.get("id") != item["id"]]
+            cfg["save_json"](_libx_path(), store)
+        return {"ok": True}
+    if op == "md":
+        return {"md": _libx_md(item)}
+    if op == "save_md":   # 이 원고의 작업 자료 폴더 안 '_서재뽑기' 에 (밑줄 폴더라 Athenaeum 의 Claude 에게는 매번 가지 않는다 — Claude 채팅이 필요할 때 읽는다)
+        doc = load_ms(body.get("id"))
+        d = _mirror_dir(doc) if doc else None
+        if not d:
+            d = next((str(x.get("path")) for x in (doc or {}).get("source_dirs") or [] if os.path.isdir(str(x.get("path") or ""))), None)
+        if not d:
+            return {"error": "연결한 작업 자료 폴더가 없습니다 (「근거」 → 자료에서 폴더를 연결하세요)"}
+        name = re.sub(r'[\\/:*?"<>|\s]+', " ", item.get("topic") or "").strip()[:50].strip(" .") or item["id"]
+        fp = os.path.join(d, "_서재뽑기", name + ".md")
+        _write_text(fp, _libx_md(item))
+        return {"ok": True, "file": fp}
+    return {"error": "알 수 없는 동작"}
+
+
 # ---------- 저널 규격 ----------
 JOURNALS = {
     "JMPT": {"name": "Journal of Materials Processing Technology (Elsevier)", "ref_style": "번호식 [n], Vancouver 계열 (Ernst H, Martellotti M. Title. Journal Year;Vol:pages)",
@@ -3700,6 +3928,8 @@ def handle_post(h, body):
                 d["meta"]["journal"] = body["journal"]; save_ms(d)
             return h._send(200, {"id": d["id"], "title": d["title"], "nodes": len(d["outline"]), "figures": len(d["figures"]),
                                  "refs": len(d.get("refs_text", [])), "comments": len(d.get("comments", []))})
+        if p == "/api/ms/lib":   # 서재에서 뽑기
+            return h._send(200, lib_op(body))
         if p == "/api/ms/evidence":
             return h._send(200, find_evidence(load_ms(body.get("id")), body.get("node"), body.get("query", "")))
         if p == "/api/ms/check":
