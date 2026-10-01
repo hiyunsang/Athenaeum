@@ -3226,6 +3226,15 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, source_op(doc, body))
+        if p == "/api/ms/refs":   # 참고문헌 줄마다 내 서재의 어느 파일인지
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            out = []
+            for r in doc.get("refs_text") or []:
+                m = re.match(r"^\s*\[(\d{1,3})\]", r)
+                out.append({"n": m.group(1) if m else "", "file": _ref_file(r)})
+            return h._send(200, {"refs": out})
         if p == "/api/ms/memos":   # 메모의 대화 상태 (요청이 끊긴 뒤 서버가 얹은 답을 가져갈 때)
             doc = load_ms(body.get("id"))
             if not doc:
