@@ -1610,7 +1610,7 @@ function renderSrc() {
   const nOn = on.length + dirs.filter(d => d.on !== false).reduce((a, d) => a + ((srcScan[d.path] || {}).files || []).length, 0);
   el.innerHTML = "<div class='sec'>자료 " + (dirs.length ? "· 폴더 " + dirs.length + "개 · 파일 " : "") + ss.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>Claude 에게 보여 주는 것 " + nOn + "개 · " + total.toLocaleString() + "자</span></div>" +
     "<div class='hint'>Claude 와 논문 작업을 하며 정리해 둔 글(프로젝트 자료 .md, 결정 사항, 실험 조건 정리, 용어·문체 방침 …)을 넣어 두면, 여기서 Claude 에게 묻거나 고쳐 달라고 할 때 그 내용을 알고 답합니다 — " +
-    "고른 글에 묻기, 문단 초안·다시 쓰기·검토, 피드백 논의, 리비전의 논의·고칠 안·답변. " + (total > 20000 ? "켜 둔 자료가 2만 자를 넘어, 물을 때마다 관련된 대목만 골라 보냅니다." : "켜 둔 자료는 물을 때마다 통째로 같이 갑니다 (많을수록 사용량이 늘어납니다).") + "</div>" +
+    "고른 글에 묻기, 문단 초안·다시 쓰기·검토, 피드백 논의, 리비전의 논의·고칠 안·답변. " + (total > 80000 ? "켜 둔 자료가 8만 자를 넘어, 물을 때마다 관련된 대목만 골라 보냅니다." : "켜 둔 자료는 물을 때마다 통째로 같이 갑니다 (많을수록 사용량이 늘어납니다).") + "</div>" +
     "<div class='ctl' style='padding:8px 0;margin-left:-8px'><button class='btn pri' id='srcAddBtn'>파일 넣기 (.md · .txt · .docx · .pdf)</button><input type='file' id='srcFile' multiple accept='.md,.markdown,.txt,.docx,.pdf' style='display:none'></div><div id='srcMsg' class='hint'>" + esc(srcNote) + "</div>" +
     "<div class='sec' style='padding-left:0'>폴더 연결 <span class='hint' style='font-weight:400;text-transform:none'>밖에서 고치면 바로 반영</span></div>" +
     "<div class='hint'>폴더를 연결해 두면 그 안의 .md · .txt 를 <b>물을 때마다 새로 읽습니다</b>. Claude 데스크톱이 대화 끝에 정리 파일을 그 폴더에 써 주게 해 두면, 여기서는 따로 넣을 필요 없이 늘 최신 내용이 갑니다. (파일 넣기는 넣은 그때의 내용으로 고정됩니다)</div>" +
