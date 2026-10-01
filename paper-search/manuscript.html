@@ -255,6 +255,9 @@
   #chLaneIn .card.memo { position: absolute; left: 0; right: 0; margin: 0; }
   .card.memo .chbody { position: relative; }
   #tab-chat.side .card.memo .chbody { max-height: max(160px, calc(100vh - 330px)); overflow-y: auto; }   /* 긴 대화는 카드 안에서 굴린다 — 카드가 화면보다 길면 글과 같이 볼 수 없다 */
+  .card.memo .chscope { font-size: 11.5px; color: var(--text-3); margin: 5px 0 0; }
+  .card.memo .chscope a { margin-left: 8px; color: var(--text-3); text-decoration: none; } .card.memo .chscope a:hover { color: var(--accent); }
+  .card.memo .chscope a.on { color: var(--text); font-weight: 600; }
   .card.memo.chnow { border-color: var(--accent); } .card.memo.newq.chnow { border-color: var(--amber); }   /* 이름을 act 로 하면 ui.css 의 .act(마우스를 올리면 밑줄)와 겹친다 */
   #chPad { height: 0; }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
@@ -554,8 +557,10 @@ function renderDocMode() {
       (n.review && n.review.result && (n.review.result.issues || []).length ? "<span style='color:var(--amber)'>검토 지적 " + n.review.result.issues.length + "</span>" : "") +
       (commentsFor(n.id).length ? "<span style='color:var(--amber)'>피드백 " + commentsFor(n.id).length + "</span>" : "") +
       (memosFor(n.id).length ? "<a href='#' data-memos='" + n.id + "' style='color:var(--text-2)'>대화 " + memosFor(n.id).length + "</a>" : "") +
+      "<a href='#' data-asksec='" + n.id + "' title='이 절 전체를 놓고 Claude 에게 묻습니다 — 검토·논리 흐름·빠진 것. 1단계 절이면 그 아래 소절까지'>이 절에 묻기</a>" +
       "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
   ed.querySelectorAll("[data-memos]").forEach(a => a.onclick = e => { e.preventDefault(); memoJump(a.dataset.memos); });
+  ed.querySelectorAll("[data-asksec]").forEach(a => a.onclick = e => { e.preventDefault(); openSel({ nid: a.dataset.asksec, key, quote: "", start: 0, scope: "sec" }, null, "ask"); });
   renderDocMeta();
   $("docLang").onchange = e => { localStorage.setItem("ms_doclang", e.target.value); renderDocMode(); };
   autogrow($("docTitle")); $("docTitle").oninput = () => { f.title = $("docTitle").value.replace(/\n/g, " "); doc.title = f.title; save(); $("msSel").options[$("msSel").selectedIndex].text = f.title; };
@@ -1800,15 +1805,52 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey && !e.altKey && (e.key === "k" || e.key === "K")) {   // 고른 글이 있으면 바로 대화로
     const ta = document.activeElement, tg = taTarget(ta);
     if (tg && ta.selectionEnd - ta.selectionStart >= 2) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, end: ta.selectionEnd, quote: ta.value.slice(ta.selectionStart, ta.selectionEnd) }, tg), null, "ask"); }
+    else if (tg) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, quote: "", scope: "para" }, tg), null, "ask"); }   // 고른 글이 없으면 커서가 있는 문단을 놓고
   }
 });
 const SEL_CHIPS = [["더 간결하게", "더 간결하게 줄여 줘"], ["더 자연스럽게", "뜻은 그대로 두고 더 자연스러운 학술 문체로 고쳐 줘"], ["다른 표현", "같은 뜻의 다른 표현을 보여 줘"], ["논리 점검", "이 부분의 논리와 근거에 빈 곳이 있는지 봐 줘"], ["심사자라면", "심사자라면 이 부분에서 무엇을 물을까?"], ["영어로", "영어 학술 문체로 옮겨 줘"]];
+// 물음의 범위: sel 고른 글 · para 그 문단 · sec 그 절(1단계 절이면 소절까지) · doc 원고 전체. 절·원고 전체는 검토와 물음만 (대안으로 바꿔 넣지 않는다)
+const WIDE_CHIPS = [["심사자의 눈으로", "심사자의 눈으로 이 범위를 검토해 줘. 가장 큰 문제부터"], ["논리 흐름", "이 범위의 논리 흐름에서 끊기거나 비약하는 곳을 짚어 줘"], ["겹치는 곳", "이 범위 안에서, 또는 다른 절과 내용이 겹치거나 되풀이되는 곳을 짚어 줘"], ["빠진 것", "이 범위에 빠진 설명·근거·한계가 있는지 봐 줘"], ["요지", "이 범위가 말하는 것을 세 문장으로 요약해 줘 (내가 뜻한 대로 읽히는지 보려는 것)"]];
+const scopeWide = sc => sc === "sec" || sc === "doc";
+const chipsFor = sc => scopeWide(sc) ? WIDE_CHIPS : SEL_CHIPS;
+const docKey = () => msMode === "doc" && (localStorage.getItem("ms_doclang") || "ko") === "en" ? "draft_en" : "draft";
+function secKids(nid) {   // 1단계 절 아래의 소절들
+  const k = doc.outline.findIndex(n => n.id === nid); if (k < 0 || (doc.outline[k].level || 1) !== 1) return [];
+  const out = []; for (let i = k + 1; i < doc.outline.length && (doc.outline[i].level || 1) !== 1; i++) out.push(doc.outline[i]);
+  return out;
+}
+function scopeLabel(x) {   // 절·원고 전체를 놓고 묻는 대화의 이름 (x = 대화, 또는 새로 묻는 글)
+  const nid = x.nid || x.node;
+  if (x.scope === "doc") return "원고 전체";
+  if (x.scope === "sec") { const k = nid === "front" ? 0 : secKids(nid).length; return "절 전체 · " + selHeading(nid) + (k ? " (소절 " + k + "개 포함)" : ""); }
+  return "";
+}
+function paraAt(text, pos) {   // 그 자리가 든 문단 (문단은 빈 줄로 나뉜다)
+  let a = 0, b = text.length, m; const re = /\n[ \t]*\n\s*/g;
+  while ((m = re.exec(text))) { if (m.index >= pos) { b = m.index; break; } a = m.index + m[0].length; }
+  return { a, b: Math.max(a, b), text: text.slice(a, Math.max(a, b)) };
+}
+function chatScope(sc) {   // 새로 묻는 글의 범위를 바꾼다
+  const c = chatNew; if (!c) return;
+  if (sc === "sel") { if (!c.sel) return; Object.assign(c, c.sel); }
+  else if (sc === "para") { const p = paraAt(selText(c.home.nid, c.home.key), c.pos || 0); if (!p.text.trim()) return; Object.assign(c, { quote: p.text, start: p.a, end: p.b }); }
+  else Object.assign(c, { quote: "", start: 0, end: 0 });
+  c.scope = sc; c.nid = sc === "doc" ? "front" : c.home.nid; c.key = sc === "doc" ? "abstract" : c.home.key;   // 원고 전체는 맨 위(초록)에 건다
+  renderChat(); marksRefresh(); chatFocus("new");
+}
 const chatEffort = () => localStorage.getItem("ms_sel_effort") || "xhigh";
 const chatLib = () => localStorage.getItem("ms_sel_lib") !== "0";   // Claude 가 내 서재(번역·논문모음)를 찾아보게 할지
 function closeSel() { chatNew = null; }
 function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있는 대화(memo)를 서랍의 「대화」에 연다
   if (!doc) return;
-  const m = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글의 대화가 있으면 이어서
+  if (ctx && !memo) {   // 범위를 정한다: 문단이면 그 자리의 문단을 찾고, 절·원고 전체면 고른 글 없이
+    ctx = Object.assign({ scope: "sel" }, ctx); ctx.home = { nid: ctx.nid, key: ctx.key }; ctx.pos = ctx.start || 0;
+    ctx.sel = ctx.scope === "sel" ? { quote: ctx.quote, start: ctx.start, end: ctx.end } : null;
+    if (ctx.scope === "para") { const p = paraAt(selText(ctx.nid, ctx.key), ctx.pos); if (p.text.trim()) Object.assign(ctx, { quote: p.text, start: p.a, end: p.b }); else ctx.scope = "sec"; }   // 빈 칸이면 절 전체로
+    if (scopeWide(ctx.scope)) { Object.assign(ctx, { quote: "", start: 0, end: 0 }); if (ctx.scope === "doc") { ctx.nid = "front"; ctx.key = "abstract"; } }
+  }
+  const same = x => !x.done && x.node === ctx.nid && x.key === ctx.key && (scopeWide(ctx.scope) ? x.scope === ctx.scope : !scopeWide(x.scope) && x.quote === ctx.quote);
+  const m = memo || (doc.memos || []).find(same) || null;   // 같은 글(같은 절)의 대화가 있으면 이어서
   if (chatSide()) chatOpen.clear();   // 글 옆 보기에서는 한 번에 하나만 펼친다 (좁은 여백에 긴 대화가 여럿이면 다른 카드가 제 글에서 멀어진다)
   if (m) { chatOpen.add(m.id); if (m.unread) { m.unread = false; save(); } if (m.done) chatShowDone = true; }
   else chatNew = Object.assign({ mode: mode || "ask" }, ctx);
@@ -1834,23 +1876,23 @@ const tokNote = t => t && t.in ? "읽은 토큰 " + tokFmt(t.in) + (t.cached ? "
 const chatWhole = () => localStorage.getItem("ms_sel_whole") !== "0";   // 지금 원고 전체를 같이 보낼지 (기본 켬)
 const chatLibHtml = () => "<label class='chLibL' title='켜 두면 Claude 가 지금 원고 전체(제목·초록·모든 절·그림 캡션·참고문헌)를 읽고 답합니다 — 이 논문이 무엇을 했는지, 다른 절에서 뭐라고 썼는지 알고. 끄면 고른 글이 든 문단만 보고 답합니다(조금 빠름)'><input type='checkbox' class='chWhole'" + (chatWhole() ? " checked" : "") + "> 원고 전체</label>" +
   "<label class='chLibL' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다. 끄면 원고와 자료만 보고 빨리 답합니다'><input type='checkbox' class='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>";
-const chatInputHtml = (id, ph) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
-  "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-chip='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>";
+const chatInputHtml = (id, ph, sc) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
+  "<div class='mpal'>" + chipsFor(sc).map((c, k) => "<button class='btn' data-chip='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>";
 function chatCardHtml(m) {
   const st = memoState(m), open = chatOpen.has(m.id), th = m.thread || [];
   const chip = st === "wait" ? "<span style='color:var(--amber)'>생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 못 받음</span>" : "";
   let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + (m.id === chatActive ? " chnow" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
-    "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>“" + esc(normWs(m.quote).slice(0, 90)) + "”</span>" +
+    "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>" + (scopeWide(m.scope) ? esc(scopeLabel(m)) : (m.scope === "para" ? "문단 · " : "") + "“" + esc(normWs(m.quote).slice(0, 90)) + "”") + "</span>" +
     "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + "</span></div>";
   if (!open) {
     const last = th.filter(x => x.role === "claude").pop(), lastQ = th.filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)").pop();
     const pv = st === "wait" && lastQ ? "나: " + lastQ.text : last ? last.text : m.note || (lastQ ? "나: " + lastQ.text : "");
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
-  h += "<div class='chbody'><div class='rvtext cq'>" + esc(m.quote) + "</div>" + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
+  h += "<div class='chbody'>" + (scopeWide(m.scope) ? "" : "<div class='rvtext cq'>" + esc(m.quote) + "</div>") + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
   if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
-  h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)") +
+  h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)", m.scope) +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
     "<button class='btn' data-dec='1' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다'>결정으로 기록</button><span style='margin-left:auto'></span>" +
     "<button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
@@ -1870,12 +1912,19 @@ function renderChat() {
   const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
   const side = chatSide();
   const top = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
+    "<a href='#' class='act' id='chWide' style='font-weight:400;text-transform:none' title='드래그하지 않고 묻기: 커서가 있는 문단, 그 절 전체, 원고 전체를 놓고 묻습니다. 글 칸에 커서를 두고 Ctrl+K 를 눌러도 됩니다'>+ 묻기</a>" +
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>" + (side ? "접기" : "모두 접기") + "</a>" : "") +
     "<span class='chview' title='글 옆에 = 워드의 메모처럼, 대화를 그 글 옆에 놓고 글을 따라 움직입니다 · 목록 = 모든 대화를 원고 순서대로 한 줄로'><a href='#' data-view='side'" + (side ? " class='on'" : "") + ">글 옆에</a><a href='#' data-view='list'" + (side ? "" : " class='on'") + ">목록</a></span>" +
     "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
-  const newCard = chatNew ? "<div class='card memo open newq" + (chatActive === "new" ? " chnow" : "") + "' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
-    "<div class='chbody'><div class='rvtext cq'>" + esc(chatNew.quote) + "</div></div>" + chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)") +
-    "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1'>메모로 남기기</button></div></div>" : "";
+  let newCard = "";
+  if (chatNew) {
+    const sc = chatNew.scope || "sel", scopes = [["sel", "고른 글"], ["para", "이 문단"], ["sec", "이 절"], ["doc", "원고 전체"]].filter(x => x[0] !== "sel" || chatNew.sel);
+    newCard = "<div class='card memo open newq" + (chatActive === "new" ? " chnow" : "") + "' id='chNew'><div class='m'><b>" + (scopeWide(sc) ? "새로 묻기" : sc === "para" ? "새로 고른 문단" : "새로 고른 글") + "</b><span>" + esc(selHeading((chatNew.home || chatNew).nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
+      "<div class='chscope' title='무엇을 놓고 묻는지. 고른 글·문단은 대안을 받아 그 자리에 바꿔 넣을 수 있고, 절·원고 전체는 검토와 물음만 합니다(1단계 절이면 그 아래 소절까지)'>범위" + scopes.map(x => "<a href='#' data-scope='" + x[0] + "'" + (x[0] === sc ? " class='on'" : "") + ">" + x[1] + "</a>").join("") + "</div>" +
+      "<div class='chbody'><div class='rvtext cq'>" + esc(scopeWide(sc) ? scopeLabel(chatNew) : chatNew.quote) + "</div></div>" +
+      chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : scopeWide(sc) ? "논리 흐름은 어때? / 심사자라면 뭘 물을까? / 빠진 게 있나? (Ctrl+Enter 로 묻기)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)", sc) +
+      "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1'>메모로 남기기</button></div></div>";
+  }
   const srcLink = nsrc ? "<a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "";
   const doneLink = dn ? "<a href='#' class='act' id='chDoneT' style='font-weight:400'>" + (chatShowDone ? "끝낸 대화 접기" : "끝낸 대화 " + dn + "개 보기") + "</a>" : "";
   let h;
@@ -1898,6 +1947,12 @@ function renderChat() {
   const q = id => el.querySelector("#" + id);
   if (q("chEffort")) q("chEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
   if (q("chFold")) q("chFold").onclick = e => { e.preventDefault(); chatOpen.clear(); renderChat(); };
+  if (q("chWide")) q("chWide").onclick = e => {   // 드래그하지 않고 묻기: 마지막으로 쓰던 글 칸의 커서가 있는 문단부터 (범위는 카드에서 바꾼다)
+    e.preventDefault();
+    const ta = lastTa && document.body.contains(lastTa) && taTarget(lastTa) ? lastTa : null;
+    const tg = ta ? taTarget(ta) : cur === "front" ? { nid: "front", key: "abstract" } : node(cur) ? { nid: cur, key: docKey() } : null;
+    if (tg) openSel(Object.assign({ start: ta ? ta.selectionStart : 0, quote: "", scope: ta ? "para" : "sec" }, tg), null, "ask");
+  };
   if (q("chSrc")) q("chSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
   if (q("chDoneT")) q("chDoneT").onclick = e => { e.preventDefault(); chatShowDone = !chatShowDone; renderChat(); };
   el.querySelectorAll("[data-view]").forEach(a => a.onclick = e => { e.preventDefault(); localStorage.setItem("ms_chat_view", a.dataset.view); renderChat(); });
@@ -1938,7 +1993,9 @@ function chatBind(card) {
     ta.onfocus = read;
     ta.onkeydown = e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); chatAsk(id); } else if (e.key === "Escape" && id === "new") chatNewDrop(); };
   }
-  all("[data-chip]").forEach(b => b.onclick = () => chatAsk(id, SEL_CHIPS[+b.dataset.chip][1]));
+  const chips = chipsFor(m ? m.scope : (chatNew || {}).scope);
+  all("[data-chip]").forEach(b => b.onclick = () => chatAsk(id, chips[+b.dataset.chip][1]));
+  all("[data-scope]").forEach(a => a.onclick = e => { e.preventDefault(); chatScope(a.dataset.scope); });
   if (cq("[data-ask]")) cq("[data-ask]").onclick = () => chatAsk(id);
   if (cq(".chWhole")) cq(".chWhole").onchange = e => { localStorage.setItem("ms_sel_whole", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chWhole").forEach(x => { x.checked = e.target.checked; }); };
   if (cq(".chLib")) cq(".chLib").onchange = e => { localStorage.setItem("ms_sel_lib", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chLib").forEach(x => { x.checked = e.target.checked; }); };
@@ -2036,6 +2093,7 @@ if (window.ResizeObserver) { const ro = new ResizeObserver(chatLayoutSoon); ro.o
 function chatMake() {   // 새로 고른 글을 원고의 대화(메모)로
   doc.memos = doc.memos || [];
   const c = chatNew, m = { id: nextId(doc.memos, "m"), node: c.nid, key: c.key, quote: c.quote, start: c.start, note: "", thread: [], t: Date.now() / 1000, done: false };
+  if (c.scope && c.scope !== "sel") m.scope = c.scope;
   doc.memos.push(m); chatNew = null; chatOpen.add(m.id); if (chatActive === "new") chatActive = m.id;
   return m;
 }
@@ -2144,8 +2202,8 @@ function attachMarks(ta) {
 function drawMarks(ta) {
   const back = ta._marks; if (!back || !doc) return;
   const tg = taTarget(ta), text = ta.value;
-  const ms = tg ? (doc.memos || []).filter(m => !m.done && m.node === tg.nid && m.key === tg.key) : [];
-  const nw = tg && chatNew && chatNew.nid === tg.nid && chatNew.key === tg.key ? chatNew : null;   // 방금 고른 글 — 물을 말을 적는 동안에도 어디를 골랐는지 보이게
+  const ms = tg ? (doc.memos || []).filter(m => !m.done && m.node === tg.nid && m.key === tg.key && !scopeWide(m.scope)) : [];   // 절·원고 전체를 놓고 묻는 대화는 밑줄이 없다
+  const nw = tg && chatNew && chatNew.nid === tg.nid && chatNew.key === tg.key && !scopeWide(chatNew.scope) && chatNew.quote ? chatNew : null;   // 방금 고른 글 — 물을 말을 적는 동안에도 어디를 골랐는지 보이게
   ta._ranges = [];
   if (!ms.length && !nw) { if (back.firstChild) back.textContent = ""; return; }
   const cs = getComputedStyle(ta);

@@ -2481,7 +2481,7 @@ def ask_selection(doc, body):
         th = (memo or {}).get("thread") or []
         if not memo or not th or th[-1].get("role") != "user":
             return {"error": "물음이 든 메모를 찾지 못했습니다"}
-        body = dict(body, node=memo.get("node"), key=memo.get("key"), quote=memo.get("quote"), question=th[-1].get("text"), thread=th[:-1])
+        body = dict(body, node=memo.get("node"), key=memo.get("key"), quote=memo.get("quote"), question=th[-1].get("text"), thread=th[:-1], scope=memo.get("scope"))
         res = _ask_selection(doc, body)
 
         def apply(m):
@@ -2792,39 +2792,89 @@ def _mirror_flush(mid):
         pass
 
 
+def _sec_nodes(doc, nid):
+    """절 범위에 드는 개요 조각: 그 절, 1단계 절이면 그 아래 소절까지."""
+    ol = doc.get("outline") or []
+    k = next((i for i, n in enumerate(ol) if n.get("id") == nid), -1)
+    if k < 0:
+        return []
+    out = [ol[k]]
+    if ol[k].get("level", 1) == 1:
+        for n in ol[k + 1:]:
+            if n.get("level", 1) == 1:
+                break
+            out.append(n)
+    return out
+
+
 def _ask_selection(doc, body):
+    """물음의 범위(scope): sel 고른 글 · para 그 문단(고른 글과 같은 길 — 대안이 문단 전체를 대체) · sec 그 절 전체 · doc 원고 전체.
+    절·원고 전체는 검토와 물음만 받고 대안은 내지 않는다(통째로 바꿔 넣지 않는다 — 고칠 문장은 그 문장을 골라 다시 묻는다)."""
     quote = str(body.get("quote") or "").strip()
     question = str(body.get("question") or "").strip()
-    if not quote or not question:
+    scope = body.get("scope") if body.get("scope") in ("para", "sec", "doc") else "sel"
+    wide = scope in ("sec", "doc")
+    if not question or (not quote and not wide):
         return {"error": "고른 글과 물을 말이 필요합니다"}
     nid = body.get("node")
+    key = body.get("key") or "draft"
     node = _rev_node(doc, nid)
-    if nid == "front":
-        text = (doc.get("front") or {}).get("abstract") or ""
-    else:
-        text = (node or {}).get(body.get("key") or "draft") or ""
-    para = next((p for p in re.split(r"\n\s*\n", text) if quote in p), "")
-    if not para and quote in text:   # 고른 글이 문단을 넘는다
-        k = text.find(quote)
-        para = text[max(0, k - 1200):k + len(quote) + 1200]
-    ctx = para.replace(quote, "\u27ea" + quote + "\u27eb", 1) if para else "(고른 글이 든 문단을 찾지 못함 — 그 사이 글이 바뀌었을 수 있다)"
-    lang_en = doc.get("meta", {}).get("lang") == "en" or sum(1 for ch in quote if ord(ch) < 128) > len(quote) * 0.8
     hist = "\n".join("[%s] %s%s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1500],
                                     ("\n  (내놓은 대안: " + " / ".join(str(a)[:300] for a in m.get("alts") or []) + ")") if m.get("alts") else "")
                      for m in (body.get("thread") or [])[-8:])
-    prompt = (
-        "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고에서 글의 한 부분을 골라 묻거나, 고쳐 달라고 하거나, 제 생각(\"이렇게 바꾸면 어때?\")을 말한다. JSON 으로만 답하라:\n"
-        "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"]}\n"
-        "규칙:\n"
-        "- 저자가 '짧게', '숫자만' 이라고 해도 형식은 이 JSON 이다 (짧은 답을 answer 에 넣는다).\n"
-        "- alternatives 는 고쳐 쓰기를 바라거나 표현을 묻는 경우에만 1~3개. 뜻·사실·근거만 묻는 질문이면 빈 배열.\n"
-        "- 각 대안은 [고른 부분]과 정확히 같은 범위를 대체한다. 앞뒤 글과 그대로 이어져야 하므로 고른 부분 밖의 글을 넣거나 빼지 마라. 글은 %s, 학술 문체.\n"
-        "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
-        "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
-        "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
-        "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
-        % ("영어로" if lang_en else "한국어로", doc.get("title", ""), (node or {}).get("heading", ""), ctx[:6000], quote[:4000],
-           ("\n[지금까지의 대화]\n" + hist + "\n") if hist else "", question[:2000]))
+    hist = ("\n[지금까지의 대화]\n" + hist + "\n") if hist else ""
+    if wide:
+        if scope == "doc":
+            label, para = "원고 전체", ""
+        elif nid == "front":
+            label, para = "초록", (doc.get("front") or {}).get("abstract") or ""
+        else:
+            secs = _sec_nodes(doc, nid)
+            alt = "draft_en" if key == "draft" else "draft"
+            label = "「%s」 절 전체" % (node or {}).get("heading", "") + ((" (소절 포함: %s)" % ", ".join("「%s」" % n.get("heading", "") for n in secs[1:])) if len(secs) > 1 else "")
+            para = "\n\n".join("%s %s\n%s" % ("##" if n.get("level", 1) == 1 else "###", n.get("heading", ""), (n.get(key) or n.get(alt) or "").strip() or "(아직 글이 없다)") for n in secs)
+        # 배경(자료 + 원고 전체)은 시스템 프롬프트로. 원고 전체를 놓고 묻는 물음에는 원고를 꼭 준다
+        system, pre, whole = _ctx(doc, nid, key, label + " " + question + " " + para[:3000], True if scope == "doc" else bool(body.get("whole", True)))
+        body_txt = ("(이 범위의 글은 위에 준 원고에서 읽어라. '그 뒤 바뀐 곳' 이 있으면 그것이 지금 글이다.)" if whole
+                    else "[이 범위의 글]\n" + para[:60000])
+        prompt = (
+            "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고의 한 범위 전체를 놓고 묻거나 검토를 부탁한다. JSON 으로만 답하라:\n"
+            "{\"answer\": \"한국어로\", \"alternatives\": []}\n"
+            "규칙:\n"
+            "- 질문이면 그 답을 한다. 검토·의견을 바라면 지적을 중요한 순서로 3~7개: 지적마다 줄을 바꿔 번호를 붙이고, 어디인지(소절 이름과 그 문장의 앞 구절을 짧게 따옴표로) → 무엇이 문제인지 → 어떻게 고칠지 한 줄.\n"
+            "- 이 범위 안에서만 보지 말고, 원고의 다른 곳과 어긋나거나 겹치는 것도 짚어라(어느 절인지 가리켜서).\n"
+            "- 잘된 점을 늘어놓지 마라. 고칠 것이 없으면 없다고 말하라. 듣기 좋은 말을 하지 마라.\n"
+            "- 이 범위를 통째로 다시 쓰지 마라. alternatives 는 항상 빈 배열이다 — 고칠 문장은 저자가 그 문장을 골라 따로 묻는다.\n"
+            "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 저자가 '짧게' 라고 해도 형식은 이 JSON 이다.\n\n"
+            "논문 제목: %s\n물음의 범위: %s\n\n%s\n%s\n[저자의 말]\n%s"
+            % (doc.get("title", ""), label, body_txt, hist, question[:2000]))
+    else:
+        if nid == "front":
+            text = (doc.get("front") or {}).get("abstract") or ""
+        else:
+            text = (node or {}).get(key) or ""
+        para = next((p for p in re.split(r"\n\s*\n", text) if quote in p), "")
+        if not para and quote in text:   # 고른 글이 문단을 넘는다
+            k = text.find(quote)
+            para = text[max(0, k - 1200):k + len(quote) + 1200]
+        ctx = para.replace(quote, "\u27ea" + quote + "\u27eb", 1) if para else "(고른 글이 든 문단을 찾지 못함 — 그 사이 글이 바뀌었을 수 있다)"
+        lang_en = doc.get("meta", {}).get("lang") == "en" or sum(1 for ch in quote if ord(ch) < 128) > len(quote) * 0.8
+        system, pre, whole = _ctx(doc, nid, key, quote + " " + question + " " + para[:3000], bool(body.get("whole", True)))
+        prompt = (
+            "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고에서 글의 한 부분을 골라 묻거나, 고쳐 달라고 하거나, 제 생각(\"이렇게 바꾸면 어때?\")을 말한다. JSON 으로만 답하라:\n"
+            "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"]}\n"
+            "규칙:\n"
+            "- 저자가 '짧게', '숫자만' 이라고 해도 형식은 이 JSON 이다 (짧은 답을 answer 에 넣는다).\n"
+            "- alternatives 는 고쳐 쓰기를 바라거나 표현을 묻는 경우에만 1~3개. 뜻·사실·근거만 묻는 질문이면 빈 배열.\n"
+            "- 각 대안은 [고른 부분]과 정확히 같은 범위를 대체한다. 앞뒤 글과 그대로 이어져야 하므로 고른 부분 밖의 글을 넣거나 빼지 마라. 글은 %s, 학술 문체.\n"
+            "%s"
+            "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
+            "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
+            "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
+            "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
+            % ("영어로" if lang_en else "한국어로",
+               "- 저자는 문단 하나를 통째로 골랐다. 문장만이 아니라 문단의 구성(첫 문장이 요지를 여는지, 문장 순서, 앞뒤 문단과의 이음)도 보라. 대안은 문단 전체를 대체하며 대안은 1~2개면 된다.\n" if scope == "para" else "",
+               doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
     lib = bool(body.get("lib", True)) and os.path.isdir(cfg.get("GEN_DIR") or "")
     cited = _cited_refs(doc, quote, para)
@@ -2841,8 +2891,6 @@ def _ask_selection(doc, body):
                   "- 마지막 답은 반드시 위의 JSON 하나.") % (cfg["GEN_DIR"], cfg["ARCHIVE"])
     else:
         extra += "\n\n(너는 파일을 열 수 없다. 여기 준 글만 보고 답하라. 더 필요한 것이 있으면 무엇이 필요한지 answer 에서 말하라.)"
-    # 배경(자료 + 원고 전체)은 시스템 프롬프트로 — 연달아 물으면 캐시에서 읽힌다. 원고 전체는 기본으로 같이 (화면의 「원고 전체」 체크)
-    system, pre, whole = _ctx(doc, nid, body.get("key") or "draft", quote + " " + question + " " + para[:3000], bool(body.get("whole", True)))
     full = pre + prompt + extra
     run = cfg.get("claude_run")
     meta = {"model": "", "turns": 1}
@@ -2863,7 +2911,7 @@ def _ask_selection(doc, body):
             r = None
     if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):   # '숫자만' 같은 말에 JSON 없이 답한 경우 — 그 글을 답으로
         r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip(), "alternatives": []}
-    alts = [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
+    alts = [] if wide else [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
     return {"answer": str(r.get("answer") or "").strip(), "alternatives": alts, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
