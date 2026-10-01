@@ -232,7 +232,18 @@
   #selPop .mfoot select { font-size: 12px; border-color: transparent; background: transparent; color: var(--text-2); }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
   .selalt .acts { margin-left: -8px; }
-  .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; }
+  .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; } .card.memo.unread { background: var(--accent-bg); }
+  #memoState { font-size: 12px; color: var(--amber); } #memoState.new { color: var(--accent); font-weight: 600; }
+  /* 본문 밑줄: 글 칸 뒤에 같은 글을 투명하게 깔아 메모가 달린 구절만 표시 */
+  .tawrap { position: relative; background: var(--surface); border-radius: var(--r); }
+  .taback { position: absolute; left: 0; top: 0; right: 0; box-sizing: border-box; pointer-events: none; color: transparent; white-space: pre-wrap; overflow-wrap: break-word; border-style: solid; border-color: transparent; z-index: 0; }
+  .taback mark { color: transparent; background: none; border-bottom: 1px dotted var(--text-3); }
+  .taback mark.seen { border-bottom: 1px solid var(--accent); }
+  .taback mark.new { border-bottom: 2px solid var(--accent); background: var(--accent-bg); }
+  .taback mark.wait { border-bottom: 2px dotted var(--amber); background: var(--amber-bg); }
+  .taback mark.err, .taback mark.lost { border-bottom: 2px dotted var(--red); }
+  .tawrap > textarea { position: relative; z-index: 1; background: transparent !important; overflow: hidden; display: block; }
+  .docmode .tawrap { background: transparent; border-radius: 0; } .docmode .tawrap:focus-within { background: var(--sel-bg); }
   .card.srcf { border-left-color: var(--line-2); margin-bottom: var(--s1); } .card.srcf.on { border-left-color: var(--green); }
   .card.srcf .rvtext { max-height: 420px; overflow-y: auto; font-family: var(--font); }
   .card.srcf .frow { display: flex; gap: 8px; cursor: pointer; } .card.srcf .frow:hover { color: var(--accent); }
@@ -265,7 +276,7 @@
   <button class="btn" id="guideBtn" onclick="toggleGuide()" title="이 화면이 어떻게 돌아가는지 (워드·LaTeX 와 비교)">안내</button>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
-  <span class="sp" id="saveState"></span><a href="#" id="wsState" onclick="switchTab('out');return false" title="워드 파일에 반영 (내보내기 탭)"></a>
+  <span class="sp" id="saveState"></span><a href="#" id="memoState" onclick="switchTab('notes');return false" title="Claude 에게 물은 것의 상태 — 누르면 메모·피드백 탭"></a><a href="#" id="wsState" onclick="switchTab('out');return false" title="워드 파일에 반영 (내보내기 탭)"></a>
   <span id="uiCtlHost"></span>
 </header>
 <div id="layout">
@@ -338,7 +349,8 @@ async function openDoc(id) {
   cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
   closeMath(); closeSel(); closeDecision(); closeHistory(); srcEdit = null; wsShow(null); mathWarm();
-  renderAll();
+  memoLive.clear();
+  renderAll(); memoUi();
 }
 function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
 // 저장은 한 번에 하나씩, 순서대로. 저장 중에 또 바뀌면 끝난 뒤 최신 글로 한 번 더 —
@@ -501,6 +513,7 @@ function renderDocMode() {
       (memosFor(n.id).length ? "<a href='#' data-memos='" + n.id + "' style='color:var(--accent)'>메모 " + memosFor(n.id).length + "</a>" : "") +
       "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
   ed.querySelectorAll("[data-memos]").forEach(a => a.onclick = e => { e.preventDefault(); memoJump(a.dataset.memos); });
+  renderDocMeta();
   $("docLang").onchange = e => { localStorage.setItem("ms_doclang", e.target.value); renderDocMode(); };
   autogrow($("docTitle")); $("docTitle").oninput = () => { f.title = $("docTitle").value.replace(/\n/g, " "); doc.title = f.title; save(); $("msSel").options[$("msSel").selectedIndex].text = f.title; };
   ed.querySelectorAll("textarea[data-front]").forEach(t => { autogrow(t); t.oninput = () => { f[t.dataset.front] = t.value; save(); }; });
@@ -1593,8 +1606,15 @@ function renderSrc() {
 
 // ---------- 고른 글: 글 칸에서 드래그 → 메모로 남기거나, Claude 에게 묻기·고쳐 달라기 (대안을 받으면 그 자리에 바꿔 넣는다) ----------
 // doc.memos = [{id, node, key, quote, note, thread: [{role: user|claude, text, alts, base}], t, done}]
-let selCtx = null, selMemo = null, selBusy = false;
+let selCtx = null, selMemo = null, memoPollT = null;
+const memoLive = new Set();   // 이 창에서 답을 기다리는 메모 id (요청이 살아 있다)
 const memosFor = nid => (doc.memos || []).filter(m => m.node === nid && !m.done);
+function memoState(m) {   // wait 답 기다리는 중 · lost 기다리다 끊김 · err 실패 · new 안 읽은 답 · seen 읽은 답 · note 메모만
+  if (m.pending) return memoLive.has(m.id) || Date.now() / 1000 - m.pending < 720 ? "wait" : "lost";
+  if (m.error) return "err";
+  if (m.unread) return "new";
+  return (m.thread || []).some(x => x.role === "claude") ? "seen" : "note";
+}
 function taTarget(ta) {   // 글 칸이 어느 절의 어느 글인가
   if (!ta || ta.tagName !== "TEXTAREA") return null;
   if (ta.id === "draft") return { nid: cur, key: "draft" };
@@ -1611,22 +1631,32 @@ function taFor(nid, key) {   // 그 글이 지금 화면의 어느 글 칸에 �
 const selText = (nid, key) => nid === "front" ? ((doc.front || {}).abstract || "") : ((node(nid) || {})[key] || "");
 const selHeading = nid => nid === "front" ? "초록" : ((node(nid) || {}).heading || "");
 function selBarHide() { const b = $("selBar"); if (b) b.style.display = "none"; }
-document.addEventListener("mouseup", e => {
-  if (e.target.closest && (e.target.closest("#selBar") || e.target.closest("#selPop"))) return;
-  const ta = e.target, tg = taTarget(ta);
-  if (!doc || !tg || ta.selectionEnd - ta.selectionStart < 2 || !ta.value.slice(ta.selectionStart, ta.selectionEnd).trim()) { selBarHide(); return; }
+function selBarShow(e, html, bind) {
   let bar = $("selBar");
-  if (!bar) {
-    bar = document.createElement("div"); bar.id = "selBar";
-    bar.innerHTML = "<button class='btn' data-a='memo' title='고른 글에 메모를 남깁니다'>메모</button><button class='btn pri' data-a='ask' title='고른 글을 놓고 Claude 에게 묻거나 고쳐 달라고 합니다 (Ctrl+K)'>Claude 에게</button>";
-    document.body.appendChild(bar);
-    bar.addEventListener("mousedown", ev => ev.preventDefault());   // 누를 때 글 칸의 선택이 풀리지 않게
-    bar.querySelectorAll("button").forEach(b => b.onclick = () => { const c = bar._ctx; selBarHide(); if (c) openSel(c, null, b.dataset.a); });
-  }
-  bar._ctx = Object.assign({ start: ta.selectionStart, end: ta.selectionEnd, quote: ta.value.slice(ta.selectionStart, ta.selectionEnd) }, tg);
+  if (!bar) { bar = document.createElement("div"); bar.id = "selBar"; document.body.appendChild(bar); bar.addEventListener("mousedown", ev => ev.preventDefault()); }   // 누를 때 글 칸의 선택이 풀리지 않게
+  bar.innerHTML = html; bind(bar);
   bar.style.display = "block";
   bar.style.left = Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, e.clientX - 20)) + "px";
   bar.style.top = Math.max(50, e.clientY - 40) + "px";
+}
+document.addEventListener("mouseup", e => {
+  if (e.target.closest && (e.target.closest("#selBar") || e.target.closest("#selPop"))) return;
+  const ta = e.target, tg = taTarget(ta);
+  if (!doc || !tg) { selBarHide(); return; }
+  const a = ta.selectionStart, b = ta.selectionEnd;
+  if (b - a >= 2 && ta.value.slice(a, b).trim()) {   // 드래그: 메모·Claude 에게
+    const ctx = Object.assign({ start: a, end: b, quote: ta.value.slice(a, b) }, tg);
+    selBarShow(e, "<button class='btn' data-a='memo' title='고른 글에 메모를 남깁니다'>메모</button><button class='btn pri' data-a='ask' title='고른 글을 놓고 Claude 에게 묻거나 고쳐 달라고 합니다 (Ctrl+K)'>Claude 에게</button>",
+      bar => bar.querySelectorAll("button").forEach(btn => btn.onclick = () => { selBarHide(); openSel(ctx, null, btn.dataset.a); }));
+    return;
+  }
+  const hit = a === b && (ta._ranges || []).find(r => a >= r.a && a <= r.b);   // 밑줄 그어진 글을 누름 → 그 메모·대화
+  if (hit) {
+    const label = { wait: "Claude 가 생각하는 중 — 열기", new: "새 답 보기", err: "답을 못 받음 — 열기", lost: "답을 못 받음 — 열기", seen: "대화 보기", note: "메모 보기" }[memoState(hit.m)];
+    selBarShow(e, "<button class='btn pri'>" + label + "</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openSel(null, hit.m, "ask"); });
+    return;
+  }
+  selBarHide();
 });
 document.addEventListener("mousedown", e => { if (!(e.target.closest && e.target.closest("#selBar"))) selBarHide(); });
 document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA" && e.target.id !== "selIn") selBarHide(); });
@@ -1644,7 +1674,7 @@ function openSel(ctx, memo, mode) {   // ctx = {nid, key, start, end, quote} · 
   let pop = $("selPop");
   if (!pop) {
     pop = document.createElement("div"); pop.id = "selPop";
-    pop.innerHTML = "<div class='mh'><b>고른 글</b><span id='selWhere'></span><span style='margin-left:auto'></span><button class='btn' id='selGo' title='원고에서 이 글이 있는 자리로'>그 자리로</button><button class='btn' id='selX'>닫기</button></div>" +
+    pop.innerHTML = "<div class='mh'><b>고른 글</b><span id='selWhere'></span><span style='margin-left:auto'></span><button class='btn' id='selGo' title='원고에서 이 글이 있는 자리로'>그 자리로</button><button class='btn' id='selX' title='닫아도 Claude 는 계속 생각하고, 답은 메모·피드백 탭과 본문 밑줄에 표시됩니다'>닫기</button></div>" +
       "<div class='rvtext' id='selQuote'></div><div id='selNote'></div><div id='selThread'></div><div id='selProg'></div>" +
       "<textarea id='selIn' rows='2' placeholder='메모를 적거나, Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)'></textarea>" +
       "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-k='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>" +
@@ -1662,14 +1692,15 @@ function openSel(ctx, memo, mode) {   // ctx = {nid, key, start, end, quote} · 
     $("selGo").onclick = () => selGoto(selMemo || selCtx);
   }
   selMemo = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글에 남긴 메모가 있으면 이어서
-  selCtx = memo ? { nid: memo.node, key: memo.key, quote: memo.quote } : ctx;
+  selCtx = selMemo ? { nid: selMemo.node, key: selMemo.key, quote: selMemo.quote, start: selMemo.start } : ctx;
   pop.style.display = "block"; selRender();
+  if (selMemo && selMemo.unread) { selMemo.unread = false; save(); memoUi(); }   // 열어 봤으니 읽은 답
   $("selIn").value = ""; $("selIn").placeholder = mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter) — 메모만 남겨도 됩니다";
-  $("selIn").focus();
+  $("selIn").focus(); pop.scrollTop = pop.scrollHeight;
 }
 function selRender() {
   if (!selCtx) return;
-  const q = (selMemo || selCtx).quote;
+  const q = (selMemo || selCtx).quote, st = selMemo ? memoState(selMemo) : "";
   $("selWhere").textContent = selHeading(selCtx.nid).slice(0, 40);
   $("selQuote").textContent = q.length > 700 ? q.slice(0, 500) + " … " + q.slice(-150) : q;
   $("selNote").innerHTML = selMemo && selMemo.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(selMemo.note) + "</div>" : "";
@@ -1679,9 +1710,11 @@ function selRender() {
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
   $("selThread").querySelectorAll("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); selApply(th[i].alts[k]); });
   $("selThread").querySelectorAll("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(th[i].alts[k]); b.textContent = "복사됨"; });
-  $("selProg").innerHTML = selBusy ? "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + ({ xhigh: 50, high: 30, fast: 15 }[$("selEffort").value] || 40) + "초</span></div>" : "";
-  if (selBusy) animateBars($("selProg"));
-  $("selAskBtn").disabled = selBusy;
+  $("selProg").innerHTML = st === "wait" ? "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + ({ xhigh: 50, high: 30, fast: 15 }[selMemo.effort] || 40) + "초</span></div><div class='hint'>이 창을 닫고 다른 곳을 물어도 됩니다. 답이 오면 위쪽과 본문 밑줄에 표시됩니다.</div>"
+    : st === "err" || st === "lost" ? "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (selMemo.error ? " — " + esc(selMemo.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' id='selRetry'>다시 묻기</a></div>" : "";
+  if (st === "wait") animateBars($("selProg"));
+  const rt = $("selRetry"); if (rt) rt.onclick = e => { e.preventDefault(); selAsk(null, selMemo); };
+  $("selAskBtn").disabled = st === "wait";
   const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
   $("selSrc").textContent = nsrc ? "자료 " + nsrc + "개 참고" : ""; $("selSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
 }
@@ -1695,22 +1728,58 @@ function selEnsureMemo() {   // 창에 떠 있는 고른 글을 원고의 메모
 function selSaveMemo() {
   const v = $("selIn").value.trim(); if (!v || !selCtx) return;
   const m = selEnsureMemo(); m.note = m.note ? m.note + "\n" + v : v;
-  $("selIn").value = ""; save(true); selRender(); renderNotes(); renderDocMeta();
+  $("selIn").value = ""; save(true); selRender(); memoUi();
 }
-async function selAsk(text) {
-  if (selBusy || !selCtx) return;
-  const q = (text || $("selIn").value).trim(); if (!q) { $("selIn").focus(); return; }
-  const m = selEnsureMemo(), mid = doc.id;
-  m.thread.push({ role: "user", text: q }); if (!text) $("selIn").value = "";
-  selBusy = true; selRender(); $("selPop").scrollTop = $("selPop").scrollHeight;
-  await saveNow();   // 서버가 지금 글을 보게
-  let r; try { r = await api("/api/ms/ask_sel", { id: mid, node: m.node, key: m.key, quote: m.quote, question: q, thread: m.thread.slice(0, -1), effort: $("selEffort").value }); } catch (e) { r = { error: "서버 연결 실패" }; }
-  selBusy = false;
+async function selAsk(text, retry) {   // 묻는다. 답을 기다리지 않고 다른 글을 또 물어도 된다 — 답은 서버가 그 메모에 얹어 저장한다
+  if (!selCtx && !retry) return;
+  let m = retry;
+  if (!m) {
+    const q = (text || $("selIn").value).trim(); if (!q) { $("selIn").focus(); return; }
+    m = selEnsureMemo(); if (memoState(m) === "wait") return;
+    m.thread.push({ role: "user", text: q, t: Date.now() / 1000 }); if (!text) $("selIn").value = "";
+  }
+  const mid = doc.id, effort = $("selEffort") ? $("selEffort").value : (localStorage.getItem("ms_sel_effort") || "xhigh");
+  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; memoLive.add(m.id);
+  if (selMemo === m) { selRender(); const p0 = $("selPop"); if (p0) p0.scrollTop = p0.scrollHeight; }
+  memoUi();
+  await saveNow();   // 물음까지 든 메모가 서버에 있어야 한다
+  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  memoLive.delete(m.id);
   if (!doc || doc.id !== mid) return;
-  if (r.error) { m.thread.pop(); if (!m.thread.length && !m.note) { doc.memos = doc.memos.filter(x => x !== m); if (selMemo === m) selMemo = null; } alert("⚠ " + r.error); if (!text) $("selIn").value = q; }
-  else m.thread.push({ role: "claude", text: r.answer || "", alts: r.alternatives || [], base: m.quote });
-  save(true); if (selMemo === m || !selMemo) selRender(); renderNotes();
-  const p = $("selPop"); if (p) p.scrollTop = p.scrollHeight;
+  const mm = (doc.memos || []).find(x => x.id === m.id);
+  if (mm) memoTake(mm, r.memo, r.error);
+}
+function memoTake(mm, sm, err) {   // 서버가 답을 얹은 메모를 내 문서에 (방침·본문 등 다른 것은 건드리지 않는다)
+  if (sm) { mm.thread = sm.thread || mm.thread; if (sm.error) mm.error = sm.error; else delete mm.error; }
+  else if (err) mm.error = err;
+  delete mm.pending;
+  const showing = selMemo === mm && $("selPop") && $("selPop").style.display !== "none";
+  mm.unread = !showing && !mm.error && (mm.thread || []).some(x => x.role === "claude");
+  save(true);
+  if (selMemo === mm) { selRender(); if (showing) $("selPop").scrollTop = $("selPop").scrollHeight; }
+  memoUi();
+}
+function memoPoll() {   // 창을 닫았다 열어 요청이 끊긴 메모: 서버가 얹어 둔 답을 5초마다 살펴 가져온다
+  clearTimeout(memoPollT);
+  if (!doc || !(doc.memos || []).some(m => m.pending && !memoLive.has(m.id) && Date.now() / 1000 - m.pending < 720)) return;
+  const mid = doc.id;
+  memoPollT = setTimeout(async () => {
+    try {
+      const r = await api("/api/ms/memos", { id: mid });
+      if (doc && doc.id === mid) (r.memos || []).forEach(sm => { const mm = (doc.memos || []).find(x => x.id === sm.id); if (mm && mm.pending && !memoLive.has(mm.id) && !sm.pending) memoTake(mm, sm, null); });
+    } catch (e) {}
+    memoPoll();
+  }, 5000);
+}
+function memoUi() {   // 메모 상태가 바뀌면: 머리줄 표시 · 탭 이름 · 목록 · 본문 밑줄 · 절의 '메모 n'
+  if (!doc) return;
+  const ms = (doc.memos || []).filter(m => !m.done), cnt = k => ms.filter(m => k.includes(memoState(m))).length;
+  const nw = cnt(["wait"]), nn = cnt(["new"]), ne = cnt(["err", "lost"]);
+  const st = $("memoState");
+  if (st) { st.textContent = [nw ? "Claude 생각 중 " + nw : "", nn ? "새 답 " + nn : "", ne ? "답 못 받음 " + ne : ""].filter(Boolean).map(x => "· " + x).join(" "); st.className = nn ? "new" : ""; }
+  const tab = document.querySelector(".tabs div[data-t='notes']");
+  if (tab) tab.innerHTML = "메모·피드백" + (nn ? " <b style='color:var(--accent)'>" + nn + "</b>" : nw ? " <span style='color:var(--amber)'>…</span>" : "");
+  renderNotes(); renderDocMeta(); marksRefresh(); memoPoll();
 }
 function selFind(m) {   // 고른 글이 지금 글에서 어디 있나 → 시작 자리 (없으면 -1)
   const text = selText(m.nid || m.node, m.key), q = m.quote;
@@ -1742,38 +1811,73 @@ function selApply(alt) {   // 대안을 고른 글 자리에 바꿔 넣는다
     if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
   }
   m.thread.push({ role: "user", text: "(대안으로 바꿈)" });
-  m.quote = alt; m.start = a; save(true); selRender(); renderNotes();
+  m.quote = alt; m.start = a; save(true); selRender(); memoUi();
 }
+// 본문 밑줄: 글 칸(textarea) 뒤에 같은 글을 투명하게 깔고, 메모가 달린 구절에만 밑줄·바탕을 준다
+function attachMarks(ta) {
+  if (!ta || !taTarget(ta)) return;
+  if (!ta._marks) {
+    const wrap = document.createElement("div"); wrap.className = "tawrap";
+    ta.parentNode.insertBefore(wrap, ta);
+    const back = document.createElement("div"); back.className = "taback"; back.setAttribute("aria-hidden", "true");
+    wrap.appendChild(back); wrap.appendChild(ta); ta._marks = back;
+    ta.addEventListener("input", () => drawMarks(ta));
+  }
+  drawMarks(ta);
+}
+function drawMarks(ta) {
+  const back = ta._marks; if (!back || !doc) return;
+  const tg = taTarget(ta), text = ta.value;
+  const ms = tg ? (doc.memos || []).filter(m => !m.done && m.node === tg.nid && m.key === tg.key) : [];
+  ta._ranges = [];
+  if (!ms.length) { if (back.firstChild) back.textContent = ""; return; }
+  const cs = getComputedStyle(ta);
+  ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "wordSpacing", "textAlign", "tabSize", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+   "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"].forEach(k => back.style[k] = cs[k]);
+  const rs = ms.map(m => { const a = (m.start != null && text.slice(m.start, m.start + m.quote.length) === m.quote) ? m.start : text.indexOf(m.quote); return a < 0 ? null : { a, b: a + m.quote.length, m }; })
+    .filter(Boolean).sort((x, y) => x.a - y.a);
+  let h = "", pos = 0;
+  rs.forEach(r => { if (r.a < pos) return; h += esc(text.slice(pos, r.a)) + "<mark class='" + memoState(r.m) + "'>" + esc(text.slice(r.a, r.b)) + "</mark>"; pos = r.b; ta._ranges.push(r); });
+  back.innerHTML = h + esc(text.slice(pos)) + "\u200b";
+}
+function marksRefresh() { document.querySelectorAll(".tawrap > textarea").forEach(drawMarks); }
 function memoJump(nid) { switchTab("notes"); const c = document.querySelector(".card.memo[data-node='" + nid + "']"); if (c) $("drawer").scrollTop = Math.max(0, c.offsetTop - 60); }
 function renderDocMeta() {   // 원고 모드의 절마다 '메모 n' 만 고쳐 그린다 (전체를 다시 그리면 쓰던 자리를 잃는다)
   if (msMode !== "doc") return;
   document.querySelectorAll(".docmode .dsec").forEach(sec => {
     const nid = sec.dataset.n, pm = sec.querySelector(".pm"); if (!pm) return;
-    let a = pm.querySelector("[data-memos]"); const n = memosFor(nid).length;
+    let a = pm.querySelector("[data-memos]"); const ms = memosFor(nid), n = ms.length;
     if (!n) { if (a) a.remove(); return; }
-    if (!a) { a = document.createElement("a"); a.href = "#"; a.dataset.memos = nid; a.style.color = "var(--accent)"; a.onclick = e => { e.preventDefault(); memoJump(nid); }; pm.insertBefore(a, pm.querySelector("[data-go]")); }
-    a.textContent = "메모 " + n;
+    if (!a) { a = document.createElement("a"); a.href = "#"; a.dataset.memos = nid; a.onclick = e => { e.preventDefault(); memoJump(nid); }; pm.insertBefore(a, pm.querySelector("[data-go]")); }
+    const nn = ms.filter(m => memoState(m) === "new").length, nw = ms.filter(m => memoState(m) === "wait").length;
+    a.textContent = "메모 " + n + (nn ? " · 새 답 " + nn : nw ? " · 생각 중" : ""); a.style.color = nn ? "var(--accent)" : nw ? "var(--amber)" : "var(--text-2)"; a.style.fontWeight = nn ? "600" : "";
   });
 }
 function memosHtml() {
   const ms = doc.memos || [];
-  if (!ms.length) return "<div class='sec'>내 메모</div><div class='hint' style='padding-bottom:8px'>원고의 글을 드래그하면 「메모」「Claude 에게」가 뜹니다. 메모를 남기거나, 고른 부분을 놓고 묻고 고쳐 달라고 할 수 있습니다 (Ctrl+K).</div>";
-  return "<div class='sec'>내 메모 " + ms.length + "개 <span class='hint' style='font-weight:400'>남은 것 " + ms.filter(m => !m.done).length + "</span></div>" +
-    ms.slice().reverse().map(m => { const last = (m.thread || []).filter(x => x.role === "claude").pop();
-      return "<div class='card memo" + (m.done ? " done" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
-        "<div class='m'><a href='#' class='go' data-mgo='" + m.id + "' title='원고의 그 자리로'>" + esc(selHeading(m.node).slice(0, 30)) + " →</a><span>" + new Date((m.t || 0) * 1000).toLocaleDateString("ko", { month: "numeric", day: "numeric" }) + "</span>" +
+  if (!ms.length) return "<div class='sec'>내 메모</div><div class='hint' style='padding-bottom:8px'>원고의 글을 드래그하면 「메모」「Claude 에게」가 뜹니다. 메모를 남기거나, 고른 부분을 놓고 묻고 고쳐 달라고 할 수 있습니다 (Ctrl+K). 여러 곳을 잇달아 물어도 됩니다 — 답이 오면 여기와 본문 밑줄에 표시됩니다.</div>";
+  const rank = m => ({ new: 0, err: 1, lost: 1, wait: 2 }[memoState(m)] ?? 3);
+  const order = ms.slice().reverse().sort((x, y) => (x.done - y.done) || (rank(x) - rank(y)));
+  return "<div class='sec'>내 메모 " + ms.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>남은 것 " + ms.filter(m => !m.done).length + " · 새 답이 위로</span></div>" +
+    order.map(m => { const last = (m.thread || []).filter(x => x.role === "claude").pop(), st = memoState(m), lastQ = (m.thread || []).filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)").pop();
+      const chip = st === "wait" ? "<span style='color:var(--amber)'>Claude 가 생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 받지 못함</span>" : "";
+      return "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
+        "<div class='m'><a href='#' class='go' data-mgo='" + m.id + "' title='원고의 그 자리로'>" + esc(selHeading(m.node).slice(0, 30)) + " →</a><span>" + new Date((m.t || 0) * 1000).toLocaleDateString("ko", { month: "numeric", day: "numeric" }) + "</span>" + chip +
         "<span style='margin-left:auto'></span><label class='hint' style='cursor:pointer'><input type='checkbox' class='memoDone' data-mid='" + m.id + "'" + (m.done ? " checked" : "") + "> 끝</label></div>" +
         "<div class='src'>“" + esc(normWs(m.quote).slice(0, 140)) + (m.quote.length > 140 ? "…" : "") + "”</div>" +
         (m.note ? "<div class='t'>" + esc(m.note) + "</div>" : "") +
-        (last ? "<div class='t reply'>" + esc(normWs(last.text).slice(0, 130)) + (last.text.length > 130 ? "…" : "") + "</div>" : "") +
-        "<div class='acts'><button class='btn' data-mopen='" + m.id + "'>" + ((m.thread || []).length ? "대화 보기 (" + m.thread.filter(x => x.role === "claude").length + ")" : "열기") + "</button><button class='btn warn' data-mdel='" + m.id + "'>지우기</button></div></div>"; }).join("");
+        (lastQ ? "<div class='t' style='color:var(--text-2)'><b>나:</b> " + esc(normWs(lastQ.text).slice(0, 90)) + (lastQ.text.length > 90 ? "…" : "") + "</div>" : "") +
+        (last && st !== "wait" ? "<div class='t reply'>" + esc(normWs(last.text).slice(0, 130)) + (last.text.length > 130 ? "…" : "") + "</div>" : "") +
+        "<div class='acts'><button class='btn" + (st === "new" ? " pri" : "") + "' data-mopen='" + m.id + "'>" + (st === "new" ? "새 답 보기" : (m.thread || []).length ? "대화 보기 (" + m.thread.filter(x => x.role === "claude").length + ")" : "열기") + "</button>" +
+        (st === "err" || st === "lost" ? "<button class='btn' data-mretry='" + m.id + "'>다시 묻기</button>" : "") + "<button class='btn warn' data-mdel='" + m.id + "'>지우기</button></div></div>"; }).join("");
 }
 function memosBind(el) {
   const by = id => (doc.memos || []).find(m => m.id === id);
   el.querySelectorAll("[data-mgo]").forEach(a => a.onclick = e => { e.preventDefault(); selGoto(by(a.dataset.mgo)); });
   el.querySelectorAll("[data-mopen]").forEach(b => b.onclick = () => { const m = by(b.dataset.mopen); if (m) openSel(null, m, "ask"); });
-  el.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { const m = by(b.dataset.mdel); if (!m || !confirm("이 메모" + ((m.thread || []).length ? "와 Claude 와의 대화" : "") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); if (selMemo === m) closeSel(); save(true); renderNotes(); renderDocMeta(); });
-  el.querySelectorAll(".memoDone").forEach(cb => cb.onchange = () => { const m = by(cb.dataset.mid); if (m) { m.done = cb.checked; save(); renderNotes(); renderDocMeta(); } });
+  el.querySelectorAll("[data-mretry]").forEach(b => b.onclick = () => { const m = by(b.dataset.mretry); if (m) selAsk(null, m); });
+  el.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { const m = by(b.dataset.mdel); if (!m || !confirm("이 메모" + ((m.thread || []).length ? "와 Claude 와의 대화" : "") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); if (selMemo === m) closeSel(); save(true); memoUi(); });
+  el.querySelectorAll(".memoDone").forEach(cb => cb.onchange = () => { const m = by(cb.dataset.mid); if (m) { m.done = cb.checked; save(); memoUi(); } });
 }
 
 // ---------- 수식: 글 속의 $LaTeX$ (한 줄 안) · $$LaTeX$$ (따로 한 줄). 서버가 MathML 로 바꿔 주고 브라우저가 그린다 ----------
@@ -1798,6 +1902,7 @@ function mathWarm() {   // 원고를 열 때 수식을 한꺼번에 그려 둔�
 }
 function attachMath(ta) {   // 글 칸 아래에 그 안의 수식을 그려 보여 준다. 누르면 고치는 창
   if (!ta) return;
+  attachMarks(ta);   // 메모·Claude 답이 달린 구절의 밑줄
   if (!ta._mathBox) { const box = document.createElement("div"); box.className = "mprev"; box.style.display = "none"; ta.insertAdjacentElement("afterend", box); ta._mathBox = box; }
   const box = ta._mathBox; let timer = null, last = null;
   const draw = async () => {

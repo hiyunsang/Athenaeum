@@ -2421,6 +2421,53 @@ _SEL_EFFORT = {"xhigh": ("opus", "xhigh"), "high": ("opus", None), "fast": ("son
 def ask_selection(doc, body):
     """저자가 고른 부분(quote)에 대해 묻거나("이 말이 맞나"), 고쳐 달라거나("더 간결하게"), 제 생각을 말하면("이렇게 바꾸면 어때")
     → {answer: 한국어 답·평가, alternatives: 고른 부분을 그대로 대체할 글들}. 대화는 화면이 메모에 남긴다."""
+    memo_id = body.get("memo")
+    if memo_id:   # 화면이 물음까지 적어 저장해 둔 메모 — 답은 여기서 그 메모에 얹는다 (창을 닫아도 남는다)
+        memo = next((m for m in doc.get("memos") or [] if m.get("id") == memo_id), None)
+        th = (memo or {}).get("thread") or []
+        if not memo or not th or th[-1].get("role") != "user":
+            return {"error": "물음이 든 메모를 찾지 못했습니다"}
+        body = dict(body, node=memo.get("node"), key=memo.get("key"), quote=memo.get("quote"), question=th[-1].get("text"), thread=th[:-1])
+        res = _ask_selection(doc, body)
+
+        def apply(m):
+            m.pop("pending", None)
+            if res.get("error"):
+                m["error"] = res["error"]
+            else:
+                m.pop("error", None)
+                m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time()})
+                m["unread"] = True
+        with _REV_LOCK:   # 기다리는 동안 저장된 글 위에 답만 얹는다
+            fresh = load_ms(doc["id"]) or doc
+            m = next((x for x in fresh.get("memos") or [] if x.get("id") == memo_id), None)
+            if m is None:
+                return {"error": "그 사이 메모가 지워졌습니다"}
+            apply(m)
+            save_ms(fresh)
+        return {"memo": m}
+    return _ask_selection(doc, body)
+
+
+def _keep_memo_answers(old, d):
+    """화면이 보낸 원고의 메모가, 서버가 얹어 둔 Claude 답보다 옛것일 수 있다(답이 오기 전의 글, 창을 닫았다 연 경우) → 그 답을 지킨다."""
+    have = {m.get("id"): m for m in old.get("memos") or []}
+    sig = lambda th: [(x.get("role"), x.get("text")) for x in th]
+    for m in d.get("memos") or []:
+        o = have.get(m.get("id"))
+        if not o:
+            continue
+        ot, nt = o.get("thread") or [], m.get("thread") or []
+        if len(ot) > len(nt) and sig(ot[:len(nt)]) == sig(nt):
+            m["thread"] = ot
+            for k in ("pending", "unread", "error"):
+                if k in o:
+                    m[k] = o[k]
+                else:
+                    m.pop(k, None)
+
+
+def _ask_selection(doc, body):
     quote = str(body.get("quote") or "").strip()
     question = str(body.get("question") or "").strip()
     if not quote or not question:
@@ -3040,6 +3087,7 @@ def handle_post(h, body):
                 except Exception:
                     pass                # 판을 못 남겨도 저장은 한다
                 d.pop("versions", None)   # 예전 방식의 이력(원고 안의 최근 20개 개요)은 더 쓰지 않는다
+                _keep_memo_answers(old, d)
                 upd = save_ms(d)["updated"]
             return h._send(200, {"ok": True, "updated": upd})
         if p == "/api/ms/delete":
@@ -3089,6 +3137,11 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, source_op(doc, body))
+        if p == "/api/ms/memos":   # 메모의 대화 상태 (요청이 끊긴 뒤 서버가 얹은 답을 가져갈 때)
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            return h._send(200, {"memos": [{k: m.get(k) for k in ("id", "thread", "pending", "unread", "error")} for m in doc.get("memos") or []]})
         if p == "/api/ms/ask_sel":   # 고른 글을 놓고 Claude 에게 묻기·고쳐 달라기
             doc = load_ms(body.get("id"))
             if not doc:
