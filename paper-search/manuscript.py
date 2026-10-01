@@ -1409,10 +1409,171 @@ def _libx_md(item):
     return "\n".join(out)
 
 
+# ---- 뽑은 근거로 일 시키기: 원고와 대응시켜 인용을 점검하거나(map), 그 근거로 문단을 쓰게 한다(write)
+def _libx_keys(item, doc):
+    """뽑힌 논문마다 인용 열쇠(첫 저자+연도)와, 원고의 참고문헌 목록에 이미 있으면 그 번호. → [{key, file, n}] (논문 순서대로)"""
+    have = {}
+    for r in doc.get("refs_text") or []:
+        m = re.match(r"^\s*\[(\d{1,3})\]", r)
+        f = _ref_file(r) if m else ""
+        if f:
+            have.setdefault(f, m.group(1))
+    out, used = [], set()
+    for p in item.get("papers") or []:
+        base = re.sub(r"[^\w\uac00-\ud7a3]", "", paper_short(p["file"]))[:30] or "Paper"
+        k, q = base, 1
+        while k in used:
+            q += 1
+            k = base + chr(96 + q)   # 같은 저자·연도가 둘이면 b, c
+        used.add(k)
+        out.append({"key": k, "file": p["file"], "n": have.get(p["file"], "")})
+    return out
+
+
+def _libx_evidence(item, keys):
+    out = []
+    for i, (p, k) in enumerate(zip(item.get("papers") or [], keys)):
+        out.append("### E%d [@%s] %s — %s (%s)\n요지: %s\n%s" % (
+            i + 1, k["key"], p.get("short", ""), str(p.get("title") or "")[:120], ("원고의 참고문헌 [%s]" % k["n"]) if k["n"] else "원고의 참고문헌 목록에 없음", p.get("gist", ""),
+            "\n".join("- E%d.%d (%s) %s%s" % (i + 1, j + 1, st.get("sent") or "PDF", st.get("en", "")[:500], (" / " + st["ko"][:300]) if st.get("ko") else "") for j, st in enumerate(p.get("sents") or []))))
+    return "\n\n".join(out)
+
+
+def _doc_find(doc, quote, key):
+    """원고에서 그 글이 있는 곳 → (절 id, 글의 키). 못 찾으면 ('', '')"""
+    q = str(quote or "").strip()
+    if len(q) < 8:
+        return "", ""
+    if q in ((doc.get("front") or {}).get("abstract") or ""):
+        return "front", "abstract"
+    for n in doc.get("outline") or []:
+        for k in (key, "draft_en" if key == "draft" else "draft"):
+            if q in (n.get(k) or ""):
+                return str(n.get("id")), k
+    return "", ""
+
+
+def lib_use(doc, body):
+    """뽑아 둔 근거(xid)로: mode map = 원고의 서술·인용과 대응시켜 점검 / write = 그 근거로 문단을 쓴다. 결과는 그 뽑기 결과의 uses 에 남긴다."""
+    store = cfg["load_json"](_libx_path(), {}) or {}
+    item = next((x for x in store.get("items") or [] if x.get("id") == body.get("xid")), None)
+    if not item or not item.get("papers"):
+        return {"error": "그 뽑기 결과를 찾지 못했습니다"}
+    mode = body.get("mode") if body.get("mode") in ("map", "write") else "map"
+    key = "draft" if any((n.get("draft") or "").strip() for n in doc.get("outline") or []) else "draft_en"
+    keys = _libx_keys(item, doc)
+    evid = _libx_evidence(item, keys)
+    note = str(body.get("note") or "").strip()
+    nid = str(body.get("node") or "")
+    system, pre, whole = _ctx(doc, nid or None, key, item.get("topic", "") + " " + note, True)   # 원고 전체 + 작업 자료 (캐시)
+    head = "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 자기 서재(가지고 있는 논문들)에서 한 주제의 근거 문장을 뽑아 왔다 — 아래 [근거]. 원고는 위에 있다.\n"
+    cite_rule = ("- 문헌을 달 때는 글 속에 [@열쇠] 로 적는다(아래 근거 목록의 열쇠, 예: [@%s]). 원고의 참고문헌에 이미 있는 논문도 열쇠로 적으면 프로그램이 번호로 바꾸고, 없는 논문은 목록에 넣는다. 근거 목록에 없는 문헌은 새로 달지 마라.\n"
+                 "- 뽑힌 문장이 말하지 않는 것을 그 논문이 말한 것처럼 쓰지 마라. 원고에 없는 본 연구의 수치·결과를 지어내지 마라.\n") % (keys[0]["key"] if keys else "Author2020")
+    if mode == "map":
+        prompt = (head +
+            "원고에서 이 주제를 말하는 곳을 찾아 근거와 대응시켜라. JSON 으로만 답하라:\n"
+            "{\"summary\": \"원고가 이 주제를 어디서 어떻게 다루고, 근거와 견주어 무엇이 맞고 무엇이 비는지 한국어 3~6문장\", "
+            "\"checks\": [{\"quote\": \"원고의 글 그대로(한 문장 또는 한 구절, 20자 이상)\", \"kind\": \"ok|weak|uncited|conflict|add\", \"ev\": [\"E3.2\"], "
+            "\"note\": \"한국어 1~3문장: 왜 그런지, 근거가 무엇을 말하는지\", \"fix\": \"quote 를 그대로 대체할 글. 고칠 것이 없으면 빈 문자열\"}]}\n"
+            "규칙:\n"
+            "- kind: ok = 원고가 단 인용이 그 주장의 근거로 맞다(뽑힌 문장으로 확인됨) / weak = 인용은 있는데 뽑힌 문장으로는 그 주장이 뒷받침되지 않거나 약하다 / "
+            "uncited = 근거가 서재에 있는데 원고의 그 서술에 인용이 없다 / conflict = 원고의 서술이 근거와 어긋난다 / "
+            "add = 원고에 없는 내용인데 넣으면 좋다(quote 는 넣을 자리의 바로 앞 문장, fix 는 그 문장 뒤에 새 문장을 이은 글).\n"
+            "- quote 는 원고에 있는 글을 한 글자도 바꾸지 말고 옮겨라(프로그램이 그 자리를 찾는다). 원고의 인용 번호 [n] 도 그대로.\n"
+            "- fix 는 quote 와 정확히 같은 범위를 대체한다. 원고에 있던 [n] 은 지우지 마라 — 틀린 인용이라고 판단한 것만 빼고, 뺐으면 note 에 밝혀라.\n"
+            + cite_rule +
+            "- 판단할 근거가 뽑힌 문장에 없으면 그 항목은 내지 마라. 중요한 것부터 많아야 14개. 사소한 표현 차이는 내지 마라.\n"
+            + ("- 저자의 주문: %s\n" % note[:1000] if note else "") +
+            "\n[주제]\n%s\n\n[근거 — E번호 = 논문, E번호.번호 = 문장]\n%s" % (item.get("topic", ""), evid))
+    else:
+        node = _rev_node(doc, nid) if nid else None
+        where = "초록" if nid == "front" else (node or {}).get("heading", "")
+        place = ("「%s」 절" % where) if where else "저자가 정한다(어디가 좋을지 answer 에 적어라)"
+        prompt = (head +
+            "이 근거로 원고에 넣을 글을 써 달라고 한다. 먼저 JSON 하나로 답하고:\n"
+            "{\"answer\": \"무엇을 어떻게 썼는지, 어디에 넣으면 좋은지, 저자가 확인할 것 — 한국어 2~5문장\"}\n"
+            "그 뒤에 쓴 글을 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(쓴 문단들 — 문단 사이는 빈 줄, 제목 줄 없이)\n<<<END>>>\n"
+            "규칙:\n"
+            "- 넣을 곳: " + place + ". 그 절의 지금 글과 앞뒤 절을 읽고, 이미 쓴 내용과 겹치지 않고 이어지게 쓴다. 원고의 언어·문체·용어·기호를 따른다.\n"
+            "- 문헌을 말하는 문장마다 그 근거가 된 논문을 단다. 여러 논문이 같은 말을 하면 [@A][@B] 로 이어 단다. 논문들을 늘어놓지 말고 무엇이 알려져 있고 무엇이 갈리는지로 엮어라.\n"
+            + cite_rule +
+            "- 저자의 주문: %s\n"
+            "\n[주제]\n%s\n\n[근거 — E번호 = 논문, E번호.번호 = 문장]\n%s"
+            % (note[:1500] or "이 주제의 선행 연구를 정리하는 문단", item.get("topic", ""), evid))
+    model, eff = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
+    run = cfg.get("claude_run")
+    t0 = time.time()
+    res = run(pre + prompt, timeout=1500, model=model, effort=eff, tools="", system=system or None) if run else None
+    raw = (res or {}).get("text") or ""
+    if not raw:
+        return {"error": "Claude 응답이 없습니다" + _why()}
+    by_key = {k["key"]: k for k in keys}
+    use = {"id": "u%d" % int(time.time() * 1000), "mode": mode, "doc": doc.get("id"), "t": time.time(), "note": note, "node": nid,
+           "model": (res or {}).get("model", ""), "tok": (res or {}).get("tok"), "sec": round(time.time() - t0)}
+
+    def cites_for(text):
+        ks = [k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", text or "")) if k in by_key]
+        return _cite_info(doc, [{"key": k, "file": by_key[k]["file"]} for k in ks])
+    if mode == "map":
+        m = re.search(r"\{.*\}", raw, re.S)
+        try:
+            r = json.loads(m.group(0)) if m else None
+        except ValueError:
+            r = None
+        if not isinstance(r, dict):
+            return {"error": "Claude 의 답을 읽지 못했습니다"}
+        checks = []
+        for c in (r.get("checks") or [])[:16]:
+            if not isinstance(c, dict):
+                continue
+            quote = str(c.get("quote") or "").strip()
+            node_id, k2 = _doc_find(doc, quote, key)
+            ev = []
+            for e in (c.get("ev") or [])[:4]:
+                mm = re.match(r"^E(\d+)(?:\.(\d+))?$", str(e).strip())
+                if not mm or not (1 <= int(mm.group(1)) <= len(item["papers"])):
+                    continue
+                p = item["papers"][int(mm.group(1)) - 1]
+                si = int(mm.group(2)) - 1 if mm.group(2) else 0
+                st = p["sents"][si] if 0 <= si < len(p["sents"]) else {}
+                ev.append({"file": p["file"], "short": p.get("short", ""), "sent": st.get("sent", ""), "en": st.get("en", "")[:600], "ko": st.get("ko", "")[:400]})
+            fix = str(c.get("fix") or "").strip()
+            if _norm_ws(fix) == _norm_ws(quote):
+                fix = ""
+            checks.append({"quote": quote, "node": node_id, "key": k2, "kind": c.get("kind") if c.get("kind") in ("ok", "weak", "uncited", "conflict", "add") else "weak",
+                           "ev": ev, "note": str(c.get("note") or "").strip(), "fix": fix, "cites": cites_for(fix)})
+        use.update(summary=str(r.get("summary") or "").strip(), checks=checks)
+    else:
+        cut = raw.find("<<<REWRITE")
+        headj = raw if cut < 0 else raw[:cut]
+        mm = re.search(r"<<<REWRITE\s+[\w-]+\s*>>>[ \t]*\r?\n(.*?)\r?\n?<<<END>>>", raw[cut:], re.S) if cut >= 0 else None
+        text = re.sub(r"\r\n?", "\n", mm.group(1)).strip() if mm else ""
+        m = re.search(r"\{.*\}", headj, re.S)
+        try:
+            r = json.loads(m.group(0)) if m else {}
+        except ValueError:
+            r = {}
+        if not text:
+            return {"error": "쓴 글이 끝까지 오지 않았습니다 — 다시 해 보세요"}
+        use.update(answer=str((r or {}).get("answer") or "").strip(), text=text, cites=cites_for(text))
+    with _LIBX_LOCK:
+        store = cfg["load_json"](_libx_path(), {}) or {}
+        it2 = next((x for x in store.get("items") or [] if x.get("id") == item["id"]), None)
+        if it2 is not None:
+            it2["uses"] = [use] + [u for u in it2.get("uses") or []][:9]
+            cfg["save_json"](_libx_path(), store)
+    return use
+
+
 def lib_op(body):
     op = body.get("op") or "list"
     if op == "run":
         return lib_extract(body.get("topic"), body.get("effort") or "xhigh")
+    if op == "use":
+        doc = load_ms(body.get("id"))
+        if not doc:
+            return {"error": "원고 없음"}
+        return lib_use(doc, body)
     store = cfg["load_json"](_libx_path(), {}) or {}
     items = store.get("items") or []
     if op == "list":
@@ -2745,7 +2906,7 @@ def _src(doc, query="", info=None):
 
 
 # ---------- 고른 글: 원고에서 드래그한 부분을 놓고 묻거나 고쳐 달라고 하기 ----------
-_SEL_EFFORT = {"max": ("opus", "max"), "xhigh": ("opus", "xhigh"), "high": ("opus", None), "fast": ("sonnet", None)}   # 화면의 최대·엑스트라·보통·빠름 (기본은 엑스트라)
+_SEL_EFFORT = {"max": ("opus", "max"), "xhigh": ("opus", "xhigh"), "fable": ("fable", "xhigh"), "high": ("opus", None), "fast": ("sonnet", None)}   # 화면의 최대·엑스트라·보통·빠름 (기본은 엑스트라)
 
 
 def ask_selection(doc, body):
@@ -2879,6 +3040,8 @@ def _ref_format(msg):
     auth = []
     for a in msg.get("author") or []:
         fam = (a.get("family") or a.get("name") or "").strip()
+        if fam.isupper() and len(fam) > 2:   # Crossref 기록에 성이 대문자로만 들어 있는 저널이 있다 (SONG → Song)
+            fam = fam.title()
         ini = "".join(p[0].upper() for p in re.split(r"[\s.\-]+", a.get("given") or "") if p)
         if fam:
             auth.append((fam + " " + ini).strip())

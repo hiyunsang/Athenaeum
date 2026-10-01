@@ -291,6 +291,12 @@
   .libs .en { color: var(--text-3); font-family: var(--font-serif); font-style: italic; margin-top: 1px; }
   .libs .c { font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
   .libsum { font-size: calc(13px * var(--ms-scale, 1)); line-height: 1.7; color: var(--text); padding: 6px 0 10px; white-space: pre-wrap; }
+  .libchk { padding: 8px 0 6px; border-top: 1px solid var(--line); font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.6; }
+  .libchk .k { font-size: 11.5px; color: var(--text-3); } .libchk .k b { color: var(--text-2); font-weight: 600; } .libchk .k b.w { color: var(--amber); }
+  .libchk .q { font-family: var(--font-serif); color: var(--text); margin: 2px 0; cursor: pointer; } .libchk .q:hover { color: var(--accent); }
+  .libchk .e { font-size: 11.5px; color: var(--text-2); padding-left: 9px; border-left: 2px solid var(--line-2); margin: 3px 0; }
+  #libNote { font-size: 13px; line-height: 1.6; min-height: 0; resize: none; margin-top: 4px; }
+  .libtext { white-space: pre-wrap; font-size: calc(13px * var(--ms-scale, 1)); line-height: 1.75; color: var(--text); padding: 8px 10px; background: var(--surface); border: 1px solid var(--line); margin: 6px 0; }
   .libpast a { display: block; padding: 3px 0; color: var(--text-2); text-decoration: none; font-size: 12.5px; } .libpast a:hover { color: var(--accent); } .libpast a.on { color: var(--text); font-weight: 600; }
   #refsEdit { font-size: 12.5px; line-height: 1.6; min-height: 320px; }
   .card.srcf .frow { display: flex; gap: 8px; cursor: pointer; } .card.srcf .frow:hover { color: var(--accent); }
@@ -1636,7 +1642,7 @@ function renderLib() {
   let h = "<div class='sec'>서재에서 뽑기</div><div class='hint'>찾을 내용을 적으면 내 논문들의 본문에서 그 내용을 말한 대목을 찾아 논문별로 모읍니다 — 어느 논문이 무엇이라고 했는지, 그 문장이 누구를 인용했는지까지.</div>" +
     "<textarea id='libTopic' rows='2' placeholder='예: BUE 탈락에 관해 언급한 부분 / 인선 반경이 칩 두께보다 작을 때 플로잉을 무시할 수 있다는 근거'>" + esc(libBusy ? libBusy.topic : "") + "</textarea>" +
     "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px;align-items:center'><button class='btn pri' id='libRun'" + (libBusy ? " disabled" : "") + ">찾기</button>" +
-    "<select id='libEffort' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2)' title='후보 문장 가운데 정말 그 내용인 것을 고르는 모델'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (libEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
+    "<select id='libEffort' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2)' title='후보 문장 가운데 정말 그 내용인 것을 고르는 모델'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (libEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
     (libBusy ? "<div class='prog'><span>서재를 훑고 고르는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~1~2분</span></div><div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>" : "") +
     (libErr ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(libErr) + "</div>" : "") +
     (libList && libList.length ? "<div class='sec' style='padding-left:0'>지난 결과</div><div class='libpast'>" + libList.map(x => "<a href='#' data-xid='" + esc(x.id) + "'" + (it && it.id === x.id ? " class='on'" : "") + ">" + esc(x.topic.slice(0, 60)) + " <span class='hint' style='display:inline'>· 논문 " + x.papers + "편 · " + fmtT(x.t) + "</span></a>").join("") + "</div>" : "");
@@ -1645,7 +1651,7 @@ function renderLib() {
       "<div class='hint'>서재 " + it.searched + "편 · 문장 " + (it.nsent || 0).toLocaleString() + "개에서 후보 " + it.ncand + "문장 → 논문 " + it.papers.length + "편 · " + esc(it.model || "") + (it.sec ? " · " + it.sec + "초" : "") + (tokNote(it.tok) ? " · " + tokNote(it.tok) : "") +
       "<br>찾은 낱말: " + esc((it.concepts || []).map(c => c.name + " (" + c.en.slice(0, 5).join(", ") + (c.en.length > 5 ? " …" : "") + ")").join(" + ")) + "</div>" +
       "<div class='ctl' style='padding:2px 0;margin-left:-8px'><button class='btn' id='libCopy'>글(md)로 복사</button><button class='btn' id='libSave' title='이 원고의 작업 자료 폴더 안 _서재뽑기 폴더에 md 파일로 저장합니다 (Claude 채팅이 읽을 수 있습니다)'>자료 폴더에 저장</button><button class='btn warn' id='libDel'>지우기</button><span class='hint' id='libMsg' style='display:inline'></span></div>" +
-      "<div class='libsum'>" + esc(it.summary || "") + "</div>" +
+      "<div class='libsum'>" + esc(it.summary || "") + "</div>" + libUseHtml(it) +
       it.papers.map((p, pi) => "<div class='libp'><h4>" + esc(p.title || p.short) + "</h4><div class='k'><b>" + esc(p.short) + "</b> · " + (kinds[p.kind] || "") + " · <a href='/view?file=" + encodeURIComponent(p.file) + "' target='athenaeum_reader' class='act' style='padding:0'>논문 열기</a></div>" +
         "<div class='g'>" + esc(p.gist) + "</div>" + p.sents.map((st, si) => "<div class='libs'>" + (st.ko ? "<div>" + esc(st.ko) + "</div>" : "") + "<div class='en'>" + esc(st.en) + "</div>" +
           (st.cited || []).map(c => "<div class='c'>인용 [" + esc(c.n) + "] " + esc(c.line) + (c.file ? " · <a class='act' style='padding:0' href='/view?file=" + encodeURIComponent(c.file) + "' target='athenaeum_reader'>내 서재에 있음</a>" : "") + "</div>").join("") +
@@ -1681,7 +1687,75 @@ function renderLib() {
   });
   $("libCopy").onclick = async () => { const r = await api("/api/ms/lib", { op: "md", xid: it.id }); if (r.md) { try { await navigator.clipboard.writeText(r.md); $("libMsg").textContent = "복사했습니다"; } catch (e) { $("libMsg").textContent = "복사하지 못했습니다"; } } };
   $("libSave").onclick = async () => { await saveNow(); const r = await api("/api/ms/lib", { op: "save_md", xid: it.id, id: doc.id }); $("libMsg").textContent = r.error ? "⚠ " + r.error : "저장했습니다: " + r.file.split(/[\\/]/).slice(-2).join("\\"); };
+  libUseBind(el, it);
   $("libDel").onclick = async () => { if (!confirm("이 결과를 지울까요?")) return; await api("/api/ms/lib", { op: "delete", xid: it.id }); libList = (libList || []).filter(x => x.id !== it.id); libItem = null; renderLib(); };
+}
+
+// ---- 뽑은 근거로 일 시키기: 원고와 대응시켜 인용을 점검하거나, 그 근거로 문단을 쓰게 한다
+let libUseBusy = null, libUseErr = "", libNote = "", libNode = "";
+const LIB_KIND = { ok: "인용이 맞음", weak: "인용이 약함", uncited: "인용 없음", conflict: "근거와 어긋남", add: "넣으면 좋음" };
+function libUseHtml(it) {
+  const uses = (it.uses || []).filter(u => u.doc === doc.id), fmtT = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const meta = u => "<div class='hint'>" + fmtT(u.t) + " · " + esc(u.model || "") + (u.sec ? " · " + u.sec + "초" : "") + (tokNote(u.tok) ? " · " + tokNote(u.tok) : "") + (u.note ? " · 주문: " + esc(u.note.slice(0, 60)) : "") + "</div>";
+  let h = "<div class='sec' style='padding-left:0'>이 근거로</div><div class='hint'>뽑은 문장들을 지금 원고와 맞춰 인용을 점검하거나, 이 근거로 문단을 쓰게 합니다. 원고 전체와 작업 자료를 같이 읽습니다(위에서 고른 모델로, 1~3분).</div>" +
+    "<textarea id='libNote' rows='2' placeholder='주문 (비워도 됩니다) — 대응: 특히 볼 것 / 문단 쓰기: 무엇을 쓸지 (예: BUE 탈락에 관한 선행 연구를 정리하는 서론 문단, 150단어쯤)'>" + esc(libNote) + "</textarea>" +
+    "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px;align-items:center;flex-wrap:wrap'><button class='btn pri' id='libMap'" + (libUseBusy ? " disabled" : "") + " title='원고에서 이 주제를 말하는 곳을 찾아 근거와 대응시킵니다: 단 인용이 맞는지, 근거가 있는데 인용이 없는 곳, 근거와 어긋나는 서술, 넣으면 좋은 내용'>원고와 대응 · 인용 점검</button>" +
+    "<button class='btn pri' id='libWrite'" + (libUseBusy ? " disabled" : "") + " title='이 근거로 원고에 넣을 문단을 씁니다. 인용은 반영할 때 참고문헌 번호로 바뀝니다'>문단 쓰기</button>" +
+    "<select id='libNodeSel' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2);max-width:170px' title='문단을 넣을 절'><option value=''>넣을 절 (Claude 가 추천)</option>" +
+    doc.outline.map(n => "<option value='" + n.id + "'" + (libNode === n.id ? " selected" : "") + ">" + esc((n.level === 2 ? "　" : "") + n.heading.slice(0, 30)) + "</option>").join("") + "</select></div>" +
+    (libUseBusy ? "<div class='prog'><span>" + (libUseBusy === "map" ? "원고와 근거를 맞춰 보는 중" : "근거로 문단을 쓰는 중") + "</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~1~3분</span></div>" : "") +
+    (libUseErr ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(libUseErr) + "</div>" : "");
+  uses.forEach((u, ui) => {
+    if (u.mode === "map") {
+      h += "<div class='sec' style='padding-left:0;margin-top:8px'>원고와 대응 · " + (u.checks || []).length + "곳</div>" + meta(u) + "<div class='libsum'>" + esc(u.summary || "") + "</div>" +
+        (u.checks || []).map((c, ci) => "<div class='libchk'><div class='k'><b" + (c.kind === "ok" ? "" : " class='w'") + ">" + (LIB_KIND[c.kind] || "") + "</b>" + (c.node ? " · " + esc(selHeading(c.node).slice(0, 34)) : " · 원고에서 그 글을 찾지 못함") + "</div>" +
+          "<div class='q' data-cgo='" + ui + ":" + ci + "' title='원고의 그 자리로'>“" + esc(c.quote) + "”</div><div>" + esc(c.note) + "</div>" +
+          (c.ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + (e.sent ? "&kind=translation&sent=" + e.sent : "") + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("") +
+          (c.fix ? "<div class='rvdiff' style='margin-top:4px'>" + wordDiff(c.quote, c.fix) + "</div>" + citeLegend(c) : "") +
+          (c.node ? "<div class='acts' style='margin-left:-8px'><button class='btn" + (c.fix ? " pri" : "") + "' data-cmemo='" + ui + ":" + ci + "' title='이 자리에 대화 카드를 만들어 옮깁니다 — 거기서 고칠 글을 바꿔 넣거나 이어서 묻습니다'>" + (c.moved ? "대화로 옮김" : "대화로 옮기기") + "</button></div>" : "") + "</div>").join("");
+    } else {
+      h += "<div class='sec' style='padding-left:0;margin-top:8px'>쓴 문단" + (u.node ? " · " + esc(selHeading(u.node).slice(0, 30)) : "") + "</div>" + meta(u) + "<div class='libsum'>" + esc(u.answer || "") + "</div>" +
+        "<div class='libtext'>" + esc(u.text || "") + "</div>" + citeLegend(u) +
+        "<div class='ctl' style='padding:2px 0;margin-left:-8px;align-items:center;flex-wrap:wrap'><select data-winto='" + ui + "' style='font-size:12px;max-width:170px'>" + doc.outline.map(n => "<option value='" + n.id + "'" + ((u.node || cur) === n.id ? " selected" : "") + ">" + esc((n.level === 2 ? "　" : "") + n.heading.slice(0, 30)) + "</option>").join("") + "</select>" +
+        "<button class='btn pri' data-wins='" + ui + "' title='고른 절의 글 끝에 이 문단을 넣습니다. 인용은 참고문헌 번호로 바뀌고 새 문헌은 목록에 들어갑니다. 그 글 칸에서 Ctrl+Z 로 되돌립니다'>" + (u.put ? "넣었음 — 다시 넣기" : "이 절 끝에 넣기") + "</button><button class='btn' data-wcopy='" + ui + "'>복사</button></div>";
+    }
+  });
+  return h;
+}
+function libUseBind(el, it) {
+  const uses = (it.uses || []).filter(u => u.doc === doc.id), q = id => el.querySelector("#" + id);
+  if (q("libNote")) { autogrow(q("libNote")); q("libNote").oninput = e => { libNote = e.target.value; }; }
+  if (q("libNodeSel")) q("libNodeSel").onchange = e => { libNode = e.target.value; };
+  const run = async mode => {
+    if (libUseBusy) return; const mid = doc.id;
+    libUseBusy = mode; libUseErr = ""; renderLib();
+    await saveNow();   // 서버가 원고 파일을 읽는다
+    let r; try { r = await api("/api/ms/lib", { op: "use", xid: it.id, id: mid, mode, note: libNote.trim(), node: mode === "write" ? libNode : "", effort: libEffort() }); } catch (e) { r = { error: "서버 연결 실패" }; }
+    libUseBusy = null;
+    if (r.error) libUseErr = r.error; else if (libItem && libItem.id === it.id) libItem.uses = [r].concat(libItem.uses || []);
+    renderLib();
+  };
+  if (q("libMap")) q("libMap").onclick = () => run("map");
+  if (q("libWrite")) q("libWrite").onclick = () => run("write");
+  const chk = b => { const [ui, ci] = b.split(":").map(Number); return uses[ui].checks[ci]; };
+  el.querySelectorAll("[data-cgo]").forEach(x => x.onclick = () => { const c = chk(x.dataset.cgo); if (c.node) selGoto({ node: c.node, key: c.key, quote: c.quote }); });
+  el.querySelectorAll("[data-cmemo]").forEach(b => b.onclick = () => {   // 그 자리에 대화 카드를 만든다 — 고칠 글은 대안으로 (서재 인용 [@열쇠] 는 바꿔 넣을 때 번호로)
+    const c = chk(b.dataset.cmemo); doc.memos = doc.memos || [];
+    let m = doc.memos.find(x => !x.done && x.node === c.node && x.key === c.key && x.quote === c.quote);
+    const text = "[서재에서 뽑기 · " + it.topic.slice(0, 40) + "] " + (LIB_KIND[c.kind] || "") + " — " + c.note + (c.ev || []).map(e => "\n· " + e.short + (e.sent ? " " + e.sent : "") + ": " + (e.ko || e.en)).join("");
+    if (!m) { m = { id: nextId(doc.memos, "m"), node: c.node, key: c.key, quote: c.quote, start: selText(c.node, c.key).indexOf(c.quote), note: "", thread: [], t: Date.now() / 1000, done: false }; doc.memos.push(m); }
+    m.thread.push({ role: "claude", text, alts: c.fix ? [c.fix] : [], base: c.quote, cites: c.cites || [], t: Date.now() / 1000 });
+    c.moved = true; save(true); openSel(null, m);
+  });
+  el.querySelectorAll("[data-wcopy]").forEach(b => b.onclick = () => { navigator.clipboard.writeText(uses[+b.dataset.wcopy].text); b.textContent = "복사됨"; });
+  el.querySelectorAll("[data-wins]").forEach(b => b.onclick = () => {
+    const u = uses[+b.dataset.wins], nid = el.querySelector("[data-winto='" + b.dataset.wins + "']").value, n = node(nid); if (!n) return;
+    const key = docKey(), text = citeApply(u.text, u.cites), ta = taFor(nid, key), add = ((n[key] || "").trim() ? "\n\n" : "") + text;
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); if (!document.execCommand("insertText", false, add)) { ta.setRangeText(add, ta.value.length, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
+    else n[key] = (n[key] || "") + add;
+    u.put = true; save(true); renderLib();
+    if (ta) { const c = $("center"); c.scrollTop = Math.max(0, c.scrollTop + ta.getBoundingClientRect().bottom - c.getBoundingClientRect().top - c.clientHeight * 0.7); }
+  });
 }
 
 // ---------- 결정으로 기록: 여기서 정한 것을 작업 자료 폴더의 결정 파일에 한 줄로 (Claude 채팅과 같은 파일을 같이 고친다) ----------
@@ -2047,10 +2121,12 @@ function citeNumbers(cites, text, add) {   // 열쇠 → 번호. add 면 목록�
   });
   return num;
 }
-function citeSwap(text, num) {   // 이어 붙은 [@a][@b] 는 [46,47] 로
-  return text.replace(/\[@[^\]\s,;]+\](?:\s*\[@[^\]\s,;]+\])*/g, run => {
+function citeSwap(text, num) {   // 이어 붙은 [@a][@b] 는 [46,47] 로, 바로 앞에 원고의 인용 [4] 가 붙어 있으면 그것과도 합쳐 [4,46,47]
+  return text.replace(/(\[\d{1,3}(?:\s*[,\u2013\u2014\-]\s*\d{1,3})*\])?( ?)(\[@[^\]\s,;]+\](?:\s*\[@[^\]\s,;]+\])*)/g, (all, prev, gap, run) => {
     const ks = run.match(/\[@[^\]]+\]/g).map(t => t.slice(2, -1));
-    return ks.every(k => num[k]) ? "[" + ks.map(k => num[k]).join(",") + "]" : ks.map(k => num[k] ? "[" + num[k] + "]" : "[@" + k + "]").join("");
+    if (!ks.every(k => num[k])) return (prev || "") + gap + ks.map(k => num[k] ? "[" + num[k] + "]" : "[@" + k + "]").join("");
+    const mine = ks.map(k => +num[k]);
+    return prev ? citeFormat(citeParse(prev).concat(mine), ",") : gap + citeFormat(mine, ",");
   });
 }
 const citePreview = (text, cites) => /\[@/.test(text) ? citeSwap(text, citeNumbers(cites, text, false)) : text;
@@ -2090,7 +2166,7 @@ function chatCardHtml(m) {
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
   h += "<div class='chbody'>" + (scopeWide(m.scope) ? "" : "<div class='rvtext cq'>" + esc(m.quote) + "</div>") + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
-  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ max: 110, xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
+  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ max: 110, fable: 80, xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)", m.scope) +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
@@ -2115,7 +2191,7 @@ function renderChat() {
     "<a href='#' class='act' id='chWide' style='font-weight:400;text-transform:none' title='드래그하지 않고 묻기: 커서가 있는 문단, 그 절 전체, 원고 전체를 놓고 묻습니다. 글 칸에 커서를 두고 Ctrl+K 를 눌러도 됩니다'>+ 묻기</a>" +
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>" + (side ? "접기" : "모두 접기") + "</a>" : "") +
     "<span class='chview' title='글 옆에 = 워드의 메모처럼, 대화를 그 글 옆에 놓고 글을 따라 움직입니다 · 목록 = 모든 대화를 원고 순서대로 한 줄로'><a href='#' data-view='side'" + (side ? " class='on'" : "") + ">글 옆에</a><a href='#' data-view='list'" + (side ? "" : " class='on'") + ">목록</a></span>" +
-    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 꼼꼼히(기본, 30초~1분 반), 최대 = 가장 깊이(더 오래 걸리고 사용량이 많음), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
+    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 꼼꼼히(기본, 30초~1분 반), 최대 = 가장 깊이(더 오래 걸리고 사용량이 많음), Fable = 가장 뛰어난 모델(사용량이 가장 많음), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
   let newCard = "";
   if (chatNew) {
     const sc = chatNew.scope || "sel", scopes = [["sel", "고른 글"], ["para", "이 문단"], ["sec", "이 절"], ["doc", "원고 전체"]].filter(x => x[0] !== "sel" || chatNew.sel);
