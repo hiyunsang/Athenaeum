@@ -378,6 +378,7 @@
 <script>
 const $ = id => document.getElementById(id);
 mountUiControls("#uiCtlHost");   // 글꼴 크기 · 다크 모드 (ui.js)
+window.onUiClose = () => { if (typeof doc !== "undefined" && doc) { renderChat(); renderLib(); } };   // 환경설정에서 모델·대화 자리 등을 바꿨으면 다시 그린다
 let list = [], doc = null, cur = null, saveTimer = null, busy = false;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const short = f => { const m = /^(\d{4})_([A-Za-z0-9&-]+)_([^_]+)_/.exec(f || ""); return m ? m[3] + " " + m[1] : (f || "").slice(0, 24); };
@@ -1633,7 +1634,7 @@ async function refsUndoRenumber() {
 
 // ---------- 서재에서 뽑기: 주제를 적으면 내 논문들에서 그 내용을 말한 대목과 논문을 모은다 ----------
 let libList = null, libItem = null, libBusy = null, libErr = "";
-const libEffort = () => localStorage.getItem("ms_lib_effort2") || "xhigh";   // 기본은 Opus · 엑스트라 (사용자 지시 2026-10-01 — 예전 기본 '보통'이 저장돼 있을 수 있어 키를 바꿨다)
+const libEffort = () => chatEffort();   // 대화와 같은 모델 설정 (환경설정 → Claude). 두 곳에 따로 두니 값이 어긋났다   // 기본은 Opus · 엑스트라 (사용자 지시 2026-10-01 — 예전 기본 '보통'이 저장돼 있을 수 있어 키를 바꿨다)
 function renderLib() {
   const el = $("tab-lib"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
   if (libList === null) { libList = []; api("/api/ms/lib", { op: "list" }).then(r => { libList = r.items || []; renderLib(); }).catch(() => {}); }
@@ -1661,7 +1662,7 @@ function renderLib() {
   el.innerHTML = h;
   const ta = $("libTopic"); if (keep !== null) { ta.value = keep; ta.focus(); }
   autogrow(ta);
-  $("libEffort").onchange = e => localStorage.setItem("ms_lib_effort2", e.target.value);
+  $("libEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
   const run = async () => {
     const topic = ta.value.trim(); if (!topic || libBusy) return;
     libBusy = { topic }; libErr = ""; renderLib(); animateBars(el);

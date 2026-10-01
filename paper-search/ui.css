@@ -45,22 +45,44 @@
 }
 /* 환경설정 값 (ui.js 가 localStorage 로 설정): 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 */
 :root { --read-scale: 1; --ms-scale: 1; --read-width: 760px; --read-lh: 1.8; }
-#uiSettings { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1000; display: flex; align-items: flex-start; justify-content: flex-end; padding: 52px var(--s4); }
-#uiSettings .ubox { width: 460px; max-width: 100%; max-height: calc(100vh - 70px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; padding: var(--s3) var(--s4) var(--s4); font-size: 13px; color: var(--text); }
-#uiSettings .uhead { display: flex; align-items: baseline; gap: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); margin-bottom: var(--s2); }
-#uiSettings .uhead b { font-size: 14px; }
-#uiSettings .uclose { margin-left: auto; background: none; border: 0; color: var(--text-3); cursor: pointer; font-size: 14px; }
-#uiSettings .urow { display: grid; grid-template-columns: 110px 1fr; gap: var(--s2) var(--s3); padding: 9px 0; border-bottom: 1px solid var(--line); align-items: center; }
-#uiSettings .ulab { color: var(--text); font-weight: 500; }
-#uiSettings .uhint { color: var(--text-3); font-size: 11.5px; font-weight: 400; margin-top: 2px; line-height: 1.4; }
-#uiSettings .uctl { display: flex; align-items: center; gap: var(--s2); }
-#uiSettings input[type=range] { flex: 1; accent-color: var(--accent); }
-#uiSettings .uout { min-width: 4.5em; text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
-#uiSettings select { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--text); padding: 4px 8px; font: inherit; }
-#uiSettings .uswitch { display: flex; align-items: center; gap: 6px; color: var(--text-2); cursor: pointer; }
-#uiSettings .ufoot { padding-top: var(--s2); text-align: right; }
-#uiSettings .ureset { background: none; border: 0; color: var(--text-quiet); cursor: pointer; font-size: 12px; }
-#uiSettings .ureset:hover { color: var(--accent); text-decoration: underline; }
+/* 환경설정 창: 왼쪽 갈래 목록 + 오른쪽 항목 묶음. 항목이 늘면 갈래·묶음에 넣는다 (아래로만 길어지지 않게) */
+#uiSettings { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--s4); }
+#uiSettings .ubox { width: 760px; max-width: 100%; height: 540px; max-height: 100%; display: flex; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 10px 30px #0004; font-size: 13px; color: var(--text); overflow: hidden; }
+#uiSettings .uside { width: 176px; flex: none; background: var(--panel); border-right: 1px solid var(--line); padding: var(--s3) var(--s2); overflow-y: auto; }
+#uiSettings .uside input[type=search] { width: 100%; margin-bottom: var(--s2); padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; }
+#uiSettings .ucat { display: block; padding: 6px 10px; border-radius: var(--r); color: var(--text); text-decoration: none; }
+#uiSettings .ucat:hover { background: var(--hover); }
+#uiSettings .ucat.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+#uiSettings .umain { flex: 1; min-width: 0; overflow-y: auto; padding: var(--s3) var(--s6) var(--s6); }
+#uiSettings .uhead { display: flex; align-items: center; gap: var(--s2); padding-bottom: var(--s2); }
+#uiSettings .uhead b { font-size: 17px; font-weight: 600; }
+#uiSettings .uclose { margin-left: auto; background: none; border: 0; color: var(--text-3); cursor: pointer; font-size: 14px; padding: 4px 6px; }
+#uiSettings .uclose:hover { color: var(--text); }
+#uiSettings .ugt { font-size: 11.5px; font-weight: 600; color: var(--text-2); margin: var(--s4) 0 var(--s1) 2px; }
+#uiSettings .ugrp { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); margin-top: var(--s2); }
+#uiSettings .ugt + .ugrp { margin-top: 0; }
+#uiSettings .urow { display: flex; align-items: center; gap: var(--s4); padding: 9px 12px; border-bottom: 1px solid var(--line); min-height: 42px; }
+#uiSettings .urow:last-child { border-bottom: 0; }
+#uiSettings .urow.wide { flex-direction: column; align-items: stretch; gap: var(--s2); }
+#uiSettings .ulab { flex: 1; min-width: 0; color: var(--text); }
+#uiSettings .uhint { color: var(--text-3); font-size: 11.5px; font-weight: 400; margin-top: 2px; line-height: 1.45; }
+#uiSettings .uctl { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); flex: none; width: 250px; max-width: 55%; }
+#uiSettings .urow.wide .uctl { width: auto; max-width: none; justify-content: flex-start; }
+#uiSettings input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+#uiSettings .uout { min-width: 3.6em; text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#uiSettings select, #uiSettings .uctl input[type=text], #uiSettings .uctl input[type=password] { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--text); padding: 4px 8px; font: inherit; min-width: 0; max-width: 100%; }
+#uiSettings .uctl input[type=text], #uiSettings .uctl input[type=password] { flex: 1; }
+#uiSettings .ureset { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); color: var(--text); cursor: pointer; font-size: 12px; padding: 4px 10px; white-space: nowrap; }
+#uiSettings .ureset:hover { border-color: var(--accent); color: var(--accent); }
+/* 켜고 끄는 스위치 (체크 상자를 그대로 쓰되 모양만) */
+#uiSettings .usw { position: relative; display: inline-block; width: 34px; height: 20px; cursor: pointer; }
+#uiSettings .usw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+#uiSettings .usw i { position: absolute; inset: 0; border-radius: 10px; background: var(--line-2); transition: background .12s; }
+#uiSettings .usw i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 8px; background: var(--surface); transition: transform .12s; }
+#uiSettings .usw input:checked + i { background: var(--accent); }
+#uiSettings .usw input:checked + i::after { transform: translateX(14px); }
+#uiSettings .usw input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) { #uiSettings .uside { width: 120px; } #uiSettings .urow { flex-direction: column; align-items: stretch; gap: var(--s2); } #uiSettings .uctl { width: auto; max-width: none; justify-content: flex-start; } }
 /* 공통 화면 조절 버튼 (글꼴 크기·다크 모드) */
 .uictl { display: inline-flex; align-items: center; gap: 2px; margin-left: var(--s2); }
 .uictl button { background: none; border: 0; color: var(--text-quiet); font-size: 12px; padding: 4px 6px; cursor: pointer; border-radius: var(--r); line-height: 1; }
