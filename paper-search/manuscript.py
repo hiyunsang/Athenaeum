@@ -6,6 +6,7 @@
 server.py 가 init() 으로 경로와 Claude 호출 함수를 넘겨 준다 (순환 import 방지).
 """
 import os, io, re, json, time, zipfile, subprocess, threading, urllib.parse
+import gzip, hashlib
 import difflib
 import wordsync
 import mathtex
@@ -323,8 +324,7 @@ def merge_docx(doc, path):
                 ("영어" if tmp["meta"].get("lang") == "en" else "한국어", "영어" if doc.get("meta", {}).get("lang") == "en" else "한국어")}
     num = lambda h: (re.match(r"^\s*(\d+(?:\.\d+)*)", h or "") or [None, None])[1]
     key = lambda h: _tokens(re.sub(r"^\s*\d+(?:\.\d+)*\.?\s*", "", h or ""))
-    doc.setdefault("versions", [])
-    doc["versions"] = (doc["versions"] + [{"t": doc.get("updated", time.time()), "outline": json.loads(json.dumps(doc["outline"]))}])[-20:]
+    snapshot(doc, "워드 덮어쓰기 전", force=True)   # 덮어쓰기 전의 글은 판 이력에
     stat = {"updated": 0, "same": 0, "added": 0}
     used, last_idx = set(), -1
     for tn in tmp["outline"]:
@@ -371,6 +371,109 @@ def merge_docx(doc, path):
     doc["source_docx"] = path
     save_ms(doc)
     return dict(stat, id=doc["id"], nodes=len(doc["outline"]), comments=len(doc["comments"]))
+
+
+# ---------- 판 이력: 글의 사본을 원고\판\<원고 id>\YYYYMMDD_HHMMSS.json.gz 로 ----------
+# 원고 파일은 0.7초마다 통째로 덮어써지므로, 지난 글로 돌아가려면 따로 남겨 둔 판이 있어야 한다.
+# 언제: 저장할 때 마지막 판에서 10분이 지났고 글이 달라졌으면(덮어쓰기 직전의 글을), 워드 덮어쓰기·되돌리기 앞에는 바로, 사용자가 「지금 판 남기기」.
+_SNAP_EVERY = 600
+_snap_state = {}   # 원고 id → {t: 마지막 판을 남긴 시각, h: 그 글의 해시}
+_SNAP_KEYS = ("id", "level", "heading", "claim", "draft", "draft_en", "status")
+
+
+def _snap_dir(mid):
+    return os.path.join(cfg["MS_DIR"], "판", os.path.basename(str(mid)))
+
+
+def _snap_body(doc):
+    """판에 담는 것은 글뿐: 제목·머리부·절마다 제목·주장·초안·영문. (카드·그림·리비전·메모는 원고 파일에 그대로 있다)"""
+    f = doc.get("front") or {}
+    return {"title": doc.get("title", ""), "front": {k: f.get(k) for k in ("title", "authors", "abstract", "keywords", "highlights")},
+            "outline": [{k: n.get(k) for k in _SNAP_KEYS} for n in doc.get("outline", [])]}
+
+
+def _snap_hash(body):
+    return hashlib.md5(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _snap_read(mid, f):
+    if not re.match(r"^\d{8}_\d{6}\.json\.gz$", str(f or "")):
+        return None
+    try:
+        with gzip.open(os.path.join(_snap_dir(mid), f), "rt", encoding="utf-8") as g:
+            return json.load(g)
+    except (OSError, ValueError, EOFError):
+        return None
+
+
+def _snap_files(mid):
+    try:
+        return sorted(f for f in os.listdir(_snap_dir(mid)) if re.match(r"^\d{8}_\d{6}\.json\.gz$", f))
+    except OSError:
+        return []
+
+
+def snapshot(doc, note="", force=False):
+    """판 하나 남기기 → 파일 이름(안 남겼으면 None). force 가 아니면 마지막 판에서 10분이 지났고 글이 달라졌을 때만."""
+    mid = doc.get("id") or ""
+    if not mid or mid.startswith("_") or not doc.get("outline"):
+        return None
+    body = _snap_body(doc)
+    h = _snap_hash(body)
+    st = _snap_state.get(mid)
+    if st is None:   # 서버를 켠 뒤 처음: 디스크의 마지막 판을 본다
+        files = _snap_files(mid)
+        last = _snap_read(mid, files[-1]) if files else None
+        st = _snap_state[mid] = {"t": (last or {}).get("t", 0), "h": _snap_hash(last["body"]) if last and last.get("body") else ""}
+    if h == st["h"] or (not force and time.time() - st["t"] < _SNAP_EVERY):
+        return None
+    os.makedirs(_snap_dir(mid), exist_ok=True)
+    now = time.time()
+    name = time.strftime("%Y%m%d_%H%M%S", time.localtime(now)) + ".json.gz"
+    chars = sum(len(n.get("draft") or "") + len(n.get("draft_en") or "") for n in body["outline"]) + len((body["front"].get("abstract") or ""))
+    tmp = os.path.join(_snap_dir(mid), name + ".tmp")
+    with gzip.open(tmp, "wt", encoding="utf-8") as g:
+        json.dump({"t": now, "note": note, "chars": chars, "body": body}, g, ensure_ascii=False)
+    os.replace(tmp, os.path.join(_snap_dir(mid), name))
+    _snap_state[mid] = {"t": now, "h": h}
+    _snap_prune(mid)
+    return name
+
+
+def _snap_prune(mid):
+    """이틀이 지난 판은 날마다 처음·마지막 것과 이름을 붙인 것만 남긴다 (10분마다 쌓이면 한 달에 수천 개)."""
+    files = _snap_files(mid)
+    if len(files) < 120:
+        return
+    cut = time.strftime("%Y%m%d", time.localtime(time.time() - 2 * 86400))
+    by_day = {}
+    for f in files:
+        if f[:8] < cut:
+            by_day.setdefault(f[:8], []).append(f)
+    for day, fs in by_day.items():
+        for f in fs[1:-1]:
+            snap = _snap_read(mid, f)
+            if snap is not None and not snap.get("note"):
+                try:
+                    os.remove(os.path.join(_snap_dir(mid), f))
+                except OSError:
+                    pass
+
+
+def history_op(doc, body):
+    op, mid = body.get("op") or "list", doc["id"]
+    if op == "snapshot":   # 지금 판 남기기 (되돌리기 앞, 사용자가 이름을 붙여)
+        f = snapshot(doc, str(body.get("note") or "")[:80], force=True)
+        return {"ok": True, "f": f}
+    if op == "get":
+        snap = _snap_read(mid, body.get("f"))
+        return snap if snap else {"error": "그 판을 읽지 못했습니다"}
+    out = []
+    for f in reversed(_snap_files(mid)):
+        snap = _snap_read(mid, f)
+        if snap:
+            out.append({"f": f, "t": snap.get("t"), "chars": snap.get("chars", 0), "note": snap.get("note", "")})
+    return {"list": out}
 
 
 # ---------- 워드 반영: 여기서 고친 글을 가져온 워드 파일에 (서식·그림·수식은 그대로, 바뀐 문단만) ----------
@@ -2931,10 +3034,12 @@ def handle_post(h, body):
                 return h._send(400, {"error": "data 필요"})
             with _REV_LOCK:   # 리비전 결과를 파일에 얹는 동작(_rev_commit)과 겹치지 않게 한 번에 하나씩
                 old = load_ms(d["id"]) or {}
-                # 개요가 바뀌면 이전 개요를 판 이력에 남김 (최근 20개)
-                if old.get("outline") and json.dumps(old.get("outline"), sort_keys=True) != json.dumps(d.get("outline"), sort_keys=True):
-                    d.setdefault("versions", old.get("versions", []))
-                    d["versions"] = (d["versions"] + [{"t": old.get("updated", time.time()), "outline": old["outline"]}])[-20:]
+                try:
+                    if old:
+                        snapshot(old)   # 덮어쓰기 직전의 글을 판으로 (마지막 판에서 10분이 지났고 글이 달라졌을 때만)
+                except Exception:
+                    pass                # 판을 못 남겨도 저장은 한다
+                d.pop("versions", None)   # 예전 방식의 이력(원고 안의 최근 20개 개요)은 더 쓰지 않는다
                 upd = save_ms(d)["updated"]
             return h._send(200, {"ok": True, "updated": upd})
         if p == "/api/ms/delete":
@@ -2974,6 +3079,11 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, rev_op(doc, body))
+        if p == "/api/ms/history":   # 판 이력: 목록·내용·지금 판 남기기
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            return h._send(200, history_op(doc, body))
         if p == "/api/ms/source":   # 작업 자료 넣기·보기·지우기
             doc = load_ms(body.get("id"))
             if not doc:

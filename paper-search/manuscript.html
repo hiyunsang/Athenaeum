@@ -202,6 +202,24 @@
   #mathPop .mfoot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
   #mathPop .mfoot input[type=text] { width: 64px; border: 1px solid var(--line); border-radius: var(--r); padding: 2px 6px; font: inherit; font-size: 12px; background: var(--surface); }
   #wsState { font-size: 12px; color: var(--text-3); } #wsState.warn { color: var(--amber); }
+  /* 판 이력 */
+  #histPop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: none; align-items: center; justify-content: center; }
+  #histPop .hbox { width: min(1180px, calc(100vw - 48px)); height: calc(100vh - 80px); background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; display: flex; flex-direction: column; }
+  #histPop .hhead { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
+  #histPop .hhead b { font-size: 14px; color: var(--text); flex: none; } #histPop .hhead button { flex: none; white-space: nowrap; }
+  #histPop .hmain { flex: 1; display: flex; min-height: 0; }
+  #histList { width: 250px; flex: none; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); padding-bottom: 20px; }
+  #histList .day { padding: 10px 12px 2px; font-size: 11px; font-weight: 600; color: var(--text-2); }
+  #histList .it { padding: 5px 12px; font-size: 12.5px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; color: var(--text); }
+  #histList .it:hover { background: var(--hover); } #histList .it.sel { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel-bg); }
+  #histList .it .nt { color: var(--accent); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  #histList .it .d { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+  #histView { flex: 1; overflow-y: auto; padding: 12px 20px 40px; min-width: 0; font-size: 13px; color: var(--text-2); }
+  #histView .hsec { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+  #histView .hsec h4 { font-family: var(--font-serif); font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 4px; display: flex; gap: 10px; align-items: baseline; }
+  #histView .hsec h4 .btn { font-family: var(--font); font-weight: 400; }
+  #histView .same { color: var(--text-3); font-size: 12px; padding: 3px 0; }
+  #histView .rvdiff { margin: 6px 0; font-size: calc(13px * var(--ms-scale, 1)); line-height: 1.7; }
   /* 고른 글: 글 칸에서 드래그하면 뜨는 작은 막대와, 메모·Claude 창 */
   #selBar { position: fixed; z-index: 31; display: none; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 4px 14px #0003; padding: 1px 2px; white-space: nowrap; }
   #selBar button { font-size: 12.5px; padding: 4px 9px; }
@@ -242,6 +260,7 @@
   <select id="journalSel" title="투고 저널 (규격 점검·머리부 생성에 반영). 목록은 내 논문모음의 저널들"><option value="">저널 선택…</option><option value="JMPT">JMPT (Elsevier)</option></select>
   <span id="modeSeg"><button class="btn" data-m="para" onclick="setMode('para')" title="주장·근거 카드·초안·검토를 문단 하나씩">문단 모드</button><button class="btn" data-m="doc" onclick="setMode('doc')" title="전체 원고를 펼쳐 놓고 이어서 쓰기">원고 모드</button></span>
   <button class="btn" id="mathBtn" onclick="openMath()" title="수식 넣기·고치기 (Alt+=). 글 속에 $…$ 로 들어가고, 워드로 내보내면 워드 수식이 됩니다">수식</button>
+  <button class="btn" id="histBtn" onclick="openHistory()" title="판 이력: 지난 글을 보고 되돌립니다 (10분마다 자동으로 판이 남습니다)">이력</button>
   <button class="btn" id="focusBtn" onclick="toggleFocus()" title="개요·서랍을 숨기고 글에만 집중 (다시 누르면 복귀)">집중</button>
   <button class="btn" id="guideBtn" onclick="toggleGuide()" title="이 화면이 어떻게 돌아가는지 (워드·LaTeX 와 비교)">안내</button>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
@@ -314,10 +333,11 @@ async function openDoc(id) {
   if (doc.error) return showEmpty();
   localStorage.setItem("ms_last", id);
   doc.front = doc.front || { title: "", authors: "", abstract: "", keywords: [], highlights: [] };
+  delete doc.versions;   // 예전 방식의 이력(원고 안에 쌓던 것) — 이제 판 이력 파일로 남긴다. 저장할 때마다 실어 보내지 않게
   doc.meta = doc.meta || {}; if (doc.meta.journal) ensureJournalOption(doc.meta.journal, doc.meta.journal); $("journalSel").value = doc.meta.journal || "";
   cur = (doc.outline[0] || {}).id || "front";
   $("empty").style.display = "none"; $("editor").style.display = "";
-  closeMath(); closeSel(); closeDecision(); srcEdit = null; wsShow(null); mathWarm();
+  closeMath(); closeSel(); closeDecision(); closeHistory(); srcEdit = null; wsShow(null); mathWarm();
   renderAll();
 }
 function renderAll() { renderTree(); renderEditor(); renderDrawer(); }
@@ -1060,7 +1080,7 @@ function renderNotes() {
   el.querySelectorAll("[data-revise]").forEach(b => b.onclick = () => fbRevise(b.dataset.revise));
   el.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { const inp = $("fbQ-" + b.dataset.ask); if (inp && inp.value.trim()) fbDiscuss(b.dataset.ask, inp.value.trim()); });
   el.querySelectorAll(".fbq input").forEach(inp => inp.onkeydown = e => { if (e.key === "Enter" && inp.value.trim()) fbDiscuss(inp.id.slice(4), inp.value.trim()); });
-  el.querySelectorAll("[data-apply]").forEach(b => b.onclick = () => {
+  el.querySelectorAll("[data-apply]").forEach(b => b.onclick = async () => {
     const nn = node(fbProposal.node); if (!nn) return;
     const cur0 = nn[fbProposal.key] || "";
     if (fbProposal.partial) {
@@ -1070,6 +1090,7 @@ function renderNotes() {
       nn[fbProposal.key] = cur0.replace(fbProposal.before, fbProposal.text);
     } else {
       if (!confirm("이 절의 글 전체를 고쳐 본 안으로 덮어씁니다. 계속할까요? (이전 글은 판 이력에 남습니다)")) return;
+      await snapNow("고쳐 본 안 반영 전");
       nn[fbProposal.key] = fbProposal.text;
     }
     if (nn.status === "todo") nn.status = "drafted"; fbProposal = null; save(true); renderAll();
@@ -1260,6 +1281,130 @@ function renderEn() {
     busy = false; renderEn(); renderEditor();
   };
 }
+// ---------- 판 이력: 지난 글 보기·되돌리기. 판은 서버가 10분마다(글이 달라졌을 때), 그리고 큰 일 앞에 남긴다 ----------
+let histState = { list: [], sel: null, snap: null };
+const histChars = () => doc.outline.reduce((a, n) => a + (n.draft || "").length + (n.draft_en || "").length, 0) + ((doc.front || {}).abstract || "").length;
+async function snapNow(note) { await saveNow(); try { return await api("/api/ms/history", { id: doc.id, op: "snapshot", note: note || "" }); } catch (e) { return {}; } }
+function closeHistory() { const p = $("histPop"); if (p) p.style.display = "none"; }
+async function openHistory() {
+  if (!doc) return;
+  let pop = $("histPop");
+  if (!pop) {
+    pop = document.createElement("div"); pop.id = "histPop";
+    pop.innerHTML = "<div class='hbox'><div class='hhead'><b>판 이력</b><span>글을 고치는 동안 10분마다, 그리고 워드 덮어쓰기·되돌리기 앞에 판이 남습니다. 판을 고르면 지금 글과 다른 곳이 보입니다</span><span style='margin-left:auto'></span>" +
+      "<button class='btn' id='histSnap' title='지금 글을 이름을 붙여 판으로 남깁니다 (교수님께 보내기 전, 크게 고치기 전)'>지금 판 남기기</button><button class='btn' id='histX'>닫기</button></div>" +
+      "<div class='hmain'><div id='histList'></div><div id='histView'></div></div></div>";
+    document.body.appendChild(pop);
+    $("histX").onclick = closeHistory;
+    pop.addEventListener("mousedown", e => { if (e.target === pop) closeHistory(); });
+    $("histSnap").onclick = async () => { const note = prompt("이 판의 이름 (예: 교수님께 보내기 전)", ""); if (note === null) return; const r = await snapNow(note || "직접 남김"); if (!r.f) alert("마지막 판과 글이 같아 새로 남기지 않았습니다."); histLoad(); };
+  }
+  pop.style.display = "flex";
+  await histLoad();
+}
+async function histLoad(keep) {
+  const mid = doc.id; await saveNow();
+  let r; try { r = await api("/api/ms/history", { id: mid, op: "list" }); } catch (e) { r = {}; }
+  if (!doc || doc.id !== mid) return;
+  histState.list = r.list || [];
+  if (!keep) { histState.sel = null; histState.snap = null; }
+  histRenderList();
+  if (!histState.snap) $("histView").innerHTML = histState.list.length ? "<div class='hint' style='padding:20px 0'>왼쪽에서 판을 고르세요.</div>"
+    : "<div class='hint' style='padding:20px 0'>아직 남은 판이 없습니다. 글을 고치면 10분마다 자동으로 남고, 「지금 판 남기기」 로 바로 남길 수도 있습니다.</div>";
+}
+function histRenderList() {
+  const now = histChars(), today = new Date().toDateString(), yest = new Date(Date.now() - 86400000).toDateString();
+  let h = "", last = "";
+  histState.list.forEach(x => {
+    const d = new Date(x.t * 1000), day = d.toDateString();
+    if (day !== last) { h += "<div class='day'>" + (day === today ? "오늘" : day === yest ? "어제" : d.toLocaleDateString("ko", { month: "long", day: "numeric", weekday: "short" })) + "</div>"; last = day; }
+    const diff = x.chars - now;
+    h += "<div class='it" + (histState.sel === x.f ? " sel" : "") + "' data-f='" + x.f + "'><span>" + d.toLocaleTimeString("ko", { hour: "2-digit", minute: "2-digit" }) + "</span>" + (x.note ? "<span class='nt' title='" + esc(x.note) + "'>" + esc(x.note) + "</span>" : "") +
+      "<span class='d' title='그 판의 분량 (지금과의 차이)'>" + (diff ? (diff > 0 ? "+" : "−") + Math.abs(diff).toLocaleString() + "자" : "같은 분량") + "</span></div>";
+  });
+  $("histList").innerHTML = h;
+  $("histList").querySelectorAll(".it").forEach(el => el.onclick = async () => {
+    histState.sel = el.dataset.f; histRenderList(); $("histView").innerHTML = "<div class='hint' style='padding:20px 0'>불러오는 중…</div>";
+    const r = await api("/api/ms/history", { id: doc.id, op: "get", f: el.dataset.f });
+    if (histState.sel !== el.dataset.f) return;
+    if (r.error) { $("histView").innerHTML = "<div class='hint' style='padding:20px 0'>⚠ " + esc(r.error) + "</div>"; return; }
+    histState.snap = r; histRenderView();
+  });
+}
+function paraDiff(a, b) {   // a = 그 판의 글, b = 지금 글 → 달라진 문단만 (그 판에만 있던 말은 지움 표시, 그 뒤에 넣은 말은 넣음 표시)
+  const sp = t => (t || "").split(/\n\s*\n/).map(x => x.trim()).filter(Boolean), A = sp(a), B = sp(b), n = A.length, m = B.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out = []; let i = 0, j = 0, dels = [], inss = [], same = 0;
+  const sameLine = () => { if (same) { out.push("<div class='same'>… 그대로인 문단 " + same + "개</div>"); same = 0; } };
+  const flush = () => {
+    if (!dels.length && !inss.length) return;
+    sameLine();
+    const k = Math.min(dels.length, inss.length);
+    for (let q = 0; q < k; q++) out.push("<div class='rvdiff'>" + wordDiff(dels[q], inss[q]) + "</div>");
+    dels.slice(k).forEach(d => out.push("<div class='rvdiff'><del>" + esc(d) + "</del></div>"));
+    inss.slice(k).forEach(d => out.push("<div class='rvdiff'><ins>" + esc(d) + "</ins></div>"));
+    dels = []; inss = [];
+  };
+  while (i < n && j < m) { if (A[i] === B[j]) { flush(); same++; i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) dels.push(A[i++]); else inss.push(B[j++]); }
+  while (i < n) dels.push(A[i++]); while (j < m) inss.push(B[j++]);
+  flush(); sameLine();
+  return out.join("");
+}
+function histRenderView() {
+  const snap = histState.snap, b = snap.body, f = doc.front || {}, bf = b.front || {};
+  const when = new Date(snap.t * 1000).toLocaleString("ko", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const eq = (x, y) => normWs(x) === normWs(y);
+  let secs = "";
+  if (!eq(bf.abstract, f.abstract) || !eq(bf.title, f.title))
+    secs += "<div class='hsec'><h4>머리부 (제목·초록) <button class='btn' data-hr='front'>머리부만 되돌리기</button></h4>" +
+      (!eq(bf.title, f.title) ? "<div class='rvdiff'>제목: " + wordDiff(bf.title || "", f.title || "") + "</div>" : "") + paraDiff(bf.abstract, f.abstract) + "</div>";
+  b.outline.forEach(sn => {
+    const cn = node(sn.id);
+    if (!cn) { secs += "<div class='hsec'><h4>" + esc(sn.heading || "") + " <span class='hint' style='font-family:var(--font);font-weight:400'>지금은 없는 절</span><button class='btn' data-hr='node' data-nid='" + sn.id + "'>이 절 되살리기</button></h4><div class='rvdiff'><del>" + esc((sn.draft || sn.draft_en || "").slice(0, 600)) + ((sn.draft || "").length > 600 ? " …" : "") + "</del></div></div>"; return; }
+    const dh = !eq(sn.heading, cn.heading), dd = !eq(sn.draft, cn.draft), de = !eq(sn.draft_en, cn.draft_en), dc = !eq(sn.claim, cn.claim);
+    if (!dh && !dd && !de && !dc) return;
+    secs += "<div class='hsec'><h4>" + esc(cn.heading || "") + " <button class='btn' data-hr='node' data-nid='" + sn.id + "'>이 절만 되돌리기</button></h4>" +
+      (dh ? "<div class='rvdiff'>절 제목: " + wordDiff(sn.heading || "", cn.heading || "") + "</div>" : "") +
+      (dc ? "<div class='rvdiff'>주장: " + wordDiff(sn.claim || "", cn.claim || "") + "</div>" : "") +
+      (dd ? paraDiff(sn.draft, cn.draft) : "") + (de ? "<div class='same'>영문</div>" + paraDiff(sn.draft_en, cn.draft_en) : "") + "</div>";
+  });
+  const ids = new Set(b.outline.map(x => x.id)), added = doc.outline.filter(n => !ids.has(n.id));
+  if (added.length) secs += "<div class='hsec'><h4>이 판 뒤에 새로 생긴 절</h4><div class='same'>" + added.map(n => esc(n.heading || "(제목 없음)")).join(" · ") + " — 「전체를 이 판으로」 하면 없어집니다 (되돌리기 전의 글은 판으로 남습니다)</div></div>";
+  $("histView").innerHTML = "<div style='display:flex;gap:10px;align-items:baseline;flex-wrap:wrap'><b style='color:var(--text);font-size:14px'>" + esc(when) + " 의 글</b>" + (snap.note ? "<span style='color:var(--accent)'>" + esc(snap.note) + "</span>" : "") +
+    "<span>" + (snap.chars || 0).toLocaleString() + "자</span><span style='margin-left:auto'></span>" + (secs ? "<button class='btn pri' data-hr='all'>전체를 이 판으로 되돌리기</button>" : "") + "</div>" +
+    (secs ? "<div class='same' style='padding-top:6px'><del style='color:var(--red)'>빨간 줄</del> = 그 판에는 있었고 지금은 없는 말 · <ins style='color:var(--green);text-decoration:none'>초록</ins> = 그 뒤에 넣은 말. 되돌리면 빨간 글이 돌아오고 초록 글이 없어집니다.</div>" + secs
+      : "<div class='hint' style='padding:20px 0'>지금 글과 같습니다.</div>");
+  $("histView").scrollTop = 0;
+  $("histView").querySelectorAll("[data-hr]").forEach(btn => btn.onclick = () => histRestore(btn.dataset.hr, btn.dataset.nid));
+}
+async function histRestore(scope, nid) {
+  const snap = histState.snap, b = snap.body, pick = sn => ({ heading: sn.heading || "", claim: sn.claim || "", draft: sn.draft || "", draft_en: sn.draft_en || "" });
+  const what = scope === "all" ? "원고 전체를" : scope === "front" ? "제목·초록을" : "이 절을";
+  if (!confirm(what + " 이 판의 글로 되돌릴까요?\n\n지금 글은 「되돌리기 전」 이라는 판으로 남으니 다시 돌아올 수 있습니다.")) return;
+  await snapNow("되돌리기 전");
+  const front = () => { const bf = b.front || {}; ["title", "authors", "abstract", "keywords", "highlights"].forEach(k => { if (bf[k] != null) doc.front[k] = bf[k]; }); if (bf.title) doc.title = bf.title; };
+  if (scope === "front") front();
+  if (scope === "node") {
+    const sn = b.outline.find(x => x.id === nid), cn = node(nid);
+    if (cn) Object.assign(cn, pick(sn));
+    else {   // 지금은 없는 절: 그 판에서 바로 앞에 있던 절 뒤에 되살린다
+      const k = b.outline.indexOf(sn); let at = doc.outline.length;
+      for (let q = k - 1; q >= 0; q--) { const p = doc.outline.findIndex(n => n.id === b.outline[q].id); if (p >= 0) { at = p + 1; break; } }
+      if (k === 0) at = 0;
+      doc.outline.splice(at, 0, Object.assign({ cards: [], status: "drafted" }, sn));
+    }
+  }
+  if (scope === "all") {
+    const have = Object.fromEntries(doc.outline.map(n => [n.id, n]));
+    doc.outline = b.outline.map(sn => Object.assign({ cards: [], status: "drafted" }, have[sn.id] || { id: sn.id, level: sn.level || 1 }, pick(sn), { level: sn.level || (have[sn.id] || {}).level || 1 }));
+    front();
+    if (cur !== "front" && !node(cur)) cur = (doc.outline[0] || {}).id || "front";
+  }
+  save(true); mathWarm(); renderAll();
+  await histLoad(true); histRenderView();
+}
+
 // ---------- 결정으로 기록: 여기서 정한 것을 작업 자료 폴더의 결정 파일에 한 줄로 (Claude 채팅과 같은 파일을 같이 고친다) ----------
 let decCtx = null;
 function closeDecision() { const p = $("decPop"); if (p) p.style.display = "none"; decCtx = null; }
