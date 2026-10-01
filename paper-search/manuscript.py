@@ -759,15 +759,32 @@ def sync_default_path(doc):
     return os.path.join(cfg["MS_DIR"], "워드반영", os.path.basename(doc.get("source_docx") or "원고.docx"))
 
 
+def _sync_log():
+    return cfg["load_json"](os.path.join(cfg["MS_DIR"], "_워드반영기록.json"), {}) or {}
+
+
+def _sync_out(doc, log=None):
+    """반영할 파일: 사용자가 정한 경로, 없으면 원고\워드반영\<원본 이름>.
+    같은 이름의 워드를 가져온 다른 원고가 이미 그 파일을 쓰고 있으면 이름 뒤에 원고 id 를 붙인다 (자동 반영이 기본이라 서로 덮어쓰지 않게)."""
+    p = ((doc.get("word_sync") or {}).get("path") or "").strip().strip('"')
+    if p:
+        return p
+    out = sync_default_path(doc)
+    ent = (_sync_log() if log is None else log).get(os.path.normcase(os.path.abspath(out))) or {}
+    if ent.get("id") and ent["id"] != doc.get("id"):
+        out = "%s_%s.docx" % (out[:-5], os.path.basename(str(doc.get("id"))))
+    return out
+
+
 def sync_docx(doc, mark=False, check_only=False):
     """지금 원고의 글을 가져온 워드 파일 사본에 반영한다. 원본(가져오기 폴더의 파일)은 건드리지 않고 매번 거기서부터 다시 만든다 →
     여러 번 돌려도 어긋남이 쌓이지 않는다. 반영하는 것: 본문 문단·절 제목·초록·제목·그림 캡션. 표·참고문헌·키워드는 워드 것 그대로."""
     import xml.etree.ElementTree as ET
     src = doc.get("source_docx") or ""
     if not src or not os.path.isfile(src):
-        return {"error": "가져온 워드 파일이 없습니다 (「워드 가져오기」로 들여온 원고만 워드에 반영할 수 있습니다)" + ((" — " + src) if src else "")}
+        return {"nosrc": True, "error": "가져온 워드 파일이 없습니다 (「워드 가져오기」로 들여온 원고만 워드에 반영할 수 있습니다)" + ((" — " + src) if src else "")}
     ws = doc.get("word_sync") or {}
-    out = (ws.get("path") or "").strip().strip('"') or sync_default_path(doc)
+    out = _sync_out(doc)
     if not out.lower().endswith(".docx"):
         return {"error": "반영할 파일 이름이 .docx 로 끝나야 합니다"}
     if os.path.normcase(os.path.abspath(out)) == os.path.normcase(os.path.abspath(src)):
@@ -825,19 +842,39 @@ def sync_docx(doc, mark=False, check_only=False):
         ET.fromstring(new_xml.encode("utf-8"))
     except ET.ParseError as ex:   # 깨진 문서는 절대 쓰지 않는다
         return {"error": "워드 문서를 만들다 구조가 어긋나 멈췄습니다 (파일은 그대로) — " + str(ex)[:120]}
+    import shutil
     log_p = os.path.join(cfg["MS_DIR"], "_워드반영기록.json")
-    log = cfg["load_json"](log_p, {}) or {}
+    log = _sync_log()
     k = os.path.normcase(os.path.abspath(out))
-    if os.path.isfile(out) and k not in log:   # 내가 만든 적 없는 파일을 처음 덮어쓸 때는 옆에 백업
-        bak = "%s.백업_%s.docx" % (out[:-5], time.strftime("%Y%m%d_%H%M%S"))
-        import shutil
-        shutil.copy2(out, bak)
-        res["backup"] = bak
+    ent = log.get(k) or {}
+    exists = os.path.isfile(out)
+    # 지난번에 쓴 것과 같으면 다시 쓰지 않는다 (자동 반영이 기본 — 메모·카드만 바뀐 저장마다 큰 파일을 새로 쓰지 않게).
+    # 그 사이 워드에서 사본을 고쳤더라도 여기 글이 그대로면 건드리지 않는다.
+    sig = hashlib.sha1((new_xml + "|%s|%d|%d" % (bool(mark), os.path.getsize(src), int(os.path.getmtime(src)))).encode("utf-8")).hexdigest()
+    if exists and ent.get("sig") == sig:
+        res.update(ok=True, same=True, t=ent.get("t") or time.time(), sec=round(time.time() - t0, 2))
+        return res
+    locked = dict(res, locked=True, error="워드가 그 파일을 열고 있어 쓰지 못했습니다 — 워드에서 파일을 닫으면 다음 저장 때 반영됩니다")
+    if exists:
+        try:   # 워드가 열고 있으면 여기서 멈춘다 (아래의 '옆에 남기기'를 10초마다 되풀이하지 않게)
+            with open(out, "r+b"):
+                pass
+        except PermissionError:
+            return locked
+        if k not in log:   # 내가 만든 적 없는 파일을 처음 덮어쓸 때는 옆에 백업
+            res["backup"] = "%s.백업_%s.docx" % (out[:-5], time.strftime("%Y%m%d_%H%M%S"))
+            shutil.copy2(out, res["backup"])
+        elif ent.get("mtime") and (abs(os.path.getmtime(out) - ent["mtime"]) > 2 or os.path.getsize(out) != ent.get("size")):
+            # 내가 쓴 뒤 워드에서 이 사본을 고쳤다 → 덮어쓰기 전에 옆에 남긴다 (사본은 원본 + 여기 글로 매번 다시 만들어, 워드에서 고친 것은 따라오지 않는다)
+            res["kept"] = "%s.워드에서_고친_것_%s.docx" % (out[:-5], time.strftime("%Y%m%d_%H%M%S"))
+            shutil.copy2(out, res["kept"])
     try:
         wordsync.write_docx(src, out, new_xml)
     except PermissionError:
-        return dict(res, locked=True, error="워드가 그 파일을 열고 있어 쓰지 못했습니다 — 워드에서 파일을 닫으면 다음 저장 때 반영됩니다")
-    log[k] = {"t": time.time(), "backup": res.get("backup") or (log.get(k) or {}).get("backup", "")}
+        return locked
+    log = _sync_log()   # 그 사이 다른 원고가 기록을 고쳤을 수 있다
+    log[k] = {"t": time.time(), "backup": res.get("backup") or ent.get("backup", ""), "sig": sig, "id": doc.get("id"),
+              "mtime": os.path.getmtime(out), "size": os.path.getsize(out)}
     cfg["save_json"](log_p, log)
     res.update(ok=True, t=time.time(), sec=round(time.time() - t0, 2))
     return res
@@ -3481,7 +3518,7 @@ def handle_post(h, body):
             if op == "upgrade":
                 return h._send(200, upgrade_equations(doc))
             if op == "open":
-                path = ((doc.get("word_sync") or {}).get("path") or "").strip().strip('"') or sync_default_path(doc)
+                path = _sync_out(doc)
                 if not os.path.isfile(path):
                     return h._send(200, {"error": "아직 만든 파일이 없습니다 — 먼저 「지금 반영」"})
                 os.startfile(path if body.get("file") else os.path.dirname(path))
