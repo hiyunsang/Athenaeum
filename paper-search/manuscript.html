@@ -1640,6 +1640,10 @@ function renderSrc() {
           : sc.files.length ? sc.files.map(f => "<div class='t frow' data-dfile='" + k + "' data-name='" + esc(f.name) + "' title='눌러서 보기·고치기'><span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(f.name) + "</span><span class='hint' style='white-space:nowrap'>" + f.chars.toLocaleString() + "자 · " + new Date(f.mtime * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "</span></div>" +
               (srcEdit && srcEdit.path === d.path && srcEdit.name === f.name ? "<textarea class='fedit' id='srcFedit' spellcheck='false'>" + esc(srcEdit.text) + "</textarea><div class='acts'><button class='btn pri' id='srcFsave'>저장</button><button class='btn' id='srcFclose'>닫기</button><span class='hint' id='srcFmsg' style='display:inline'>" + esc(srcEdit.msg || "Claude 채팅에서 고치는 파일과 같은 파일입니다") + "</span></div>" : "")).join("")
           : "<div class='t hint'>이 폴더에 .md · .txt 파일이 없습니다</div>") +
+        (sc && sc.mirror ? "<div class='t hint' style='margin-top:6px;padding-top:6px;border-top:1px solid var(--line)'><label style='cursor:pointer'><input type='checkbox' class='srcMirror' data-k='" + k + "'" + (sc.mirror.on ? " checked" : "") + "> 지금 원고를 이 폴더에 <b>" + esc(sc.mirror.name) + "</b> 로 같이 둔다</label>" +
+          (sc.mirror.on ? (sc.mirror.mtime ? " · " + new Date(sc.mirror.mtime * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " 에 씀" : " · 다음 저장 뒤에 생깁니다") : "") +
+          (sc.mirror.msg ? "<div style='color:var(--amber)'>⚠ " + esc(sc.mirror.msg) + "</div>" : "") +
+          "<div>저장할 때마다 다시 쓰므로 Claude 채팅이 이 파일로 최신 원고를 읽습니다(읽기 전용 사본 — 고치는 곳은 여기 Athenaeum). 여기서 Claude 에게 물을 때는 원고가 따로 가므로 이 파일은 다시 보내지 않습니다.</div></div>" : "") +
         "<div class='acts'><button class='btn' data-dscan='" + k + "'>새로 읽기</button><button class='btn' data-dcopy='" + k + "' title='이 경로를 복사해 Claude 데스크톱의 폴더 추가에 붙여 넣으세요'>경로 복사</button><button class='btn' data-dopen='" + k + "'>폴더 열기</button><button class='btn warn' data-ddel='" + k + "'>연결 끊기</button></div></div>"; }).join("") +
     (ss.length ? "<div class='sec' style='padding-left:0'>넣어 둔 파일</div>" : "") +
     ss.map(x => "<div class='card srcf" + (x.on !== false ? " on" : "") + "' data-sid='" + esc(x.id) + "'><div class='m'><b>" + esc(x.name) + "</b><span>" + (x.chars || 0).toLocaleString() + "자</span>" +
@@ -1692,6 +1696,15 @@ function renderSrc() {
   el.querySelectorAll("[data-dcopy]").forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(doc.source_dirs[+b.dataset.dcopy].path); b.textContent = "복사됨"; } catch (e) { prompt("경로:", doc.source_dirs[+b.dataset.dcopy].path); } });
   el.querySelectorAll("[data-dopen]").forEach(b => b.onclick = async () => { await saveNow(); const r = await api("/api/ms/source", { id: doc.id, op: "open_dir", path: doc.source_dirs[+b.dataset.dopen].path }); if (r.error) $("srcMsg").textContent = "⚠ " + r.error; });
   el.querySelectorAll(".srcDirOn").forEach(cb => cb.onchange = () => { doc.source_dirs[+cb.dataset.k].on = cb.checked; save(); renderSrc(); });
+  el.querySelectorAll(".srcMirror").forEach(cb => cb.onchange = async () => {   // 지금 원고를 이 폴더에 md 로 같이 두기 (켜면 바로 한 번 쓴다)
+    const d = doc.source_dirs[+cb.dataset.k], mid = doc.id; d.mirror = cb.checked;
+    await saveNow();
+    let r = {}; if (cb.checked) { try { r = await api("/api/ms/source", { id: mid, op: "mirror" }); } catch (e) { r = { error: "서버 연결 실패" }; } }
+    if (!doc || doc.id !== mid) return;
+    let sc; try { sc = await api("/api/ms/source", { id: mid, op: "scan", path: d.path }); } catch (e) { sc = { error: "서버 연결 실패" }; }
+    if (sc.mirror && r.error) sc.mirror.msg = r.error;
+    srcScan[d.path] = sc; renderSrc();
+  });
   el.querySelectorAll("[data-dscan]").forEach(b => b.onclick = () => { const d = doc.source_dirs[+b.dataset.dscan]; srcScan[d.path] = null; renderSrc(); scan(d.path); });
   el.querySelectorAll("[data-ddel]").forEach(b => b.onclick = () => { doc.source_dirs.splice(+b.dataset.ddel, 1); save(true); renderSrc(); });
   $("srcAddBtn").onclick = () => $("srcFile").click();
@@ -1813,9 +1826,11 @@ function chatFocus(id) {   // 그 대화 카드를 보이게 하고 입력 칸�
 function chatThreadHtml(m) {
   const th = m.thread || [];
   return th.map((x, i) => x.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(x.text) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
 }
+const tokFmt = n => n >= 10000 ? (n / 10000).toFixed(1) + "만" : (n || 0).toLocaleString();
+const tokNote = t => t && t.in ? "읽은 토큰 " + tokFmt(t.in) + (t.cached ? " (그중 캐시 " + tokFmt(t.cached) + ")" : "") : "";   // 캐시에서 읽은 것은 값이 1/10
 const chatWhole = () => localStorage.getItem("ms_sel_whole") !== "0";   // 지금 원고 전체를 같이 보낼지 (기본 켬)
 const chatLibHtml = () => "<label class='chLibL' title='켜 두면 Claude 가 지금 원고 전체(제목·초록·모든 절·그림 캡션·참고문헌)를 읽고 답합니다 — 이 논문이 무엇을 했는지, 다른 절에서 뭐라고 썼는지 알고. 끄면 고른 글이 든 문단만 보고 답합니다(조금 빠름)'><input type='checkbox' class='chWhole'" + (chatWhole() ? " checked" : "") + "> 원고 전체</label>" +
   "<label class='chLibL' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다. 끄면 원고와 자료만 보고 빨리 답합니다'><input type='checkbox' class='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>";

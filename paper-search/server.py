@@ -10,6 +10,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -527,6 +528,23 @@ def _no_window():
     return kw
 
 
+def claude_cwd():
+    """Claude 를 부를 때의 작업 폴더 — 프로그램 밖의 빈 폴더.
+    저장소 안(paper-search)에서 부르면 Claude Code 가 위쪽 폴더의 CLAUDE.md(개발 안내)와 그 폴더의 메모리를 호출마다 같이 읽는다.
+    재 보니(2026-10-01) 호출 한 번에 2만 2천 토큰이 더 들었고, 요약·번역·대화에 개발 지시가 섞여 들어가고 있었다."""
+    d = os.path.join(tempfile.gettempdir(), "athenaeum_claude")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        return None
+    return d
+
+
+def _claude_kw():
+    """claude 를 부르는 subprocess 옵션: 창 없이 + 빈 작업 폴더에서."""
+    return dict(_no_window(), cwd=claude_cwd())
+
+
 # 오해하기 쉬운 라벨의 정의·금지 조건 (분류 정확도의 핵심)
 LABEL_NOTES = {
     "Review": "기존 연구를 종합·정리하는 리뷰/총설 논문일 때만. 일반 연구 논문에는 절대 붙이지 않음",
@@ -575,7 +593,7 @@ def ask_claude_json(prompt, timeout=240, model="opus", effort=None):
         return None
     try:
         r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"] + (["--effort", effort] if effort else []),
-                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
+                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_claude_kw())
         out = r.stdout.decode("utf-8", "replace")
         _note_claude(r.returncode, out, r.stderr.decode("utf-8", "replace"))
         m = re.search(r"\{.*\}", out, re.S)
@@ -1048,7 +1066,7 @@ def claude_text(prompt, timeout=240, model="opus", effort=None):
         return None
     try:
         r = subprocess.run([exe, "-p", "--model", model, "--output-format", "text"] + (["--effort", effort] if effort else []),
-                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
+                           input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_claude_kw())
         out = r.stdout.decode("utf-8", "replace").strip()
         _note_claude(r.returncode, out, r.stderr.decode("utf-8", "replace"))
         return (out or None) if r.returncode == 0 and "failed to authenticate" not in out.lower() else None
@@ -1056,20 +1074,32 @@ def claude_text(prompt, timeout=240, model="opus", effort=None):
         return None
 
 
-def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=()):
-    """claude -p 를 JSON 출력으로 불러 {text, model, turns} 를 돌려준다 (실패하면 None, 이유는 claude_error()).
+def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=(), system=None):
+    """claude -p 를 JSON 출력으로 불러 {text, model, turns, tok} 를 돌려준다 (실패하면 None, 이유는 claude_error()).
     tools: None = CLI 기본, "" = 도구 없이 글만, "Read,Grep,Glob" = 읽기만(작업 폴더 cwd 와 add_dirs 안에서만 — 미리 허락을 주지 않으므로 그 밖은 거절된다).
-    model 은 CLI 가 실제로 쓴 모델 이름 — 별칭 'opus' 가 어느 판을 가리키는지는 CLI 판에 달렸다."""
+    system: 시스템 프롬프트로 줄 글(Claude Code 의 기본 시스템 프롬프트를 대신한다). 글자 하나까지 같은 시스템 프롬프트는 마지막으로 쓴 뒤 1시간 동안
+      캐시에서 읽혀 그 부분의 값이 1/10 이 된다 — 물음마다 같은 긴 배경(원고·자료)은 여기에, 달라지는 물음은 prompt 에.
+      (prompt 앞에 붙이면 캐시에 쓰기만 하고 다시 읽히지 않는다: 쓰는 값은 2배다. 재어 봄 2026-10-01)
+    model 은 CLI 가 실제로 쓴 모델 이름 — 별칭 'opus' 가 어느 판을 가리키는지는 CLI 판에 달렸다. tok = {in: 읽은 토큰, cached: 그중 캐시에서 읽은 것}"""
     exe = find_claude()
     if not exe:
         return None
     args = [exe, "-p", "--model", model, "--output-format", "json"] + (["--effort", effort] if effort else [])
     extra = (["--tools", tools] if tools is not None else []) + [x for d in add_dirs for x in ("--add-dir", d)]
+    kw = dict(_no_window(), cwd=cwd or claude_cwd())
+    sysf = None
     try:
-        r = subprocess.run(args + extra, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, cwd=cwd, **_no_window())
+        if system:
+            sysd = os.path.join(tempfile.gettempdir(), "athenaeum_claude_sys")
+            os.makedirs(sysd, exist_ok=True)
+            sysf = os.path.join(sysd, "%d_%d.txt" % (os.getpid(), time.time_ns()))   # 호출마다 다른 이름 (동시에 여러 개를 묻는다)
+            with io.open(sysf, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(system)
+            extra += ["--system-prompt-file", sysf]
+        r = subprocess.run(args + extra, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **kw)
         out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
         if r.returncode != 0 and extra and re.search(r"unknown option|unrecognized", (err + out).lower()) and "unrecognized_model" not in out:
-            r = subprocess.run(args, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())   # 옛 CLI: 도구 옵션 없이
+            r = subprocess.run(args, input=((system or "") + prompt).encode("utf-8"), capture_output=True, timeout=timeout, **kw)   # 옛 CLI: 옵션 없이, 배경은 물음 앞에
             out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
         try:
             d = json.loads(out[out.index("{"):out.rindex("}") + 1])
@@ -1081,9 +1111,18 @@ def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=N
             return None
         usage = d.get("modelUsage") or {}
         main = max(usage, key=lambda k: (usage[k] or {}).get("outputTokens", 0)) if usage else ""
-        return {"text": text, "model": main, "turns": d.get("num_turns") or 1}
+        num = lambda u, k: int((u or {}).get(k) or 0)
+        cached = sum(num(u, "cacheReadInputTokens") for u in usage.values())
+        tin = cached + sum(num(u, "inputTokens") + num(u, "cacheCreationInputTokens") for u in usage.values())
+        return {"text": text, "model": main, "turns": d.get("num_turns") or 1, "tok": {"in": tin, "cached": cached} if tin else None}
     except Exception:
         return None
+    finally:
+        if sysf:
+            try:
+                os.remove(sysf)
+            except OSError:
+                pass
 
 
 # ---------- 탐색 맵 정보 패널: 초록 찾기·요약·번역 캐시 ----------
@@ -1710,7 +1749,7 @@ def classify_with_claude(title, kw, front, groups):
     try:
         r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
                            input=prompt.encode("utf-8"),
-                           capture_output=True, timeout=240, **_no_window())
+                           capture_output=True, timeout=240, **_claude_kw())
         m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
         data = json.loads(m.group(0))
         items = data.get("labels", [])
@@ -1826,7 +1865,7 @@ def _claude(prompt, timeout=900):
     if not exe:
         raise RuntimeError(CLAUDE_MISSING_MSG)
     r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
-                       input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())
+                       input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_claude_kw())
     out = r.stdout.decode("utf-8", "replace").strip()
     errtxt = r.stderr.decode("utf-8", "replace").strip()
     _note_claude(r.returncode, out, errtxt)
@@ -2568,7 +2607,7 @@ import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search,
         claude_text=claude_text, claude_run=claude_run, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
-        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error)
+        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error, claude_cwd=claude_cwd())
 
 # ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------
 import vocab
