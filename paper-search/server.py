@@ -1056,6 +1056,36 @@ def claude_text(prompt, timeout=240, model="opus", effort=None):
         return None
 
 
+def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=()):
+    """claude -p 를 JSON 출력으로 불러 {text, model, turns} 를 돌려준다 (실패하면 None, 이유는 claude_error()).
+    tools: None = CLI 기본, "" = 도구 없이 글만, "Read,Grep,Glob" = 읽기만(작업 폴더 cwd 와 add_dirs 안에서만 — 미리 허락을 주지 않으므로 그 밖은 거절된다).
+    model 은 CLI 가 실제로 쓴 모델 이름 — 별칭 'opus' 가 어느 판을 가리키는지는 CLI 판에 달렸다."""
+    exe = find_claude()
+    if not exe:
+        return None
+    args = [exe, "-p", "--model", model, "--output-format", "json"] + (["--effort", effort] if effort else [])
+    extra = (["--tools", tools] if tools is not None else []) + [x for d in add_dirs for x in ("--add-dir", d)]
+    try:
+        r = subprocess.run(args + extra, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, cwd=cwd, **_no_window())
+        out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+        if r.returncode != 0 and extra and re.search(r"unknown option|unrecognized", (err + out).lower()) and "unrecognized_model" not in out:
+            r = subprocess.run(args, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **_no_window())   # 옛 CLI: 도구 옵션 없이
+            out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+        try:
+            d = json.loads(out[out.index("{"):out.rindex("}") + 1])
+        except ValueError:
+            d = {}
+        text = str(d.get("result") or "").strip()
+        _note_claude(r.returncode if not d.get("is_error") else 1, text or out, err)
+        if not text or d.get("is_error"):
+            return None
+        usage = d.get("modelUsage") or {}
+        main = max(usage, key=lambda k: (usage[k] or {}).get("outputTokens", 0)) if usage else ""
+        return {"text": text, "model": main, "turns": d.get("num_turns") or 1}
+    except Exception:
+        return None
+
+
 # ---------- 탐색 맵 정보 패널: 초록 찾기·요약·번역 캐시 ----------
 def _brief_cache_path():
     return os.path.join(MAPS_DIR, "탐색요약.json")
@@ -2537,7 +2567,7 @@ sys.path.insert(0, BASE)
 import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search,
-        claude_text=claude_text, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
+        claude_text=claude_text, claude_run=claude_run, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
         paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error)
 
 # ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------

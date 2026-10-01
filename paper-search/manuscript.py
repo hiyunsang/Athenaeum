@@ -2386,6 +2386,7 @@ def _src(doc, query=""):
     if sum(len(t) for _, t in items) <= _SRC_BUDGET:
         return head + "\n\n".join("### 자료: %s\n%s" % (x.get("name", ""), t) for x, t in items) + tail
     qs = _src_words(query)
+    cites = _cite_numbers(query)
     secs = []   # (점수, 차례, 자료 이름, 글)
     for x, t in items:
         chunks = []
@@ -2400,6 +2401,8 @@ def _src(doc, query=""):
         for k, c in enumerate(chunks):
             ws = _src_words(c)
             score = len(qs & ws) / (len(ws) ** 0.5 + 1) + (0.6 if k == 0 else 0)   # 자료의 첫 대목(개요)은 조금 우대
+            if cites and any(re.search(r"(?<![\d.])%s(?!\d)" % n, c) for n in cites):   # 물음이 가리키는 인용 번호가 적힌 대목(참고문헌·인용 용도 목록)은 꼭
+                score += 3 * sum(1 for n in cites if re.search(r"(?m)^\W{0,4}\[?%s[\].):]" % n, c)) + 1
             secs.append((score, len(secs), x.get("name", ""), c[:4000]))
     used, pick = 0, []
     for sc in sorted(secs, key=lambda z: -z[0]):
@@ -2436,7 +2439,8 @@ def ask_selection(doc, body):
                 m["error"] = res["error"]
             else:
                 m.pop("error", None)
-                m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time()})
+                m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time(),
+                                                   "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "refs": res.get("refs") or []})
                 m["unread"] = True
         with _REV_LOCK:   # 기다리는 동안 저장된 글 위에 답만 얹는다
             fresh = load_ms(doc["id"]) or doc
@@ -2447,6 +2451,67 @@ def ask_selection(doc, body):
             save_ms(fresh)
         return {"memo": m}
     return _ask_selection(doc, body)
+
+
+def _cite_numbers(text):
+    """글 속의 인용 번호: '[38,39]', '[12–15]' → ['38', '39', '12', '13', '14', '15']"""
+    out = []
+    for m in re.finditer(r"\[(\d{1,3}(?:\s*[,\u2013\u2014\-~]\s*\d{1,3})*)\]", text or ""):
+        for part in re.split(r"\s*,\s*", m.group(1)):
+            r = re.split(r"\s*[\u2013\u2014\-~]\s*", part)
+            if len(r) == 2 and r[0].isdigit() and r[1].isdigit() and 0 < int(r[1]) - int(r[0]) <= 12:
+                out += [str(k) for k in range(int(r[0]), int(r[1]) + 1)]
+            else:
+                out += [x for x in r if x.isdigit()]
+    seen = set()
+    return [x for x in out if not (x in seen or seen.add(x))]
+
+
+_lib_titles = {"n": -1, "items": []}
+
+
+def _library_titles():
+    """서재의 논문마다 (파일, 제목 낱말들) — 참고문헌 줄이 내 서재의 어느 파일인지 맞출 때."""
+    try:
+        files = [f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf")]
+    except OSError:
+        return []
+    if _lib_titles["n"] != len(files):
+        items = []
+        for f in files:
+            meta = paper_meta(f)
+            title = meta.get("title") or re.sub(r"^\(.*?\)\s*\[.*?\]\s*\(\d{4}\),?\s*", "", os.path.splitext(f)[0])
+            ws = [w for w in re.findall(r"[a-z]{4,}", title.lower()) if w not in _STOP]
+            ym = re.search(r"(19|20)\d{2}", f)
+            if len(ws) >= 3:
+                items.append((f, ws, meta.get("year") or (ym.group(0) if ym else "")))
+        _lib_titles.update(n=len(files), items=items)
+    return _lib_titles["items"]
+
+
+def _ref_file(line):
+    """참고문헌 한 줄 → 내 서재의 파일 이름 (제목 낱말이 거의 다 들어 있으면). 없으면 ''"""
+    low = set(re.findall(r"[a-z]{4,}", (line or "").lower()))
+    best, bf = 0.0, ""
+    for f, ws, year in _library_titles():
+        hit = sum(1 for w in ws if w in low) / float(len(ws))
+        if hit > best and (hit >= 0.8 or (hit >= 0.65 and year and str(year) in line)):
+            best, bf = hit, f
+    return bf
+
+
+def _cited_refs(doc, quote, para):
+    """고른 글·문단이 인용한 번호의 참고문헌 줄(원고의 참고문헌 목록에서)과, 그 논문이 내 서재에 있으면 그 파일."""
+    refs = doc.get("refs_text") or []
+    if not refs:
+        return []
+    by = {}
+    for r in refs:
+        m = re.match(r"^\s*\[(\d{1,3})\]", r)
+        if m:
+            by.setdefault(m.group(1), r)
+    nums = _cite_numbers(quote) + [n for n in _cite_numbers(para) if n not in _cite_numbers(quote)]
+    return [{"n": n, "line": by[n], "file": _ref_file(by[n])} for n in nums[:14] if n in by]
 
 
 def _keep_memo_answers(old, d):
@@ -2501,7 +2566,30 @@ def _ask_selection(doc, body):
         % ("영어로" if lang_en else "한국어로", doc.get("title", ""), (node or {}).get("heading", ""), ctx[:6000], quote[:4000],
            ("\n[지금까지의 대화]\n" + hist + "\n") if hist else "", question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
-    raw = (cfg["claude_text"](_src(doc, quote + " " + question + " " + para[:3000]) + prompt, timeout=600, model=model, effort=effort) or "").strip()
+    lib = bool(body.get("lib", True)) and os.path.isdir(cfg.get("GEN_DIR") or "")
+    cited = _cited_refs(doc, quote, para)
+    extra = ""
+    if cited:
+        extra += "\n\n[이 글이 인용한 참고문헌 — 원고의 참고문헌 목록에서]\n" + "\n".join(
+            c["line"][:400] + ((" → 저자의 서재에 있음: \"%s\"" % os.path.splitext(c["file"])[0]) if c["file"] else " → 서재에 없음") for c in cited)
+    if lib:
+        extra += ("\n\n[서재를 찾아볼 수 있다]\n지금 작업 폴더는 저자가 모은 논문의 번역 폴더다. 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
+                  "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(번역이 없는 논문만 PDF 를 읽어라).\n"
+                  "- 문헌 내용이 필요한 물음일 때만 찾아라: 인용이 그 주장의 근거로 맞는지, 어느 논문이 무엇을 했는지, 근거가 될 논문이 서재에 있는지. 문장 다듬기·표현 물음에는 찾지 마라.\n"
+                  "- 찾는 법: 위에 '서재에 있음' 으로 적힌 파일이 있으면 그 요약부터. 아니면 Grep 으로 용어(영어·한국어)를 *.요약.md 에서 찾고, 필요한 논문의 .번역.md 에서 그 부분만 Read 한다(통째로 읽지 마라). 도구는 많아야 8번.\n"
+                  "- 문헌에서 확인한 것은 answer 에서 (저자 연도)로 가리키고, 확인하지 못한 것은 확인하지 못했다고 말하라. 서재에 없는 논문의 내용을 아는 척하지 마라.\n"
+                  "- 마지막 답은 반드시 위의 JSON 하나.") % cfg["ARCHIVE"]
+    else:
+        extra += "\n\n(너는 파일을 열 수 없다. 여기 준 글만 보고 답하라. 더 필요한 것이 있으면 무엇이 필요한지 answer 에서 말하라.)"
+    full = _src(doc, quote + " " + question + " " + para[:3000]) + prompt + extra
+    run = cfg.get("claude_run")
+    meta = {"model": "", "turns": 1}
+    if run:
+        res = run(full, timeout=900, model=model, effort=effort, tools="Read,Grep,Glob" if lib else "", cwd=cfg["GEN_DIR"] if lib else None, add_dirs=[cfg["ARCHIVE"]] if lib else ())
+        raw = (res or {}).get("text", "")
+        meta = {"model": (res or {}).get("model", ""), "turns": (res or {}).get("turns", 1)}
+    else:
+        raw = (cfg["claude_text"](full, timeout=600, model=model, effort=effort) or "").strip()
     if not raw:
         return {"error": "Claude 응답이 없습니다" + _why()}
     r = None
@@ -2514,7 +2602,8 @@ def _ask_selection(doc, body):
     if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):   # '숫자만' 같은 말에 JSON 없이 답한 경우 — 그 글을 답으로
         r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip(), "alternatives": []}
     alts = [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
-    return {"answer": str(r.get("answer") or "").strip(), "alternatives": alts}
+    return {"answer": str(r.get("answer") or "").strip(), "alternatives": alts, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1,
+            "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
 
 # ---------- 리비전: 심사 의견(편집자·심사위원)을 하나씩 같이 처리 ----------

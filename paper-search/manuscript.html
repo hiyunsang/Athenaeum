@@ -1661,7 +1661,7 @@ const chatOpen = new Set(), chatDraft = {}, memoLive = new Set();   // 펼쳐 �
 const memosFor = nid => (doc.memos || []).filter(m => m.node === nid && !m.done);
 const memoById = id => (doc.memos || []).find(m => m.id === id);
 function memoState(m) {   // wait 답 기다리는 중 · lost 기다리다 끊김 · err 실패 · new 안 읽은 답 · seen 읽은 답 · note 메모만
-  if (m.pending) return memoLive.has(m.id) || Date.now() / 1000 - m.pending < 720 ? "wait" : "lost";
+  if (m.pending) return memoLive.has(m.id) || Date.now() / 1000 - m.pending < 1000 ? "wait" : "lost";
   if (m.error) return "err";
   if (m.unread) return "new";
   return (m.thread || []).some(x => x.role === "claude") ? "seen" : "note";
@@ -1719,6 +1719,7 @@ document.addEventListener("keydown", e => {
 });
 const SEL_CHIPS = [["더 간결하게", "더 간결하게 줄여 줘"], ["더 자연스럽게", "뜻은 그대로 두고 더 자연스러운 학술 문체로 고쳐 줘"], ["다른 표현", "같은 뜻의 다른 표현을 보여 줘"], ["논리 점검", "이 부분의 논리와 근거에 빈 곳이 있는지 봐 줘"], ["심사자라면", "심사자라면 이 부분에서 무엇을 물을까?"], ["영어로", "영어 학술 문체로 옮겨 줘"]];
 const chatEffort = () => localStorage.getItem("ms_sel_effort") || "xhigh";
+const chatLib = () => localStorage.getItem("ms_sel_lib") !== "0";   // Claude 가 내 서재(번역·논문모음)를 찾아보게 할지
 function closeSel() { chatNew = null; }
 function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있는 대화(memo)를 서랍의 「대화」에 연다
   if (!doc) return;
@@ -1738,7 +1739,7 @@ function chatFocus(id) {   // 그 대화 카드를 보이게 하고 입력 칸�
 function chatThreadHtml(m) {
   const th = m.thread || [];
   return th.map((x, i) => x.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(x.text) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.looked ? "서재를 찾아봄" : "", (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
 }
 const chatInputHtml = (id, ph) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
@@ -1755,7 +1756,7 @@ function chatCardHtml(m) {
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
   h += "<div class='rvtext cq'>" + esc(m.quote) + "</div>" + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
-  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + ({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + "초</span></div>";
+  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)") +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button><button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button>" +
@@ -1777,6 +1778,7 @@ function renderChat() {
   const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
   let h = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>모두 접기</a>" : "") +
+    "<label class='hint' style='display:inline;cursor:pointer;font-weight:400;text-transform:none' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다'><input type='checkbox' id='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>" +
     "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
     "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (nsrc ? " <a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "") + "</div>";
   if (chatNew) h += "<div class='card memo open newq' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
@@ -1789,6 +1791,7 @@ function renderChat() {
   el.querySelectorAll(".card.memo").forEach(chatBind);
   const q = id => el.querySelector("#" + id);
   if (q("chEffort")) q("chEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
+  if (q("chLib")) q("chLib").onchange = e => localStorage.setItem("ms_sel_lib", e.target.checked ? "1" : "0");
   if (q("chFold")) q("chFold").onclick = e => { e.preventDefault(); chatOpen.clear(); renderChat(); };
   if (q("chSrc")) q("chSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
   if (q("chDoneT")) q("chDoneT").onclick = e => { e.preventDefault(); chatShowDone = !chatShowDone; renderChat(); };
@@ -1854,11 +1857,12 @@ async function chatAsk(id, text, retry) {   // 묻는다. 답을 기다리지 �
   }
   if (!m) return;
   const mid = doc.id, effort = chatEffort();
-  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; memoLive.add(m.id); chatOpen.add(m.id);
+  const lib = chatLib();
+  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; m.lib = lib; memoLive.add(m.id); chatOpen.add(m.id);
   memoUi(id === "new" ? null : m.id);
   if (id === "new") chatFocus(m.id);
   await saveNow();   // 물음까지 든 대화가 서버에 있어야 한다
-  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort, lib }); } catch (e) { r = { error: "서버 연결 실패" }; }
   memoLive.delete(m.id);
   if (!doc || doc.id !== mid) return;
   const mm = memoById(m.id);
@@ -1873,7 +1877,7 @@ function memoTake(mm, sm, err) {   // 서버가 답을 얹은 대화를 내 문�
 }
 function memoPoll() {   // 창을 닫았다 열어 요청이 끊긴 대화: 서버가 얹어 둔 답을 5초마다 살펴 가져온다
   clearTimeout(memoPollT);
-  if (!doc || !(doc.memos || []).some(m => m.pending && !memoLive.has(m.id) && Date.now() / 1000 - m.pending < 720)) return;
+  if (!doc || !(doc.memos || []).some(m => m.pending && !memoLive.has(m.id) && Date.now() / 1000 - m.pending < 1000)) return;
   const mid = doc.id;
   memoPollT = setTimeout(async () => {
     try {
