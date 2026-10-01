@@ -245,6 +245,7 @@ def import_docx(path, title=None, dry=False, trace=None):
             continue
         if re.match(r"^\[\d+\]\s*\S", plain):
             doc["refs_text"].append(plain); in_refs = True
+            roles.append((idx, "ref", None, plain))
             continue
         h = _HEAD_RE.match(plain)
         if h and not plain.endswith((".", ",", ";")) and len(plain.split()) <= 12:
@@ -752,6 +753,15 @@ def _sync_plan(doc):
         want = next((c for c in mine if _norm_ws(_upgrade_text(c, _legacy_pairs(raws[i]), fb)) == _norm_ws(t)), None)   # 그대로인 캡션이 있으면 안 바뀐 것
         if want is None and q < len(mine) and len(mine) == sum(1 for r in roles if r[1] == "figcap" and r[2] == num) and mine[q].strip():
             part_change(i, t, _upgrade_text(mine[q].strip(), _legacy_pairs(raws[i]), fb), "fig%s" % num)
+    # 참고문헌: 같은 자리의 줄이 달라졌으면 고치고, 목록 끝에 늘어난 줄(여기서 새로 인용한 서재의 논문)은 마지막 참고문헌 뒤에 넣는다. 지우지는 않는다
+    rrl = [(i, t) for i, k, ref, t in roles if k == "ref"]
+    cur_refs = [str(x).strip() for x in doc.get("refs_text") or [] if str(x).strip()]
+    if rrl and cur_refs:
+        for q, (i, t) in enumerate(rrl):
+            if q < len(cur_refs) and _norm_ws(cur_refs[q]) != _norm_ws(t) and wordsync.patchable(raws[i]):
+                edits.append({"idx": i, "kind": "edit", "text": cur_refs[q], "where": "refs"})
+        for q in range(len(rrl), len(cur_refs)):
+            edits.append({"idx": rrl[-1][0], "kind": "insert", "text": cur_refs[q], "like": raws[rrl[-1][0]], "where": "refs", "seq": 5000 + q})
     return tr, tmp, edits, notes
 
 
@@ -2491,7 +2501,8 @@ def ask_selection(doc, body):
             else:
                 m.pop("error", None)
                 m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time(),
-                                                   "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "whole": bool(res.get("whole")), "tok": res.get("tok"), "refs": res.get("refs") or []})
+                                                   "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "whole": bool(res.get("whole")), "tok": res.get("tok"), "refs": res.get("refs") or [],
+                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or []})
                 m["unread"] = True
         with _REV_LOCK:   # 기다리는 동안 저장된 글 위에 답만 얹는다
             fresh = load_ms(doc["id"]) or doc
@@ -2549,6 +2560,148 @@ def _ref_file(line):
         if hit > best and (hit >= 0.8 or (hit >= 0.65 and year and str(year) in line)):
             best, bf = hit, f
     return bf
+
+
+def _page_range(p):
+    """'1375-1384' → '1375–84' (원고의 참고문헌 목록과 같은 꼴)"""
+    m = re.match(r"^\s*(\d+)\s*[-\u2013]\s*(\d+)\s*$", str(p or ""))
+    if not m:
+        return str(p or "").strip()
+    a, b = m.group(1), m.group(2)
+    if len(a) == len(b) and a != b:
+        k = 0
+        while k < len(a) - 1 and a[k] == b[k]:
+            k += 1
+        b = b[k:]
+    return a + "\u2013" + b
+
+
+# 저널 이름 줄이기 (ISO 4 의 흔한 낱말만 — 기계가공·재료 분야). 한 낱말 이름(Wear, Micromachines)은 그대로
+_J_ABBR = {"international": "Int", "journal": "J", "machine": "Mach", "machining": "Mach", "tools": "Tools", "manufacture": "Manuf", "manufacturing": "Manuf",
+           "materials": "Mater", "material": "Mater", "materialia": "Mater", "processing": "Process", "processes": "Process", "technology": "Technol", "technologies": "Technol",
+           "engineering": "Eng", "precision": "Precis", "advanced": "Adv", "advances": "Adv", "science": "Sci", "sciences": "Sci", "scientific": "Sci",
+           "mechanical": "Mech", "mechanics": "Mech", "physics": "Phys", "physical": "Phys", "applied": "Appl", "research": "Res", "transactions": "Trans",
+           "proceedings": "Proc", "society": "Soc", "annals": "Ann", "metallurgical": "Metall", "metallurgy": "Metall", "tribology": "Tribol", "letters": "Lett",
+           "communications": "Commun", "royal": "R", "american": "Am", "institute": "Inst", "institution": "Inst", "surface": "Surf", "coatings": "Coat",
+           "production": "Prod", "design": "Des", "experimental": "Exp", "theoretical": "Theor", "analysis": "Anal", "structures": "Struct", "structural": "Struct",
+           "fracture": "Fract", "plasticity": "Plast", "scripta": "Scr", "review": "Rev", "reviews": "Rev", "progress": "Prog", "composites": "Compos",
+           "measurement": "Meas", "instruments": "Instrum", "reports": "Rep", "nature": "Nat", "chemistry": "Chem", "chemical": "Chem", "thermal": "Therm",
+           "numerical": "Numer", "methods": "Methods", "computational": "Comput", "computer": "Comput", "modelling": "Model", "modeling": "Model",
+           "simulation": "Simul", "micromechanics": "Micromech", "microengineering": "Microeng", "nanotechnology": "Nanotechnol", "additive": "Addit",
+           "characterization": "Charact", "alloys": "Alloys", "compounds": "Compd", "testing": "Test", "dynamics": "Dyn", "optics": "Opt", "laser": "Laser",
+           "sound": "Sound", "vibration": "Vib", "korean": "Korean", "japan": "Jpn", "japanese": "Jpn", "european": "Eur", "british": "Br", "chinese": "Chin",
+           "energy": "Energy", "industrial": "Ind", "industry": "Ind", "systems": "Syst", "robotics": "Robot", "integrated": "Integr", "letter": "Lett"}
+_J_DROP = {"of", "the", "and", "in", "for", "on", "&", "de", "la"}
+
+
+def _journal_abbr(name):
+    ws = [w for w in re.split(r"\s+", str(name or "").replace(".", "").strip()) if w]
+    if len(ws) <= 1:
+        return " ".join(ws)
+    out = []
+    for w in ws:
+        low = w.lower().strip(",:")
+        if low in _J_DROP:
+            continue
+        out.append(_J_ABBR.get(low, w.strip(",:")))
+    return " ".join(out)
+
+
+def _ref_format(msg):
+    """Crossref 기록 → 'Maeng S, Ahn JH, Min BK. Title. Int J Precis Eng Manuf 2024;25:1375–84.' (번호 없이)"""
+    import html as _html
+    auth = []
+    for a in msg.get("author") or []:
+        fam = (a.get("family") or a.get("name") or "").strip()
+        ini = "".join(p[0].upper() for p in re.split(r"[\s.\-]+", a.get("given") or "") if p)
+        if fam:
+            auth.append((fam + " " + ini).strip())
+    title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", _html.unescape((msg.get("title") or [""])[0]))).strip().rstrip(".")
+    j = _journal_abbr(_html.unescape(((msg.get("short-container-title") or []) + (msg.get("container-title") or []) + [""])[0]))
+    year = ""
+    for key in ("published-print", "published-online", "issued"):
+        parts = (msg.get(key) or {}).get("date-parts") or [[None]]
+        if parts and parts[0] and parts[0][0]:
+            year = str(parts[0][0]); break
+    vol = str(msg.get("volume") or "").strip()
+    issue = str(msg.get("issue") or "").strip()
+    pages = _page_range(msg.get("page") or msg.get("article-number") or "")
+    tail = year + ((";" + vol + ("(%s)" % issue if issue and msg.get("page") else "")) if vol else "") + ((":" + pages) if pages else "")
+    return "%s. %s. %s %s." % (", ".join(auth), title, j, tail) if auth and title else ""
+
+
+def library_ref(fname):
+    """서재의 논문 한 편 → 참고문헌 한 줄(번호 없이). PDF 첫 쪽들의 DOI 로 Crossref 에서 저자·저널·권·쪽을 받는다
+    (제목이 그 PDF 에 실제로 있는지 대조 — 본문에 인용된 남의 DOI 를 집지 않게). 못 받으면 파일 이름에서 아는 만큼만."""
+    cp = os.path.join(cfg["MS_DIR"], "_서재참고문헌.json")
+    cache = cfg["load_json"](cp, {}) or {}
+    if cache.get(fname):
+        return cache[fname]
+    line = ""
+    try:
+        import intake, requests
+        cands, page = intake.extract_doi_candidates(os.path.join(cfg["ARCHIVE"], fname))
+        tried = []
+        for doi in [v for c in cands for v in intake.doi_variants(c)]:
+            if doi in tried or len(tried) >= 6:
+                continue
+            tried.append(doi)
+            r = requests.get("https://api.crossref.org/works/" + doi, headers={"User-Agent": "athenaeum/1.0"}, timeout=15)
+            if r.status_code != 200:
+                continue
+            msg = r.json().get("message") or {}
+            title = re.sub(r"<[^>]+>", "", (msg.get("title") or [""])[0])
+            if title and intake.title_matches(title, page):
+                line = _ref_format(msg)
+                if line:
+                    break
+    except Exception:
+        line = ""
+    if not line:   # Crossref 를 못 쓴 경우: 파일 이름에서 아는 만큼 (다음에 다시 시도하도록 기억하지 않는다)
+        m = paper_meta(fname)
+        return "%s. %s. %s %s." % (m["author"], str(m["title"]).rstrip("."), m["journal"], m["year"])
+    cache = cfg["load_json"](cp, {}) or {}
+    cache[fname] = line
+    cfg["save_json"](cp, cache)
+    return line
+
+
+def _lib_file(name):
+    """Claude 가 적어 준 파일 이름(요약·번역 파일 이름일 수도 있다) → 서재의 PDF 파일 이름. 못 찾으면 ''"""
+    stem = re.sub(r"\.(pdf|요약\.md|번역\.md|번역\.정렬\.json|캡션\.json)$", "", str(name or "").strip().strip('"').replace("\\", "/").split("/")[-1], flags=re.I)
+    if not stem:
+        return ""
+    try:
+        files = [f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf")]
+    except OSError:
+        return ""
+    if stem + ".pdf" in files:
+        return stem + ".pdf"
+    low = stem.lower()
+    near = [f for f in files if f.lower().startswith(low[:60])] if len(low) >= 14 else []
+    return near[0] if len(near) == 1 else ""
+
+
+def _cite_info(doc, cites):
+    """Claude 가 글 속에 [@열쇠] 로 인용한 서재의 논문들 → [{key, file, n(원고의 참고문헌 목록에 이미 있으면 그 번호), line(없으면 새로 넣을 줄), label}]"""
+    out, seen = [], set()
+    have = {}
+    for r in doc.get("refs_text") or []:
+        m = re.match(r"^\s*\[(\d{1,3})\]", r)
+        f = _ref_file(r) if m else ""
+        if f:
+            have.setdefault(f, m.group(1))
+    for c in (cites or [])[:16]:
+        if not isinstance(c, dict):
+            continue
+        key = re.sub(r"[^\w\uac00-\ud7a3-]", "", str(c.get("key") or "").lstrip("@"))[:40]
+        f = _lib_file(c.get("file"))
+        if not key or not f or key in seen:
+            continue
+        seen.add(key)
+        n = have.get(f, "")
+        out.append({"key": key, "file": f, "n": n, "line": "" if n else library_ref(f), "label": paper_short(f)})
+    return out
 
 
 def _cited_refs(doc, quote, para):
@@ -2809,7 +2962,8 @@ def _sec_nodes(doc, nid):
 
 def _ask_selection(doc, body):
     """물음의 범위(scope): sel 고른 글 · para 그 문단(고른 글과 같은 길 — 대안이 문단 전체를 대체) · sec 그 절 전체 · doc 원고 전체.
-    절·원고 전체는 검토와 물음만 받고 대안은 내지 않는다(통째로 바꿔 넣지 않는다 — 고칠 문장은 그 문장을 골라 다시 묻는다)."""
+    절은 검토·물음, 그리고 저자가 다시 써 달라고 하면 조각(절·소절)마다 다시 쓴 글(rewrites). 원고 전체는 검토·물음만.
+    서재를 찾아볼 때는 읽어서 확인한 논문을 글 속에 [@열쇠] 로 인용할 수 있다(cites) — 화면이 반영할 때 참고문헌 번호로 바꾼다."""
     quote = str(body.get("quote") or "").strip()
     question = str(body.get("question") or "").strip()
     scope = body.get("scope") if body.get("scope") in ("para", "sec", "doc") else "sel"
@@ -2819,35 +2973,53 @@ def _ask_selection(doc, body):
     nid = body.get("node")
     key = body.get("key") or "draft"
     node = _rev_node(doc, nid)
+    lib = bool(body.get("lib", True)) and os.path.isdir(cfg.get("GEN_DIR") or "")
     hist = "\n".join("[%s] %s%s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1500],
-                                    ("\n  (내놓은 대안: " + " / ".join(str(a)[:300] for a in m.get("alts") or []) + ")") if m.get("alts") else "")
+                                    ("\n  (내놓은 대안: " + " / ".join(str(a)[:300] for a in m.get("alts") or []) + ")") if m.get("alts") else
+                                    ("\n  (다시 쓴 글을 냈다: " + ", ".join(str(r.get("node")) for r in m.get("rw") or []) + ")") if m.get("rw") else "")
                      for m in (body.get("thread") or [])[-8:])
     hist = ("\n[지금까지의 대화]\n" + hist + "\n") if hist else ""
+    cite_rule = ("- 서재에서 직접 읽어 확인한 논문은 근거로 달 수 있다: 글 속에는 [@열쇠] 로 적고(열쇠 = 첫 저자 성+연도, 예: [@Issahaq2022]), JSON 의 cites 에 "
+                 "{\"key\": \"Issahaq2022\", \"file\": \"그 논문의 파일 이름(확장자 빼고 글자 그대로)\"} 를 적는다. 프로그램이 원고의 참고문헌 번호로 바꾸고, 목록에 없으면 목록에 넣는다. "
+                 "읽어서 확인하지 않은 논문은 인용하지 마라. 원고에 이미 있는 [n] 인용은 그대로 둔다.\n") if lib else "- 새 문헌을 인용하지 마라(서재를 볼 수 없다). 원고에 이미 있는 [n] 인용은 그대로 둔다.\n"
+    pieces = []   # 다시 쓸 수 있는 조각의 id (절 범위)
     if wide:
         if scope == "doc":
-            label, para = "원고 전체", ""
+            label, para, plist = "원고 전체", "", ""
         elif nid == "front":
             label, para = "초록", (doc.get("front") or {}).get("abstract") or ""
+            pieces, plist = ["front"], "front: 초록 (%s자)" % format(len(para), ",")
         else:
             secs = _sec_nodes(doc, nid)
             alt = "draft_en" if key == "draft" else "draft"
+            txt = lambda n: (n.get(key) or n.get(alt) or "").strip()
             label = "「%s」 절 전체" % (node or {}).get("heading", "") + ((" (소절 포함: %s)" % ", ".join("「%s」" % n.get("heading", "") for n in secs[1:])) if len(secs) > 1 else "")
-            para = "\n\n".join("%s %s\n%s" % ("##" if n.get("level", 1) == 1 else "###", n.get("heading", ""), (n.get(key) or n.get(alt) or "").strip() or "(아직 글이 없다)") for n in secs)
+            para = "\n\n".join("%s %s\n%s" % ("##" if n.get("level", 1) == 1 else "###", n.get("heading", ""), txt(n) or "(아직 글이 없다)") for n in secs)
+            pieces = [str(n.get("id")) for n in secs if txt(n)]
+            plist = "\n".join("%s: %s (%s)" % (n.get("id"), n.get("heading", ""), (format(len(txt(n)), ",") + "자") if txt(n) else "글 없음") for n in secs)
         # 배경(자료 + 원고 전체)은 시스템 프롬프트로. 원고 전체를 놓고 묻는 물음에는 원고를 꼭 준다
         system, pre, whole = _ctx(doc, nid, key, label + " " + question + " " + para[:3000], True if scope == "doc" else bool(body.get("whole", True)))
         body_txt = ("(이 범위의 글은 위에 준 원고에서 읽어라. '그 뒤 바뀐 곳' 이 있으면 그것이 지금 글이다.)" if whole
                     else "[이 범위의 글]\n" + para[:60000])
+        rewrite_rule = ((
+            "- 저자가 이 범위를 **다시 써 달라고**(고쳐 써 달라·다듬어 달라·줄여 달라) 분명히 말한 때에만, JSON 뒤에 다시 쓴 글을 아래 꼴로 붙인다. 조각마다 하나씩, 고칠 것이 없는 조각은 내지 않는다:\n"
+            "<<<REWRITE 조각id>>>\n(그 조각의 새 글 전체 — 제목 줄 없이 본문만, 문단 사이는 빈 줄)\n<<<END>>>\n"
+            "  다시 쓸 때: 구성과 문장을 고치는 것이지 내용을 지어내는 것이 아니다. 사실·수치·실험 조건·결과는 그대로. 원고의 인용 [n], 그림·표 언급(Fig. n), "
+            "수식($…$ 와 \u27e6…\u27e7), 표(| 로 시작하는 줄)는 글자 그대로 옮긴다. 글의 언어는 그 조각의 언어 그대로. answer 에는 무엇을 왜 바꿨는지 3~6줄로 적는다.\n"
+            "- 다시 써 달라는 말이 없으면 REWRITE 를 내지 말고 지적만 한다.\n"
+            "[이 범위의 조각 — id: 제목]\n%s\n") % plist) if pieces else "- 원고 전체를 통째로 다시 쓰지는 않는다. 다시 써 달라고 하면 절을 골라 달라고 답하라.\n"
         prompt = (
-            "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고의 한 범위 전체를 놓고 묻거나 검토를 부탁한다. JSON 으로만 답하라:\n"
-            "{\"answer\": \"한국어로\", \"alternatives\": []}\n"
+            "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고의 한 범위 전체를 놓고 묻거나, 검토를 부탁하거나, 다시 써 달라고 한다. 먼저 JSON 하나로 답하라:\n"
+            "{\"answer\": \"한국어로\", \"alternatives\": [], \"cites\": []}\n"
             "규칙:\n"
             "- 질문이면 그 답을 한다. 검토·의견을 바라면 지적을 중요한 순서로 3~7개: 지적마다 줄을 바꿔 번호를 붙이고, 어디인지(소절 이름과 그 문장의 앞 구절을 짧게 따옴표로) → 무엇이 문제인지 → 어떻게 고칠지 한 줄.\n"
             "- 이 범위 안에서만 보지 말고, 원고의 다른 곳과 어긋나거나 겹치는 것도 짚어라(어느 절인지 가리켜서).\n"
             "- 잘된 점을 늘어놓지 마라. 고칠 것이 없으면 없다고 말하라. 듣기 좋은 말을 하지 마라.\n"
-            "- 이 범위를 통째로 다시 쓰지 마라. alternatives 는 항상 빈 배열이다 — 고칠 문장은 저자가 그 문장을 골라 따로 묻는다.\n"
-            "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 저자가 '짧게' 라고 해도 형식은 이 JSON 이다.\n\n"
+            "- alternatives 는 항상 빈 배열이다.\n"
+            "%s%s"
+            "- 원고에 없는 수치·결과를 지어내지 마라. 저자가 '짧게' 라고 해도 첫머리는 이 JSON 이다.\n\n"
             "논문 제목: %s\n물음의 범위: %s\n\n%s\n%s\n[저자의 말]\n%s"
-            % (doc.get("title", ""), label, body_txt, hist, question[:2000]))
+            % (rewrite_rule, cite_rule, doc.get("title", ""), label, body_txt, hist, question[:2000]))
     else:
         if nid == "front":
             text = (doc.get("front") or {}).get("abstract") or ""
@@ -2862,7 +3034,7 @@ def _ask_selection(doc, body):
         system, pre, whole = _ctx(doc, nid, key, quote + " " + question + " " + para[:3000], bool(body.get("whole", True)))
         prompt = (
             "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고에서 글의 한 부분을 골라 묻거나, 고쳐 달라고 하거나, 제 생각(\"이렇게 바꾸면 어때?\")을 말한다. JSON 으로만 답하라:\n"
-            "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"]}\n"
+            "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"], \"cites\": []}\n"
             "규칙:\n"
             "- 저자가 '짧게', '숫자만' 이라고 해도 형식은 이 JSON 이다 (짧은 답을 answer 에 넣는다).\n"
             "- alternatives 는 고쳐 쓰기를 바라거나 표현을 묻는 경우에만 1~3개. 뜻·사실·근거만 묻는 질문이면 빈 배열.\n"
@@ -2870,13 +3042,13 @@ def _ask_selection(doc, body):
             "%s"
             "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
             "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
-            "- 원고에 없는 수치·결과·문헌을 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
+            "%s"
+            "- 원고에 없는 수치·결과를 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
             "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
             % ("영어로" if lang_en else "한국어로",
                "- 저자는 문단 하나를 통째로 골랐다. 문장만이 아니라 문단의 구성(첫 문장이 요지를 여는지, 문장 순서, 앞뒤 문단과의 이음)도 보라. 대안은 문단 전체를 대체하며 대안은 1~2개면 된다.\n" if scope == "para" else "",
-               doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
+               cite_rule, doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
-    lib = bool(body.get("lib", True)) and os.path.isdir(cfg.get("GEN_DIR") or "")
     cited = _cited_refs(doc, quote, para)
     extra = ""
     if cited:
@@ -2885,34 +3057,45 @@ def _ask_selection(doc, body):
     if lib:
         extra += ("\n\n[서재를 찾아볼 수 있다]\n저자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
                   "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(번역이 없는 논문만 PDF 를 읽어라).\n"
-                  "- 문헌 내용이 필요한 물음일 때만 찾아라: 인용이 그 주장의 근거로 맞는지, 어느 논문이 무엇을 했는지, 근거가 될 논문이 서재에 있는지. 문장 다듬기·표현 물음에는 찾지 마라.\n"
+                  "- 문헌 내용이 필요한 물음일 때만 찾아라: 인용이 그 주장의 근거로 맞는지, 어느 논문이 무엇을 했는지, 근거가 될 논문이 서재에 있는지, 저자가 문헌을 달아 달라고 할 때. 문장 다듬기·표현 물음에는 찾지 마라.\n"
                   "- 찾는 법: 위에 '서재에 있음' 으로 적힌 파일이 있으면 그 요약부터. 아니면 Grep 으로 용어(영어·한국어)를 *.요약.md 에서 찾고, 필요한 논문의 .번역.md 에서 그 부분만 Read 한다(통째로 읽지 마라). 도구는 많아야 8번.\n"
                   "- 문헌에서 확인한 것은 answer 에서 (저자 연도)로 가리키고, 확인하지 못한 것은 확인하지 못했다고 말하라. 서재에 없는 논문의 내용을 아는 척하지 마라.\n"
-                  "- 마지막 답은 반드시 위의 JSON 하나.") % (cfg["GEN_DIR"], cfg["ARCHIVE"])
+                  "- 마지막 답은 반드시 위의 형식(JSON, 그리고 다시 쓴 글이 있으면 그 뒤에).") % (cfg["GEN_DIR"], cfg["ARCHIVE"])
     else:
         extra += "\n\n(너는 파일을 열 수 없다. 여기 준 글만 보고 답하라. 더 필요한 것이 있으면 무엇이 필요한지 answer 에서 말하라.)"
     full = pre + prompt + extra
     run = cfg.get("claude_run")
     meta = {"model": "", "turns": 1}
     if run:
-        res = run(full, timeout=900, model=model, effort=effort, tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system or None)
+        res = run(full, timeout=1500 if pieces else 900, model=model, effort=effort, tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system or None)
         raw = (res or {}).get("text", "")
         meta = {"model": (res or {}).get("model", ""), "turns": (res or {}).get("turns", 1), "tok": (res or {}).get("tok")}
     else:
         raw = (cfg["claude_text"](system + full, timeout=600, model=model, effort=effort) or "").strip()
     if not raw:
         return {"error": "Claude 응답이 없습니다" + _why()}
+    # 다시 쓴 글은 JSON 밖에 온다 (긴 글·수식의 역슬래시를 JSON 에 넣으면 깨지기 쉽다)
+    cut = raw.find("<<<REWRITE")
+    head, rws, lost = (raw if cut < 0 else raw[:cut]), [], False
+    if cut >= 0:
+        for mm in re.finditer(r"<<<REWRITE\s+([\w-]+)\s*>>>[ \t]*\r?\n(.*?)\r?\n?<<<END>>>", raw[cut:], re.S):
+            if mm.group(1) in pieces and mm.group(2).strip() and not any(x["node"] == mm.group(1) for x in rws):
+                rws.append({"node": mm.group(1), "text": re.sub(r"\r\n?", "\n", mm.group(2)).strip()})
+        lost = raw[cut:].count("<<<REWRITE") > raw[cut:].count("<<<END>>>")   # 끝까지 오지 않은 조각
     r = None
-    m = re.search(r"\{.*\}", raw, re.S)
+    m = re.search(r"\{.*\}", head, re.S)
     if m:
         try:
             r = json.loads(m.group(0))
         except ValueError:
             r = None
     if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):   # '숫자만' 같은 말에 JSON 없이 답한 경우 — 그 글을 답으로
-        r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", raw).strip(), "alternatives": []}
+        r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", head).strip() or ("다시 쓴 글을 아래에 냈습니다." if rws else ""), "alternatives": []}
     alts = [] if wide else [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
-    return {"answer": str(r.get("answer") or "").strip(), "alternatives": alts, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
+    used = " ".join(alts) + " " + " ".join(x["text"] for x in rws)
+    cites = [c for c in _cite_info(doc, r.get("cites") if isinstance(r.get("cites"), list) else []) if ("[@%s]" % c["key"]) in used] if lib else []
+    answer = str(r.get("answer") or "").strip() + ("\n\n(다시 쓴 글의 일부가 끝까지 오지 않아 그 조각은 버렸습니다 — 범위를 좁혀 다시 물어 주세요.)" if lost else "")
+    return {"answer": answer, "alternatives": alts, "rewrites": rws, "cites": cites, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
 

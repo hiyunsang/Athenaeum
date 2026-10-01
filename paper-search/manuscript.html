@@ -262,6 +262,7 @@
   #chPad { height: 0; }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
   .selalt .acts { margin-left: -8px; }
+  .selalt .rwdiff { max-height: 380px; overflow-y: auto; } .selalt .same { color: var(--text-3); font-size: 12px; padding: 3px 0; }
   .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; } .card.memo.unread { background: var(--accent-bg); }
   #memoState { font-size: 12px; color: var(--amber); } #memoState.new { color: var(--accent); font-weight: 600; }
   /* 본문 밑줄: 글 칸 뒤에 같은 글을 투명하게 깔아 메모가 달린 구절만 표시 */
@@ -1520,7 +1521,7 @@ function renderRefs() {
   const inLib = (refsLib || []).filter(x => x.file).length;
   let h = "<div class='sec'>참고문헌 " + refs.length + "편 <span class='hint' style='font-weight:400;text-transform:none'>" + (refsLib ? "내 서재에 있는 것 " + inLib + "편" : "") + "</span><span style='margin-left:auto'></span>" +
     "<button class='btn act' id='refsEditBtn'>" + (refsEditing ? "닫기" : "목록 고치기") + "</button></div>" +
-    "<div class='hint'>워드에서 가져온 참고문헌 목록입니다. 내보낼 때 그대로 붙고, Claude 에게 물을 때 고른 글이 인용한 번호의 문헌이 함께 전달됩니다. (워드 파일에 반영할 때는 워드의 목록을 그대로 둡니다)</div>";
+    "<div class='hint'>워드에서 가져온 참고문헌 목록입니다. 내보낼 때 그대로 붙고, Claude 에게 물을 때 고른 글이 인용한 번호의 문헌이 함께 전달됩니다. (워드 사본에는 고친 줄과 목록 끝에 늘어난 줄이 반영됩니다)</div>";
   if (!refs.length && !refsEditing) h += "<div class='hint' style='padding-top:8px'>아직 목록이 없습니다. 「목록 고치기」 로 한 줄에 하나씩 <code>[1] 저자. 제목. 저널 (연도)</code> 꼴로 붙여 넣으세요.</div>";
   if (missing.length) h += "<div class='issue'><b>목록에 없음</b>본문에서 인용했지만 목록에 없는 번호: " + missing.map(k => "<a href='#' class='act' data-rgo='" + k + "'>[" + k + "]</a>").join(" ") + "</div>";
   if (unused.length) h += "<div class='issue'><b>안 쓰임</b>목록에 있지만 본문에서 인용하지 않은 번호: " + unused.map(k => "[" + k + "]").join(" ") + "</div>";
@@ -1810,7 +1811,8 @@ document.addEventListener("keydown", e => {
 });
 const SEL_CHIPS = [["더 간결하게", "더 간결하게 줄여 줘"], ["더 자연스럽게", "뜻은 그대로 두고 더 자연스러운 학술 문체로 고쳐 줘"], ["다른 표현", "같은 뜻의 다른 표현을 보여 줘"], ["논리 점검", "이 부분의 논리와 근거에 빈 곳이 있는지 봐 줘"], ["심사자라면", "심사자라면 이 부분에서 무엇을 물을까?"], ["영어로", "영어 학술 문체로 옮겨 줘"]];
 // 물음의 범위: sel 고른 글 · para 그 문단 · sec 그 절(1단계 절이면 소절까지) · doc 원고 전체. 절·원고 전체는 검토와 물음만 (대안으로 바꿔 넣지 않는다)
-const WIDE_CHIPS = [["심사자의 눈으로", "심사자의 눈으로 이 범위를 검토해 줘. 가장 큰 문제부터"], ["논리 흐름", "이 범위의 논리 흐름에서 끊기거나 비약하는 곳을 짚어 줘"], ["겹치는 곳", "이 범위 안에서, 또는 다른 절과 내용이 겹치거나 되풀이되는 곳을 짚어 줘"], ["빠진 것", "이 범위에 빠진 설명·근거·한계가 있는지 봐 줘"], ["요지", "이 범위가 말하는 것을 세 문장으로 요약해 줘 (내가 뜻한 대로 읽히는지 보려는 것)"]];
+const WIDE_CHIPS = [["심사자의 눈으로", "심사자의 눈으로 이 범위를 검토해 줘. 가장 큰 문제부터"], ["논리 흐름", "이 범위의 논리 흐름에서 끊기거나 비약하는 곳을 짚어 줘"], ["겹치는 곳", "이 범위 안에서, 또는 다른 절과 내용이 겹치거나 되풀이되는 곳을 짚어 줘"], ["빠진 것", "이 범위에 빠진 설명·근거·한계가 있는지 봐 줘"], ["요지", "이 범위가 말하는 것을 세 문장으로 요약해 줘 (내가 뜻한 대로 읽히는지 보려는 것)"],
+  ["다시 쓰기", "이 범위를 다시 써 줘. 내용·수치·인용은 그대로 두고 구성과 문장을 다듬어서. 무엇을 왜 바꿨는지도 알려 줘"]];
 const scopeWide = sc => sc === "sec" || sc === "doc";
 const chipsFor = sc => scopeWide(sc) ? WIDE_CHIPS : SEL_CHIPS;
 const docKey = () => msMode === "doc" && (localStorage.getItem("ms_doclang") || "ko") === "en" ? "draft_en" : "draft";
@@ -1869,7 +1871,64 @@ function chatThreadHtml(m) {
   const th = m.thread || [];
   return th.map((x, i) => x.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(x.text) + "</div>"
     : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
-        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
+        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") +
+      (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend(x) + "</div>").join("");
+}
+// 다시 쓴 글(절 범위에서 '다시 써 줘'): 지금 글과 문단 단위로 견줘 보여 주고, 그 절의 글을 통째로 바꾼다
+const rwCache = new Map();
+function rwHtml(m, x, i, k) {
+  const r = x.rw[k], key = r.node === "front" ? "abstract" : m.key, cur = selText(r.node, key), gone = r.node !== "front" && !node(r.node);
+  const ck = m.id + ":" + i + ":" + k, sig = cur.length + "|" + cur.slice(0, 60) + "|" + cur.slice(-60);
+  let c = rwCache.get(ck); if (!c || c.sig !== sig) { c = { sig, same: normWs(cur) === normWs(citePreview(r.text, x.cites)), html: paraDiff(cur, r.text) }; rwCache.set(ck, c); }
+  return "<div class='selalt'><div class='hint'>다시 쓴 글 · " + esc(selHeading(r.node) || r.node) + " <span style='white-space:nowrap'>(" + cur.length.toLocaleString() + "자 → " + r.text.length.toLocaleString() + "자)</span></div>" +
+    (gone ? "<div class='hint'>그 절이 개요에서 없어졌습니다</div>" : c.same ? "<div class='hint'>지금 글과 같습니다" + (r.done ? " — 바꿔 넣었습니다" : "") + "</div>" : "<div class='rwdiff'>" + c.html + "</div>") +
+    "<div class='acts'>" + (gone || c.same ? "" : "<button class='btn pri' data-rw='" + i + ":" + k + "' title='이 절의 글 전체를 다시 쓴 글로 바꿉니다. 바꾸기 전의 글은 판 이력에 남고, 그 글 칸에서 Ctrl+Z 로도 되돌립니다'>이 절을 이 글로 바꾸기</button>") +
+    "<button class='btn' data-rwcopy='" + i + ":" + k + "'>복사</button></div></div>";
+}
+// 서재의 논문 인용: Claude 는 글 속에 [@열쇠] 로 적고, 반영할 때 참고문헌 번호로 바꾼다 (목록에 없는 논문은 목록 끝에 새 번호로)
+function citeLegend(x) {
+  const cs = x.cites || []; if (!cs.length) return "";
+  return "<div class='hint' style='margin-top:6px'>서재에서 단 인용 — 반영하면 번호로 바뀝니다:" + cs.map(c => "<br>[@" + esc(c.key) + "] " + esc(c.label || "") + " → " +
+    (c.n ? "참고문헌 [" + esc(c.n) + "]" : "새 문헌으로 목록 끝에: " + esc(c.line || ""))).join("") + "</div>";
+}
+function citeNumbers(cites, text, add) {   // 열쇠 → 번호. add 면 목록에 없는 논문을 목록 끝에 넣는다
+  const refs = add ? (doc.refs_text = doc.refs_text || []) : (doc.refs_text || []), num = {};
+  const numOf = line => (line.match(/^\s*\[(\d{1,3})\]/) || [])[1] || "";
+  let next = refs.reduce((a, r) => Math.max(a, +numOf(r) || 0), 0) + 1;
+  (cites || []).forEach(c => {
+    if (!text.includes("[@" + c.key + "]")) return;
+    if (c.n) { num[c.key] = c.n; return; }
+    const had = c.line && refs.find(r => normWs(r.replace(/^\s*\[\d+\]\s*/, "")) === normWs(c.line));   // 앞서 반영한 글이 이미 넣었다
+    if (had) { num[c.key] = numOf(had); return; }
+    num[c.key] = String(next);
+    if (add && c.line) refs.push("[" + next + "] " + c.line);
+    next++;
+  });
+  return num;
+}
+function citeSwap(text, num) {   // 이어 붙은 [@a][@b] 는 [46,47] 로
+  return text.replace(/\[@[^\]\s,;]+\](?:\s*\[@[^\]\s,;]+\])*/g, run => {
+    const ks = run.match(/\[@[^\]]+\]/g).map(t => t.slice(2, -1));
+    return ks.every(k => num[k]) ? "[" + ks.map(k => num[k]).join(",") + "]" : ks.map(k => num[k] ? "[" + num[k] + "]" : "[@" + k + "]").join("");
+  });
+}
+const citePreview = (text, cites) => /\[@/.test(text) ? citeSwap(text, citeNumbers(cites, text, false)) : text;
+function citeApply(text, cites) {   // 반영: 번호로 바꾸고 새 문헌을 목록에 넣는다
+  if (!/\[@/.test(text)) return text;
+  const before = (doc.refs_text || []).length, out = citeSwap(text, citeNumbers(cites, text, true));
+  if ((doc.refs_text || []).length !== before) renderRefs();
+  return out;
+}
+async function chatRewrite(m, i, k) {   // 다시 쓴 글을 그 절에 통째로 넣는다
+  const x = m.thread[i], r = x.rw[k], key = r.node === "front" ? "abstract" : m.key, mid = doc.id;
+  if (r.node !== "front" && !node(r.node)) { alert("그 절이 개요에서 없어졌습니다."); return; }
+  if (!confirm("「" + selHeading(r.node) + "」 의 글 전체를 다시 쓴 글로 바꿉니다.\n\n바꾸기 전의 글은 판 이력에 남깁니다(머리줄 「이력」). 그 글 칸에서 Ctrl+Z 로도 되돌릴 수 있습니다.")) return;
+  await snapNow("다시 쓰기 전 — " + selHeading(r.node).slice(0, 30));
+  if (!doc || doc.id !== mid) return;
+  const text = citeApply(r.text, x.cites), ta = taFor(r.node, key);
+  if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
+  else if (r.node === "front") doc.front.abstract = text; else node(r.node)[key] = text;
+  r.done = Date.now() / 1000; rwCache.clear(); save(true); memoUi(m.id);
 }
 const tokFmt = n => n >= 10000 ? (n / 10000).toFixed(1) + "만" : (n || 0).toLocaleString();
 const tokNote = t => t && t.in ? "읽은 토큰 " + tokFmt(t.in) + (t.cached ? " (그중 캐시 " + tokFmt(t.cached) + ")" : "") : "";   // 캐시에서 읽은 것은 값이 1/10
@@ -2007,7 +2066,9 @@ function chatBind(card) {
   if (cq("[data-mgo]")) cq("[data-mgo]").onclick = () => selGoto(m);
   if (cq("[data-mdel]")) cq("[data-mdel]").onclick = () => { if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
   if (cq(".memoDone")) cq(".memoDone").onchange = e => { m.done = e.target.checked; if (m.done) chatOpen.delete(id); save(); memoUi(); };
-  all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k]); });
+  all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k], m.thread[i].cites); });
+  all("[data-rw]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rw.split(":").map(Number); chatRewrite(m, i, k); });
+  all("[data-rwcopy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rwcopy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].rw[k].text); b.textContent = "복사됨"; });
   all("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].alts[k]); b.textContent = "복사됨"; });
 }
 function chatNewDrop() { chatNew = null; delete chatDraft.new; if (chatActive === "new") chatActive = null; renderChat(); marksRefresh(); }
@@ -2173,9 +2234,10 @@ function selGoto(m) {
   const c = $("center"), y = ta.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop + (a / Math.max(1, ta.value.length)) * ta.offsetHeight;
   c.scrollTop = Math.max(0, y - c.clientHeight / 3);
 }
-function chatApply(m, alt) {   // 대안을 고른 글 자리에 바꿔 넣는다
+function chatApply(m, alt, cites) {   // 대안을 고른 글 자리에 바꿔 넣는다
   const a = selFind(m);
   if (a < 0) { alert("고른 글을 원고에서 찾지 못했습니다 (그 사이 글이 바뀌었습니다). 다시 드래그해서 물어 주세요."); return; }
+  alt = citeApply(alt, cites);   // 서재에서 단 인용 [@열쇠] → 참고문헌 번호
   const ta = taFor(m.node, m.key);
   if (ta) {
     ta.focus(); ta.setSelectionRange(a, a + m.quote.length);
@@ -2427,7 +2489,7 @@ function wsPanelHtml() {
   if (!doc.source_docx) return "<div class='sec'>워드 파일에 반영</div><div class='hint'>「워드 가져오기」로 들여온 원고는, 여기서 고친 글을 그 워드 파일(사본)에 그대로 반영할 수 있습니다. 이 원고는 워드에서 가져온 것이 아닙니다.</div>";
   const c = wsCfg(), name = doc.source_docx.split(/[\\/]/).pop();
   return "<div class='sec'>워드 파일에 반영</div><div class='hint'>가져온 워드 파일 <b>" + esc(name) + "</b> 의 사본을 만들어 두고, 여기서 글을 고칠 때마다 그 사본의 글만 갈아 끼웁니다. 서식·그림·수식·표는 워드 것 그대로입니다. " +
-    "본문·절 제목·초록·제목·그림 캡션이 반영되고, 표·참고문헌·키워드는 반영되지 않습니다. 가져온 원본은 건드리지 않습니다.</div>" +
+    "본문·절 제목·초록·제목·그림 캡션, 그리고 참고문헌 목록의 고친 줄·늘어난 줄이 반영되고, 표·키워드는 반영되지 않습니다. 가져온 원본은 건드리지 않습니다.</div>" +
     "<div class='wsbox'><label><input type='checkbox' id='wsOn'" + (wsOn() ? " checked" : "") + "> 저장할 때마다 자동으로 반영 <span class='hint' style='display:inline'>(글을 멈추고 몇 초 뒤 · 글이 그대로면 다시 쓰지 않음)</span></label>" +
     "<label><input type='checkbox' id='wsMark'" + (c.mark ? " checked" : "") + "> 워드와 달라진 글자를 파란색으로</label>" +
     "<div style='margin-top:4px'>반영할 파일 <span class='hint' style='display:inline'>비우면 원고 폴더의 「워드반영」 안</span></div><input type='text' id='wsPath' value='" + esc(c.path || "") + "' placeholder='예: C:\\Users\\…\\Desktop\\논문.docx'>" +
