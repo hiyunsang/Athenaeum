@@ -68,8 +68,13 @@
   .fbtheme { padding: 6px 9px; border-left: 3px solid var(--amber); margin: 4px 0; font-size: 12.5px; line-height: 1.5; background: var(--surface); }
   .fbtheme .k { color: var(--text-3); font-size: 11px; margin-left: 6px; }
   .card.dim { opacity: .55; }
-  .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 3; overflow-x: auto; scrollbar-width: thin; flex: none; }   /* flex:none — 세로 flex 안에서 overflow 가 있으면 높이가 0 까지 눌린다 */
-  .tabs div { padding: 8px 9px; font-size: 12px; color: var(--text-2); cursor: pointer; white-space: nowrap; flex: none; }   /* 탭이 많아도 글자가 세로로 꺾이지 않게 */
+  #tabbar { position: sticky; top: 0; z-index: 3; flex: none; background: var(--panel); }   /* flex:none — 세로 flex 안에서 내용이 길면 0 높이로 눌려 사라진다 */
+  .tabs { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+  .tabs div b { color: var(--accent); font-weight: 600; margin-left: 2px; } .tabs div i { color: var(--amber); font-style: normal; margin-left: 2px; }
+  .subtabs { display: flex; gap: 2px; padding: 5px 8px 4px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  .subtabs a { padding: 1px 8px; color: var(--text-3); cursor: pointer; white-space: nowrap; } .subtabs a:hover { color: var(--accent); }
+  .subtabs a.on { color: var(--text); font-weight: 600; }   /* flex:none — 세로 flex 안에서 overflow 가 있으면 높이가 0 까지 눌린다 */
+  .tabs div { padding: 8px 11px; font-size: 12.5px; color: var(--text-2); cursor: pointer; white-space: nowrap; flex: none; }   /* 탭이 많아도 글자가 세로로 꺾이지 않게 */
   .tabs div.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
   .tab { display: none; padding: var(--s2) var(--s3) var(--s8); }
   .tab.on { display: block; }
@@ -223,13 +228,17 @@
   /* 고른 글: 글 칸에서 드래그하면 뜨는 작은 막대와, 메모·Claude 창 */
   #selBar { position: fixed; z-index: 31; display: none; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 4px 14px #0003; padding: 1px 2px; white-space: nowrap; }
   #selBar button { font-size: 12.5px; padding: 4px 9px; }
-  #selPop { position: fixed; right: 24px; bottom: 24px; width: 520px; max-width: calc(100vw - 48px); max-height: calc(100vh - 90px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; z-index: 30; padding: 10px 14px 8px; display: none; }
-  #selPop .mh { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-3); } #selPop .mh b { font-size: 13px; color: var(--text); }
-  #selPop .rvtext { max-height: 110px; overflow-y: auto; font-size: calc(12.5px * var(--ms-scale, 1)); }
-  #selPop textarea { font-size: 13px; line-height: 1.6; min-height: 0; margin-top: 4px; }
-  #selPop .mpal { display: flex; flex-wrap: wrap; gap: 0 2px; } #selPop .mpal button { padding: 3px 7px; font-size: 12px; }
-  #selPop .mfoot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
-  #selPop .mfoot select { font-size: 12px; border-color: transparent; background: transparent; color: var(--text-2); }
+  /* 대화 탭: 대화마다 카드 하나. 여러 개를 펼쳐 두고 카드 안에서 바로 이어 묻는다 */
+  #tab-chat .chtop { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  #tab-chat .chtop select { font-size: 12px; border-color: transparent; background: transparent; color: var(--text-2); }
+  .card.memo .ch { cursor: pointer; } .card.memo .ch .q1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-family: var(--font-serif); font-size: 12.5px; }
+  .card.memo.open { border-left-width: 3px; padding-bottom: 8px; }
+  .card.memo .cq { max-height: 96px; overflow-y: auto; margin: 6px 0 4px; font-size: calc(12.5px * var(--ms-scale, 1)); }
+  .card.memo .prev { color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .card.memo .chIn { font-size: 13px; line-height: 1.6; min-height: 0; margin-top: 6px; resize: none; overflow: hidden; }
+  .card.memo .mpal { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: -6px; } .card.memo .mpal button { padding: 2px 6px; font-size: 11.5px; color: var(--text-3); }
+  .card.memo .acts { display: flex; align-items: center; flex-wrap: wrap; gap: 0 2px; }
+  .card.memo.newq { border-left-color: var(--amber); background: var(--amber-bg); }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
   .selalt .acts { margin-left: -8px; }
   .card.memo { border-left-color: var(--accent); margin-bottom: var(--s1); } .card.memo.done { opacity: .55; } .card.memo.unread { background: var(--accent-bg); }
@@ -276,7 +285,7 @@
   <button class="btn" id="guideBtn" onclick="toggleGuide()" title="이 화면이 어떻게 돌아가는지 (워드·LaTeX 와 비교)">안내</button>
   <button class="btn" id="renameMs" title="제목 바꾸기">제목</button>
   <button class="btn warn" id="delMs" title="이 원고 삭제">삭제</button>
-  <span class="sp" id="saveState"></span><a href="#" id="memoState" onclick="switchTab('notes');return false" title="Claude 에게 물은 것의 상태 — 누르면 메모·피드백 탭"></a><a href="#" id="wsState" onclick="switchTab('out');return false" title="워드 파일에 반영 (내보내기 탭)"></a>
+  <span class="sp" id="saveState"></span><a href="#" id="memoState" onclick="switchTab('chat');return false" title="Claude 에게 물은 것의 상태 — 누르면 대화 탭"></a><a href="#" id="wsState" onclick="switchTab('out');return false" title="워드 파일에 반영 (내보내기 탭)"></a>
   <span id="uiCtlHost"></span>
 </header>
 <div id="layout">
@@ -290,11 +299,11 @@
     <h3>이 화면은 어떻게 쓰나</h3>
     <div>워드가 "빈 종이"라면 여기는 <b>근거를 붙여 쓰는 작업대</b>입니다. 흐름은 한 방향입니다.</div>
     <ol>
-      <li><b>읽기 화면에서 근거를 모은다.</b> 논문을 읽다가 문장을 드래그 → <b>원고에 담기</b>. 출처(논문·문장·쪽)가 붙은 <b>근거 카드</b>가 오른쪽 「카드」 탭에 쌓입니다.</li>
+      <li><b>읽기 화면에서 근거를 모은다.</b> 논문을 읽다가 문장을 드래그 → <b>원고에 담기</b>. 출처(논문·문장·쪽)가 붙은 <b>근거 카드</b>가 오른쪽 「근거」 의 카드에 쌓입니다.</li>
       <li><b>개요(왼쪽)를 짠다.</b> 절·문단 하나가 개요의 한 줄. 「+ 절」로 추가, 「개요 검토」로 Claude 가 빠진 절·순서를 봐 줍니다. 워드 원고가 있으면 「워드 가져오기」로 개요·문단·그림·참고문헌·주석이 한 번에 들어옵니다.</li>
       <li><b>문단 모드에서 문단을 만든다.</b> 주장 한 줄 → 카드 붙이기 → 「초안 쓰기」(카드만 근거로, 문장 끝에 [c3] 카드 번호) → 「이 문단 검토」(심사자 눈) → 「영문화」(용어집 유지).</li>
       <li><b>원고 모드로 통독하며 고친다.</b> 전체가 한 화면에 이어져 워드처럼 씁니다. 「집중」으로 양옆을 숨깁니다.</li>
-      <li><b>그림·피드백·점검.</b> 「그림」 탭: 말로 설명하면 Claude 가 도식을 그리고 피드백으로 다듬음. 「피드백」 탭: 교수님 워드 주석을 놓고 논의·반영. 「점검」 탭: 저널 규격(초록·하이라이트·그림 순서·인용 누락).</li>
+      <li><b>그림·피드백·점검.</b> 「그림」 탭: 말로 설명하면 Claude 가 도식을 그리고 피드백으로 다듬음. 「검토」 의 피드백: 교수님 워드 주석을 놓고 논의·반영. 「검토」 의 점검: 저널 규격(초록·하이라이트·그림 순서·인용 누락).</li>
       <li><b>내보내기.</b> 「내보내기」 탭에서 .docx — [c3] 은 참고문헌 번호로 바뀌고 참고문헌 목록이 자동으로 붙습니다. 교수님과는 워드로 주고받고, 돌아온 주석은 다시 가져옵니다.</li>
     </ol>
     <table><tr><th></th><th>워드</th><th>LaTeX·Overleaf</th><th>Scrivener</th><th>여기</th></tr>
@@ -306,7 +315,8 @@
     <div class="hint" style="padding:0">지금 원고(BUE)라면: ① 피드백 탭에서 교수님 주석부터 처리 → ② 원고 모드로 통독하며 고치기 → ③ 점검 → ④ 내보내기.</div>
   </div><div id="empty">원고를 고르거나 새로 만드세요. <a href="#" onclick="toggleGuide();return false">처음이면 안내 보기</a><br>읽기 화면에서 구절을 드래그해 <b>원고에 담기</b>를 누르면 근거 카드가 쌓입니다.<br><button id="newMs2">+ 새 원고</button></div><div id="editor" style="display:none"></div></div>
   <div id="drawer">
-    <div class="tabs"><div data-t="cards" class="on">카드</div><div data-t="src" title="Claude 와 논문 작업하며 정리해 둔 글(프로젝트 자료 .md 등)을 원고에 같이 넣어 둡니다 — 여기서 Claude 에게 물을 때 그 내용을 알고 답합니다">자료</div><div data-t="figs">그림</div><div data-t="check">점검</div><div data-t="ex" title="잘 쓴 논문(IJMTM·JMPT·IJEM …)이 초록·제목·서론·방법·결과·결론을 어떤 구조로 썼는지 — 문장·문단마다 역할">본보기</div><div data-t="notes" title="내 메모(글을 드래그해 남긴 것·Claude 에게 물은 것)와, 워드에서 가져온 교수님·공저자 주석">메모·피드백</div><div data-t="rev" title="심사 의견(편집자·심사위원)을 파일로 넣고 하나씩 같이 처리: 논의 → 고칠 안 → 반영 → 답변서">리비전</div><div data-t="idea">아이디어</div><div data-t="en">영문</div><div data-t="out">내보내기</div></div>
+    <div id="tabbar"><div class="tabs" id="tabsTop"></div><div class="subtabs" id="tabsSub"></div></div>
+    <div class="tab" id="tab-chat"></div>
     <div class="tab on" id="tab-cards"></div>
     <div class="tab" id="tab-src"></div>
     <div class="tab" id="tab-figs"></div>
@@ -419,7 +429,12 @@ function renderTree() {
   const frontOk = f.abstract && (f.highlights || []).length;
   $("tree").innerHTML = "<div class='node l1" + (cur === "front" ? " sel" : "") + "' data-id='front'><span class='st " + (frontOk ? "done" : (f.abstract ? "drafted" : "")) + "'></span><span class='h' style='font-family:var(--font)'>머리부 · 제목·초록·키워드·하이라이트</span></div>" +
     doc.outline.map(n => "<div class='node l" + n.level + (n.id === cur ? " sel" : "") + "' data-id='" + n.id + "'><span class='st " + (n.status || "") + "'></span><span class='h'>" + esc(n.heading || "(제목 없음)") + "</span><span class='n'>" + (n.cards || []).length + "</span></div>").join("");
-  $("tree").querySelectorAll(".node").forEach(el => el.onclick = () => { cur = el.dataset.id; if (activeTab() === "figs") switchTab("cards"); renderTree(); renderEditor(); });
+  $("tree").querySelectorAll(".node").forEach(el => el.onclick = () => {
+    cur = el.dataset.id; if (activeTab() === "figs") switchTab("cards");
+    renderTree();
+    if (msMode === "doc" && cur !== "front" && document.querySelector(".docmode .dsec[data-n='" + cur + "']")) docScrollTo(cur);   // 원고 모드: 다시 그리지 않고 그 절로 간다 (쓰던 글·되돌리기 기록이 남는다)
+    else renderEditor();
+  });
 }
 function renderFront() {
   const f = doc.front, ed = $("editor");
@@ -494,6 +509,10 @@ window.addEventListener("resize", refitAll);
 document.addEventListener("visibilitychange", () => setTimeout(refitAll, 50));
 new MutationObserver(() => setTimeout(refitAll, 30)).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-theme", "class"] });
 const wc = s => (s || "").trim() ? s.trim().split(/\s+/).length : 0;
+function docScrollTo(nid) {   // 원고 모드에서 그 절을 화면 맨 위로
+  const sec = document.querySelector(".docmode .dsec[data-n='" + nid + "']"), c = $("center");
+  if (sec) c.scrollTop = Math.max(0, c.scrollTop + sec.getBoundingClientRect().top - c.getBoundingClientRect().top - 10);
+}
 function renderDocMode() {
   const ed = $("editor");
   const lang = localStorage.getItem("ms_doclang") || "ko", key = lang === "en" ? "draft_en" : "draft";
@@ -510,7 +529,7 @@ function renderDocMode() {
       "<div class='pm'><span class='wcn'>" + wc(n[key]) + " 단어</span><span>카드 " + (n.cards || []).length + "</span><span class='st " + (n.status || "") + "'></span>" +
       (n.review && n.review.result && (n.review.result.issues || []).length ? "<span style='color:var(--amber)'>검토 지적 " + n.review.result.issues.length + "</span>" : "") +
       (commentsFor(n.id).length ? "<span style='color:var(--amber)'>피드백 " + commentsFor(n.id).length + "</span>" : "") +
-      (memosFor(n.id).length ? "<a href='#' data-memos='" + n.id + "' style='color:var(--accent)'>메모 " + memosFor(n.id).length + "</a>" : "") +
+      (memosFor(n.id).length ? "<a href='#' data-memos='" + n.id + "' style='color:var(--text-2)'>대화 " + memosFor(n.id).length + "</a>" : "") +
       "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
   ed.querySelectorAll("[data-memos]").forEach(a => a.onclick = e => { e.preventDefault(); memoJump(a.dataset.memos); });
   renderDocMeta();
@@ -525,7 +544,9 @@ function renderDocMode() {
   ed.querySelectorAll("input[data-h]").forEach(i => i.oninput = () => { node(i.dataset.h).heading = i.value; save(); renderTree(); });
   ed.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; setMode("para"); });
   ed.querySelectorAll("textarea[data-p], textarea[data-front]").forEach(attachMath);
-  const secEl = cur && ed.querySelector(".dsec[data-n='" + cur + "']"); if (secEl && cur !== (doc.outline[0] || {}).id) secEl.scrollIntoView({ block: "start" });
+  // 글 칸 높이를 먼저 맞춘 뒤에 그 절로 간다 — 높이가 나중에(다음 프레임) 늘어나면 가려던 절이 한참 아래로 밀려 엉뚱한 곳이 보였다
+  ed.querySelectorAll("textarea").forEach(t => t._fit && t._fit());
+  if (cur && cur !== (doc.outline[0] || {}).id) { const want = cur; docScrollTo(want); [120, 500].forEach(ms => setTimeout(() => { if (cur === want && msMode === "doc") docScrollTo(want); }, ms)); }   // 수식 미리보기 등이 뒤늦게 자리를 차지하면 한 번 더
 }
 function renderEditor() {
   if (msMode === "doc" && cur !== "front") return renderDocMode();
@@ -949,14 +970,43 @@ function drawEx() {
 }
 
 // ---------- 서랍 ----------
-const activeTab = () => (document.querySelector(".tabs div.on") || {}).dataset ? document.querySelector(".tabs div.on").dataset.t : "cards";
-function switchTab(name) { document.querySelectorAll(".tabs div").forEach(x => x.classList.toggle("on", x.dataset.t === name)); document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name)); $("drawer").classList.toggle("wide", name === "ex" || name === "rev"); }
-document.querySelectorAll(".tabs div").forEach(t => t.onclick = () => {
-  switchTab(t.dataset.t);
-  if (t.dataset.t === "src" && doc) { Object.keys(srcScan).forEach(k => delete srcScan[k]); renderSrc(); }   // 자료 탭을 열 때마다 연결한 폴더를 새로 읽는다
-  // 그림 탭이면 가운데를 그림 작업대로, 다른 탭이면 문단 편집으로
-  if (doc) { if (t.dataset.t === "figs") renderFigWorkspace(); else renderEditor(); }
-});
+// 서랍의 탭: 열 개를 여섯 묶음으로. 묶음을 누르면 그 묶음에서 마지막에 보던 것이 열리고, 묶음 안의 것은 둘째 줄에서 고른다
+const TAB_GROUPS = [["대화", ["chat"], "고른 글마다의 메모와 Claude 대화"], ["근거", ["cards", "src"], "근거 카드 · Claude 에게 함께 보여 주는 작업 자료"],
+  ["검토", ["notes", "rev", "check"], "교수님·공저자 피드백 · 심사 의견(리비전) · 저널 규격 점검"], ["참고", ["ex", "idea", "en"], "잘 쓴 논문의 본보기 · 아이디어 · 영문(용어집)"],
+  ["그림", ["figs"], "그림·도식"], ["내보내기", ["out"], ".docx 내보내기 · 워드 파일에 반영"]];
+const TAB_NAMES = { chat: "대화", cards: "카드", src: "자료", notes: "피드백", rev: "리비전", check: "점검", ex: "본보기", idea: "아이디어", en: "영문", figs: "그림", out: "내보내기" };
+let curTab = "cards";
+const activeTab = () => curTab;
+function tabBadge(k) {   // 묶음 이름 옆의 작은 숫자
+  if (!doc) return "";
+  if (TAB_GROUPS[k][1][0] === "chat") { const ms = (doc.memos || []).filter(m => !m.done), nn = ms.filter(m => memoState(m) === "new").length, nw = ms.filter(m => memoState(m) === "wait").length; return nn ? "<b>" + nn + "</b>" : nw ? "<i>…</i>" : ""; }
+  if (TAB_GROUPS[k][1][0] === "notes") { const n = (doc.comments || []).filter(c => c.status !== "done").length; return n ? "<i>" + n + "</i>" : ""; }
+  return "";
+}
+function renderTabs() {
+  const gi = Math.max(0, TAB_GROUPS.findIndex(g => g[1].includes(curTab))), mem = TAB_GROUPS[gi][1];
+  $("tabsTop").innerHTML = TAB_GROUPS.map((g, k) => "<div data-g='" + k + "'" + (k === gi ? " class='on'" : "") + " title='" + g[2] + "'>" + g[0] + tabBadge(k) + "</div>").join("");
+  $("tabsSub").style.display = mem.length > 1 ? "" : "none";
+  $("tabsSub").innerHTML = mem.length > 1 ? mem.map(t => "<a data-t='" + t + "'" + (t === curTab ? " class='on'" : "") + ">" + TAB_NAMES[t] + "</a>").join("") : "";
+  $("tabsTop").querySelectorAll("div").forEach(d => d.onclick = () => { const g = TAB_GROUPS[+d.dataset.g][1], last = localStorage.getItem("ms_tab_g" + d.dataset.g); tabClick(g.includes(last) ? last : g[0]); });
+  $("tabsSub").querySelectorAll("a").forEach(a => a.onclick = () => tabClick(a.dataset.t));
+}
+function switchTab(name) {
+  const was = curTab; curTab = name;
+  const gi = TAB_GROUPS.findIndex(g => g[1].includes(name));
+  try { localStorage.setItem("ms_tab", name); localStorage.setItem("ms_tab_g" + gi, name); } catch (e) {}
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name));
+  $("drawer").classList.toggle("wide", ["ex", "rev", "chat"].includes(name));
+  renderTabs();
+  // 그림 탭이면 가운데를 그림 작업대로. 다른 탭끼리 오갈 때는 가운데를 다시 그리지 않는다 (쓰던 자리를 잃지 않게)
+  if (doc && name === "figs" && was !== "figs") renderFigWorkspace();
+  else if (doc && was === "figs" && name !== "figs") renderEditor();
+}
+function tabClick(name) {
+  switchTab(name);
+  if (name === "src" && doc) { Object.keys(srcScan).forEach(k => delete srcScan[k]); renderSrc(); }   // 자료 탭을 열 때마다 연결한 폴더를 새로 읽는다
+}
+switchTab(localStorage.getItem("ms_tab") in TAB_NAMES ? localStorage.getItem("ms_tab") : "cards");
 
 // ---------- 그림 작업대 (가운데 넓은 영역) ----------
 let figView = null;
@@ -994,7 +1044,7 @@ function renderFigWorkspace() {
   const wc = $("wCode"); if (wc) wc.onclick = () => { const b = $("wCodeBox"); b.style.display = b.style.display === "none" ? "block" : "none"; };
   const wr = $("wRefine"); if (wr) wr.onclick = () => { const fb = $("wFb").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } refineFigure(f.id, fb, $("wProg")); };
 }
-function renderDrawer() { renderCards(); renderSrc(); renderFigs(); renderCheck(); renderEx(); renderNotes(); renderRev(); renderIdea(); renderEn(); renderOut(); }
+function renderDrawer() { renderTabs(); renderChat(); renderCards(); renderSrc(); renderFigs(); renderCheck(); renderEx(); renderNotes(); renderRev(); renderIdea(); renderEn(); renderOut(); }
 function issuesHtml(list) { return (list || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + esc(i.text) + "</div>").join("") || "<div class='hint'>문제 없음</div>"; }
 function renderCheck() {
   const el = $("tab-check"); if (!doc) { el.innerHTML = ""; return; }
@@ -1069,7 +1119,7 @@ function renderNotes() {
   const el = $("tab-notes"); if (!doc) { el.innerHTML = ""; return; }
   const cs = doc.comments || []; const open = cs.filter(c => c.status !== "done").length;
   const plan = doc.feedback_plan && doc.feedback_plan.result;
-  let h = memosHtml() + "<div class='sec' style='display:flex;gap:8px;align-items:baseline'>피드백 " + cs.length + "개 <span class='hint' style='font-weight:400'>미해결 " + open + " · 워드 주석에서 가져옴</span><span style='margin-left:auto'></span>" +
+  let h = "<div class='sec' style='display:flex;gap:8px;align-items:baseline'>피드백 " + cs.length + "개 <span class='hint' style='font-weight:400'>미해결 " + open + " · 워드 주석에서 가져옴</span><span style='margin-left:auto'></span>" +
     (cs.length ? "<button class='btn' id='fbPlan' title='주석 전체를 주제별로 묶어 우선순위와 할 일을 정리합니다 (~1분)'>" + (plan ? "다시 정리" : "전체 정리") + "</button>" : "") + "</div>";
   if (plan) h += planHtml(plan);
   if (!cs.length) h += "<div class='hint'>워드 원고를 가져오면 교수님·공저자 주석이 여기에 옵니다.</div>";
@@ -1085,7 +1135,7 @@ function renderNotes() {
       (fbOpen === c0.id ? threadHtml(c0) : "") +
       "<textarea class='fbReply' data-cid='" + esc(c0.id) + "' rows='1' placeholder='교수님께 드릴 답변 메모 (내보내기 때 함께 정리)'>" + esc(c0.reply || "") + "</textarea></div>";
   }).join("");
-  el.innerHTML = h; memosBind(el);
+  el.innerHTML = h;
   const pb = $("fbPlan"); if (pb) pb.onclick = fbPlanRun;
   el.querySelectorAll("[data-go]").forEach(a => a.onclick = e => { e.preventDefault(); cur = a.dataset.go; renderTree(); renderEditor(); });
   el.querySelectorAll(".fbDone").forEach(cb => cb.onchange = () => { (commentThreads().find(g => String(g[0].id) === cb.dataset.cid) || []).forEach(c => c.status = cb.checked ? "done" : "open"); save(); renderNotes(); });
@@ -1434,7 +1484,7 @@ async function openDecision(ctx) {   // ctx = {thread, quote, where, note} (Clau
   decCtx = ctx; pop.style.display = "block";
   const body = $("decBody"), dirs = doc.source_dirs || [];
   if (!dirs.length) {
-    body.innerHTML = "<div class='hint' style='padding:8px 0'>먼저 작업 자료 폴더가 있어야 합니다. 「자료」 탭에서 폴더를 연결하거나, 여기서 바로 만드세요.</div><div class='mfoot'><button class='btn pri' id='decMk'>이 원고의 폴더를 만들고 계속</button></div>";
+    body.innerHTML = "<div class='hint' style='padding:8px 0'>먼저 작업 자료 폴더가 있어야 합니다. 「근거」 → 자료에서 폴더를 연결하거나, 여기서 바로 만드세요.</div><div class='mfoot'><button class='btn pri' id='decMk'>이 원고의 폴더를 만들고 계속</button></div>";
     $("decMk").onclick = async () => { await saveNow(); const r = await api("/api/ms/source", { id: doc.id, op: "mkdir" }); if (r.path) { doc.source_dirs = [{ path: r.path, on: true }]; save(true); renderSrc(); openDecision(ctx); } };
     return;
   }
@@ -1606,9 +1656,10 @@ function renderSrc() {
 
 // ---------- 고른 글: 글 칸에서 드래그 → 메모로 남기거나, Claude 에게 묻기·고쳐 달라기 (대안을 받으면 그 자리에 바꿔 넣는다) ----------
 // doc.memos = [{id, node, key, quote, note, thread: [{role: user|claude, text, alts, base}], t, done}]
-let selCtx = null, selMemo = null, memoPollT = null;
-const memoLive = new Set();   // 이 창에서 답을 기다리는 메모 id (요청이 살아 있다)
+let chatNew = null, chatShowDone = false, memoPollT = null;   // chatNew = 방금 드래그한 글 (아직 대화가 아님)
+const chatOpen = new Set(), chatDraft = {}, memoLive = new Set();   // 펼쳐 둔 대화 · 대화마다 쓰던 입력 · 이 창에서 답을 기다리는 것
 const memosFor = nid => (doc.memos || []).filter(m => m.node === nid && !m.done);
+const memoById = id => (doc.memos || []).find(m => m.id === id);
 function memoState(m) {   // wait 답 기다리는 중 · lost 기다리다 끊김 · err 실패 · new 안 읽은 답 · seen 읽은 답 · note 메모만
   if (m.pending) return memoLive.has(m.id) || Date.now() / 1000 - m.pending < 720 ? "wait" : "lost";
   if (m.error) return "err";
@@ -1640,7 +1691,7 @@ function selBarShow(e, html, bind) {
   bar.style.top = Math.max(50, e.clientY - 40) + "px";
 }
 document.addEventListener("mouseup", e => {
-  if (e.target.closest && (e.target.closest("#selBar") || e.target.closest("#selPop"))) return;
+  if (e.target.closest && e.target.closest("#selBar")) return;
   const ta = e.target, tg = taTarget(ta);
   if (!doc || !tg) { selBarHide(); return; }
   const a = ta.selectionStart, b = ta.selectionEnd;
@@ -1650,136 +1701,198 @@ document.addEventListener("mouseup", e => {
       bar => bar.querySelectorAll("button").forEach(btn => btn.onclick = () => { selBarHide(); openSel(ctx, null, btn.dataset.a); }));
     return;
   }
-  const hit = a === b && (ta._ranges || []).find(r => a >= r.a && a <= r.b);   // 밑줄 그어진 글을 누름 → 그 메모·대화
+  const hit = a === b && (ta._ranges || []).find(r => a >= r.a && a <= r.b);   // 밑줄 그어진 글을 누름 → 그 대화
   if (hit) {
-    const label = { wait: "Claude 가 생각하는 중 — 열기", new: "새 답 보기", err: "답을 못 받음 — 열기", lost: "답을 못 받음 — 열기", seen: "대화 보기", note: "메모 보기" }[memoState(hit.m)];
-    selBarShow(e, "<button class='btn pri'>" + label + "</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openSel(null, hit.m, "ask"); });
+    const label = { wait: "Claude 가 생각하는 중 — 대화 보기", new: "새 답 보기", err: "답을 못 받음 — 대화 보기", lost: "답을 못 받음 — 대화 보기", seen: "대화 보기", note: "메모 보기" }[memoState(hit.m)];
+    selBarShow(e, "<button class='btn pri'>" + label + "</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openSel(null, hit.m); });
     return;
   }
   selBarHide();
 });
 document.addEventListener("mousedown", e => { if (!(e.target.closest && e.target.closest("#selBar"))) selBarHide(); });
-document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA" && e.target.id !== "selIn") selBarHide(); });
+document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA" && !e.target.classList.contains("chIn")) selBarHide(); });
 document.addEventListener("keydown", e => {
-  if (e.ctrlKey && !e.altKey && (e.key === "k" || e.key === "K")) {   // 고른 글이 있으면 바로 Claude 창
+  if (e.ctrlKey && !e.altKey && (e.key === "k" || e.key === "K")) {   // 고른 글이 있으면 바로 대화로
     const ta = document.activeElement, tg = taTarget(ta);
     if (tg && ta.selectionEnd - ta.selectionStart >= 2) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, end: ta.selectionEnd, quote: ta.value.slice(ta.selectionStart, ta.selectionEnd) }, tg), null, "ask"); }
   }
 });
 const SEL_CHIPS = [["더 간결하게", "더 간결하게 줄여 줘"], ["더 자연스럽게", "뜻은 그대로 두고 더 자연스러운 학술 문체로 고쳐 줘"], ["다른 표현", "같은 뜻의 다른 표현을 보여 줘"], ["논리 점검", "이 부분의 논리와 근거에 빈 곳이 있는지 봐 줘"], ["심사자라면", "심사자라면 이 부분에서 무엇을 물을까?"], ["영어로", "영어 학술 문체로 옮겨 줘"]];
-function closeSel() { const p = $("selPop"); if (p) p.style.display = "none"; selCtx = null; selMemo = null; }
-function openSel(ctx, memo, mode) {   // ctx = {nid, key, start, end, quote} · memo = 이어서 볼 메모(있으면)
+const chatEffort = () => localStorage.getItem("ms_sel_effort") || "xhigh";
+function closeSel() { chatNew = null; }
+function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있는 대화(memo)를 서랍의 「대화」에 연다
   if (!doc) return;
-  closeMath();
-  let pop = $("selPop");
-  if (!pop) {
-    pop = document.createElement("div"); pop.id = "selPop";
-    pop.innerHTML = "<div class='mh'><b>고른 글</b><span id='selWhere'></span><span style='margin-left:auto'></span><button class='btn' id='selGo' title='원고에서 이 글이 있는 자리로'>그 자리로</button><button class='btn' id='selX' title='닫아도 Claude 는 계속 생각하고, 답은 메모·피드백 탭과 본문 밑줄에 표시됩니다'>닫기</button></div>" +
-      "<div class='rvtext' id='selQuote'></div><div id='selNote'></div><div id='selThread'></div><div id='selProg'></div>" +
-      "<textarea id='selIn' rows='2' placeholder='메모를 적거나, Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)'></textarea>" +
-      "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-k='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>" +
-      "<div class='mfoot'><select id='selEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'><option value='xhigh'>Opus · 엑스트라</option><option value='high'>Opus · 보통</option><option value='fast'>Sonnet · 빠름</option></select>" +
-      "<a href='#' class='hint' id='selSrc' style='display:inline' title='자료 탭에 넣어 둔 작업 자료를 Claude 가 함께 봅니다'></a><span style='margin-left:auto'></span><button class='btn' id='selDecBtn' title='이 대화에서 정해진 것을 작업 자료 폴더의 결정 파일에 한 줄로 남깁니다 — Claude 채팅에서도 같은 파일을 봅니다'>결정으로 기록</button><button class='btn' id='selMemoBtn' title='적은 글을 이 부분의 메모로 남깁니다'>메모로 남기기</button><button class='btn pri' id='selAskBtn'>Claude 에게</button></div>";
-    document.body.appendChild(pop);
-    $("selX").onclick = closeSel;
-    $("selEffort").value = localStorage.getItem("ms_sel_effort") || "xhigh";
-    $("selEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
-    $("selIn").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); selAsk(); } else if (e.key === "Escape") closeSel(); });
-    pop.querySelectorAll(".mpal button").forEach(b => b.onclick = () => selAsk(SEL_CHIPS[+b.dataset.k][1]));
-    $("selAskBtn").onclick = () => selAsk();
-    $("selMemoBtn").onclick = selSaveMemo;
-    $("selDecBtn").onclick = () => { if (!selCtx) return; const m = selMemo || {}; openDecision({ thread: m.thread || [], quote: (selMemo || selCtx).quote, where: selHeading(selCtx.nid), note: [m.note, $("selIn").value.trim()].filter(Boolean).join("\n") }); };
-    $("selGo").onclick = () => selGoto(selMemo || selCtx);
-  }
-  selMemo = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글에 남긴 메모가 있으면 이어서
-  selCtx = selMemo ? { nid: selMemo.node, key: selMemo.key, quote: selMemo.quote, start: selMemo.start } : ctx;
-  pop.style.display = "block"; selRender();
-  if (selMemo && selMemo.unread) { selMemo.unread = false; save(); memoUi(); }   // 열어 봤으니 읽은 답
-  $("selIn").value = ""; $("selIn").placeholder = mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "Claude 에게: 이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter) — 메모만 남겨도 됩니다";
-  $("selIn").focus(); pop.scrollTop = pop.scrollHeight;
-}
-function selRender() {
-  if (!selCtx) return;
-  const q = (selMemo || selCtx).quote, st = selMemo ? memoState(selMemo) : "";
-  $("selWhere").textContent = selHeading(selCtx.nid).slice(0, 40);
-  $("selQuote").textContent = q.length > 700 ? q.slice(0, 500) + " … " + q.slice(-150) : q;
-  $("selNote").innerHTML = selMemo && selMemo.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(selMemo.note) + "</div>" : "";
-  const th = (selMemo && selMemo.thread) || [];
-  $("selThread").innerHTML = th.map((m, i) => m.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(m.text) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(m.text || "") + (m.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(m.base || q, a) + "</div>" +
-        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
-  $("selThread").querySelectorAll("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); selApply(th[i].alts[k]); });
-  $("selThread").querySelectorAll("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(th[i].alts[k]); b.textContent = "복사됨"; });
-  $("selProg").innerHTML = st === "wait" ? "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + ({ xhigh: 50, high: 30, fast: 15 }[selMemo.effort] || 40) + "초</span></div><div class='hint'>이 창을 닫고 다른 곳을 물어도 됩니다. 답이 오면 위쪽과 본문 밑줄에 표시됩니다.</div>"
-    : st === "err" || st === "lost" ? "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (selMemo.error ? " — " + esc(selMemo.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' id='selRetry'>다시 묻기</a></div>" : "";
-  if (st === "wait") animateBars($("selProg"));
-  const rt = $("selRetry"); if (rt) rt.onclick = e => { e.preventDefault(); selAsk(null, selMemo); };
-  $("selAskBtn").disabled = st === "wait";
-  const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
-  $("selSrc").textContent = nsrc ? "자료 " + nsrc + "개 참고" : ""; $("selSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
-}
-function selEnsureMemo() {   // 창에 떠 있는 고른 글을 원고의 메모로 (처음 남길 때 만든다)
-  if (selMemo) return selMemo;
-  doc.memos = doc.memos || [];
-  selMemo = { id: nextId(doc.memos, "m"), node: selCtx.nid, key: selCtx.key, quote: selCtx.quote, start: selCtx.start, note: "", thread: [], t: Date.now() / 1000, done: false };
-  doc.memos.push(selMemo);
-  return selMemo;
-}
-function selSaveMemo() {
-  const v = $("selIn").value.trim(); if (!v || !selCtx) return;
-  const m = selEnsureMemo(); m.note = m.note ? m.note + "\n" + v : v;
-  $("selIn").value = ""; save(true); selRender(); memoUi();
-}
-async function selAsk(text, retry) {   // 묻는다. 답을 기다리지 않고 다른 글을 또 물어도 된다 — 답은 서버가 그 메모에 얹어 저장한다
-  if (!selCtx && !retry) return;
-  let m = retry;
-  if (!m) {
-    const q = (text || $("selIn").value).trim(); if (!q) { $("selIn").focus(); return; }
-    m = selEnsureMemo(); if (memoState(m) === "wait") return;
-    m.thread.push({ role: "user", text: q, t: Date.now() / 1000 }); if (!text) $("selIn").value = "";
-  }
-  const mid = doc.id, effort = $("selEffort") ? $("selEffort").value : (localStorage.getItem("ms_sel_effort") || "xhigh");
-  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; memoLive.add(m.id);
-  if (selMemo === m) { selRender(); const p0 = $("selPop"); if (p0) p0.scrollTop = p0.scrollHeight; }
+  const m = memo || (doc.memos || []).find(x => !x.done && x.node === ctx.nid && x.key === ctx.key && x.quote === ctx.quote) || null;   // 같은 글의 대화가 있으면 이어서
+  if (m) { chatOpen.add(m.id); if (m.unread) { m.unread = false; save(); } if (m.done) chatShowDone = true; }
+  else chatNew = Object.assign({ mode: mode || "ask" }, ctx);
+  if (activeTab() !== "chat") switchTab("chat");
   memoUi();
-  await saveNow();   // 물음까지 든 메모가 서버에 있어야 한다
+  chatFocus(m ? m.id : "new");
+}
+const chatCard = id => id === "new" ? $("chNew") : document.querySelector("#tab-chat .card.memo[data-mid='" + id + "']");
+function chatFocus(id) {   // 그 대화 카드를 보이게 하고 입력 칸에 커서
+  const card = chatCard(id); if (!card) return;
+  const d = $("drawer"); d.scrollTop = Math.max(0, d.scrollTop + card.getBoundingClientRect().top - d.getBoundingClientRect().top - 78);
+  const t = card.querySelector(".chIn"); if (t) t.focus();
+}
+function chatThreadHtml(m) {
+  const th = m.thread || [];
+  return th.map((x, i) => x.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(x.text) + "</div>"
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
+        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") + "</div>").join("");
+}
+const chatInputHtml = (id, ph) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
+  "<div class='mpal'>" + SEL_CHIPS.map((c, k) => "<button class='btn' data-chip='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>";
+function chatCardHtml(m) {
+  const st = memoState(m), open = chatOpen.has(m.id), th = m.thread || [];
+  const chip = st === "wait" ? "<span style='color:var(--amber)'>생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 못 받음</span>" : "";
+  let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
+    "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>“" + esc(normWs(m.quote).slice(0, 90)) + "”</span>" +
+    "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + "</span></div>";
+  if (!open) {
+    const last = th.filter(x => x.role === "claude").pop(), lastQ = th.filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)").pop();
+    const pv = st === "wait" && lastQ ? "나: " + lastQ.text : last ? last.text : m.note || (lastQ ? "나: " + lastQ.text : "");
+    return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
+  }
+  h += "<div class='rvtext cq'>" + esc(m.quote) + "</div>" + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
+  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + ({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + "초</span></div>";
+  if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
+  h += chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)") +
+    "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button><button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button>" +
+    "<button class='btn' data-dec='1' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다'>결정으로 기록</button><span style='margin-left:auto'></span>" +
+    "<button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
+  return h + "</div>";
+}
+function chatGroups(done) {   // 원고에 나오는 순서로: 절마다 묶고, 절 안에서는 글에 나오는 자리 순
+  const by = {}; (doc.memos || []).filter(m => !!m.done === done).forEach(m => (by[m.node] = by[m.node] || []).push(m));
+  const pos = m => { const a = selFind(m); return a < 0 ? 1e9 : a; }, out = [];
+  ["front"].concat(doc.outline.map(n => n.id)).forEach(nid => { if (by[nid]) { out.push({ nid, heading: selHeading(nid), memos: by[nid].sort((x, y) => pos(x) - pos(y)) }); delete by[nid]; } });
+  Object.keys(by).forEach(nid => out.push({ nid, heading: "(개요에서 없어진 절)", memos: by[nid] }));
+  return out;
+}
+function renderChat() {
+  const el = $("tab-chat"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
+  const ae = document.activeElement, keep = ae && el.contains(ae) && ae.classList.contains("chIn") ? { id: ae.dataset.id, s: ae.selectionStart, e: ae.selectionEnd } : null;
+  const ms = doc.memos || [], live = ms.filter(m => !m.done), cnt = k => live.filter(m => k.includes(memoState(m))).length, dn = ms.length - live.length;
+  const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
+  let h = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
+    (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>모두 접기</a>" : "") +
+    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
+    "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (nsrc ? " <a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "") + "</div>";
+  if (chatNew) h += "<div class='card memo open newq' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
+    "<div class='rvtext cq'>" + esc(chatNew.quote) + "</div>" + chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)") +
+    "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button><button class='btn' data-memo='1'>메모로 남기기</button></div></div>";
+  chatGroups(false).forEach(g => { h += "<div class='rvrev' style='padding-left:0'><a href='#' data-ggo='" + esc(g.nid) + "' style='color:var(--text);text-decoration:none' title='이 절을 가운데에 열기'>" + esc(g.heading.slice(0, 44)) + "</a> <span class='hint' style='display:inline;font-weight:400'>" + g.memos.length + "</span></div>" + g.memos.map(chatCardHtml).join(""); });
+  if (dn) h += "<div class='rvrev' style='padding-left:0'><a href='#' class='act' id='chDoneT' style='font-weight:400'>" + (chatShowDone ? "끝낸 대화 접기" : "끝낸 대화 " + dn + "개 보기") + "</a></div>" + (chatShowDone ? chatGroups(true).map(g => g.memos.map(chatCardHtml).join("")).join("") : "");
+  const d = $("drawer"), st = d.scrollTop;
+  el.innerHTML = h;
+  el.querySelectorAll(".card.memo").forEach(chatBind);
+  const q = id => el.querySelector("#" + id);
+  if (q("chEffort")) q("chEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
+  if (q("chFold")) q("chFold").onclick = e => { e.preventDefault(); chatOpen.clear(); renderChat(); };
+  if (q("chSrc")) q("chSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
+  if (q("chDoneT")) q("chDoneT").onclick = e => { e.preventDefault(); chatShowDone = !chatShowDone; renderChat(); };
+  el.querySelectorAll("[data-ggo]").forEach(a => a.onclick = e => { e.preventDefault(); const nid = a.dataset.ggo; if (nid !== "front" && !node(nid)) return; if (msMode === "doc" && nid !== "front") { const sec = document.querySelector(".docmode .dsec[data-n='" + nid + "']"); if (sec) { $("center").scrollTop = sec.offsetTop - 20; return; } } cur = nid; renderTree(); renderEditor(); });
+  animateBars(el);
+  if (activeTab() === "chat") d.scrollTop = st;
+  if (keep) { const t = el.querySelector(".chIn[data-id='" + keep.id + "']"); if (t) { t.focus(); try { t.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
+}
+function chatRefresh(id) {   // 그 대화 카드만 다시 그린다 (다른 카드에 쓰던 글·커서를 건드리지 않게)
+  const card = chatCard(id), m = memoById(id);
+  if (!card || !m) return renderChat();
+  const ae = document.activeElement, keep = ae && card.contains(ae) && ae.classList.contains("chIn") ? { s: ae.selectionStart, e: ae.selectionEnd } : null;
+  const tmp = document.createElement("div"); tmp.innerHTML = chatCardHtml(m); const fresh = tmp.firstChild;
+  card.replaceWith(fresh); chatBind(fresh); animateBars(fresh);
+  if (keep) { const t = fresh.querySelector(".chIn"); if (t) { t.focus(); try { t.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
+}
+function chatBind(card) {
+  const id = card.id === "chNew" ? "new" : card.dataset.mid, m = id === "new" ? null : memoById(id), cq = sel => card.querySelector(sel), all = sel => card.querySelectorAll(sel);
+  const read = () => { if (m && m.unread) { m.unread = false; card.classList.remove("unread"); save(); memoUi(null, true); } };   // 손댄 대화는 읽은 것 (카드를 다시 그리지 않는다 — 누르던 단추가 사라지면 안 된다)
+  card.addEventListener("mousedown", read);
+  all("[data-toggle]").forEach(x => x.onclick = () => { if (chatOpen.has(id)) chatOpen.delete(id); else chatOpen.add(id); if (m && m.unread) { m.unread = false; save(); } memoUi(id); });
+  const ta = cq(".chIn");
+  if (ta) {
+    autogrow(ta);
+    ta.oninput = () => { chatDraft[id] = ta.value; };
+    ta.onfocus = read;
+    ta.onkeydown = e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); chatAsk(id); } else if (e.key === "Escape" && id === "new") { chatNew = null; delete chatDraft.new; renderChat(); } };
+  }
+  all("[data-chip]").forEach(b => b.onclick = () => chatAsk(id, SEL_CHIPS[+b.dataset.chip][1]));
+  if (cq("[data-ask]")) cq("[data-ask]").onclick = () => chatAsk(id);
+  if (cq("[data-memo]")) cq("[data-memo]").onclick = () => chatNote(id);
+  if (cq("[data-newx]")) cq("[data-newx]").onclick = () => { chatNew = null; delete chatDraft.new; renderChat(); };
+  if (!m) return;
+  if (cq("[data-retry]")) cq("[data-retry]").onclick = e => { e.preventDefault(); chatAsk(id, null, true); };
+  if (cq("[data-dec]")) cq("[data-dec]").onclick = () => openDecision({ thread: m.thread || [], quote: m.quote, where: selHeading(m.node), note: [m.note, (chatDraft[id] || "").trim()].filter(Boolean).join("\n") });
+  if (cq("[data-mgo]")) cq("[data-mgo]").onclick = () => selGoto(m);
+  if (cq("[data-mdel]")) cq("[data-mdel]").onclick = () => { if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
+  if (cq(".memoDone")) cq(".memoDone").onchange = e => { m.done = e.target.checked; if (m.done) chatOpen.delete(id); save(); memoUi(); };
+  all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k]); });
+  all("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].alts[k]); b.textContent = "복사됨"; });
+}
+function chatMake() {   // 새로 고른 글을 원고의 대화(메모)로
+  doc.memos = doc.memos || [];
+  const c = chatNew, m = { id: nextId(doc.memos, "m"), node: c.nid, key: c.key, quote: c.quote, start: c.start, note: "", thread: [], t: Date.now() / 1000, done: false };
+  doc.memos.push(m); chatNew = null; chatOpen.add(m.id);
+  return m;
+}
+function chatNote(id) {   // 적은 글을 메모로 남긴다
+  const v = (chatDraft[id] || "").trim(); if (!v) { const c = chatCard(id); if (c && c.querySelector(".chIn")) c.querySelector(".chIn").focus(); return; }
+  const m = id === "new" ? chatMake() : memoById(id); if (!m) return;
+  m.note = m.note ? m.note + "\n" + v : v; delete chatDraft[id]; delete chatDraft.new;
+  save(true); memoUi();
+}
+async function chatAsk(id, text, retry) {   // 묻는다. 답을 기다리지 않고 다른 글을 또 물어도 된다 — 답은 서버가 그 대화에 얹어 저장한다
+  let m = id === "new" ? null : memoById(id);
+  if (m && memoState(m) === "wait") return;
+  if (!retry) {
+    const q = (text || chatDraft[id] || "").trim();
+    if (!q) { const c = chatCard(id); if (c && c.querySelector(".chIn")) c.querySelector(".chIn").focus(); return; }
+    if (!m) { if (!chatNew) return; m = chatMake(); if (!text) delete chatDraft.new; else if (chatDraft.new) { chatDraft[m.id] = chatDraft.new; delete chatDraft.new; } }
+    else if (!text) delete chatDraft[id];
+    m.thread.push({ role: "user", text: q, t: Date.now() / 1000 });
+  }
+  if (!m) return;
+  const mid = doc.id, effort = chatEffort();
+  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; memoLive.add(m.id); chatOpen.add(m.id);
+  memoUi(id === "new" ? null : m.id);
+  if (id === "new") chatFocus(m.id);
+  await saveNow();   // 물음까지 든 대화가 서버에 있어야 한다
   let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort }); } catch (e) { r = { error: "서버 연결 실패" }; }
   memoLive.delete(m.id);
   if (!doc || doc.id !== mid) return;
-  const mm = (doc.memos || []).find(x => x.id === m.id);
+  const mm = memoById(m.id);
   if (mm) memoTake(mm, r.memo, r.error);
 }
-function memoTake(mm, sm, err) {   // 서버가 답을 얹은 메모를 내 문서에 (방침·본문 등 다른 것은 건드리지 않는다)
+function memoTake(mm, sm, err) {   // 서버가 답을 얹은 대화를 내 문서에 (본문 등 다른 것은 건드리지 않는다)
   if (sm) { mm.thread = sm.thread || mm.thread; if (sm.error) mm.error = sm.error; else delete mm.error; }
   else if (err) mm.error = err;
   delete mm.pending;
-  const showing = selMemo === mm && $("selPop") && $("selPop").style.display !== "none";
-  mm.unread = !showing && !mm.error && (mm.thread || []).some(x => x.role === "claude");
-  save(true);
-  if (selMemo === mm) { selRender(); if (showing) $("selPop").scrollTop = $("selPop").scrollHeight; }
-  memoUi();
+  mm.unread = !mm.error && (mm.thread || []).some(x => x.role === "claude");   // 손대면 읽은 것으로 바뀐다
+  save(true); memoUi(mm.id);
 }
-function memoPoll() {   // 창을 닫았다 열어 요청이 끊긴 메모: 서버가 얹어 둔 답을 5초마다 살펴 가져온다
+function memoPoll() {   // 창을 닫았다 열어 요청이 끊긴 대화: 서버가 얹어 둔 답을 5초마다 살펴 가져온다
   clearTimeout(memoPollT);
   if (!doc || !(doc.memos || []).some(m => m.pending && !memoLive.has(m.id) && Date.now() / 1000 - m.pending < 720)) return;
   const mid = doc.id;
   memoPollT = setTimeout(async () => {
     try {
       const r = await api("/api/ms/memos", { id: mid });
-      if (doc && doc.id === mid) (r.memos || []).forEach(sm => { const mm = (doc.memos || []).find(x => x.id === sm.id); if (mm && mm.pending && !memoLive.has(mm.id) && !sm.pending) memoTake(mm, sm, null); });
+      if (doc && doc.id === mid) (r.memos || []).forEach(sm => { const mm = memoById(sm.id); if (mm && mm.pending && !memoLive.has(mm.id) && !sm.pending) memoTake(mm, sm, null); });
     } catch (e) {}
     memoPoll();
   }, 5000);
 }
-function memoUi() {   // 메모 상태가 바뀌면: 머리줄 표시 · 탭 이름 · 목록 · 본문 밑줄 · 절의 '메모 n'
+function memoUi(id, light) {   // 대화 상태가 바뀌면: 머리줄 · 탭의 숫자 · 대화 카드(id 가 있으면 그 카드만, light 면 카드는 그대로) · 본문 밑줄 · 절의 '메모 n'
   if (!doc) return;
   const ms = (doc.memos || []).filter(m => !m.done), cnt = k => ms.filter(m => k.includes(memoState(m))).length;
   const nw = cnt(["wait"]), nn = cnt(["new"]), ne = cnt(["err", "lost"]);
   const st = $("memoState");
   if (st) { st.textContent = [nw ? "Claude 생각 중 " + nw : "", nn ? "새 답 " + nn : "", ne ? "답 못 받음 " + ne : ""].filter(Boolean).map(x => "· " + x).join(" "); st.className = nn ? "new" : ""; }
-  const tab = document.querySelector(".tabs div[data-t='notes']");
-  if (tab) tab.innerHTML = "메모·피드백" + (nn ? " <b style='color:var(--accent)'>" + nn + "</b>" : nw ? " <span style='color:var(--amber)'>…</span>" : "");
-  renderNotes(); renderDocMeta(); marksRefresh(); memoPoll();
+  renderTabs();
+  if (!light) { if (id && chatCard(id)) chatRefresh(id); else renderChat(); }
+  else { const top = document.querySelector("#tab-chat .chtop .hint"); if (top) top.textContent = [nn ? "새 답 " + nn : "", nw ? "생각 중 " + nw : ""].filter(Boolean).join(" · "); }
+  renderDocMeta(); marksRefresh(); memoPoll();
 }
 function selFind(m) {   // 고른 글이 지금 글에서 어디 있나 → 시작 자리 (없으면 -1)
   const text = selText(m.nid || m.node, m.key), q = m.quote;
@@ -1798,8 +1911,7 @@ function selGoto(m) {
   const c = $("center"), y = ta.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop + (a / Math.max(1, ta.value.length)) * ta.offsetHeight;
   c.scrollTop = Math.max(0, y - c.clientHeight / 3);
 }
-function selApply(alt) {   // 대안을 고른 글 자리에 바꿔 넣는다
-  const m = selMemo; if (!m) return;
+function chatApply(m, alt) {   // 대안을 고른 글 자리에 바꿔 넣는다
   const a = selFind(m);
   if (a < 0) { alert("고른 글을 원고에서 찾지 못했습니다 (그 사이 글이 바뀌었습니다). 다시 드래그해서 물어 주세요."); return; }
   const ta = taFor(m.node, m.key);
@@ -1811,9 +1923,9 @@ function selApply(alt) {   // 대안을 고른 글 자리에 바꿔 넣는다
     if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
   }
   m.thread.push({ role: "user", text: "(대안으로 바꿈)" });
-  m.quote = alt; m.start = a; save(true); selRender(); memoUi();
+  m.quote = alt; m.start = a; m.unread = false; save(true); memoUi(m.id);
 }
-// 본문 밑줄: 글 칸(textarea) 뒤에 같은 글을 투명하게 깔고, 메모가 달린 구절에만 밑줄·바탕을 준다
+// 본문 밑줄: 글 칸(textarea) 뒤에 같은 글을 투명하게 깔고, 대화·메모가 달린 구절에만 밑줄·바탕을 준다
 function attachMarks(ta) {
   if (!ta || !taTarget(ta)) return;
   if (!ta._marks) {
@@ -1841,7 +1953,7 @@ function drawMarks(ta) {
   back.innerHTML = h + esc(text.slice(pos)) + "\u200b";
 }
 function marksRefresh() { document.querySelectorAll(".tawrap > textarea").forEach(drawMarks); }
-function memoJump(nid) { switchTab("notes"); const c = document.querySelector(".card.memo[data-node='" + nid + "']"); if (c) $("drawer").scrollTop = Math.max(0, c.offsetTop - 60); }
+function memoJump(nid) { const m = memosFor(nid)[0]; if (activeTab() !== "chat") switchTab("chat"); if (m) chatFocus(m.id); }
 function renderDocMeta() {   // 원고 모드의 절마다 '메모 n' 만 고쳐 그린다 (전체를 다시 그리면 쓰던 자리를 잃는다)
   if (msMode !== "doc") return;
   document.querySelectorAll(".docmode .dsec").forEach(sec => {
@@ -1850,34 +1962,8 @@ function renderDocMeta() {   // 원고 모드의 절마다 '메모 n' 만 고쳐
     if (!n) { if (a) a.remove(); return; }
     if (!a) { a = document.createElement("a"); a.href = "#"; a.dataset.memos = nid; a.onclick = e => { e.preventDefault(); memoJump(nid); }; pm.insertBefore(a, pm.querySelector("[data-go]")); }
     const nn = ms.filter(m => memoState(m) === "new").length, nw = ms.filter(m => memoState(m) === "wait").length;
-    a.textContent = "메모 " + n + (nn ? " · 새 답 " + nn : nw ? " · 생각 중" : ""); a.style.color = nn ? "var(--accent)" : nw ? "var(--amber)" : "var(--text-2)"; a.style.fontWeight = nn ? "600" : "";
+    a.textContent = "대화 " + n + (nn ? " · 새 답 " + nn : nw ? " · 생각 중" : ""); a.style.color = nn ? "var(--accent)" : nw ? "var(--amber)" : "var(--text-2)"; a.style.fontWeight = nn ? "600" : "";
   });
-}
-function memosHtml() {
-  const ms = doc.memos || [];
-  if (!ms.length) return "<div class='sec'>내 메모</div><div class='hint' style='padding-bottom:8px'>원고의 글을 드래그하면 「메모」「Claude 에게」가 뜹니다. 메모를 남기거나, 고른 부분을 놓고 묻고 고쳐 달라고 할 수 있습니다 (Ctrl+K). 여러 곳을 잇달아 물어도 됩니다 — 답이 오면 여기와 본문 밑줄에 표시됩니다.</div>";
-  const rank = m => ({ new: 0, err: 1, lost: 1, wait: 2 }[memoState(m)] ?? 3);
-  const order = ms.slice().reverse().sort((x, y) => (x.done - y.done) || (rank(x) - rank(y)));
-  return "<div class='sec'>내 메모 " + ms.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>남은 것 " + ms.filter(m => !m.done).length + " · 새 답이 위로</span></div>" +
-    order.map(m => { const last = (m.thread || []).filter(x => x.role === "claude").pop(), st = memoState(m), lastQ = (m.thread || []).filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)").pop();
-      const chip = st === "wait" ? "<span style='color:var(--amber)'>Claude 가 생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 받지 못함</span>" : "";
-      return "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
-        "<div class='m'><a href='#' class='go' data-mgo='" + m.id + "' title='원고의 그 자리로'>" + esc(selHeading(m.node).slice(0, 30)) + " →</a><span>" + new Date((m.t || 0) * 1000).toLocaleDateString("ko", { month: "numeric", day: "numeric" }) + "</span>" + chip +
-        "<span style='margin-left:auto'></span><label class='hint' style='cursor:pointer'><input type='checkbox' class='memoDone' data-mid='" + m.id + "'" + (m.done ? " checked" : "") + "> 끝</label></div>" +
-        "<div class='src'>“" + esc(normWs(m.quote).slice(0, 140)) + (m.quote.length > 140 ? "…" : "") + "”</div>" +
-        (m.note ? "<div class='t'>" + esc(m.note) + "</div>" : "") +
-        (lastQ ? "<div class='t' style='color:var(--text-2)'><b>나:</b> " + esc(normWs(lastQ.text).slice(0, 90)) + (lastQ.text.length > 90 ? "…" : "") + "</div>" : "") +
-        (last && st !== "wait" ? "<div class='t reply'>" + esc(normWs(last.text).slice(0, 130)) + (last.text.length > 130 ? "…" : "") + "</div>" : "") +
-        "<div class='acts'><button class='btn" + (st === "new" ? " pri" : "") + "' data-mopen='" + m.id + "'>" + (st === "new" ? "새 답 보기" : (m.thread || []).length ? "대화 보기 (" + m.thread.filter(x => x.role === "claude").length + ")" : "열기") + "</button>" +
-        (st === "err" || st === "lost" ? "<button class='btn' data-mretry='" + m.id + "'>다시 묻기</button>" : "") + "<button class='btn warn' data-mdel='" + m.id + "'>지우기</button></div></div>"; }).join("");
-}
-function memosBind(el) {
-  const by = id => (doc.memos || []).find(m => m.id === id);
-  el.querySelectorAll("[data-mgo]").forEach(a => a.onclick = e => { e.preventDefault(); selGoto(by(a.dataset.mgo)); });
-  el.querySelectorAll("[data-mopen]").forEach(b => b.onclick = () => { const m = by(b.dataset.mopen); if (m) openSel(null, m, "ask"); });
-  el.querySelectorAll("[data-mretry]").forEach(b => b.onclick = () => { const m = by(b.dataset.mretry); if (m) selAsk(null, m); });
-  el.querySelectorAll("[data-mdel]").forEach(b => b.onclick = () => { const m = by(b.dataset.mdel); if (!m || !confirm("이 메모" + ((m.thread || []).length ? "와 Claude 와의 대화" : "") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); if (selMemo === m) closeSel(); save(true); memoUi(); });
-  el.querySelectorAll(".memoDone").forEach(cb => cb.onchange = () => { const m = by(cb.dataset.mid); if (m) { m.done = cb.checked; save(); memoUi(); } });
 }
 
 // ---------- 수식: 글 속의 $LaTeX$ (한 줄 안) · $$LaTeX$$ (따로 한 줄). 서버가 MathML 로 바꿔 주고 브라우저가 그린다 ----------
@@ -1936,7 +2022,6 @@ function closeMath() { const p = $("mathPop"); if (p) p.style.display = "none"; 
 function openMath(ta, eq) {   // eq 가 없으면 커서 자리에 새 수식 (커서가 수식 안이면 그 수식)
   ta = ta || lastTa;
   if (!doc || !ta || !document.body.contains(ta)) { alert("수식을 넣을 글 칸을 먼저 누르세요."); return; }
-  if ($("selPop")) $("selPop").style.display = "none";
   let pop = $("mathPop");
   if (!pop) {
     pop = document.createElement("div"); pop.id = "mathPop";
