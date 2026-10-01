@@ -255,7 +255,7 @@
   #chLaneIn .card.memo { position: absolute; left: 0; right: 0; margin: 0; }
   .card.memo .chbody { position: relative; }
   #tab-chat.side .card.memo .chbody { max-height: max(160px, calc(100vh - 330px)); overflow-y: auto; }   /* 긴 대화는 카드 안에서 굴린다 — 카드가 화면보다 길면 글과 같이 볼 수 없다 */
-  .card.memo.act { border-color: var(--accent); } .card.memo.newq.act { border-color: var(--amber); }
+  .card.memo.chnow { border-color: var(--accent); } .card.memo.newq.chnow { border-color: var(--amber); }   /* 이름을 act 로 하면 ui.css 의 .act(마우스를 올리면 밑줄)와 겹친다 */
   #chPad { height: 0; }
   .selalt { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px dashed var(--line-2); }
   .selalt .acts { margin-left: -8px; }
@@ -1824,7 +1824,7 @@ const chatInputHtml = (id, ph) => "<textarea class='chIn' data-id='" + id + "' r
 function chatCardHtml(m) {
   const st = memoState(m), open = chatOpen.has(m.id), th = m.thread || [];
   const chip = st === "wait" ? "<span style='color:var(--amber)'>생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 못 받음</span>" : "";
-  let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + (m.id === chatActive ? " act" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
+  let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + (m.id === chatActive ? " chnow" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
     "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>“" + esc(normWs(m.quote).slice(0, 90)) + "”</span>" +
     "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + "</span></div>";
   if (!open) {
@@ -1858,7 +1858,7 @@ function renderChat() {
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>" + (side ? "접기" : "모두 접기") + "</a>" : "") +
     "<span class='chview' title='글 옆에 = 워드의 메모처럼, 대화를 그 글 옆에 놓고 글을 따라 움직입니다 · 목록 = 모든 대화를 원고 순서대로 한 줄로'><a href='#' data-view='side'" + (side ? " class='on'" : "") + ">글 옆에</a><a href='#' data-view='list'" + (side ? "" : " class='on'") + ">목록</a></span>" +
     "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
-  const newCard = chatNew ? "<div class='card memo open newq" + (chatActive === "new" ? " act" : "") + "' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
+  const newCard = chatNew ? "<div class='card memo open newq" + (chatActive === "new" ? " chnow" : "") + "' id='chNew'><div class='m'><b>새로 고른 글</b><span>" + esc(selHeading(chatNew.nid).slice(0, 30)) + "</span><span style='margin-left:auto'></span><button class='btn' data-newx='1'>취소</button></div>" +
     "<div class='chbody'><div class='rvtext cq'>" + esc(chatNew.quote) + "</div></div>" + chatInputHtml("new", chatNew.mode === "memo" ? "이 부분에 남길 메모 (Claude 에게 물을 말을 적어도 됩니다)" : "이렇게 바꾸면 어때? / 더 간결하게 / 이 표현이 맞나? (Ctrl+Enter 로 묻기)") +
     "<div class='acts'><button class='btn pri' data-ask='1'>Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1'>메모로 남기기</button></div></div>" : "";
   const srcLink = nsrc ? "<a href='#' class='act' id='chSrc'>자료 " + nsrc + "개 참고</a>" : "";
@@ -1984,7 +1984,7 @@ function chatLayout() {
 }
 function chatActivate(id) {   // 지금 보는 대화: 카드를 제 글 옆에 놓고, 본문의 그 구절을 짙게
   chatActive = id;
-  document.querySelectorAll("#tab-chat .card.memo").forEach(x => x.classList.toggle("act", (x.id === "chNew" ? "new" : x.dataset.mid) === id));
+  document.querySelectorAll("#tab-chat .card.memo").forEach(x => x.classList.toggle("chnow", (x.id === "chNew" ? "new" : x.dataset.mid) === id));
   document.querySelectorAll(".taback mark").forEach(k => k.classList.toggle("hot", k.dataset.mid === id));
   chatLayout();
 }
