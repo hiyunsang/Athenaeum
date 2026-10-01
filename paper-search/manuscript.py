@@ -1217,6 +1217,35 @@ def _pdf_refs(fname):
     return out
 
 
+_pdf_sent_cache = {}
+
+
+def _pdf_sentences(pdf):
+    """번역을 만들지 않은 논문: PDF 본문을 문장으로 나눈다 → [('', 영어 문장, None, '')] (문장 번호·쪽·번역이 없다). 참고문헌 뒤는 버린다."""
+    fp = os.path.join(cfg["ARCHIVE"], pdf)
+    try:
+        mt = os.path.getmtime(fp)
+    except OSError:
+        return []
+    c = _pdf_sent_cache.get(pdf)
+    if c and c[0] == mt:
+        return c[1]
+    try:
+        body = cfg["paper_body"](pdf) or ""
+    except Exception:
+        body = ""
+    out = []
+    for para in re.split(r"\n\s*\n", body):
+        para = re.sub(r"\s+", " ", para).strip()
+        if re.match(r"^(references|bibliography|literature cited)\s*$", para, re.I) and len(out) > 40:
+            break
+        for t in re.split(r"(?<=[.!?])\s+(?=[A-Z\[(])", para):
+            if 30 <= len(t) <= 1200:
+                out.append(("", t, None, ""))
+    _pdf_sent_cache[pdf] = (mt, out)
+    return out
+
+
 def _term_rx(terms, korean=False):
     """낱말들 → 정규식. 영어는 낱말 첫머리에서(어간이면 'detach' 가 detached·detachment 에 맞는다), 짧은 약어(BUE)는 낱말 전체로. 띄어쓰기·붙임표는 같은 것으로."""
     parts = []
@@ -1240,11 +1269,20 @@ def _libx_scan(concepts):
     if not rx:
         return [], 0, 0
     need = set(range(len(rx)))
-    files = sorted(f for f in os.listdir(cfg["GEN_DIR"]) if f.endswith(".번역.정렬.json"))
-    groups, nsent = [], 0
-    for f in files:
-        pdf = f[:-len(".번역.정렬.json")] + ".pdf"
-        sents = sorted(_translation_sentences(pdf), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+    files = sorted(f[:-len(".번역.정렬.json")] + ".pdf" for f in os.listdir(cfg["GEN_DIR"]) if f.endswith(".번역.정렬.json"))
+    try:   # 번역을 만들지 않은 논문은 PDF 본문에서 (문장 번호·번역 없이)
+        bare = sorted(p for p in os.listdir(cfg["ARCHIVE"]) if p.lower().endswith(".pdf") and p not in files) if cfg.get("paper_body") else []
+    except OSError:
+        bare = []
+    groups, nsent, nfiles = [], 0, 0
+    for pdf in files + bare:
+        if pdf in bare:
+            sents = _pdf_sentences(pdf)
+        else:
+            sents = sorted(_translation_sentences(pdf), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+        if not sents:
+            continue
+        nfiles += 1
         nsent += len(sents)
         hit = []
         for sid, t, p, ko in sents:
@@ -1257,7 +1295,7 @@ def _libx_scan(concepts):
             win = set().union(*hit[max(0, i - 2):i + 2])
             if not need <= win:
                 continue
-            mine.append({"file": pdf, "sent": "s" + str(sid), "n": int(sid) if str(sid).isdigit() else 0, "page": (p + 1) if p is not None else None, "en": t, "ko": ko,
+            mine.append({"file": pdf, "sent": ("s" + str(sid)) if sid != "" else "", "n": int(sid) if str(sid).isdigit() else i, "page": (p + 1) if p is not None else None, "en": t, "ko": ko,
                          "score": len(hit[i]) * 2 + (2 if hit[i] == need else 0), "prev": sents[i - 1][1] if i and hit[i] != need else ""})
         if mine:
             mine.sort(key=lambda h: -h["score"])
@@ -1268,13 +1306,13 @@ def _libx_scan(concepts):
         for m in groups:
             if r < len(m) and len(out) < 320:
                 out.append(m[r])
-    return out, len(files), nsent
+    return out, nfiles, nsent
 
 
 _LIBX_KIND = {"direct": "직접 다룸", "mention": "지나가며 언급", "cites": "남의 연구를 들어 말함"}
 
 
-def lib_extract(topic, effort="high"):
+def lib_extract(topic, effort="xhigh"):
     """주제(한국어·영어) → 서재에서 그 내용을 말한 대목. → {id, topic, summary, papers: [{file, short, title, kind, gist, sents: [{sent, page, en, ko, cited}]}], …}"""
     topic = str(topic or "").strip()
     if len(topic) < 2:
@@ -1305,7 +1343,7 @@ def lib_extract(topic, effort="high"):
         mine = sorted((h for h in cands if h["file"] == f), key=lambda h: h["n"])
         meta = paper_meta(f)
         blocks.append("## P%d %s — %s\n" % (pi + 1, paper_short(f), str(meta.get("title") or "")[:140]) +
-                      "\n".join("%s (%s) %s%s" % (h["id"], h["sent"], h["en"][:420], ("   ⟨앞 문장: %s⟩" % h["prev"][:200]) if h["prev"] else "") for h in mine))
+                      "\n".join("%s (%s) %s%s" % (h["id"], h["sent"] or "PDF", h["en"][:420], ("   ⟨앞 문장: %s⟩" % h["prev"][:200]) if h["prev"] else "") for h in mine))
     prompt = (
         "연구자가 자기 서재(영어 논문들)에서 아래 [찾는 내용]을 말한 대목을 모으려 한다. 낱말로 추린 후보 문장을 논문별로 준다(P번호 = 논문, c번호 = 문장). "
         "정말 그 내용을 말하는 문장만 고르고 논문별로 정리하라. JSON 으로만 답하라:\n"
@@ -1316,9 +1354,9 @@ def lib_extract(topic, effort="high"):
         "- keep 에는 그 내용을 실제로 말하는 문장만, 중요한 순서로, 논문마다 많아야 6개. 낱말만 걸렸을 뿐 다른 이야기인 문장은 버린다. 남길 문장이 없는 논문은 papers 에 넣지 않는다.\n"
         "- papers 는 그 내용을 가장 직접·깊게 다룬 논문부터. 후보에 없는 것을 지어내지 마라. gist 는 keep 에 든 문장이 말하는 것만.\n\n"
         "[찾는 내용]\n%s\n\n[후보 문장]\n%s" % (topic[:600], "\n\n".join(blocks)))
-    model, eff = _SEL_EFFORT.get(effort, _SEL_EFFORT["high"])
+    model, eff = _SEL_EFFORT.get(effort, _SEL_EFFORT["xhigh"])
     run = cfg.get("claude_run")
-    res = run(prompt, timeout=900, model=model, effort=eff, tools="") if run else None
+    res = run(prompt, timeout=1500, model=model, effort=eff, tools="") if run else None
     raw = (res or {}).get("text") or ""
     m = re.search(r"\{.*\}", raw, re.S)
     try:
@@ -1362,7 +1400,7 @@ def _libx_md(item):
     for p in item.get("papers") or []:
         out += ["## %s — %s" % (p.get("short", ""), p.get("title", "")), "*%s* · %s" % (_LIBX_KIND.get(p.get("kind"), ""), p.get("gist", "")), ""]
         for st in p.get("sents") or []:
-            out.append("- (%s%s) %s" % (st.get("sent", ""), (", p." + str(st["page"])) if st.get("page") else "", st.get("ko") or st.get("en", "")))
+            out.append("- (%s%s) %s" % (st.get("sent") or "원문", (", p." + str(st["page"])) if st.get("page") else "", st.get("ko") or st.get("en", "")))
             if st.get("ko"):
                 out.append("  - 원문: " + st.get("en", ""))
             for c in st.get("cited") or []:
@@ -1374,7 +1412,7 @@ def _libx_md(item):
 def lib_op(body):
     op = body.get("op") or "list"
     if op == "run":
-        return lib_extract(body.get("topic"), body.get("effort") or "high")
+        return lib_extract(body.get("topic"), body.get("effort") or "xhigh")
     store = cfg["load_json"](_libx_path(), {}) or {}
     items = store.get("items") or []
     if op == "list":
@@ -2707,7 +2745,7 @@ def _src(doc, query="", info=None):
 
 
 # ---------- 고른 글: 원고에서 드래그한 부분을 놓고 묻거나 고쳐 달라고 하기 ----------
-_SEL_EFFORT = {"xhigh": ("opus", "xhigh"), "high": ("opus", None), "fast": ("sonnet", None)}   # 화면의 엑스트라·보통·빠름
+_SEL_EFFORT = {"max": ("opus", "max"), "xhigh": ("opus", "xhigh"), "high": ("opus", None), "fast": ("sonnet", None)}   # 화면의 최대·엑스트라·보통·빠름 (기본은 엑스트라)
 
 
 def ask_selection(doc, body):

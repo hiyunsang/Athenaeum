@@ -1627,16 +1627,16 @@ async function refsUndoRenumber() {
 
 // ---------- 서재에서 뽑기: 주제를 적으면 내 논문들에서 그 내용을 말한 대목과 논문을 모은다 ----------
 let libList = null, libItem = null, libBusy = null, libErr = "";
-const libEffort = () => localStorage.getItem("ms_lib_effort") || "high";
+const libEffort = () => localStorage.getItem("ms_lib_effort2") || "xhigh";   // 기본은 Opus · 엑스트라 (사용자 지시 2026-10-01 — 예전 기본 '보통'이 저장돼 있을 수 있어 키를 바꿨다)
 function renderLib() {
   const el = $("tab-lib"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
   if (libList === null) { libList = []; api("/api/ms/lib", { op: "list" }).then(r => { libList = r.items || []; renderLib(); }).catch(() => {}); }
   const fmtT = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const it = libItem, kinds = { direct: "직접 다룸", mention: "지나가며 언급", cites: "남의 연구를 들어 말함" };
-  let h = "<div class='sec'>서재에서 뽑기</div><div class='hint'>찾을 내용을 적으면 내 논문들(번역이 있는 것)의 본문에서 그 내용을 말한 대목을 찾아 논문별로 모읍니다 — 어느 논문이 무엇이라고 했는지, 그 문장이 누구를 인용했는지까지.</div>" +
+  let h = "<div class='sec'>서재에서 뽑기</div><div class='hint'>찾을 내용을 적으면 내 논문들의 본문에서 그 내용을 말한 대목을 찾아 논문별로 모읍니다 — 어느 논문이 무엇이라고 했는지, 그 문장이 누구를 인용했는지까지.</div>" +
     "<textarea id='libTopic' rows='2' placeholder='예: BUE 탈락에 관해 언급한 부분 / 인선 반경이 칩 두께보다 작을 때 플로잉을 무시할 수 있다는 근거'>" + esc(libBusy ? libBusy.topic : "") + "</textarea>" +
     "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px;align-items:center'><button class='btn pri' id='libRun'" + (libBusy ? " disabled" : "") + ">찾기</button>" +
-    "<select id='libEffort' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2)' title='후보 문장 가운데 정말 그 내용인 것을 고르는 모델'>" + [["high", "Opus · 보통"], ["xhigh", "Opus · 엑스트라"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (libEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
+    "<select id='libEffort' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2)' title='후보 문장 가운데 정말 그 내용인 것을 고르는 모델'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (libEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
     (libBusy ? "<div class='prog'><span>서재를 훑고 고르는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~1~2분</span></div><div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>" : "") +
     (libErr ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(libErr) + "</div>" : "") +
     (libList && libList.length ? "<div class='sec' style='padding-left:0'>지난 결과</div><div class='libpast'>" + libList.map(x => "<a href='#' data-xid='" + esc(x.id) + "'" + (it && it.id === x.id ? " class='on'" : "") + ">" + esc(x.topic.slice(0, 60)) + " <span class='hint' style='display:inline'>· 논문 " + x.papers + "편 · " + fmtT(x.t) + "</span></a>").join("") + "</div>" : "");
@@ -1649,13 +1649,13 @@ function renderLib() {
       it.papers.map((p, pi) => "<div class='libp'><h4>" + esc(p.title || p.short) + "</h4><div class='k'><b>" + esc(p.short) + "</b> · " + (kinds[p.kind] || "") + " · <a href='/view?file=" + encodeURIComponent(p.file) + "' target='athenaeum_reader' class='act' style='padding:0'>논문 열기</a></div>" +
         "<div class='g'>" + esc(p.gist) + "</div>" + p.sents.map((st, si) => "<div class='libs'>" + (st.ko ? "<div>" + esc(st.ko) + "</div>" : "") + "<div class='en'>" + esc(st.en) + "</div>" +
           (st.cited || []).map(c => "<div class='c'>인용 [" + esc(c.n) + "] " + esc(c.line) + (c.file ? " · <a class='act' style='padding:0' href='/view?file=" + encodeURIComponent(c.file) + "' target='athenaeum_reader'>내 서재에 있음</a>" : "") + "</div>").join("") +
-          "<div class='acts' style='margin-left:-8px'><button class='btn' data-lopen='" + pi + ":" + si + "'>" + esc(st.sent) + (st.page ? " · p." + st.page : "") + " 원문 열기</button><button class='btn' data-lcard='" + pi + ":" + si + "' title='이 문장을 이 원고의 근거 카드로 담습니다'>카드로 담기</button></div></div>").join("") + "</div>").join("");
+          "<div class='acts' style='margin-left:-8px'><button class='btn' data-lopen='" + pi + ":" + si + "'" + (st.sent ? "" : " title='번역을 만들지 않은 논문이라 문장 자리로 바로 가지 못하고 논문만 엽니다'") + ">" + (st.sent ? esc(st.sent) + (st.page ? " · p." + st.page : "") + " 원문 열기" : "논문 열기 (번역 없음)") + "</button><button class='btn' data-lcard='" + pi + ":" + si + "' title='이 문장을 이 원고의 근거 카드로 담습니다'>카드로 담기</button></div></div>").join("") + "</div>").join("");
   }
   const keep = document.activeElement && document.activeElement.id === "libTopic" ? document.activeElement.value : null;
   el.innerHTML = h;
   const ta = $("libTopic"); if (keep !== null) { ta.value = keep; ta.focus(); }
   autogrow(ta);
-  $("libEffort").onchange = e => localStorage.setItem("ms_lib_effort", e.target.value);
+  $("libEffort").onchange = e => localStorage.setItem("ms_lib_effort2", e.target.value);
   const run = async () => {
     const topic = ta.value.trim(); if (!topic || libBusy) return;
     libBusy = { topic }; libErr = ""; renderLib(); animateBars(el);
@@ -1669,7 +1669,7 @@ function renderLib() {
   if (libBusy) animateBars(el);
   if (!it) return;
   const at = b => { const [pi, si] = b.split(":").map(Number); return [it.papers[pi], it.papers[pi].sents[si]]; };
-  el.querySelectorAll("[data-lopen]").forEach(b => b.onclick = () => { const [p, st] = at(b.dataset.lopen); window.open("/view?file=" + encodeURIComponent(p.file) + "&kind=translation&sent=" + st.sent, "athenaeum_reader"); });
+  el.querySelectorAll("[data-lopen]").forEach(b => b.onclick = () => { const [p, st] = at(b.dataset.lopen); window.open("/view?file=" + encodeURIComponent(p.file) + (st.sent ? "&kind=translation&sent=" + st.sent : ""), "athenaeum_reader"); });
   el.querySelectorAll("[data-lcard]").forEach(b => b.onclick = async () => {
     const [p, st] = at(b.dataset.lcard), mid = doc.id; b.disabled = true;
     await saveNow();   // 서버가 원고 파일에 카드를 넣는다 → 내 글이 먼저 저장돼 있어야 하고, 받은 카드를 내 쪽에도 넣어야 다음 저장이 지우지 않는다
@@ -2011,7 +2011,7 @@ function chatFocus(id) {   // 그 대화 카드를 보이게 하고 입력 칸�
 function chatThreadHtml(m) {
   const th = m.thread || [];
   return th.map((x, i) => x.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(x.text) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") +
       (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend(x) + "</div>").join("");
 }
@@ -2090,7 +2090,7 @@ function chatCardHtml(m) {
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
   h += "<div class='chbody'>" + (scopeWide(m.scope) ? "" : "<div class='rvtext cq'>" + esc(m.quote) + "</div>") + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
-  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
+  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ max: 110, xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)", m.scope) +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
@@ -2115,7 +2115,7 @@ function renderChat() {
     "<a href='#' class='act' id='chWide' style='font-weight:400;text-transform:none' title='드래그하지 않고 묻기: 커서가 있는 문단, 그 절 전체, 원고 전체를 놓고 묻습니다. 글 칸에 커서를 두고 Ctrl+K 를 눌러도 됩니다'>+ 묻기</a>" +
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>" + (side ? "접기" : "모두 접기") + "</a>" : "") +
     "<span class='chview' title='글 옆에 = 워드의 메모처럼, 대화를 그 글 옆에 놓고 글을 따라 움직입니다 · 목록 = 모든 대화를 원고 순서대로 한 줄로'><a href='#' data-view='side'" + (side ? " class='on'" : "") + ">글 옆에</a><a href='#' data-view='list'" + (side ? "" : " class='on'") + ">목록</a></span>" +
-    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 가장 꼼꼼히(30초~1분 반), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
+    "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 꼼꼼히(기본, 30초~1분 반), 최대 = 가장 깊이(더 오래 걸리고 사용량이 많음), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
   let newCard = "";
   if (chatNew) {
     const sc = chatNew.scope || "sel", scopes = [["sel", "고른 글"], ["para", "이 문단"], ["sec", "이 절"], ["doc", "원고 전체"]].filter(x => x[0] !== "sel" || chatNew.sel);
