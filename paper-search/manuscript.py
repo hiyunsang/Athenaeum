@@ -1600,6 +1600,10 @@ _LIBX_STYLE = (
     "- 모든 문장은 앞의 어느 문장을 무슨 관계로 이어받는지가 분명해야 한다(풀이·근거·사례·덧붙임·대조·귀결·원인·평가·필요). 대개는 바로 앞 문장을, 때로는 더 앞의 머리 문장을 이어받는다(같은 머리 아래 나란히 놓이는 둘째·셋째 항목). "
     "그 관계를 겉으로 어떻게 드러낼지는 관계에 따라 다르다 — 아래 [이 분야 논문은 문장 사이의 관계를 이렇게 드러낸다]의 사례에서 그 문장에 맞는 방법을 고른다. 접속 부사의 개수를 맞추려 하지 마라. "
     "새로 꺼내는 내용은 문장 끝에 두어 다음 문장이 받게 한다.\n"
+    "- 새 대목을 여는 문장(앞의 어느 문장도 직접 이어받지 않는 문장)은 뜬금없이 들리기 쉽다. 일반 법칙을 맨 단언으로 던지지 마라('The flow mode determines the forces.', 'Each mode also leaves a signature on the chip.'). "
+    "이 분야 논문은 그런 문장을 그 말이 어떤 자리의 말인지 세워서 연다 — 아래 [새 대목을 여는 문장]의 사례. 또 머리 문장은 그 대목의 내용을 실제로 담는다: 다음 문장이 곧바로 같은 말을 구체적으로 되풀이할 '예고 문장'을 따로 세우지 말고 한 문장으로 쓴다.\n"
+    "- 주어에 앞에서 쓰지 않은 한정어를 갑자기 붙이지 않는다('the prevailing flow mode'·'each flow mode' → 앞에서 쓴 대로 'the flow mode'). 새 정보는 서술부에 둔다. "
+    "구체적인 사례(수치·실험)를 말한 바로 다음 문장에서 다리 없이 일반론으로 돌아가지 않는다.\n"
     "- 접속 부사는 문장 맨 앞에 쉼표와 함께 둔다('However, …', 'Therefore, …', 'As a result, …'). 문장 가운데에 두는 것은 'also' 뿐이다 — 같은 주어의 또 다른 작용·결과를 덧붙일 때('The excessive deformation also causes …', 'They also found …'). "
     "'therefore'·'then'·'instead'·'in turn'·'however' 를 주어 뒤에 끼워 넣지 마라(이 분야 논문은 그렇게 쓰지 않는다).\n"
     "- 저자를 주어로 세우는 문장('A et al. [n] studied …')은 저자의 버릇을 따른다: 원고가 선행 연구를 그렇게 소개해 왔으면 쓰고, 아니면 쓰지 않는다(아래 [원고의 버릇]). "
@@ -1768,6 +1772,14 @@ def _norms_text(nm, auth=None):
     out = ("[이 분야 논문은 문단을 이렇게 짠다 — 서재의 IJMTM·JMPT 논문 서론을 분석한 사례]\n"
            "- 문단은 큰 대목 두세 개로 이루어지고, 대목 하나는 머리 문장과 그것을 펴는 문장 두세 개다. 펴는 문장을 다시 펴는 문장(셋째 층)이 문단의 넷 중 하나쯤 있다 — 사실을 한 층에 나란히 늘어놓지 않는다.\n"
            "- 문장 넷 중 셋은 바로 앞 문장을 이어받고, 나머지는 더 앞의 머리 문장으로 돌아가 그 아래 나란히 놓인다(같은 머리의 둘째 요인, 둘째 사례).\n"
+           "[새 대목을 여는 문장 — 이 분야 논문이 실제로 여는 방법, 많이 쓰는 순서로. 앞 문장과 바로 이어지지 않는 문장은 이 가운데 그 자리에 맞는 것으로 연다]\n"
+           "- 새 대목이 앞 대목과 실제로 맺는 관계를 접속 부사로 드러낸다(가장 흔하다): 뒤집으면 'However, …', 같은 층위의 것을 하나 더 들면 'In addition, …', 앞 대목에서 따라 나오면 'Therefore, …'.\n"
+           "- 앞에서 이미 나온 말을 주어로 받는다: 바로 앞 문장이 끝에 내놓은 말(앞 문장이 'in situ studies' 로 끝났으면 'The in situ approach has also …')이나 더 앞 문장의 중심 낱말. "
+           "앞 대목을 가리키는 도입구로 다리를 놓아도 된다('In addition to these process attributes, …', 'Apart from …').\n"
+           "- 범위나 때를 도입구로 세운다: 'For brittle materials, …', 'In micro milling, …', 'At the micro scale, …', 'More recently, …', 'Early studies …'.\n"
+           "- 구체적인 대상을 주어로 그냥 시작한다 — 그 대상이 문단의 주제에 속한다는 것이 읽는 사람에게 분명할 때('Micro stripe grooves on the rake face decreased …'). 뜬금없는 것은 구체적인 대상이 아니라 일반 법칙을 맨 단언으로 던질 때다.\n"
+           "- 드물게(논문 스무 문단에 하나쯤), 그 사실이 이 분야에서 정말 오래 받아들여진 것일 때에만 알려진 정도를 세운다('It has long been known that …', '… has been well studied', '… has been ascribed to several factors') "
+           "또는 요점에 이름을 붙인다('An important feature of X is that …'). 이것을 기본 꼴로 삼지 마라: 한 문단에 한 번까지, 주제문을 'It is well established that …' 으로 꾸미지 않는다 — 문헌이 있어야 할 주장을 그 말로 덮지도 않는다.\n"
            "[이 분야 논문은 문장 사이의 관계를 이렇게 드러낸다 — 관계마다. 접속 부사의 개수를 맞추려 하지 말고, 문장마다 그 관계에 맞는 방법을 고른다]\n"
            "- 대조(앞에서 말한 것의 한계·반대, 아직 모르는 것, 풀리지 않은 문제): 열에 여섯은 대조의 접속 부사(%s)를 문장 맨 앞에 둔다. 나머지는 표시 없이 내용으로 드러낸다. 저자의 판단이라 인용은 거의 없다.\n"
            "- 귀결(앞 내용에서 따라 나오는 결과, '그래서 …'): 거의 언제나 겉으로 드러낸다 — 절반쯤은 귀결의 접속 부사(%s)를 맨 앞에, 셋 중 하나는 앞 문장을 받는 말로('This results in …', 'This … causes …'). "
@@ -1856,11 +1868,11 @@ def _libx_check(text, evid, job, model, eff, run):
     prompt = (
         "당신은 기계가공·재료 분야 국제 저널의 까다로운 심사위원이다. 아래 [문단]은 [근거](논문들에서 뽑은 문장 — E번호 = 논문, [@열쇠] = 그 논문의 인용 열쇠, "
         "'↳ 원저' = 그 문장이 인용한 원래 문헌과 그 열쇠)만 가지고 쓴 것이다. 두 가지를 본다: 문장마다 근거와 맞는가, 글이 저자의 논증으로 읽히는가. JSON 으로만 답하라:\n"
-        "{\"sentences\": [{\"s\": \"그 문장의 첫 8 낱말 그대로\", \"verdict\": \"ok|synth|over|none|own\", \"type\": \"\", \"ev\": [\"E3.2\"], \"second\": false, "
+        "{\"sentences\": [{\"s\": \"그 문장의 첫 8 낱말 그대로\", \"verdict\": \"ok|synth|over|none|own\", \"type\": \"\", \"ev\": [\"E3.2\"], \"second\": false, \"abrupt\": false, "
         "\"why\": \"한국어 한 문장\", \"fix\": \"over·none·needs 일 때: 근거 안에 들게 고치는 법 한국어 한 줄\"}], "
         "\"prose\": [{\"kind\": \"stitched|list|repeat|overcite|subject|ending|phrase\", \"sev\": \"major|minor\", \"at\": [2, 3], \"note\": \"한국어 한 문장\"}], \"reads\": \"argued|assembled\"}\n"
         "규칙:\n"
-        "- 문단의 모든 문장을 순서대로 하나씩 낸다.\n"
+        "- 문단의 모든 문장을 순서대로 하나씩 낸다. why·fix·note 는 문단과 주문이 영어여도 반드시 한국어로 쓴다(화면에서 저자가 읽는다).\n"
         "- verdict: ok = 단 인용의 근거 문장이 그 주장을 말한다 / synth = 저자의 말로 묶은 일반 서술이고, 단 인용이 저마다 그 서술의 실제 사례이며 서술의 폭이 사례를 넘지 않는다(허용되는 종합) / "
         "over = 근거보다 나아갔다 / none = 단 인용의 근거가 그 말을 하지 않는다 / own = 인용이 없는 문장.\n"
         "- over 의 type: general(사례보다 넓게 일반화) · stale(옛 논문의 '아직 모른다'를 지금의 공백으로 썼다 — 근거 머리줄의 연도를 보라) · "
@@ -1871,6 +1883,10 @@ def _libx_check(text, evid, job, model, eff, run):
         "- [이 문단이 할 일]은 저자가 준 주문이다. 주문에 적힌 논지·동기를 저자의 말로 쓴 문장은 근거가 없어도 frame 이다(고치라고 하지 마라).\n"
         "- 원저의 열쇠로 인용한 재인용은 over 가 아니다(ok 이고 second 만 true). secondhand 는 남의 연구를 전한 말에 '전한 논문'의 열쇠를 달았을 때만.\n"
         "- fix 는 말을 근거의 폭으로 낮추거나, 구절을 빼거나, 열쇠를 바꾸는 쪽으로 적는다. 인용을 더 달라거나 'as cited in' 같은 단서를 넣으라고 하지 마라.\n"
+        "- abrupt: 그 문장이 읽는 사람에게 뜬금없이 들리면 true 이고 why 에 어느 경우인지 적는다 — (가) 앞의 어느 문장도 이어받지 않는 새 대목의 문장인데 다리도 틀도 없이 일반 법칙을 맨 단언으로 말한다"
+        "('X determines Y.', 'Each X also leaves Z.') (나) 주어에 앞에서 쓰지 않은 한정어가 갑자기 붙었다('the prevailing mode', 'each mode') (다) 구체적인 사례를 말한 바로 다음에 다리 없이 일반론으로 돌아간다 "
+        "(라) 다음 문장이 곧바로 같은 내용을 구체적으로 되풀이하는 예고 문장이다. 이 분야 논문은 새 대목을 여는 문장을 앞 대목과의 관계를 드러내는 접속 부사('However, …', 'In addition, …')로, 앞에서 나온 말을 주어로 받아서, "
+        "범위·때의 도입구('For brittle materials, …', 'More recently, …')로, 문단의 주제에 속하는 구체적인 대상을 주어로, 드물게는 알려진 정도를 세워서('It has long been known that …', '… has been well studied') 연다 — 그렇게 열린 문장은 abrupt 가 아니다.\n"
         "- second: 그 문장의 받침이 원저를 직접 읽은 것이 아니라 다른 논문이 전한 말일 때 true(원저의 열쇠로 인용했더라도).\n"
         "- ev: 그 문장을 받치는 근거 문장 번호(없으면 빈 배열). 결과·주장의 받침은 뽑힌 문장(E번호.번호)만이다 — '이 논문은'·'이 주제에 대해' 줄은 배경이라 그 줄에만 있는 결과를 쓴 문장은 none 이다(그 연구의 재료·스케일·공정·방법 같은 조건을 그 줄에서 가져온 것은 괜찮다). 주어진 근거 글만으로, 엄격하게 판단한다.\n"
         "- 인용이 없는 문장이라도 바로 앞이나 뒤 문장의 인용이 같은 근거로 이 문장까지 받치면(한 논문의 내용을 두 문장에 걸쳐 쓰고 인용을 한 번만 단 것) own 이 아니라 ok 로 보고 ev 에 그 근거를 적는다.\n"
@@ -1889,7 +1905,7 @@ def _libx_check(text, evid, job, model, eff, run):
         if not isinstance(x, dict):
             continue
         sents.append({"s": _norm_ws(str(x.get("s") or "")), "verdict": x.get("verdict") if x.get("verdict") in ("ok", "synth", "over", "none", "own") else "own",
-                      "type": str(x.get("type") or "")[:12], "ev": [str(e) for e in (x.get("ev") or [])[:6]], "second": bool(x.get("second")),
+                      "type": str(x.get("type") or "")[:12], "ev": [str(e) for e in (x.get("ev") or [])[:6]], "second": bool(x.get("second")), "abrupt": bool(x.get("abrupt")),
                       "why": str(x.get("why") or "").strip(), "fix": str(x.get("fix") or "").strip()})
     flat = _norm_ws(text)   # 문장 머리로 문장 전체를 되찾는다 (화면이 문장마다 표시할 수 있게)
     pos = [flat.find(x["s"][:60]) if x["s"] else -1 for x in sents]
@@ -1904,7 +1920,7 @@ def _libx_check(text, evid, job, model, eff, run):
 
 def _libx_redo(chk):
     """고쳐 쓰게 할 만한가: 근거에 걸린 문장이 있거나, 이어 붙인 글로 읽히거나, 글에 큰 문제가 있을 때 (심사는 늘 뭔가를 지적한다 — 가벼운 지적으로는 다시 쓰지 않는다)"""
-    return bool(chk) and (bool(_libx_bad(chk)) or chk["reads"] == "assembled" or any(p["sev"] == "major" for p in chk["prose"]))
+    return bool(chk) and (bool(_libx_bad(chk)) or chk["reads"] == "assembled" or any(p["sev"] == "major" for p in chk["prose"]) or any(x.get("abrupt") for x in chk["sentences"]))
 
 
 def _libx_bad(chk):
@@ -2059,19 +2075,28 @@ def lib_use(doc, body):
             stage("check")
             chk, r2 = _libx_check(text, evid, job, model, ceff, run)
             use["tok"] = _tok_add(use["tok"], (r2 or {}).get("tok"))
-            draft, changes, rounds, chk0 = "", "", 1, None
+            draft, changes, rounds, chk0, alt = "", "", 1, None, None
             flow = flow0 = _flow(text, norms)
-            if _libx_redo(chk) or flow["marks"]:
+            ab = lambda c: sum(1 for x in (c or {}).get("sentences") or [] if x.get("abrupt"))
+            nbad = lambda c: (len(_libx_bad(c)) + ab(c)) if c else 99
+
+            def revise(cur, c, f):
+                """지적(대조 c · 이음 f)을 주고 글 cur 를 고쳐 쓰게 한 뒤 다시 대조한다 → (글, 대조, 이음, 고친 내용). 고친 글이 안 왔으면 None"""
                 marks = []
-                for i, x in enumerate((chk or {}).get("sentences") or []):
-                    if x in _libx_bad(chk):
+                for i, x in enumerate((c or {}).get("sentences") or []):
+                    if x in _libx_bad(c):
                         marks.append("- 문장 %d \"%s…\": %s%s — %s%s" % (i + 1, x["s"][:70], x["verdict"], ("/" + x["type"]) if x["type"] else "", x["why"], (" → " + x["fix"]) if x["fix"] else ""))
-                for x in (chk or {}).get("prose") or []:
-                    if x["sev"] == "major" or chk["reads"] == "assembled":
+                for i, x in enumerate((c or {}).get("sentences") or []):
+                    if x.get("abrupt"):
+                        marks.append("- 문장 %d \"%s…\": 뜬금없이 들린다 — %s → 앞 대목과의 관계를 접속 부사로 드러내거나, 앞에서 나온 말을 주어로 받아 다리를 놓거나, 범위·때를 도입구로 세우거나, 다음 문장과 한 문장으로 합쳐라. "
+                                     "주어의 낯선 한정어는 뺀다. 'It is well established that' 같은 틀을 씌워서 고치지 마라."
+                                     % (i + 1, x["s"][:70], x["why"]))
+                for x in (c or {}).get("prose") or []:
+                    if x["sev"] == "major" or c["reads"] == "assembled":
                         marks.append("- 글(%s) 문장 %s: %s" % (x["kind"], ", ".join(str(v) for v in x["at"]) or "전체", x["note"]))
-                if chk and chk["reads"] == "assembled":
+                if c and c["reads"] == "assembled":
                     marks.append("- 통독: 저자의 논증이 아니라 인용을 모아 이어 붙인 글로 읽힌다.")
-                marks += flow["marks"]
+                marks += f["marks"]
                 stage("revise")
                 rprompt = (head +
                     "앞서 이 근거로 쓴 [문단]을 심사위원이 근거와 대조하고 글을 읽어 보았다 — 아래 [지적]. 문단을 고쳐 써라.\n"
@@ -2086,27 +2111,43 @@ def lib_use(doc, body):
                     "먼저 JSON 하나로 답하고: {\"changes\": \"무엇을 왜 고쳤는지 한국어 1~3문장\"}\n"
                     "그 뒤에 고친 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(문단)\n<<<END>>>\n"
                     "규칙:\n" + _LIBX_STYLE + norms_txt + cite_rule +
-                    "- 저자의 주문: " + job + "\n\n[지적]\n" + "\n".join(marks) + "\n\n[문단]\n" + text + "\n\n[근거 — E번호 = 논문, E번호.번호 = 문장, ↳ = 그 문장이 인용한 원저]\n" + evid)
-                # 걸린 문장만 손보는 일은 보통 노력으로, 문단을 다시 짜야 하면(짜임 지적) 쓴 때와 같은 노력으로
-                r3 = run(pre + rprompt, timeout=1500, model=model, effort=eff if flow["marks"] or eff not in ("xhigh", "max") else None, tools="", system=system or None)
+                    "- 저자의 주문: " + job + "\n\n[지적]\n" + "\n".join(marks) + "\n\n[문단]\n" + cur + "\n\n[근거 — E번호 = 논문, E번호.번호 = 문장, ↳ = 그 문장이 인용한 원저]\n" + evid)
+                # 고쳐 쓰기는 보통 노력으로 — 엑스트라로 하면 5분이 더 걸리는데(T1: 332초) 고친 글이 채택되지 않는 일도 있다
+                r3 = run(pre + rprompt, timeout=1500, model=model, effort=None if eff in ("xhigh", "max") else eff, tools="", system=system or None)
                 use["tok"] = _tok_add(use["tok"], (r3 or {}).get("tok"))
-                j3, text2 = _rewrite_in((r3 or {}).get("text") or "")
-                if text2 and _norm_ws(text2) != _norm_ws(text):
-                    stage("recheck")
-                    chk2, r4 = _libx_check(text2, evid, job, model, ceff, run)
-                    use["tok"] = _tok_add(use["tok"], (r4 or {}).get("tok"))
-                    flow2 = _flow(text2, norms)
-                    b1, b2 = len(_libx_bad(chk)) if chk else 99, len(_libx_bad(chk2)) if chk2 else 99
+                j3, t2 = _rewrite_in((r3 or {}).get("text") or "")
+                if not t2 or _norm_ws(t2) == _norm_ws(cur):
+                    return None
+                stage("recheck")
+                c2, r4 = _libx_check(t2, evid, job, model, ceff, run)
+                use["tok"] = _tok_add(use["tok"], (r4 or {}).get("tok"))
+                return t2, c2, _flow(t2, norms), str(j3.get("changes") or "").strip()
+
+            if _libx_redo(chk) or flow["marks"]:
+                got = revise(text, chk, flow)
+                if got and got[1] and nbad(got[1]) > nbad(chk) and len(got[2]["marks"]) < len(flow["marks"]):
+                    # 짜임(인용 나열)은 풀렸는데 새로 쓴 문장이 걸렸다 → 그 문장만 한 번 더 손본다. 안 그러면 짜임을 푼 글이 통째로 버려지고 인용이 몰린 처음 글이 남는다
+                    got2 = revise(got[0], got[1], got[2])
+                    if got2 and got2[1] and (nbad(got2[1]), len(got2[2]["marks"])) <= (nbad(got[1]), len(got[2]["marks"])):
+                        got = (got2[0], got2[1], got2[2], " ".join(v for v in (got[3], got2[3]) if v))
+                if got:
+                    text2, chk2, flow2, ch2 = got
+                    b1, b2 = nbad(chk), nbad(chk2)
                     worse = b2 > b1 or (chk2 and chk and chk2["reads"] == "assembled" and chk["reads"] != "assembled") or (b2 == b1 and len(flow2["marks"]) > len(flow["marks"]))
                     if chk2 and not worse:   # 고쳐서 나빠지지 않았을 때만 고친 글을 쓴다
-                        draft, text, chk0, chk, rounds, changes, flow = text, text2, chk, chk2, 2, str(j3.get("changes") or "").strip(), flow2
+                        draft, text, chk0, chk, rounds, changes, flow = text, text2, chk, chk2, 2, ch2, flow2
+                    else:   # 쓰지 않은 고친 글도 남긴다 — 저자가 견줘 보고 고를 수 있게
+                        alt = {"text": text2, "changes": ch2, "bad": [b1, b2], "marks": [len(flow["marks"]), len(flow2["marks"])],
+                               "flagged": [{"s": x["s"], "verdict": x["verdict"], "type": x["type"], "abrupt": bool(x.get("abrupt")), "why": x["why"]}
+                                           for x in (chk2 or {}).get("sentences") or [] if x in _libx_bad(chk2) or x.get("abrupt")],
+                               "reads": (chk2 or {}).get("reads") or ""}
             for c in (chk, chk0):
                 for x in (c or {}).get("sentences") or []:
                     x["ev"] = ev_of(x["ev"])
             plan = [{"move": str(x.get("move") or "").strip(), "ev": ev_of(x.get("ev")), "sents": [str(v).strip()[:300] for v in (x.get("sents") or [])[:5] if str(v).strip()]}
                     for x in (r.get("plan") or [])[:8] if isinstance(x, dict) and str(x.get("move") or "").strip()]
             known = set(by_key) | set(prims)
-            use.update(answer=str(r.get("answer") or "").strip(), plan=plan, text=text, cites=cites_for(text), check=chk, check0=chk0, rounds=rounds, draft=draft, changes=changes, flow=flow, flow0=flow0 if rounds == 2 else None, norms={k: norms.get(k) for k in ("src", "npar", "npaper", "band")},
+            use.update(answer=str(r.get("answer") or "").strip(), plan=plan, text=text, cites=cites_for(text), check=chk, check0=chk0, rounds=rounds, draft=draft, changes=changes, flow=flow, flow0=flow0 if rounds == 2 else None, norms={k: norms.get(k) for k in ("src", "npar", "npaper", "band")}, alt=alt,
                        unknown=[k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", text)) if k not in known and k != "?"], todo=text.count("[@?]"), sec=round(time.time() - t0))
             steps[-1][1] = round(time.time() - steps[-1][2])
             use["steps"] = [[x[0], x[1]] for x in steps]
