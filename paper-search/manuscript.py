@@ -1613,7 +1613,8 @@ _LIBX_STYLE = (
     "- 여러 논문이 같은 점을 받치면 그 점을 저자의 말로 한 번 말하고 인용을 묶어 단다([@A][@B]) — 논문마다 문장을 따로 세우지 않는다. "
     "묶어서 일반화할 때는 근거가 받치는 폭까지만(사례가 두 재료뿐이면 'in several ductile metals'·'e.g.' 처럼 폭을 드러내고 '모든'·'항상'으로 넓히지 않는다).\n"
     "- 같은 사실을 두 번 말하지 마라. 같은 이음말로 시작하는 문장이 문단에 세 번 이상 나오지 않게 한다. 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장은 대체로 15~35 단어로 길이를 섞고, 쌍반점으로 문장을 잇지 않는다.\n"
-    "- 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 저자의 주문이 정한 흐름의 마지막 걸음에서 끝낸다 — 주문에 없는 본 연구의 결과·연구 질문으로 건너뛰지 마라(그것은 다른 문단의 몫이다).\n"
+    "- 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 저자의 주문이 정한 흐름의 마지막 걸음에서 끝낸다 — 주문에 없는 본 연구의 결과·연구 질문으로 건너뛰지 마라(그것은 다른 문단의 몫이다). "
+    "맺는 말('This explains why …')을 먼저 하고 그 까닭을 다음 문장에서 다시 풀지 않는다 — 까닭(기전)을 먼저 말하고, 그것이 설명하는 것으로 끝낸다.\n"
     "- 영어로 쓸 때 기계가 쓴 티가 나는 말버릇을 쓰지 마라: notably, crucial, pivotal, comprehensive, intricate, delve, underscore, shed light, 'plays a key role', 'it is worth noting', 'not only … but also', 'a wide range of', "
     "줄표(—)로 끼워 넣는 삽입구, 무엇이든 셋씩 나열하기, 교훈을 말하는 맺음.\n")
 _FLOW_CITE = r"(?:\[@[^\]\s,;]+\]\s*)+|\[\d[\d,\u2013\u2014\- ]*\]"
@@ -1845,6 +1846,77 @@ def _flow(text, nm=None):
                      ("같은 이음말(%s)이 세 번 이상 나온다. " % ", ".join(rep_w) if rep_w else "") + "사례는 표시 없이 그 사실을 말하고 인용을 달거나 주장 문장 안의 구로 넣는다.")
     st.update(pct={k: int(round(v)) for k, v in pct.items()}, out=out, marks=marks)
     return st
+
+
+# ---------- 대화(고른 글·문단·절)에서 글을 쓰거나 고칠 때 — 문단 쓰기에서 다듬은 규칙을 그대로 쓴다 ----------
+def _style_pick(starts):
+    """_LIBX_STYLE 의 규칙 가운데 그 말로 시작하는 줄만. 규칙을 두 군데에 따로 적지 않으려는 것 — 줄이 없어지면 바로 알게 한다."""
+    lines = [ln for ln in _LIBX_STYLE.split("\n") if ln.startswith("- ")]
+    out = []
+    for st in starts:
+        hit = [ln for ln in lines if ln.startswith("- " + st)]
+        if len(hit) != 1:
+            raise ValueError("글의 규칙에서 '%s' 로 시작하는 줄을 찾지 못했다" % st)
+        out.append(hit[0])
+    return "\n".join(out) + "\n"
+
+
+def _chat_style(doc, key, scope, quote):
+    """대화에서 대안·다시 쓴 글을 낼 때(그리고 글을 평가할 때) 줄 규칙. 고른 글이 구절 하나면 짧게."""
+    head = ("[글을 쓰거나 고칠 때 — 이 분야 논문(저자의 서재에 있는 IJMTM·JMPT 논문)이 실제로 쓰는 방식. 대안이나 다시 쓴 글을 낼 때 따르고, 글을 평가해 달라고 하면 이 잣대로 본다. "
+            "뜻·사실만 묻는 물음에는 쓰이지 않는다]\n"
+            "- 고치는 것은 짜임과 이음과 문장이지 내용이 아니다. 이미 논문처럼 읽히는 문장은 그대로 둔다 — 고친 곳마다 왜 고쳤는지 answer 에서 말할 수 있어야 한다. 규칙을 채우려고 멀쩡한 문장에 이음말을 붙이지 마라.\n")
+    if scope == "sel" and len(quote or "") < 80:
+        return head + _style_pick(("주어에 앞에서", "접속 부사는 문장 맨 앞", "영어로 쓸 때"))
+    body = (_style_pick(("문단은 사실을",)) if scope != "sel" else "") + _style_pick(("모든 문장은 앞의", "새 대목을 여는 문장", "주어에 앞에서", "접속 부사는 문장 맨 앞", "저자를 주어로 세우는"))
+    body += ("- 문단의 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 맺는 말('This explains why …')을 먼저 하고 그 까닭을 다음 문장에서 다시 풀지 않는다 — 까닭(기전)을 먼저 말하고, 그것이 설명하는 것으로 끝낸다.\n"
+             "- 같은 이음말로 시작하는 문장이 한 문단에 세 번 이상 나오지 않게 한다. 쌍반점으로 문장을 잇지 않는다. 같은 사실을 두 번 말하지 않는다.\n")
+    body += _style_pick(("영어로 쓸 때",))
+    body += _norms_text(_style_norms(), _author_style(doc, key))
+    body += ("- 위 사례는 서론의 문헌을 다루는 문단에서 잰 것이다. 방법·결과·논의의 글에서는 인용에 관한 것은 빼고 짜임과 이음에 관한 것만 따른다. "
+             "원고에 이미 있는 인용 [n] 의 자리는 고쳐 달라는 말이 없으면 옮기지 않는다.\n")
+    return head + body
+
+
+def _chat_flow(text, nm=None, base=None):
+    """대화에서 쓴 글(문단 대안·다시 쓴 절)이 논문 문단의 범위 안인지 — 문장이 다섯 이상인 문단만 본다. 쓰는 기준이 아니라 쓰고 난 뒤의 확인.
+    base(고치기 전의 글)를 주면 거기에도 있던 꼴은 지적하지 않는다(인용의 자리처럼 손대지 않기로 한 것을 탓하지 않게) — 그 수는 was.
+    → {paras: 본 문단 수, tied: [접속 부사·받는 말로 시작한 문장, 둘째 문장부터의 수], notes: [범위 밖인 것 — 짧은 말], was}. 볼 문단이 없으면 None"""
+    nm = nm or _style_norms()
+    bd = dict(_NORM_DEFAULT["band"], **(nm.get("band") or {}))
+
+    def scan(t):
+        ps = [p for p in re.split(r"\n\s*\n", t or "") if p.strip()]
+        notes, seen, tied, tot = [], 0, 0, 0
+        for i, p in enumerate(ps):
+            if p.lstrip().startswith(("|", "$$", "#")):
+                continue
+            f = _flow(p, nm)
+            if f["n"] < 5:
+                continue
+            seen += 1
+            tied += f["tied"]
+            tot += f["n"] - 1
+            w = ("문단 %d: " % (i + 1)) if len(ps) > 1 else ""
+            if "tied" in f["out"] and f["tied"] > int(bd["tied"][5] / 100.0 * (f["n"] - 1) + 0.999):   # 짧은 문단은 한 문장 차이로 범위를 넘는다 — 한 문장 넘게 벗어났을 때만
+                notes.append(("tied", w + "접속 부사나 받는 말로 시작하는 문장이 %d개 중 %d개 — 논문 문단의 90%%는 %d~%d%%" % (f["n"] - 1, f["tied"], bd["tied"][1], bd["tied"][5])))
+            if f["mid"]:
+                notes.append(("mid", w + "문장 %s 은 접속 부사(%s)가 주어 뒤에 있음 — 논문은 문장 맨 앞에 둔다" % (", ".join(str(x[0]) for x in f["mid"]), ", ".join(dict.fromkeys(x[1] for x in f["mid"])))))
+            if f["cited"] >= 3 and "ends" in f["out"]:
+                notes.append(("ends", w + "문장 %d개 중 %d개가 인용으로 끝남(문장 %d~%d 은 연달아) — 인용을 나열한 글로 읽힐 수 있음" % (f["n"], f["ends"], f["run_at"][0], f["run_at"][1])))
+            cnt = {}
+            for x in f["advs"]:
+                cnt[x] = cnt.get(x, 0) + 1
+            rw = [x for x, v in cnt.items() if v >= 3]
+            if rw:
+                notes.append(("rep", w + "같은 이음말(%s)로 시작하는 문장이 세 번 이상" % ", ".join(rw)))
+        return notes, seen, tied, tot
+
+    notes, seen, tied, tot = scan(text)
+    if not seen:
+        return None
+    had = {k for k, _ in scan(base)[0]} if base else set()
+    return {"paras": seen, "tied": [tied, tot], "notes": [t for k, t in notes if k not in had][:6], "was": sum(1 for k, _ in notes if k in had)}
 
 
 # 근거의 규칙 — 같은 시험에서 인용 문장 넷 중 하나가 근거보다 나아갔다: 재인용을 그 논문의 결과로, 옛 논문의 '아직 모른다'를 지금의 공백으로, 사례보다 넓은 일반화, 다른 스케일에 옮겨 적용.
@@ -3529,7 +3601,7 @@ def ask_selection(doc, body):
                 m.pop("error", None)
                 m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time(),
                                                    "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "whole": bool(res.get("whole")), "tok": res.get("tok"), "refs": res.get("refs") or [],
-                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or []})
+                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or [], "altflow": res.get("altflow") or []})
                 m["unread"] = True
         with _REV_LOCK:   # 기다리는 동안 저장된 글 위에 답만 얹는다
             fresh = load_ms(doc["id"]) or doc
@@ -4012,12 +4084,14 @@ def _ask_selection(doc, body):
                  "{\"key\": \"Issahaq2022\", \"file\": \"그 논문의 파일 이름(확장자 빼고 글자 그대로)\"} 를 적는다. 프로그램이 원고의 참고문헌 번호로 바꾸고, 목록에 없으면 목록에 넣는다. "
                  "읽어서 확인하지 않은 논문은 인용하지 마라. 원고에 이미 있는 [n] 인용은 그대로 둔다.\n") if lib else "- 새 문헌을 인용하지 마라(서재를 볼 수 없다). 원고에 이미 있는 [n] 인용은 그대로 둔다.\n"
     pieces = []   # 다시 쓸 수 있는 조각의 id (절 범위)
+    piece_text = {}   # 조각의 지금 글 (다시 쓴 글의 범위 확인에서 '고치기 전에도 그랬던 것'을 가리려고)
     if wide:
         if scope == "doc":
             label, para, plist = "원고 전체", "", ""
         elif nid == "front":
             label, para = "초록", (doc.get("front") or {}).get("abstract") or ""
             pieces, plist = ["front"], "front: 초록 (%s자)" % format(len(para), ",")
+            piece_text = {"front": para}
         else:
             secs = _sec_nodes(doc, nid)
             alt = "draft_en" if key == "draft" else "draft"
@@ -4025,6 +4099,7 @@ def _ask_selection(doc, body):
             label = "「%s」 절 전체" % (node or {}).get("heading", "") + ((" (소절 포함: %s)" % ", ".join("「%s」" % n.get("heading", "") for n in secs[1:])) if len(secs) > 1 else "")
             para = "\n\n".join("%s %s\n%s" % ("##" if n.get("level", 1) == 1 else "###", n.get("heading", ""), txt(n) or "(아직 글이 없다)") for n in secs)
             pieces = [str(n.get("id")) for n in secs if txt(n)]
+            piece_text = {str(n.get("id")): txt(n) for n in secs}
             plist = "\n".join("%s: %s (%s)" % (n.get("id"), n.get("heading", ""), (format(len(txt(n)), ",") + "자") if txt(n) else "글 없음") for n in secs)
         # 배경(자료 + 원고 전체)은 시스템 프롬프트로. 원고 전체를 놓고 묻는 물음에는 원고를 꼭 준다
         system, pre, whole = _ctx(doc, nid, key, label + " " + question + " " + para[:3000], True if scope == "doc" else bool(body.get("whole", True)))
@@ -4047,8 +4122,9 @@ def _ask_selection(doc, body):
             "- alternatives 는 항상 빈 배열이다.\n"
             "%s%s"
             "- 원고에 없는 수치·결과를 지어내지 마라. 저자가 '짧게' 라고 해도 첫머리는 이 JSON 이다.\n\n"
+            "%s\n"
             "논문 제목: %s\n물음의 범위: %s\n\n%s\n%s\n[저자의 말]\n%s"
-            % (rewrite_rule, cite_rule, doc.get("title", ""), label, body_txt, hist, question[:2000]))
+            % (rewrite_rule, cite_rule, _chat_style(doc, key, scope, ""), doc.get("title", ""), label, body_txt, hist, question[:2000]))
     else:
         if nid == "front":
             text = (doc.get("front") or {}).get("abstract") or ""
@@ -4073,10 +4149,11 @@ def _ask_selection(doc, body):
             "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
             "%s"
             "- 원고에 없는 수치·결과를 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
+            "%s\n"
             "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
             % ("영어로" if lang_en else "한국어로",
                "- 저자는 문단 하나를 통째로 골랐다. 문장만이 아니라 문단의 구성(첫 문장이 요지를 여는지, 문장 순서, 앞뒤 문단과의 이음)도 보라. 대안은 문단 전체를 대체하며 대안은 1~2개면 된다.\n" if scope == "para" else "",
-               cite_rule, doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
+               cite_rule, _chat_style(doc, key, scope, quote), doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
     cited = _cited_refs(doc, quote, para)
     extra = ""
@@ -4122,9 +4199,12 @@ def _ask_selection(doc, body):
         r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", head).strip() or ("다시 쓴 글을 아래에 냈습니다." if rws else ""), "alternatives": []}
     alts = [] if wide else [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
     used = " ".join(alts) + " " + " ".join(x["text"] for x in rws)
+    altflow = [_chat_flow(a, base=quote) for a in alts]
+    for x in rws:
+        x["flow"] = _chat_flow(x["text"], base=piece_text.get(x["node"]))
     cites = [c for c in _cite_info(doc, r.get("cites") if isinstance(r.get("cites"), list) else []) if ("[@%s]" % c["key"]) in used] if lib else []
     answer = str(r.get("answer") or "").strip() + ("\n\n(다시 쓴 글의 일부가 끝까지 오지 않아 그 조각은 버렸습니다 — 범위를 좁혀 다시 물어 주세요.)" if lost else "")
-    return {"answer": answer, "alternatives": alts, "rewrites": rws, "cites": cites, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
+    return {"answer": answer, "alternatives": alts, "altflow": altflow if any(altflow) else [], "rewrites": rws, "cites": cites, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
 

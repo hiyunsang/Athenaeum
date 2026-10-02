@@ -41,7 +41,7 @@ function animateBars(root) {
 // ---------- 환경설정 (모든 화면 공통, localStorage 에 기억) ----------
 // 항목: 테마(시스템/밝게/어둡게) · 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 · 원고 자동 검토
 const UI_DEFAULTS = { ui_theme: "system", ui_scale_read: 1, ui_scale_ms: 1, ui_width: 760, ui_lh: 1.8, ms_autorev: "0", fig_model: "opus", ui_font_ms: "", ui_font_read: "", ui_pdf_zoom: 1,
-  ms_sel_effort: "xhigh", ms_sel_whole: "1", ms_sel_lib: "1", ms_chat_view: "side" };   // 원고에서 Claude 에게 물을 때: 모델 · 원고 전체를 같이 · 서재 찾아보기 · 대화를 글 옆에/목록으로
+  ms_sel_effort: "xhigh", ms_sel_whole: "1", ms_sel_lib: "1", ms_chat_view: "side", ms_alt_view: "clean" };   // 원고에서 Claude 에게 물을 때: 모델 · 원고 전체를 같이 · 서재 찾아보기 · 대화를 글 옆에/목록으로
 // 글꼴: 기본 목록(이 PC 에 깔린 것만 보임) + 사용자가 추가한 것(글꼴 폴더에 넣은 파일, 직접 적은 설치 글꼴 이름)
 const UI_FONTS = [["Malgun Gothic", "맑은 고딕"], ["Batang", "바탕"], ["Gulim", "굴림"], ["Dotum", "돋움"], ["NanumGothic", "나눔고딕"], ["NanumMyeongjo", "나눔명조"],
   ["NanumSquare", "나눔스퀘어"], ["Noto Sans KR", "Noto Sans KR"], ["Noto Serif KR", "Noto Serif KR"], ["HCR Batang", "함초롬바탕"], ["HCR Dotum", "함초롬돋움"], ["KoPubWorldBatang", "KoPub 바탕"], ["KoPubWorldDotum", "KoPub 돋움"],
@@ -134,7 +134,8 @@ function openSettings(cat) {
     { id: "ms", name: "원고", groups: [
       { title: "글", rows: [row("글꼴 크기", range("ui_scale_ms", 0.8, 1.8, 0.05), "초안·영문·초록·카드"),
                row("글꼴 모양", "<select data-k='ui_font_ms' class='ufont'>" + uiFontOptions(uiGet("ui_font_ms")) + "</select>", "초안·초록 글 칸")] },
-      { title: "대화", rows: [row("대화를 놓는 자리", sel("ms_chat_view", [["side", "글 옆에 (워드의 메모처럼)"], ["list", "목록으로"]]), "글 옆에 = 그 글의 높이에 놓이고 글을 따라 움직입니다")] }] },
+      { title: "대화", rows: [row("대화를 놓는 자리", sel("ms_chat_view", [["side", "글 옆에 (워드의 메모처럼)"], ["list", "목록으로"]]), "글 옆에 = 그 글의 높이에 놓이고 글을 따라 움직입니다"),
+               row("고친 글을 보이는 방식", sel("ms_alt_view", [["clean", "새 글만 (바뀐 곳은 옅은 바탕)"], ["diff", "지운 말과 넣은 말을 같이"]]), "Claude 가 낸 대안과 다시 쓴 글")] }] },
     { id: "claude", name: "Claude", groups: [
       { title: "원고에서 물을 때", rows: [
         row("모델", sel("ms_sel_effort", [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]]), "대화와 서재에서 뽑기에 같이 쓰입니다. 최대·Fable 은 더 오래 걸리고 사용량이 많습니다"),

@@ -115,6 +115,7 @@
   .rvdiff { font-size: calc(12.5px * var(--ms-scale, 1)); line-height: 1.65; white-space: pre-wrap; color: var(--text); }
   .rvdiff del { color: var(--red); text-decoration: line-through; }
   .rvdiff ins { color: var(--green); text-decoration: none; background: var(--sel-bg); }
+  .rvdiff.clean ins { color: inherit; background: var(--accent-bg); border-radius: 2px; }   /* 새 글만 보기: 바뀐 곳은 옅은 바탕뿐 */
   .rvch { margin-top: 8px; } .rvc { font-size: 12px; color: var(--text-2); padding: 1px 0; }
   .exkinds { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 2px 0 8px; }
   .exkinds .act { padding: 2px 6px; font-size: 12.5px; }
@@ -748,6 +749,30 @@ function wordDiff(a, b) {   // 낱말 단위 비교: 지운 것 <del>, 넣은 �
   while (i < n) put("del", A[i++]); while (j < m) put("ins", B[j++]);
   flush(); return out;
 }
+const altView = () => localStorage.getItem("ms_alt_view") || "clean";   // 고친 글을 보이는 방식: clean = 새 글만(바뀐 곳은 옅은 바탕) · diff = 지운 말과 넣은 말을 같이
+function cleanDiff(a, b) {   // 새 글(b)만 보인다 — a 와 달라진 곳은 옅은 바탕. 낱말마다 끊기지 않게 사이의 한두 낱말은 같이 묶고, 거의 다 바뀌었으면 표시하지 않는다
+  const A = a.split(/(\s+)/), B = b.split(/(\s+)/), n = A.length, m = B.length;
+  if (n * m > 4e6) return esc(b);
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const mark = new Uint8Array(m), isW = t => /\S/.test(t); let i = 0, j = 0;
+  while (i < n && j < m) { if (A[i] === B[j]) { i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) i++; else mark[j++] = 1; }
+  while (j < m) mark[j++] = 1;
+  let words = 0, changed = 0; B.forEach((t, k) => { if (isW(t)) { words++; if (mark[k]) changed++; } });
+  if (!changed || changed > words * 0.6) return esc(b);
+  let last = -1;
+  for (let k = 0; k < m; k++) if (mark[k] && isW(B[k])) {
+    if (last >= 0) { let gap = 0; for (let q = last + 1; q < k; q++) if (isW(B[q])) gap++; if (gap <= 2) for (let q = last + 1; q < k; q++) mark[q] = 1; }
+    last = k;
+  }
+  let out = "", buf = "", on = false;
+  const flush = () => { if (buf) out += on ? "<ins>" + esc(buf) + "</ins>" : esc(buf); buf = ""; };
+  for (let k = 0; k < m; k++) { const md = !!mark[k] && isW(B[k]) || (!isW(B[k]) && k > 0 && k < m - 1 && !!mark[k - 1] && !!mark[k + 1]); if (md !== on) { flush(); on = md; } buf += B[k]; }
+  flush(); return out;
+}
+const flowNote = f => !f ? "" : "<div class='hint' style='font-size:11px" + ((f.notes || []).length ? ";color:var(--amber)" : "") + "'>" +
+  ((f.notes || []).length ? "논문의 범위와 견줌 — " + f.notes.map(esc).join(" · ") : f.was ? "문장 이음·인용 자리는 고치기 전의 글과 같은 꼴 (논문의 범위 밖인 " + f.was + "가지는 고치기 전에도 있던 것)"
+    : "문장 이음·인용 자리가 논문 문단의 범위 안 (접속 부사나 받는 말로 시작 " + f.tied[0] + "/" + f.tied[1] + ")") + "</div>";
 function revBusyHtml(label, sec) { return "<div class='prog'><span>" + label + "</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + sec + "초</span></div>"; }
 function revImportHtml() {
   return "<div class='rvimp'><div class='hint'>심사 결과 파일(편집자 편지·심사위원 의견)을 넣으면 지적마다 나눠 목록으로 만듭니다. 그 시점의 원고를 기억해 두었다가 나중에 「수정 표시 원고」로 바뀐 곳을 표시합니다.</div>" +
@@ -1446,7 +1471,7 @@ function histRenderList() {
     histState.snap = r; histRenderView();
   });
 }
-function paraDiff(a, b) {   // a = 그 판의 글, b = 지금 글 → 달라진 문단만 (그 판에만 있던 말은 지움 표시, 그 뒤에 넣은 말은 넣음 표시)
+function paraDiff(a, b, clean) {   // a = 그 판의 글, b = 지금 글 (clean: 새 글만 — 바뀐 곳은 옅은 바탕) → 달라진 문단만 (그 판에만 있던 말은 지움 표시, 그 뒤에 넣은 말은 넣음 표시)
   const sp = t => (t || "").split(/\n\s*\n/).map(x => x.trim()).filter(Boolean), A = sp(a), B = sp(b), n = A.length, m = B.length;
   const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
@@ -1456,9 +1481,10 @@ function paraDiff(a, b) {   // a = 그 판의 글, b = 지금 글 → 달라진 
     if (!dels.length && !inss.length) return;
     sameLine();
     const k = Math.min(dels.length, inss.length);
-    for (let q = 0; q < k; q++) out.push("<div class='rvdiff'>" + wordDiff(dels[q], inss[q]) + "</div>");
-    dels.slice(k).forEach(d => out.push("<div class='rvdiff'><del>" + esc(d) + "</del></div>"));
-    inss.slice(k).forEach(d => out.push("<div class='rvdiff'><ins>" + esc(d) + "</ins></div>"));
+    for (let q = 0; q < k; q++) out.push("<div class='rvdiff" + (clean ? " clean" : "") + "'>" + (clean ? cleanDiff(dels[q], inss[q]) : wordDiff(dels[q], inss[q])) + "</div>");
+    if (clean) { if (dels.length > k) out.push("<div class='same'>… 뺀 문단 " + (dels.length - k) + "개</div>"); }
+    else dels.slice(k).forEach(d => out.push("<div class='rvdiff'><del>" + esc(d) + "</del></div>"));
+    inss.slice(k).forEach(d => out.push("<div class='rvdiff" + (clean ? " clean" : "") + "'><ins>" + esc(d) + "</ins></div>"));
     dels = []; inss = [];
   };
   while (i < n && j < m) { if (A[i] === B[j]) { flush(); same++; i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) dels.push(A[i++]); else inss.push(B[j++]); }
@@ -2135,21 +2161,26 @@ function chatFocus(id) {   // 그 대화 카드를 보이게 하고 입력 칸�
   const t = card.querySelector(".chIn"); if (t) t.focus({ preventScroll: true });
 }
 function chatThreadHtml(m) {
-  const th = m.thread || [];
-  return th.map((x, i) => x.role === "user" ? "<div class='fbmsg user'><b>나:</b> " + esc(x.text) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => "<div class='selalt'><div class='hint'>대안 " + (k + 1) + "</div><div class='rvdiff'>" + wordDiff(x.base || m.quote, a) + "</div>" +
-        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>").join("") +
+  const th = m.thread || [], cl = altView() === "clean";
+  let lastSwap = -1; th.forEach((x, i) => { if (x.swap && !x.swap.undone) lastSwap = i; });   // 되돌릴 수 있는 것은 가장 나중에 바꾼 것부터
+  const viewLink = " · <a href='#' class='act' data-altview='1' title='고친 글을 보이는 방식 — 새 글만(바뀐 곳은 옅은 바탕) / 지운 말과 넣은 말을 같이. 환경설정 → 원고 에서도 바꿉니다'>" + (cl ? "지운 말도 보기" : "새 글만 보기") + "</a>";
+  const altBody = (base, a) => { const b = cl ? cleanDiff(base, a) : wordDiff(base, a); return { html: b, cut: cl && !/<ins>/.test(b) && normWs(a).length < normWs(base).length }; };
+  return th.map((x, i) => x.role === "user" ? x.quiet ? "" : "<div class='fbmsg user'><b>나:</b> " + (x.swap ? "대안으로 바꿈" + (x.swap.undone ? " <span class='hint' style='display:inline'>— 되돌렸음</span>"
+        : i === lastSwap ? " · <a href='#' class='act' data-undo='" + i + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도 되돌릴 수 있습니다)'>고치기 전으로 되돌리기</a>" : "") : esc(x.text)) + "</div>"
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
+        "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>"; }).join("") +
       (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend(x) + "</div>").join("");
 }
 // 다시 쓴 글(절 범위에서 '다시 써 줘'): 지금 글과 문단 단위로 견줘 보여 주고, 그 절의 글을 통째로 바꾼다
 const rwCache = new Map();
 function rwHtml(m, x, i, k) {
   const r = x.rw[k], key = r.node === "front" ? "abstract" : m.key, cur = selText(r.node, key), gone = r.node !== "front" && !node(r.node);
-  const ck = m.id + ":" + i + ":" + k, sig = cur.length + "|" + cur.slice(0, 60) + "|" + cur.slice(-60);
-  let c = rwCache.get(ck); if (!c || c.sig !== sig) { c = { sig, same: normWs(cur) === normWs(citePreview(r.text, x.cites)), html: paraDiff(cur, r.text) }; rwCache.set(ck, c); }
-  return "<div class='selalt'><div class='hint'>다시 쓴 글 · " + esc(selHeading(r.node) || r.node) + " <span style='white-space:nowrap'>(" + cur.length.toLocaleString() + "자 → " + r.text.length.toLocaleString() + "자)</span></div>" +
-    (gone ? "<div class='hint'>그 절이 개요에서 없어졌습니다</div>" : c.same ? "<div class='hint'>지금 글과 같습니다" + (r.done ? " — 바꿔 넣었습니다" : "") + "</div>" : "<div class='rwdiff'>" + c.html + "</div>") +
-    "<div class='acts'>" + (gone || c.same ? "" : "<button class='btn pri' data-rw='" + i + ":" + k + "' title='이 절의 글 전체를 다시 쓴 글로 바꿉니다. 바꾸기 전의 글은 판 이력에 남고, 그 글 칸에서 Ctrl+Z 로도 되돌립니다'>이 절을 이 글로 바꾸기</button>") +
+  const cl = altView() === "clean", ck = m.id + ":" + i + ":" + k, sig = cl + "|" + cur.length + "|" + cur.slice(0, 60) + "|" + cur.slice(-60);
+  let c = rwCache.get(ck); if (!c || c.sig !== sig) { c = { sig, same: normWs(cur) === normWs(citePreview(r.text, x.cites)), html: paraDiff(cur, r.text, cl) }; rwCache.set(ck, c); }
+  const undo = r.done && r.before != null ? "<button class='btn' data-rwundo='" + i + ":" + k + "' title='이 절의 글을 바꾸기 전의 글로 되돌립니다. 지금 글은 판 이력에 남깁니다'>고치기 전 글로 되돌리기</button>" : "";
+  return "<div class='selalt'><div class='hint'>다시 쓴 글 · " + esc(selHeading(r.node) || r.node) + " <span style='white-space:nowrap'>(" + cur.length.toLocaleString() + "자 → " + r.text.length.toLocaleString() + "자)</span>" + (gone || c.same ? "" : " · <a href='#' class='act' data-altview='1'>" + (cl ? "지운 말도 보기" : "새 글만 보기") + "</a>") + "</div>" +
+    (gone ? "<div class='hint'>그 절이 개요에서 없어졌습니다</div>" : c.same ? "<div class='hint'>지금 글과 같습니다" + (r.done ? " — 바꿔 넣었습니다" : "") + "</div>" : "<div class='rwdiff'>" + c.html + "</div>") + flowNote(r.flow) +
+    "<div class='acts'>" + undo + (gone || c.same ? "" : "<button class='btn pri' data-rw='" + i + ":" + k + "' title='이 절의 글 전체를 다시 쓴 글로 바꿉니다. 바꾸기 전의 글은 판 이력에 남고, 그 글 칸에서 Ctrl+Z 로도 되돌립니다'>이 절을 이 글로 바꾸기</button>") +
     "<button class='btn' data-rwcopy='" + i + ":" + k + "'>복사</button></div></div>";
 }
 // 서재의 논문 인용: Claude 는 글 속에 [@열쇠] 로 적고, 반영할 때 참고문헌 번호로 바꾼다 (목록에 없는 논문은 목록 끝에 새 번호로)
@@ -2198,9 +2229,23 @@ async function chatRewrite(m, i, k) {   // 다시 쓴 글을 그 절에 통째�
   await snapNow("다시 쓰기 전 — " + selHeading(r.node).slice(0, 30));
   if (!doc || doc.id !== mid) return;
   const text = citeApply(r.text, x.cites), ta = taFor(r.node, key);
+  r.before = selText(r.node, key); r.after = text; delete r.undone;   // 고치기 전의 글 — 「고치기 전 글로 되돌리기」
   if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
   else if (r.node === "front") doc.front.abstract = text; else node(r.node)[key] = text;
   r.done = Date.now() / 1000; rwCache.clear(); save(true); memoUi(m.id);
+}
+async function chatRewriteUndo(m, i, k) {   // 다시 쓴 글로 바꾼 절을 바꾸기 전의 글로
+  const r = m.thread[i].rw[k], key = r.node === "front" ? "abstract" : m.key, mid = doc.id;
+  if (r.before == null) return;
+  if (r.node !== "front" && !node(r.node)) { alert("그 절이 개요에서 없어졌습니다."); return; }
+  const more = normWs(selText(r.node, key)) !== normWs(r.after || "");
+  if (!confirm("「" + selHeading(r.node) + "」 의 글을 다시 쓴 글로 바꾸기 전의 글로 되돌립니다." + (more ? "\n\n바꿔 넣은 뒤에 이 절을 더 고치셨습니다 — 되돌리면 그 뒤에 고친 것도 함께 사라집니다." : "") + "\n\n지금 글은 판 이력에 남깁니다(머리줄 「이력」).")) return;
+  await snapNow("되돌리기 전 — " + selHeading(r.node).slice(0, 30));
+  if (!doc || doc.id !== mid) return;
+  const text = r.before, ta = taFor(r.node, key);
+  if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
+  else if (r.node === "front") doc.front.abstract = text; else node(r.node)[key] = text;
+  delete r.done; delete r.before; delete r.after; r.undone = Date.now() / 1000; rwCache.clear(); save(true); memoUi(m.id);
 }
 const tokFmt = n => n >= 10000 ? (n / 10000).toFixed(1) + "만" : (n || 0).toLocaleString();
 const tokNote = t => t && t.in ? "읽은 토큰 " + tokFmt(t.in) + (t.cached ? " (그중 캐시 " + tokFmt(t.cached) + ")" : "") : "";   // 캐시에서 읽은 것은 값이 1/10
@@ -2216,7 +2261,7 @@ function chatCardHtml(m) {
     "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>" + (scopeWide(m.scope) ? esc(scopeLabel(m)) : (m.scope === "para" ? "문단 · " : "") + "“" + esc(normWs(m.quote).slice(0, 90)) + "”") + "</span>" +
     "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + "</span></div>";
   if (!open) {
-    const last = th.filter(x => x.role === "claude").pop(), lastQ = th.filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)").pop();
+    const last = th.filter(x => x.role === "claude").pop(), lastQ = th.filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)" && x.text !== "(고치기 전으로 되돌림)").pop();
     const pv = st === "wait" && lastQ ? "나: " + lastQ.text : last ? last.text : m.note || (lastQ ? "나: " + lastQ.text : "");
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
@@ -2339,6 +2384,9 @@ function chatBind(card) {
   if (cq("[data-mdel]")) cq("[data-mdel]").onclick = () => { if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
   if (cq(".memoDone")) cq(".memoDone").onchange = e => { m.done = e.target.checked; if (m.done) chatOpen.delete(id); save(); memoUi(); };
   all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k], m.thread[i].cites); });
+  all("[data-undo]").forEach(a => a.onclick = e => { e.preventDefault(); chatUndo(m, +a.dataset.undo); });
+  all("[data-rwundo]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rwundo.split(":").map(Number); chatRewriteUndo(m, i, k); });
+  all("[data-altview]").forEach(a => a.onclick = e => { e.preventDefault(); localStorage.setItem("ms_alt_view", altView() === "clean" ? "diff" : "clean"); rwCache.clear(); renderChat(); });
   all("[data-rw]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rw.split(":").map(Number); chatRewrite(m, i, k); });
   all("[data-rwcopy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rwcopy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].rw[k].text); b.textContent = "복사됨"; });
   all("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].alts[k]); b.textContent = "복사됨"; });
@@ -2518,8 +2566,25 @@ function chatApply(m, alt, cites) {   // 대안을 고른 글 자리에 바꿔 �
     const text = selText(m.node, m.key), next = text.slice(0, a) + alt + text.slice(a + m.quote.length);
     if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
   }
-  m.thread.push({ role: "user", text: "(대안으로 바꿈)" });
+  m.thread.push({ role: "user", text: "(대안으로 바꿈)", swap: { before: m.quote, after: alt, t: Date.now() / 1000 } });   // 고치기 전의 글 — 「고치기 전으로 되돌리기」
   m.quote = alt; m.start = a; m.unread = false; save(true); memoUi(m.id);
+}
+function chatUndo(m, i) {   // 대안으로 바꾼 것을 고치기 전의 글로 되돌린다 (가장 나중에 바꾼 것부터)
+  const sw = (m.thread[i] || {}).swap; if (!sw || sw.undone) return;
+  const text = selText(m.node, m.key);
+  let a = m.quote === sw.after ? selFind(m) : -1; if (a < 0) a = text.indexOf(sw.after);
+  if (a < 0) { alert("바꿔 넣은 글을 원고에서 찾지 못했습니다 (그 뒤에 그 글을 고치셨습니다).\n\n머리줄 「이력」 에서 지난 판과 견줘 되돌릴 수 있습니다."); return; }
+  const ta = taFor(m.node, m.key);
+  if (ta) {
+    ta.focus(); ta.setSelectionRange(a, a + sw.after.length);
+    if (!document.execCommand("insertText", false, sw.before)) { ta.setRangeText(sw.before, a, a + sw.after.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+  } else {
+    const next = text.slice(0, a) + sw.before + text.slice(a + sw.after.length);
+    if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
+  }
+  sw.undone = Date.now() / 1000;
+  m.thread.push({ role: "user", text: "(고치기 전으로 되돌림)", quiet: true });   // Claude 가 이어지는 대화에서 알게 기록은 남기되, 화면에는 바꿈 줄의 '되돌렸음' 만 보인다
+  m.quote = sw.before; m.start = a; save(true); memoUi(m.id);
 }
 // 본문 밑줄: 글 칸(textarea) 뒤에 같은 글을 투명하게 깔고, 대화·메모가 달린 구절에만 밑줄·바탕을 준다
 function attachMarks(ta) {
