@@ -1125,8 +1125,11 @@ def _translation_sentences(fname):
     ko = {}
     try:
         md = io.open(os.path.join(cfg["GEN_DIR"], stem + ".번역.md"), encoding="utf-8").read()
-        for m in re.finditer(r"\[s(\d+)\]\s*([^\[\n]{5,}?)(?=\s*\[s\d+\]|\n|$)", md):
-            ko.setdefault(m.group(1), m.group(2).strip())
+        parts = re.split(r"\[s(\d+)\]", md)   # 표식으로 나눈다 — 문장 안의 '[' (인용 번호 [27], 수식 [[EQ:…]])에서 끊기지 않게
+        for i in range(1, len(parts) - 1, 2):
+            t = parts[i + 1].split("\n", 1)[0].strip()
+            if len(t) >= 5:
+                ko.setdefault(parts[i], t)
     except Exception:
         pass
     out = []
@@ -1187,6 +1190,21 @@ _pdf_refs_cache = {}
 
 def _libx_path():
     return os.path.join(cfg["MS_DIR"], "_서재뽑기.json")
+
+
+def _libx_fill_ko(item):
+    """뽑기 결과에서 번역이 비어 있는 문장을 번역 파일에서 다시 채운다(예전에는 인용 번호가 든 문장의 번역을 못 읽었다). → 채운 문장 수"""
+    n = 0
+    for p in item.get("papers") or []:
+        need = [x for x in p.get("sents") or [] if x.get("sent") and not (x.get("ko") or "").strip()]
+        if not need:
+            continue
+        ko = {"s" + str(k): v for k, _, _, v in _translation_sentences(p.get("file") or "") if v}
+        for x in need:
+            if ko.get(x["sent"]):
+                x["ko"] = ko[x["sent"]][:600]
+                n += 1
+    return n
 
 
 def _pdf_refs(fname):
@@ -1861,16 +1879,20 @@ def _style_pick(starts):
     return "\n".join(out) + "\n"
 
 
-def _chat_style(doc, key, scope, quote):
-    """대화에서 대안·다시 쓴 글을 낼 때(그리고 글을 평가할 때) 줄 규칙. 고른 글이 구절 하나면 짧게."""
+def _chat_style(doc, key, scope, quote, ev=False):
+    """대화에서 대안·다시 쓴 글을 낼 때(그리고 글을 평가할 때) 줄 규칙. 고른 글이 구절 하나면 짧게. ev = 뽑아 둔 근거가 같이 간다(근거로 쓰는 법도 준다)."""
     head = ("[글을 쓰거나 고칠 때 — 이 분야 논문(저자의 서재에 있는 IJMTM·JMPT 논문)이 실제로 쓰는 방식. 대안이나 다시 쓴 글을 낼 때 따르고, 글을 평가해 달라고 하면 이 잣대로 본다. "
             "뜻·사실만 묻는 물음에는 쓰이지 않는다]\n"
             "- 고치는 것은 짜임과 이음과 문장이지 내용이 아니다. 이미 논문처럼 읽히는 문장은 그대로 둔다 — 고친 곳마다 왜 고쳤는지 answer 에서 말할 수 있어야 한다. 규칙을 채우려고 멀쩡한 문장에 이음말을 붙이지 마라.\n")
-    if scope == "sel" and len(quote or "") < 80:
+    if ev:
+        head += "- 다만 저자가 [근거]를 써서 글을 쓰거나 받침을 달아 달라고 하면, 근거에서 가져온 내용과 인용을 더한다 — 근거가 말하는 데까지만.\n"
+    if scope == "sel" and len(quote or "") < 80 and not ev:
         return head + _style_pick(("주어에 앞에서", "접속 부사는 문장 맨 앞", "영어로 쓸 때"))
     body = (_style_pick(("문단은 사실을",)) if scope != "sel" else "") + _style_pick(("모든 문장은 앞의", "새 대목을 여는 문장", "주어에 앞에서", "접속 부사는 문장 맨 앞", "저자를 주어로 세우는"))
     body += ("- 문단의 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 맺는 말('This explains why …')을 먼저 하고 그 까닭을 다음 문장에서 다시 풀지 않는다 — 까닭(기전)을 먼저 말하고, 그것이 설명하는 것으로 끝낸다.\n"
              "- 같은 이음말로 시작하는 문장이 한 문단에 세 번 이상 나오지 않게 한다. 쌍반점으로 문장을 잇지 않는다. 같은 사실을 두 번 말하지 않는다.\n")
+    if ev:
+        body += _style_pick(("넓게 스치지 말고", "인용은 그 사실을", "여러 논문이 같은 점"))
     body += _style_pick(("영어로 쓸 때",))
     body += _norms_text(_style_norms(), _author_style(doc, key))
     body += ("- 위 사례는 서론의 문헌을 다루는 문단에서 잰 것이다. 방법·결과·논의의 글에서는 인용에 관한 것은 빼고 짜임과 이음에 관한 것만 따른다. "
@@ -2014,6 +2036,23 @@ def _doc_find(doc, quote, key):
     return "", ""
 
 
+def _libx_cites(doc, text, by_key, prims):
+    """글 속의 [@열쇠] → 반영할 때 쓸 정보. 근거 목록의 논문, 서재에 있는 원저, 서재에 없는 원저(unread — 인용한 논문의 참고문헌 목록에 적힌 줄을 그대로)"""
+    out = []
+    for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", text or "")):
+        pr = prims.get(k)
+        if k in by_key:
+            out += _cite_info(doc, [{"key": k, "file": by_key[k]["file"]}])
+        elif pr and pr["file"]:
+            got = _cite_info(doc, [{"key": k, "file": pr["file"]}])
+            for x in got:
+                x["via"] = ", ".join(pr["via"])
+            out += got
+        elif pr:
+            out.append({"key": k, "file": "", "n": pr["n"], "line": "" if pr["n"] else pr["line"], "label": pr["label"], "unread": True, "via": ", ".join(pr["via"])})
+    return out
+
+
 def lib_use(doc, body):
     """뽑아 둔 근거(xid)로: mode map = 원고의 서술·인용과 대응시켜 점검 / write = 그 근거로 문단을 쓴다. 결과는 그 뽑기 결과의 uses 에 남긴다."""
     store = cfg["load_json"](_libx_path(), {}) or {}
@@ -2094,20 +2133,7 @@ def lib_use(doc, body):
            "model": (res or {}).get("model", ""), "tok": (res or {}).get("tok"), "sec": round(time.time() - t0)}
 
     def cites_for(text):
-        """글 속의 [@열쇠] → 반영할 때 쓸 정보. 근거 목록의 논문, 서재에 있는 원저, 서재에 없는 원저(unread — 인용한 논문의 참고문헌 목록에 적힌 줄을 그대로)"""
-        out = []
-        for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", text or "")):
-            pr = prims.get(k)
-            if k in by_key:
-                out += _cite_info(doc, [{"key": k, "file": by_key[k]["file"]}])
-            elif pr and pr["file"]:
-                got = _cite_info(doc, [{"key": k, "file": pr["file"]}])
-                for x in got:
-                    x["via"] = ", ".join(pr["via"])
-                out += got
-            elif pr:
-                out.append({"key": k, "file": "", "n": pr["n"], "line": "" if pr["n"] else pr["line"], "label": pr["label"], "unread": True, "via": ", ".join(pr["via"])})
-        return out
+        return _libx_cites(doc, text, by_key, prims)
 
     def ev_of(ids):
         ev = []
@@ -2253,6 +2279,12 @@ def lib_op(body):
     item = next((x for x in items if x.get("id") == body.get("xid")), None)
     if not item:
         return {"error": "그 결과를 찾지 못했습니다"}
+    if op in ("get", "md", "save_md") and _libx_fill_ko(item):   # 예전 결과: 빠졌던 번역을 채워 둔다
+        with _LIBX_LOCK:
+            st2 = cfg["load_json"](_libx_path(), {}) or {}
+            it2 = next((x for x in st2.get("items") or [] if x.get("id") == item["id"]), None)
+            if it2 is not None and _libx_fill_ko(it2):
+                cfg["save_json"](_libx_path(), st2)
     if op == "get":
         return item
     if op == "delete":
@@ -3601,7 +3633,7 @@ def ask_selection(doc, body):
                 m.pop("error", None)
                 m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time(),
                                                    "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "whole": bool(res.get("whole")), "tok": res.get("tok"), "refs": res.get("refs") or [],
-                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or [], "altflow": res.get("altflow") or []})
+                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or [], "altflow": res.get("altflow") or [], "unknown": res.get("unknown") or [], "ev": res.get("ev")})
                 m["unread"] = True
         with _REV_LOCK:   # 기다리는 동안 저장된 글 위에 답만 얹는다
             fresh = load_ms(doc["id"]) or doc
@@ -4075,6 +4107,15 @@ def _ask_selection(doc, body):
     key = body.get("key") or "draft"
     node = _rev_node(doc, nid)
     lib = bool(body.get("lib", True)) and os.path.isdir(cfg.get("GEN_DIR") or "")
+    ev_item, ev_txt, ev_by, ev_prims = None, "", {}, {}   # 저자가 서재에서 뽑아 둔 근거 묶음(「근거」 → 서재에서 뽑기)을 같이 본다
+    if body.get("ev"):
+        ev_store = cfg["load_json"](_libx_path(), {}) or {}
+        ev_item = next((x for x in ev_store.get("items") or [] if x.get("id") == body.get("ev") and x.get("papers")), None)
+    if ev_item:
+        ev_keys = _libx_keys(ev_item, doc)
+        ev_sent, ev_prims = _libx_prims(ev_item, ev_keys, doc)
+        ev_by = {k["key"]: k for k in ev_keys}
+        ev_txt = _libx_evidence(ev_item, ev_keys, ev_sent)
     hist = "\n".join("[%s] %s%s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1500],
                                     ("\n  (내놓은 대안: " + " / ".join(str(a)[:300] for a in m.get("alts") or []) + ")") if m.get("alts") else
                                     ("\n  (다시 쓴 글을 냈다: " + ", ".join(str(r.get("node")) for r in m.get("rw") or []) + ")") if m.get("rw") else "")
@@ -4082,7 +4123,11 @@ def _ask_selection(doc, body):
     hist = ("\n[지금까지의 대화]\n" + hist + "\n") if hist else ""
     cite_rule = ("- 서재에서 직접 읽어 확인한 논문은 근거로 달 수 있다: 글 속에는 [@열쇠] 로 적고(열쇠 = 첫 저자 성+연도, 예: [@Issahaq2022]), JSON 의 cites 에 "
                  "{\"key\": \"Issahaq2022\", \"file\": \"그 논문의 파일 이름(확장자 빼고 글자 그대로)\"} 를 적는다. 프로그램이 원고의 참고문헌 번호로 바꾸고, 목록에 없으면 목록에 넣는다. "
-                 "읽어서 확인하지 않은 논문은 인용하지 마라. 원고에 이미 있는 [n] 인용은 그대로 둔다.\n") if lib else "- 새 문헌을 인용하지 마라(서재를 볼 수 없다). 원고에 이미 있는 [n] 인용은 그대로 둔다.\n"
+                 "읽어서 확인하지 않은 논문은 인용하지 마라. 원고에 이미 있는 [n] 인용은 그대로 둔다.\n") if lib else (
+                 "- 근거 목록에 없는 문헌은 새로 달지 마라. 원고에 이미 있는 [n] 인용은 그대로 둔다.\n" if ev_item else "- 새 문헌을 인용하지 마라(서재를 볼 수 없다). 원고에 이미 있는 [n] 인용은 그대로 둔다.\n")
+    if ev_item:
+        cite_rule = ("- 아래 [근거]의 논문은 글 속에 [@열쇠] 로 단다(근거 목록의 열쇠와 '↳ 원저' 의 열쇠, 예: [@%s]). 이 열쇠들은 cites 에 적지 않아도 된다 — 프로그램이 안다. 원고의 참고문헌에 이미 있는 문헌도 열쇠로 적으면 번호로 바뀐다. "
+                     "근거에 받침이 없는데 문헌이 있어야 할 사실에는 [@?] 를 단다(저자가 출처를 달 자리).\n" % (ev_keys[0]["key"] if ev_keys else "Author2020")) + cite_rule
     pieces = []   # 다시 쓸 수 있는 조각의 id (절 범위)
     piece_text = {}   # 조각의 지금 글 (다시 쓴 글의 범위 확인에서 '고치기 전에도 그랬던 것'을 가리려고)
     if wide:
@@ -4110,6 +4155,7 @@ def _ask_selection(doc, body):
             "<<<REWRITE 조각id>>>\n(그 조각의 새 글 전체 — 제목 줄 없이 본문만, 문단 사이는 빈 줄)\n<<<END>>>\n"
             "  다시 쓸 때: 구성과 문장을 고치는 것이지 내용을 지어내는 것이 아니다. 사실·수치·실험 조건·결과는 그대로. 원고의 인용 [n], 그림·표 언급(Fig. n), "
             "수식($…$ 와 \u27e6…\u27e7), 표(| 로 시작하는 줄)는 글자 그대로 옮긴다. 글의 언어는 그 조각의 언어 그대로. answer 에는 무엇을 왜 바꿨는지 3~6줄로 적는다.\n"
+            + ("  [근거]를 써서 문단을 더하거나 받침을 달아 달라는 주문이면 근거에서 가져온 내용과 인용을 더해도 된다(근거가 말하는 데까지만).\n" if ev_item else "") +
             "- 다시 써 달라는 말이 없으면 REWRITE 를 내지 말고 지적만 한다.\n"
             "[이 범위의 조각 — id: 제목]\n%s\n") % plist) if pieces else "- 원고 전체를 통째로 다시 쓰지는 않는다. 다시 써 달라고 하면 절을 골라 달라고 답하라.\n"
         prompt = (
@@ -4124,7 +4170,7 @@ def _ask_selection(doc, body):
             "- 원고에 없는 수치·결과를 지어내지 마라. 저자가 '짧게' 라고 해도 첫머리는 이 JSON 이다.\n\n"
             "%s\n"
             "논문 제목: %s\n물음의 범위: %s\n\n%s\n%s\n[저자의 말]\n%s"
-            % (rewrite_rule, cite_rule, _chat_style(doc, key, scope, ""), doc.get("title", ""), label, body_txt, hist, question[:2000]))
+            % (rewrite_rule, cite_rule, _chat_style(doc, key, scope, "", bool(ev_item)), doc.get("title", ""), label, body_txt, hist, question[:2000]))
     else:
         if nid == "front":
             text = (doc.get("front") or {}).get("abstract") or ""
@@ -4153,13 +4199,18 @@ def _ask_selection(doc, body):
             "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
             % ("영어로" if lang_en else "한국어로",
                "- 저자는 문단 하나를 통째로 골랐다. 문장만이 아니라 문단의 구성(첫 문장이 요지를 여는지, 문장 순서, 앞뒤 문단과의 이음)도 보라. 대안은 문단 전체를 대체하며 대안은 1~2개면 된다.\n" if scope == "para" else "",
-               cite_rule, _chat_style(doc, key, scope, quote), doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
+               cite_rule, _chat_style(doc, key, scope, quote, bool(ev_item)), doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
     cited = _cited_refs(doc, quote, para)
     extra = ""
     if cited:
         extra += "\n\n[이 글이 인용한 참고문헌 — 원고의 참고문헌 목록에서]\n" + "\n".join(
             c["line"][:400] + ((" → 저자의 서재에 있음: \"%s\"" % os.path.splitext(c["file"])[0]) if c["file"] else " → 서재에 없음") for c in cited)
+    if ev_item:
+        extra += ("\n\n[근거 — 저자가 자기 서재에서 뽑아 둔 문장들이다. 주제: " + str(ev_item.get("topic") or "")[:200] + ". E번호 = 논문, E번호.번호 = 문장, [@열쇠] = 그 논문의 인용 열쇠, ↳ = 그 문장이 인용한 원저]\n" + ev_txt + "\n"
+                  "- 저자가 근거를 써서 글을 쓰거나 받침을 달아 달라고 하면 이 근거에서 고른다. 근거를 다 쓰려 하지 마라 — 그 자리에 맞는 한두 편을 깊게.\n" + _LIBX_GROUND +
+                  "- answer 에서 어느 근거를 썼는지 (저자 연도)로 말하고, 그 자리에 쓸 근거가 모자라면 무엇이 모자란지 말하라."
+                  + (" 근거가 이미 주어졌으니 서재는 근거에 없는 것이 꼭 필요할 때만 찾는다.\n" if lib else "\n"))
     if lib:
         extra += ("\n\n[서재를 찾아볼 수 있다]\n저자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
                   "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(번역이 없는 논문만 PDF 를 읽어라).\n"
@@ -4203,8 +4254,14 @@ def _ask_selection(doc, body):
     for x in rws:
         x["flow"] = _chat_flow(x["text"], base=piece_text.get(x["node"]))
     cites = [c for c in _cite_info(doc, r.get("cites") if isinstance(r.get("cites"), list) else []) if ("[@%s]" % c["key"]) in used] if lib else []
+    if ev_item:   # 근거의 열쇠는 프로그램이 안다
+        have = {c["key"] for c in cites}
+        cites += [c for c in _libx_cites(doc, used, ev_by, ev_prims) if c["key"] not in have]
+    known = {c["key"] for c in cites}
+    unknown = [k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", used)) if k not in known and k != "?"]
     answer = str(r.get("answer") or "").strip() + ("\n\n(다시 쓴 글의 일부가 끝까지 오지 않아 그 조각은 버렸습니다 — 범위를 좁혀 다시 물어 주세요.)" if lost else "")
-    return {"answer": answer, "alternatives": alts, "altflow": altflow if any(altflow) else [], "rewrites": rws, "cites": cites, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
+    return {"answer": answer, "alternatives": alts, "altflow": altflow if any(altflow) else [], "rewrites": rws, "cites": cites, "unknown": unknown,
+            "ev": {"id": ev_item.get("id"), "topic": str(ev_item.get("topic") or "")[:80]} if ev_item else None, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
 

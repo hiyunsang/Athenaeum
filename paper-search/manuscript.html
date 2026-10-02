@@ -1777,6 +1777,7 @@ function libUseHtml(it) {
     "<textarea id='libNote' rows='2' placeholder='주문 (비워도 됩니다) — 대응: 특히 볼 것 / 문단 쓰기: 무엇을 쓸지 (예: BUE 탈락에 관한 선행 연구를 정리하는 서론 문단, 150단어쯤)'>" + esc(libNote) + "</textarea>" +
     "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px;align-items:center;flex-wrap:wrap'><button class='btn pri' id='libMap'" + (libUseBusy ? " disabled" : "") + " title='원고에서 이 주제를 말하는 곳을 찾아 근거와 대응시킵니다: 단 인용이 맞는지, 근거가 있는데 인용이 없는 곳, 근거와 어긋나는 서술, 넣으면 좋은 내용'>원고와 대응 · 인용 점검</button>" +
     "<button class='btn pri' id='libWrite'" + (libUseBusy ? " disabled" : "") + " title='이 근거로 원고에 넣을 문단을 씁니다. 인용은 반영할 때 참고문헌 번호로 바뀝니다'>문단 쓰기</button>" +
+    "<button class='btn' id='libToChat' title='이 근거를 대화에 같이 보내게 합니다 — 원고의 글을 드래그해 물으면(또는 Ctrl+K) Claude 가 이 문장들을 받침으로 그 자리의 문장·문단을 쓰고 인용을 답니다. 대화 카드의 「근거」 에서 바꾸거나 끕니다'>대화에서 이 근거 쓰기</button>" +
     "<select id='libNodeSel' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2);max-width:170px' title='문단을 넣을 절'><option value=''>넣을 절 (Claude 가 추천)</option>" +
     doc.outline.map(n => "<option value='" + n.id + "'" + (libNode === n.id ? " selected" : "") + ">" + esc((n.level === 2 ? "　" : "") + n.heading.slice(0, 30)) + "</option>").join("") + "</select></div>" +
     (libUseBusy ? "<div class='prog'><span id='libStage'>" + (LIB_STAGE[libUseStage] || "") + "</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>" + (libUseBusy === "map" ? "~1~3분" : "~4~9분") + "</span></div><div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>" : "") +
@@ -1802,6 +1803,7 @@ function libUseBind(el, it) {
   const uses = (it.uses || []).filter(u => u.doc === doc.id), q = id => el.querySelector("#" + id);
   if (q("libNote")) { autogrow(q("libNote")); q("libNote").oninput = e => { libNote = e.target.value; }; }
   if (q("libNodeSel")) q("libNodeSel").onchange = e => { libNode = e.target.value; };
+  if (q("libToChat")) q("libToChat").onclick = () => { localStorage.setItem("ms_sel_ev", it.id); switchTab("chat"); renderChat(); };
   const run = async mode => {
     if (libUseBusy) return; const mid = doc.id;
     libUseBusy = mode; libUseStage = mode; libUseErr = ""; renderLib();
@@ -2167,9 +2169,9 @@ function chatThreadHtml(m) {
   const altBody = (base, a) => { const b = cl ? cleanDiff(base, a) : wordDiff(base, a); return { html: b, cut: cl && !/<ins>/.test(b) && normWs(a).length < normWs(base).length }; };
   return th.map((x, i) => x.role === "user" ? x.quiet ? "" : "<div class='fbmsg user'><b>나:</b> " + (x.swap ? "대안으로 바꿈" + (x.swap.undone ? " <span class='hint' style='display:inline'>— 되돌렸음</span>"
         : i === lastSwap ? " · <a href='#' class='act' data-undo='" + i + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도 되돌릴 수 있습니다)'>고치기 전으로 되돌리기</a>" : "") : esc(x.text)) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole || x.ev ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>"; }).join("") +
-      (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend(x) + "</div>").join("");
+      (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend((x.alts || []).length || (x.rw || []).length ? Object.assign({}, x, { text: (x.alts || []).join(" ") + " " + (x.rw || []).map(r => r.text).join(" ") }) : x) + "</div>").join("");
 }
 // 다시 쓴 글(절 범위에서 '다시 써 줘'): 지금 글과 문단 단위로 견줘 보여 주고, 그 절의 글을 통째로 바꾼다
 const rwCache = new Map();
@@ -2250,7 +2252,16 @@ async function chatRewriteUndo(m, i, k) {   // 다시 쓴 글로 바꾼 절을 �
 const tokFmt = n => n >= 10000 ? (n / 10000).toFixed(1) + "만" : (n || 0).toLocaleString();
 const tokNote = t => t && t.in ? "읽은 토큰 " + tokFmt(t.in) + (t.cached ? " (그중 캐시 " + tokFmt(t.cached) + ")" : "") : "";   // 캐시에서 읽은 것은 값이 1/10
 const chatWhole = () => localStorage.getItem("ms_sel_whole") !== "0";   // 지금 원고 전체를 같이 보낼지 (기본 켬)
-const chatLibHtml = () => "<label class='chLibL' title='켜 두면 Claude 가 지금 원고 전체(제목·초록·모든 절·그림 캡션·참고문헌)를 읽고 답합니다 — 이 논문이 무엇을 했는지, 다른 절에서 뭐라고 썼는지 알고. 끄면 고른 글이 든 문단만 보고 답합니다(조금 빠름)'><input type='checkbox' class='chWhole'" + (chatWhole() ? " checked" : "") + "> 원고 전체</label>" +
+const chatEv = () => { const v = localStorage.getItem("ms_sel_ev") || ""; return v && (libList || []).some(x => x.id === v) ? v : ""; };   // 대화에 같이 보낼 근거 묶음(서재에서 뽑기의 결과) — 없으면 ""
+function chatEvHtml() {
+  if (libList === null) { libList = []; api("/api/ms/lib", { op: "list" }).then(r => { libList = r.items || []; if (doc) renderChat(); }).catch(() => {}); }
+  if (!(libList || []).length) return "";
+  const cur = chatEv();
+  return "<select class='chEv' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2);max-width:150px' title='서재에서 뽑아 둔 근거를 같이 보냅니다 — Claude 가 그 문장들을 받침으로 문장·문단을 쓰고, 그 논문을 인용합니다(바꿔 넣으면 참고문헌 번호로 바뀝니다). 근거는 「근거」 → 서재에서 뽑기에서 만듭니다'>" +
+    "<option value=''>근거 없이</option>" + libList.map(x => "<option value='" + esc(x.id) + "'" + (x.id === cur ? " selected" : "") + ">근거: " + esc((x.topic || "").slice(0, 26)) + "</option>").join("") + "</select>";
+}
+const chatLibHtml = () => chatLibBase() + chatEvHtml();
+const chatLibBase = () => "<label class='chLibL' title='켜 두면 Claude 가 지금 원고 전체(제목·초록·모든 절·그림 캡션·참고문헌)를 읽고 답합니다 — 이 논문이 무엇을 했는지, 다른 절에서 뭐라고 썼는지 알고. 끄면 고른 글이 든 문단만 보고 답합니다(조금 빠름)'><input type='checkbox' class='chWhole'" + (chatWhole() ? " checked" : "") + "> 원고 전체</label>" +
   "<label class='chLibL' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다. 끄면 원고와 자료만 보고 빨리 답합니다'><input type='checkbox' class='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>";
 const chatInputHtml = (id, ph, sc) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
   "<div class='mpal'>" + chipsFor(sc).map((c, k) => "<button class='btn' data-chip='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>";
@@ -2374,6 +2385,7 @@ function chatBind(card) {
   all("[data-scope]").forEach(a => a.onclick = e => { e.preventDefault(); chatScope(a.dataset.scope); });
   if (cq("[data-ask]")) cq("[data-ask]").onclick = () => chatAsk(id);
   if (cq(".chWhole")) cq(".chWhole").onchange = e => { localStorage.setItem("ms_sel_whole", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chWhole").forEach(x => { x.checked = e.target.checked; }); };
+  if (cq(".chEv")) cq(".chEv").onchange = e => { localStorage.setItem("ms_sel_ev", e.target.value); document.querySelectorAll("#tab-chat .chEv").forEach(x => { x.value = e.target.value; }); };
   if (cq(".chLib")) cq(".chLib").onchange = e => { localStorage.setItem("ms_sel_lib", e.target.checked ? "1" : "0"); document.querySelectorAll("#tab-chat .chLib").forEach(x => { x.checked = e.target.checked; }); };
   if (cq("[data-memo]")) cq("[data-memo]").onclick = () => chatNote(id);
   if (cq("[data-newx]")) cq("[data-newx]").onclick = () => chatNewDrop();;
@@ -2496,12 +2508,12 @@ async function chatAsk(id, text, retry) {   // 묻는다. 답을 기다리지 �
   }
   if (!m) return;
   const mid = doc.id, effort = chatEffort();
-  const lib = chatLib(), whole = chatWhole();
+  const lib = chatLib(), whole = chatWhole(), ev = chatEv();
   delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; m.lib = lib; m.whole = whole; memoLive.add(m.id); chatOpen.add(m.id);
   memoUi(id === "new" ? null : m.id);
   if (id === "new") chatFocus(m.id);
   await saveNow();   // 물음까지 든 대화가 서버에 있어야 한다
-  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort, lib, whole }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort, lib, whole, ev }); } catch (e) { r = { error: "서버 연결 실패" }; }
   memoLive.delete(m.id);
   if (!doc || doc.id !== mid) return;
   const mm = memoById(m.id);
