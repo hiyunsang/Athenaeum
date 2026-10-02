@@ -1704,12 +1704,13 @@ const LIB_VT = { general: "사례보다 넓게 일반화", stale: "옛 논문이
 const libTodo = x => x.verdict === "own" && x.type === "brief";
 const libBad = x => x.verdict === "over" || x.verdict === "none" || (x.verdict === "own" && x.type === "needs");
 const libEvHtml = ev => (ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + (e.sent ? "&kind=translation&sent=" + e.sent : "") + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("");
-function libFlowHtml(u) {   // 문장과 문장의 이음 (서버가 센 것): 앞 문장과 이음 없이 시작하는 문장, 인용으로 끝나는 문장이 연달아 나오는지
+function libFlowHtml(u) {   // 문장의 이음과 인용 자리를 이 분야 논문의 평균(서재의 IJMTM·JMPT 서론에서 잰 것)과 나란히
   const f = u.flow; if (!f || !f.n) return "";
-  const loose = f.loose || [];
-  return "<br>문장 이음: 이음말이나 앞 문장을 받는 말로 시작하는 문장 " + f.tied + "/" + Math.max(0, f.n - 1) + (loose.length ? " · 이음 없이 시작하는 문장 " + loose.join(", ") + "번" : "") +
-    " · 인용으로 끝나는 문장 " + f.ends + "/" + f.n + (f.run >= 3 ? " (연달아 " + f.run + "문장)" : "") +
-    ((f.marks || []).length ? " <span style='color:var(--amber)'>— 아직 사실을 나란히 늘어놓은 글로 읽힐 수 있습니다. 주문에 문단의 흐름을 더 자세히 적어 다시 써 보세요.</span>" : "");
+  const nm = u.norms || {}, m = Math.max(1, f.n - 1), pct = v => v == null ? "" : " <span style='color:var(--text-3)'>(논문 약 " + v + "%)</span>";
+  return "<br>논문과 견줌" + (nm.src ? " <span style='color:var(--text-3)'>— 서재의 " + esc(nm.src) + " 서론 " + nm.npar + "문단 평균</span>" : "") + ": 접속 부사나 앞 문장을 받는 말로 시작하는 문장 " + f.tied + "/" + m + pct(nm.tied) +
+    " · 인용이 달린 문장 " + (f.cited == null ? "?" : f.cited) + "/" + f.n + pct(nm.cited) + " · 인용으로 끝나는 문장 " + f.ends + "/" + f.n + pct(nm.ends) + (f.run >= 3 ? " · 연달아 " + f.run + "문장" : "") +
+    ((f.mid || []).length ? " · 접속 부사를 문장 가운데 둔 문장 " + f.mid.map(x => x[0]).join(", ") + "번" : "") +
+    ((f.marks || []).length ? "<br><span style='color:var(--amber)'>논문의 평균에서 벗어난 곳이 남았습니다: " + f.marks.map(t => esc(t.replace(/^- /, "").split(" — ")[0])).join(" / ") + "</span>" : "");
 }
 function libCheckHtml(u) {
   if (!u.plan && !u.check) return "";   // 예전에 쓴 글 (대조하지 않았다)

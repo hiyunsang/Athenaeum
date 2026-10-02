@@ -1589,70 +1589,229 @@ def _tok_add(a, b):
     return out
 
 
-# 글의 규칙 — 처음엔 '인용은 문장 끝에 묶어, 한 문장 = 한 걸음'으로 적었더니 '주장 + 인용 묶음'인 문장이 나란히 놓인 글이 나왔다(사용자: 인용 나열 한 문장의 되풀이, AI 티).
-# 잘 쓴 문단은 덩이의 짜임이 있고(머리 문장 → 펴는 문장), 문장마다 앞 문장을 이어받고, 인용은 그 사실을 처음 말한 자리에만 있다.
+# 글의 규칙 — 세 번 고쳤다. ① '인용은 문장 끝에 묶어, 한 문장 = 한 걸음' → '주장 + 인용 묶음'인 문장이 나란히 놓였다(사용자: 인용 나열 한 문장의 되풀이, AI 티).
+# ② '모든 문장이 앞 문장을 이어받게' → 잘 쓴 문단 8개에는 맞았지만 서재의 논문 전체(IJMTM 25편·JMPT 12편)보다 촘촘했다: 접속 부사·받는 말로 시작하는 문장 60%(논문 39%), 인용이 달린 문장 67%(50%),
+# 접속 부사를 주어 뒤에 끼운 문장 12~18%(논문 1~4%, 그것도 거의 also). ③ 기준을 내가 정한 숫자가 아니라 서재의 그 저널 논문에서 잰 평균(_style_norms)으로, 드문 것(문장 가운데 접속 부사, 저자 주어)은 사례로.
 _LIBX_STYLE = (
     "[글 — 문단의 짜임과 이음]\n"
     "- 문단은 사실을 한 문장씩 늘어놓은 목록이 아니라 짜임이다: 주제문 → 덩이 2~4개 → (필요하면) 전환이나 맺음. 덩이 하나는 머리 문장(주장) 하나와 그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)로 이루어지고, "
     "덩이 안에도 순서가 있다(요인 → 그 귀결, 주장 → 사례 → 뜻하는 바).\n"
     "- 넓게 스치지 말고 깊게 편다. 근거를 한 문장에 하나씩 스치듯 언급하지 말고, 덩이마다 가장 알맞은 근거 한두 편을 골라 그것이 무엇을 보였는지, 왜 그런지(기전), 그래서 무엇이 따라 나오는지를 두세 문장에 걸쳐 쓴다. 쓰지 않는 근거가 많아도 된다.\n"
-    "- 둘째 문장부터 모든 문장은 앞 문장을 이어받아 시작한다. 방법은 둘이다: ① 관계를 이음말로 밝힌다 — 대조(However, In contrast), 귀결(As a result, Thus), 예시(For example), 차례(First, Second, Lastly) "
-    "② 앞 문장이 끝에 내놓은 것을 첫머리에서 받는다 — 'This/These/Such + 앞 문장의 내용을 가리키는 명사', 또는 앞 문장의 핵심어를 주어로. 앞 문장과 아무 이음 없이 새 사실로 시작하는 문장을 두지 마라. "
-    "새로 꺼내는 내용은 문장 끝에 두어 다음 문장이 받게 한다. 이런 평범한 이음말은 기계가 쓴 티가 아니니 아끼지 마라 — 다만 관계가 실제로 그럴 때만 쓰고, 덧붙임(Moreover·Furthermore·Additionally)은 문단에 한 번까지. 이음의 방법을 섞는다: 같은 말로 시작하는 문장(Such …, This …, For example/For instance)이 문단에 세 번 이상 나오지 않게.\n"
+    "- 문장은 앞 문장과 이어져야 하지만 모든 문장을 이음말로 묶지는 않는다 — 얼마나 묶는지는 아래 [이 분야 논문의 평균]을 따른다. 잇는 방법은 셋이다: ① 관계를 접속 부사로 밝힌다(대조·덧붙임·귀결·예시·차례) "
+    "② 앞 문장이 끝에 내놓은 것을 첫머리에서 받는다('This/These/Such + 앞 문장의 내용을 가리키는 명사', 또는 앞 문장의 핵심어를 주어로) ③ 이음말 없이 새 주어나 도입구로 시작한다 — 내용이 이어지면 이음말이 없어도 읽히고, 논문의 문장은 절반 넘게 이렇게 시작한다. "
+    "모든 문장에 이음말을 달면 오히려 기계가 쓴 글로 읽힌다.\n"
+    "- 접속 부사는 문장 맨 앞에 쉼표와 함께 둔다('However, …', 'Therefore, …', 'As a result, …'). 문장 가운데에 두는 것은 'also' 뿐이다 — 같은 주어의 또 다른 작용·결과를 덧붙일 때('The excessive deformation also causes …', 'They also found …'). "
+    "'therefore'·'then'·'instead'·'in turn'·'however' 를 주어 뒤에 끼워 넣지 마라(이 분야 논문은 그렇게 쓰지 않는다).\n"
+    "- 저자를 주어로 세우는 문장('A et al. [n] studied …')은 저자의 버릇을 따른다: 원고가 선행 연구를 그렇게 소개해 왔으면 쓰고, 아니면 쓰지 않는다(아래 [원고의 버릇]). "
+    "쓴다면 '누가 어떤 방법·모형으로 무엇을 얻었는지'를 하나씩 짚는 대목에서 쓰고, 같은 연구를 잇는 문장은 'They also …' 로 받는다.\n"
     "- 인용은 그 사실을 처음 말하는 자리에 한 번 단다 — 문장 가운데(그 사실을 말한 구 바로 뒤)에 달아도 된다. 같은 근거를 이어서 펴는 문장, 귀결을 말하는 문장, 틀·연결 문장, 저자의 추론에는 인용을 달지 않는다. "
-    "'주장 + 인용 묶음'으로 끝나는 문장이 연달아 나오면 인용을 나열한 글로 읽힌다 — 인용으로 끝나는 문장은 문단의 절반 이하, 연달아서는 둘까지. 한 문장에 인용 자리는 많아야 둘.\n"
+    "인용이 달린 문장과 인용으로 끝나는 문장의 비율도 아래 평균에 맞춘다. 한 문장에 인용 자리는 많아야 둘.\n"
     "- 여러 논문이 같은 점을 받치면 그 점을 저자의 말로 한 번 말하고 인용을 묶어 단다([@A][@B]) — 논문마다 문장을 따로 세우지 않는다. "
     "묶어서 일반화할 때는 근거가 받치는 폭까지만(사례가 두 재료뿐이면 'in several ductile metals'·'e.g.' 처럼 폭을 드러내고 '모든'·'항상'으로 넓히지 않는다).\n"
-    "- 문장의 주어는 현상·재료·공정이다. 논문이나 저자를 주어로 세우는 문장('A et al. showed …')은 그 연구가 논증의 전환점일 때만.\n"
-    "- 같은 사실을 두 번 말하지 마라. 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장은 대체로 15~35 단어로 길이를 섞고, 쌍반점으로 문장을 잇지 않는다.\n"
+    "- 같은 사실을 두 번 말하지 마라. 같은 이음말로 시작하는 문장이 문단에 세 번 이상 나오지 않게 한다. 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장은 대체로 15~35 단어로 길이를 섞고, 쌍반점으로 문장을 잇지 않는다.\n"
     "- 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 저자의 주문이 정한 흐름의 마지막 걸음에서 끝낸다 — 주문에 없는 본 연구의 결과·연구 질문으로 건너뛰지 마라(그것은 다른 문단의 몫이다).\n"
     "- 영어로 쓸 때 기계가 쓴 티가 나는 말버릇을 쓰지 마라: notably, crucial, pivotal, comprehensive, intricate, delve, underscore, shed light, 'plays a key role', 'it is worth noting', 'not only … but also', 'a wide range of', "
     "줄표(—)로 끼워 넣는 삽입구, 무엇이든 셋씩 나열하기, 교훈을 말하는 맺음.\n")
 _FLOW_CITE = r"(?:\[@[^\]\s,;]+\]\s*)+|\[\d[\d,\u2013\u2014\- ]*\]"
-_FLOW_CONN = re.compile(
-    r"^(?:(?:however|thus|therefore|hence|consequently|as a result|as such|for example|for instance|furthermore|moreover|in addition|additionally|first|second|third|lastly|finally|in contrast|"
-    r"on the other hand|by contrast|conversely|yet|but|while|although|though|since|because|accordingly|similarly|likewise|indeed|in particular|specifically|of course|to this end|more recently|"
-    r"recently|then|here|in turn|instead|nevertheless|nonetheless|even|when|once|if|under|to|one of|one is|one factor|another|a second|a third|the first|the second|the third|the remaining|a further)\b"
-    r"|그러나|하지만|따라서|그러므로|그 결과|이에 따라|이 때문에|예를 들어|예컨대|또한|한편|반면|나아가|더욱이|특히|즉|다만|그럼에도|이와 달리|마찬가지로|첫째|둘째|셋째|마지막으로|먼저|다음으로|실제로|그런데|이처럼|이로써|여기서|이때)", re.I)
-_FLOW_CONN_IN = re.compile(r"^(?:\S+\s+){1,3}(?:however|therefore|thus|also|in turn|too|likewise|instead|for example|for instance|then|accordingly)\b", re.I)
+_FLOW_CITE_AY = _FLOW_CITE + r"|\((?:[^()]{0,90}?(?:19|20)\d{2}[a-z]?)\)"   # 저자-연도식 인용 (Childs, 2013) — 논문(JMPT 등)을 잴 때
+_FLOW_GROUPS = [   # 문장 첫머리의 접속 부사 (종류별)
+    ("대조", "however|nevertheless|nonetheless|yet|still|in contrast|by contrast|on the other hand|on the contrary|conversely|instead|그러나|하지만|반면|그럼에도|이와 달리"),
+    ("덧붙임", "furthermore|moreover|in addition|additionally|besides|also|similarly|likewise|또한|나아가|더욱이|마찬가지로"),
+    ("귀결", "therefore|thus|hence|consequently|as a result|as a consequence|as such|accordingly|따라서|그러므로|그 결과|이에 따라|이 때문에|이로써|결국"),
+    ("예시", "for example|for instance|specifically|in particular|예를 들어|예컨대|특히"),
+    ("차례", "first|firstly|second|secondly|third|thirdly|lastly|finally|then|subsequently|next|첫째|둘째|셋째|마지막으로|먼저|다음으로"),
+    ("그 밖", "indeed|in fact|of course|recently|more recently|to date|so far|to this end|in this regard|in this context|in other words|overall|in general|here|alternatively|otherwise|meanwhile|실제로|즉|다만|한편|그런데|이처럼|여기서|이때|최근")]
+_FLOW_KIND = {w: g for g, ws in _FLOW_GROUPS for w in ws.split("|")}
+_FLOW_CONN = re.compile(r"^(?:(?:" + "|".join(w for _, ws in _FLOW_GROUPS for w in ws.split("|") if re.match(r"[a-z]", w)) + r")\b|(?:" + "|".join(w for _, ws in _FLOW_GROUPS for w in ws.split("|") if not re.match(r"[a-z]", w)) + r"))", re.I)
+_FLOW_MID = re.compile(r"^(?:\S+\s+){1,4}?(however|therefore|thus|hence|in turn|instead|then|accordingly|consequently|moreover|furthermore|likewise|따라서|그러나|하지만|그러므로|반면|결국)(?=[\s,])", re.I)
 _FLOW_BACK = re.compile(r"^(?:(?:this|these|those|such|the same|the latter|the former|its|their|it|they|each|both|here|there)\b|이 |이는|이러한|이들|이런|그 |그러한|이것|이와|이를|이에|앞서|해당|같은 )", re.I)
+_FLOW_AUTH = re.compile(r"^(?:[A-Z][A-Za-z\u00c0-\u024f'\-]+(?:\s*(?:and|&|와|과)\s*[A-Z][A-Za-z\u00c0-\u024f'\-]+)?\s*(?:et al\.?|등)?\s*(?:\[[^\]]{1,40}\]|\((?:19|20)\d{2}[a-z,]*\))(?=\s*(?:은|는|이|가|도|[a-z]))|[A-Z][A-Za-z'\-]+ et al\b|(?:He|She|They)\s+(?:also\s+)?[a-z]+ed\b)")
 _FLOW_STOP = set("the a an of in on at to for from by with and or as is are was were be been has have had that this these those which its their it they not no can may such than then also into over under "
                  "between during using based more most other some any all each both one two three when while where how what whose who".split())
 
 
-def _flow(text):
-    """문장과 문장이 어떻게 이어지는지 센다(영어·한국어) → {n, loose[이음 없이 시작하는 문장 번호], tied(이음말이나 앞 문장을 가리키는 말로 시작하는 문장 수), ends(인용으로 끝나는 문장 수),
-    run(그런 문장이 연달아 가장 긴 것), run_at[시작, 끝], marks[고쳐 쓰기에 줄 지적]}. 잘 쓴 서론 문단 6개의 평균: 이음 없음 5%, 이음말·가리킴 70%, 인용으로 끝남 37%, 연달아 2.3문장."""
-    flat = re.sub(r"\s+(" + _FLOW_CITE + r")\s*([.,;])", r" \1\2", _norm_ws(text))
-    sents = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z\uac00-\ud7a3\u201c\"'(])", flat) if len(x) > 12]
+def _flow_sents(text, cl=_FLOW_CITE):
+    flat = re.sub(r"\s+(" + cl + r")\s*([.,;])", r" \1\2", _norm_ws(text))
+    return [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z\uac00-\ud7a3\u201c\"'(])", flat) if len(x) > 12]
+
+
+def _flow_stats(text, ay=False):
+    """문장이 무엇으로 시작하고 인용이 어디에 놓이는지 센다(영어·한국어; ay = 저자-연도식 인용도 인용으로 — 논문을 잴 때).
+    → {n, adv[접속 부사로 시작하는 문장 번호], back[앞 문장을 받는 말로 시작], mid[[번호, 낱말] 접속 부사를 주어 뒤에 끼운 문장 — also 는 빼고], auth[저자 이름으로 시작],
+       loose[아무 이음 없이], tied(adv + back 수), cited(인용이 달린 문장 수), ends(인용으로 끝나는 문장 수), run(그런 문장이 연달아), run_at, advs[쓴 접속 부사]}"""
+    cl = _FLOW_CITE_AY if ay else _FLOW_CITE
+    sents = _flow_sents(text, cl)
 
     def words(t):
-        t = re.sub(_FLOW_CITE, " ", t).lower()
+        t = re.sub(cl, " ", t).lower()
         return {w[:6] for w in re.findall(r"[a-z]{4,}", t) if w not in _FLOW_STOP} | {w[:2] for w in re.findall(r"[\uac00-\ud7a3]{2,}", t)}
-    loose, tied, ends, run, best, at = [], 0, 0, 0, 0, [0, 0]
-    for i, st in enumerate(sents):
-        bare = re.sub(_FLOW_CITE, " ", st).strip()
-        end = bool(re.search(r"(?:" + _FLOW_CITE + r")\s*[.;]?\s*$", st))
-        ends += end
+    st = {"n": len(sents), "adv": [], "back": [], "mid": [], "auth": [], "loose": [], "cited": 0, "ends": 0, "run": 0, "run_at": [0, 0], "advs": []}
+    run = 0
+    for i, sen in enumerate(sents):
+        bare = re.sub(cl, " ", sen).strip()
+        end = bool(re.search(r"(?:" + cl + r")\s*[.;]?\s*$", sen))
+        st["ends"] += end
+        st["cited"] += bool(re.search(cl, sen))
         run = run + 1 if end else 0
-        if run > best:
-            best, at = run, [i + 2 - run, i + 1]
+        if run > st["run"]:
+            st["run"], st["run_at"] = run, [i + 2 - run, i + 1]
         if i == 0:
             continue
-        link = bool(_FLOW_CONN.match(bare) or _FLOW_CONN_IN.match(bare) or _FLOW_BACK.match(bare))
-        tied += link
-        if not link and not (words(" ".join(bare.split()[:8])) & words(sents[i - 1])):
-            loose.append(i + 1)
-    n = len(sents)
+        m, back, auth = _FLOW_CONN.match(bare), bool(_FLOW_BACK.match(bare)), bool(_FLOW_AUTH.match(sen))
+        if m:
+            st["adv"].append(i + 1)
+            st["advs"].append(m.group(0).lower())
+        elif back:
+            st["back"].append(i + 1)
+        if not m:
+            mm = _FLOW_MID.match(bare)
+            if mm:
+                st["mid"].append([i + 1, mm.group(1).lower()])
+        if auth:
+            st["auth"].append(i + 1)
+        if not m and not back and not auth and not (words(" ".join(bare.split()[:8])) & words(sents[i - 1])):
+            st["loose"].append(i + 1)
+    st["tied"] = len(st["adv"]) + len(st["back"])
+    return st
+
+
+def _intro_paragraphs(stem):
+    """번역해 둔 논문의 서론 문단들(영어 원문) — 번역 파일의 제목 줄로 서론의 범위를, 문장표의 문단 번호로 문단을 가른다. 못 찾으면 []"""
+    try:
+        md = io.open(os.path.join(cfg["GEN_DIR"], stem + ".번역.md"), encoding="utf-8").read()
+    except Exception:
+        return []
+    tb = cfg["load_json"](os.path.join(cfg["GEN_DIR"], stem + ".번역.정렬.json"), None)
+    if not isinstance(tb, dict):
+        return []
+    lines = md.split("\n")
+    heads = [i for i, ln in enumerate(lines) if re.match(r"^#{1,4}\s", ln)]
+    a = next((i for i in heads if re.search(r"introduction|서론|머리말", lines[i], re.I)), None)
+    if a is None:
+        return []
+    b = next((i for i in heads if i > a), len(lines))
+    paras, cur, last = [], [], None
+    for sid in (m.group(1) for ln in lines[a + 1:b] for m in re.finditer(r"\[s(\d+)\]", ln)):
+        e = tb.get(sid)
+        if not isinstance(e, dict) or not e.get("t"):
+            continue
+        if last is not None and e.get("para") != last and cur:
+            paras.append(cur)
+            cur = []
+        cur.append(str(e["t"]).strip())
+        last = e.get("para")
+    if cur:
+        paras.append(cur)
+    return [" ".join(p).replace("\u00ad ", "").replace("\u00ad", "") for p in paras]
+
+
+# 서재에 그 저널의 논문이 모자랄 때 쓰는 값 — 2026-10-02 에 원작자의 서재(IJMTM 25편·83문단, JMPT 12편·42문단)에서 잰 평균
+_NORM_DEFAULT = {"src": "IJMTM·JMPT", "npar": 125, "npaper": 37, "adv": 23, "back": 15, "tied": 38, "cited": 50, "ends": 24, "sents": 8.7,
+                 "mix": [["대조", 37, "however"], ["덧붙임", 25, "furthermore·moreover·in addition"], ["귀결", 14, "therefore·thus·as a result"], ["예시", 9, "for example·for instance"], ["차례", 6, "then·finally"]], "builtin": True}
+_norms_cache = {}
+
+
+def _style_norms(journals=("IJMTM", "JMPT")):
+    """그 저널들의 서론 문단을 서재에서 직접 잰다(문헌을 다루는 문단: 인용 둘 이상·500자 이상·문장 넷 이상) → 저널마다의 평균을 다시 평균한 것.
+    쓰기의 기준과 _flow 의 지적이 이것을 따른다 — 내가 정한 숫자가 아니라 사용자가 견주는 대상(기존 논문)에서 온 숫자."""
+    try:
+        stems = sorted(f[:-len(".번역.정렬.json")] for f in os.listdir(cfg["GEN_DIR"]) if f.endswith(".번역.정렬.json"))
+    except OSError:
+        stems = []
+    key = (tuple(journals), len(stems))
+    if key in _norms_cache:
+        return _norms_cache[key]
+    per, papers, advs = {}, {}, {}
+    for stem in stems:
+        m = re.match(r"^\d{4}_([A-Za-z0-9&-]+)_", stem)
+        j = m.group(1) if m else ""
+        if j not in journals:
+            continue
+        for text in _intro_paragraphs(stem)[:14]:
+            if len(text) < 500 or len(re.findall(_FLOW_CITE_AY, text)) < 2:
+                continue
+            st = _flow_stats(text, ay=True)
+            if st["n"] < 4:
+                continue
+            per.setdefault(j, []).append(st)
+            papers.setdefault(j, set()).add(stem)
+            for w in st["advs"]:
+                advs[w] = advs.get(w, 0) + 1
+    js = [j for j in journals if len(per.get(j, [])) >= 8]
+    if not js:
+        _norms_cache[key] = _NORM_DEFAULT
+        return _NORM_DEFAULT
+    mean = lambda f: sum(sum(f(x) for x in per[j]) / len(per[j]) for j in js) / len(js)
+    tot = float(sum(advs.values()) or 1)
+    by = {}
+    for w, c in advs.items():
+        g = by.setdefault(_FLOW_KIND.get(w, "그 밖"), {})
+        g[w] = c
+    mix = [[g, round(100 * sum(ws.values()) / tot), "·".join(w for w, _ in sorted(ws.items(), key=lambda kv: -kv[1])[:3])] for g, ws in by.items() if g != "그 밖"]
+    mix.sort(key=lambda x: -x[1])
+    nm = {"src": "·".join(js), "npar": sum(len(per[j]) for j in js), "npaper": sum(len(papers[j]) for j in js),
+          "adv": round(mean(lambda x: 100.0 * len(x["adv"]) / max(1, x["n"] - 1))), "back": round(mean(lambda x: 100.0 * len(x["back"]) / max(1, x["n"] - 1))),
+          "cited": round(mean(lambda x: 100.0 * x["cited"] / x["n"])), "ends": round(mean(lambda x: 100.0 * x["ends"] / x["n"])), "sents": round(mean(lambda x: x["n"]), 1), "mix": mix}
+    nm["tied"] = nm["adv"] + nm["back"]
+    _norms_cache[key] = nm
+    return nm
+
+
+def _norms_text(nm, auth=None):
+    """쓰는 Claude 에게 줄 기준(서재의 논문에서 잰 평균)과, 원고의 버릇(저자를 주어로 세운 문장을 쓰는가)."""
+    k9 = lambda p: max(0, int(round(p * 8 / 100.0)))
+    out = ("[이 분야 논문의 평균 — 서재의 %s 논문 %d편, 서론 %d문단에서 잰 것. 이 정도로 쓴다(더 촘촘하게도 더 성기게도 말고)]\n"
+           "- 둘째 문장부터: 접속 부사로 시작하는 문장 약 %d%%, 앞 문장을 받는 말(This/These/Such …)로 시작하는 문장 약 %d%% — 합쳐 열에 넷쯤이고, 나머지는 이음말 없이 새 주어나 도입구로 시작한다"
+           "(문장 9개짜리 문단이면 접속 부사 %d개, 받는 말 %d개쯤).\n"
+           "- 인용이 달린 문장은 약 %d%%, 인용으로 끝나는 문장은 약 %d%% 이다(문장 9개면 인용이 달린 문장 %d~%d개).\n"
+           "- 문장 첫머리 접속 부사의 종류: %s. 영어가 아니면 그에 해당하는 말로.\n"
+           % (nm["src"], nm.get("npaper", 0), nm["npar"], nm["adv"], nm["back"], k9(nm["adv"]), k9(nm["back"]), nm["cited"], nm["ends"],
+              max(1, int(nm["cited"] * 9 / 100.0)), max(2, int(nm["cited"] * 9 / 100.0) + 1), ", ".join("%s(%s) %d%%" % (g, w, p) for g, p, w in nm["mix"][:5])))
+    if auth is not None:
+        k, n = auth
+        out += ("[원고의 버릇] " + ("원고의 문장 %d개 가운데 저자를 주어로 세운 문장이 %d개다 — %s\n" % (n, k, "이 원고는 선행 연구를 그렇게 소개한다. 필요한 대목에서 쓴다." if k >= 2 else "이 원고는 그렇게 쓰지 않는다. 쓰지 마라.")
+                                 if n >= 8 else "원고에 글이 아직 적어 버릇을 알 수 없다 — 저자를 주어로 세우는 문장은 쓰지 않는 쪽으로.\n"))
+    return out
+
+
+def _author_style(doc, key):
+    """원고가 선행 연구를 '저자 등은 …했다' 꼴로 소개하는가 → (그런 문장 수, 문장 수). 논문 37편 가운데 절반만 이 꼴을 쓴다(저자의 버릇) — 원고를 따른다."""
+    text = "\n".join((n.get(key) or n.get("draft_en" if key == "draft" else "draft") or "") for n in doc.get("outline") or [])
+    sents = _flow_sents(text[:200000], _FLOW_CITE_AY)
+    return sum(1 for x in sents if _FLOW_AUTH.match(x)), len(sents)
+
+
+def _flow(text, nm=None):
+    """쓴 문단을 이 분야 논문의 평균(nm)과 견줘 크게 벗어난 것만 지적한다(marks → 고쳐 쓰기). 문단 하나는 짧아 비율이 거칠므로 여유를 넉넉히 둔다."""
+    nm = nm or _NORM_DEFAULT
+    st = _flow_stats(text)
+    n, m = st["n"], max(1, st["n"] - 1)
     marks = []
-    if len(loose) >= 2:
-        marks.append("- 짜임(이음): 문장 %s 이(가) 앞 문장과 아무 이음 없이 새 사실로 시작한다 — 앞 문장이 끝에 내놓은 것을 첫머리에서 받거나, 관계를 밝히는 이음말로 시작하게 고쳐라." % ", ".join(str(x) for x in loose))
-    if n >= 5 and tied < 0.45 * (n - 1):
-        marks.append("- 짜임(이음): 이음말이나 앞 문장을 가리키는 말로 시작하는 문장이 %d개 중 %d개뿐이다 — 문장들이 나란히 놓인 목록으로 읽힌다. 문장마다 앞 문장과의 관계(대조·귀결·예시·차례)를 밝히거나 앞 문장의 내용을 받아 시작하게 고쳐라." % (n - 1, tied))
-    if (best >= 4 or (n >= 5 and ends > 0.6 * n)) and tied < 0.6 * (n - 1):   # 이음말로 잘 이어진 열거(First … Second … Lastly …)는 문장마다 인용이 있어도 나열로 읽히지 않는다
-        marks.append("- 짜임(인용 나열): 문장 %d개 중 %d개가 '주장 + 인용'으로 끝나고, 문장 %d~%d 은 연달아 그렇다 — 인용을 나열한 글로 읽힌다. 그 대목을 덩이로 다시 짜라: 머리 문장을 세우고, 근거 한두 편을 골라 "
-                     "그 내용을 두세 문장으로 편다(무엇을 보였나 → 왜 그런가 → 그래서 무엇이 따르나). 인용은 그 사실을 처음 말한 자리에 한 번만 달고, 펴는 문장에는 달지 않는다. 덜 중요한 근거와 그 인용은 뺀다." % (n, ends, at[0], at[1]))
-    return {"n": n, "loose": loose, "tied": tied, "ends": ends, "run": best, "run_at": at, "marks": marks}
+    if n >= 6 and st["cited"] > (nm["cited"] / 100.0 + 0.15) * n:
+        marks.append("- 짜임(인용): 인용이 달린 문장이 %d개 중 %d개다 — 이 분야 논문은 절반쯤(약 %d%%)이다. 덩이마다 근거 한두 편만 남기고, 그 내용을 펴는 문장·귀결 문장·틀 문장에서는 인용을 뗀다"
+                     "(같은 근거를 잇는 문장에 다시 달지 않는다). 덜 중요한 근거는 뺀다." % (n, st["cited"], nm["cited"]))
+    if st["run"] >= 4 or (n >= 6 and st["ends"] > (nm["ends"] / 100.0 + 0.2) * n):
+        marks.append("- 짜임(인용 나열): 문장 %d개 중 %d개가 인용으로 끝나고(이 분야 논문은 약 %d%%), 문장 %d~%d 은 연달아 그렇다 — 인용을 나열한 글로 읽힌다. 그 대목의 머리 문장을 세우고, 근거 한두 편을 골라 "
+                     "두세 문장으로 편다(무엇을 보였나 → 왜 그런가 → 그래서 무엇이 따르나). 인용은 그 사실을 처음 말한 자리에 한 번만 단다." % (n, st["ends"], nm["ends"], st["run_at"][0], st["run_at"][1]))
+    if st["mid"]:
+        marks.append("- 이음(자리): 문장 %s 은 접속 부사(%s)를 주어 뒤에 끼워 넣었다 — 이 분야 논문은 접속 부사를 문장 맨 앞에 쉼표와 함께 두고, 가운데 두는 것은 'also' 뿐이다. 맨 앞으로 옮기거나, 없어도 읽히면 뺀다."
+                     % (", ".join(str(x[0]) for x in st["mid"]), ", ".join(dict.fromkeys(x[1] for x in st["mid"]))))
+    if n >= 6 and st["tied"] > (nm["tied"] / 100.0 + 0.2) * m:
+        marks.append("- 이음(지나침): 둘째 문장부터 %d개 중 %d개가 접속 부사나 This·Such 같은 받는 말로 시작한다 — 이 분야 논문은 열에 넷쯤(약 %d%%)이고 나머지는 새 주어나 도입구로 그냥 시작한다. "
+                     "없어도 읽히는 이음말을 덜어라(문장 %s)." % (m, st["tied"], nm["tied"], ", ".join(str(x) for x in sorted(st["adv"] + st["back"]))))
+    if n >= 6 and st["tied"] < (nm["tied"] / 100.0 - 0.25) * m and len(st["loose"]) >= 0.5 * m:
+        marks.append("- 이음(모자람): 둘째 문장부터 %d개 중 %d개만 접속 부사나 받는 말로 시작하고, 문장 %s 은 앞 문장과 아무 이음 없이 시작한다 — 이 분야 논문은 열에 넷쯤 잇는다. 관계가 있는 곳에 접속 부사를 두거나 앞 문장의 말을 받아 시작한다."
+                     % (m, st["tied"], ", ".join(str(x) for x in st["loose"])))
+    cnt = {}
+    for w in st["advs"]:
+        cnt[w] = cnt.get(w, 0) + 1
+    ex = sum(v for w, v in cnt.items() if _FLOW_KIND.get(w) == "예시")
+    rep_w = [w for w, v in cnt.items() if v >= 3]
+    if ex >= 3 or rep_w:
+        marks.append("- 이음(낱말): " + ("예시의 이음말(For example·For instance …)로 시작하는 문장이 %d개다 — 이 분야 논문에서는 접속 부사 문장의 열에 하나쯤이다. " % ex if ex >= 3 else "") +
+                     ("같은 이음말(%s)이 세 번 이상 나온다. " % ", ".join(rep_w) if rep_w else "") + "사례는 주장 문장 안의 구로 넣거나 이음말을 바꾼다.")
+    st["marks"] = marks
+    return st
 
 
 # 근거의 규칙 — 같은 시험에서 인용 문장 넷 중 하나가 근거보다 나아갔다: 재인용을 그 논문의 결과로, 옛 논문의 '아직 모른다'를 지금의 공백으로, 사례보다 넓은 일반화, 다른 스케일에 옮겨 적용.
@@ -1784,22 +1943,24 @@ def lib_use(doc, body):
         where = "초록" if nid == "front" else (node or {}).get("heading", "")
         place = ("「%s」 절" % where) if where else "저자가 정한다(어디가 좋을지 answer 에 적어라)"
         job = note[:1500] or "이 주제의 선행 연구를 정리하는 문단"
+        norms = _style_norms()   # 기준은 서재의 IJMTM·JMPT 논문에서 잰 평균 (사용자: 항상 기존 논문과 견준다)
+        norms_txt = _norms_text(norms, _author_style(doc, key))
         tail = "- 저자의 주문: " + job + "\n\n[주제]\n" + item.get("topic", "") + "\n\n[근거 — E번호 = 논문, E번호.번호 = 문장, ↳ = 그 문장이 인용한 원저]\n" + evid
         prompt = (head +
             "이 근거로 원고에 넣을 문단을 써 달라고 한다. 좋은 저널 논문의 문단은 근거를 차례로 옮긴 글이 아니라, 저자가 자기 목소리로 펴는 논증에 문헌이 받침으로 붙은 글이다. 그렇게 쓰려면 순서대로 하라:\n"
             "① 짜임 — 문단을 주제문과 덩이 2~4개로 짠다(저자의 주문에 흐름이 있으면 그 흐름의 걸음이 덩이가 된다). 덩이마다 머리 문장이 할 주장(문헌을 가리지 않고도 읽히는 저자의 말)을 정하고, "
-            "그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)를 정한다. 그리고 문장마다 앞 문장과 무엇으로 이을지 — 어떤 이음말로, 또는 앞 문장의 무엇을 받아 시작할지 — 를 정한다.\n"
+            "그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)를 정한다. 그리고 문장마다 앞 문장과 어떻게 이어지는지(접속 부사로 / 앞 문장의 무엇을 받아 / 이음말 없이 새 주어로)를 정한다 — 셋을 아래 [이 분야 논문의 평균]의 비율로 섞는다.\n"
             "② 덩이마다 받칠 근거 문장(E번호.번호)을 고른다. 근거를 다 쓰려 하지 마라 — 덩이마다 한두 편을 깊게 쓰고 나머지는 버린다.\n"
             "   저자의 주문에 적힌 걸음은 받칠 근거가 서재에 없어도 빼지 않는다 — 저자가 아는 것이다. 그 걸음이 저자의 논지·동기(왜 이 연구가 필요한가)면 인용 없이 저자의 말로 쓰고, "
             "문헌이 있어야 할 구체적인 사실이면 그대로 쓰되 인용 자리에 [@?] 를 달아 저자가 출처를 달게 한다(어느 문장인지 answer 에 알린다). 주문에 없는 걸음을 근거 없이 지어 넣지는 마라.\n"
-            "③ 짠 대로 글을 쓴다. 쓴 뒤 스스로 읽어 본다: 문장마다 첫머리가 앞 문장을 이어받는가, '주장 + 인용'으로 끝나는 문장이 연달아 셋 이상 나오지 않는가. 걸리면 고친 뒤에 낸다.\n"
+            "③ 짠 대로 글을 쓴다. 쓴 뒤 스스로 세어 본다: 접속 부사·받는 말로 시작하는 문장과 인용이 달린 문장의 수가 아래 평균과 비슷한가, 접속 부사를 주어 뒤에 끼워 넣은 문장이 없는가. 걸리면 고친 뒤에 낸다.\n"
             "먼저 JSON 하나로 답하고:\n"
             "{\"answer\": \"무엇을 어떻게 썼는지, 어디에 넣으면 좋은지, 저자가 확인할 것(근거가 모자란 걸음, 재인용) — 한국어 2~5문장\", "
-            "\"plan\": [{\"move\": \"덩이의 주장 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"], \"sents\": [\"머리: 할 말\", \"귀결 (앞 문장의 무엇을 받아, 또는 어떤 이음말로): 할 말\"]}]}\n"
+            "\"plan\": [{\"move\": \"덩이의 주장 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"], \"sents\": [\"머리 (이음말 없이): 할 말\", \"귀결 (접속 부사 / 앞 문장의 무엇을 받아 / 이음말 없이): 할 말\"]}]}\n"
             "그 뒤에 쓴 글을 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(쓴 문단들 — 문단 사이는 빈 줄, 제목 줄 없이)\n<<<END>>>\n"
             "규칙:\n"
             "- 넣을 곳: " + place + ". 그 절의 지금 글과 앞뒤 절을 읽고, 이미 쓴 내용과 겹치지 않고 이어지게 쓴다. 원고의 언어·문체·용어·기호를 따른다.\n"
-            + _LIBX_STYLE + cite_rule + tail)
+            + _LIBX_STYLE + norms_txt + cite_rule + tail)
     model, eff = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
     run = cfg.get("claude_run")
     t0 = time.time()
@@ -1876,7 +2037,7 @@ def lib_use(doc, body):
             chk, r2 = _libx_check(text, evid, job, model, ceff, run)
             use["tok"] = _tok_add(use["tok"], (r2 or {}).get("tok"))
             draft, changes, rounds, chk0 = "", "", 1, None
-            flow = flow0 = _flow(text)
+            flow = flow0 = _flow(text, norms)
             if _libx_redo(chk) or flow["marks"]:
                 marks = []
                 for i, x in enumerate((chk or {}).get("sentences") or []):
@@ -1897,11 +2058,11 @@ def lib_use(doc, body):
                     "- 원저가 풀리지 않은 재인용(secondhand 인데 달 원저 열쇠가 근거에 없다)은 논증에 꼭 필요하면 그대로 두고(저자가 원저를 찾는다), 아니면 뺀다.\n"
                     "- 저자의 주문에 적힌 걸음은 근거가 없어도 지우지 않는다: 저자의 논지는 저자의 말로 두고, 문헌이 있어야 할 사실은 근거 없는 열쇠를 떼고 [@?] 를 단다. [@?] 가 달린 문장은 그대로 둔다.\n"
                     "- 글·짜임 지적이 있으면 그 대목을 다시 짠다(이때는 지적이 없는 이웃 문장의 첫머리와 순서도 손봐도 된다). 이어 붙임·나열은 낱말을 손보는 것으로 고쳐지지 않는다 — "
-                    "그 대목의 머리 문장을 세우고, 근거 한두 편을 두세 문장으로 펴고, 덜 중요한 근거와 그 인용은 뺀다. 문장마다 앞 문장을 이어받아 시작하게 한다. 다만 근거와 맞던 말을 근거 밖으로 내보내지 마라.\n"
+                    "그 대목의 머리 문장을 세우고, 근거 한두 편을 두세 문장으로 펴고, 덜 중요한 근거와 그 인용은 뺀다. 이음은 아래 [이 분야 논문의 평균]만큼만 — 지적이 '지나침'이면 이음말을 덜고, '모자람'이면 보탠다. 다만 근거와 맞던 말을 근거 밖으로 내보내지 마라.\n"
                     "- 그 밖에 지적이 없는 문장은 글자 그대로 둔다(멀쩡한 문장을 다시 쓰지 마라). 새 사례·새 내용·새 문헌을 더하지 마라 — 걸린 문장을 근거 안에 들이는 데 꼭 필요할 때만. 고친 뒤에도 흐름과 분량이 저자의 주문에 맞아야 한다.\n"
                     "먼저 JSON 하나로 답하고: {\"changes\": \"무엇을 왜 고쳤는지 한국어 1~3문장\"}\n"
                     "그 뒤에 고친 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(문단)\n<<<END>>>\n"
-                    "규칙:\n" + _LIBX_STYLE + cite_rule +
+                    "규칙:\n" + _LIBX_STYLE + norms_txt + cite_rule +
                     "- 저자의 주문: " + job + "\n\n[지적]\n" + "\n".join(marks) + "\n\n[문단]\n" + text + "\n\n[근거 — E번호 = 논문, E번호.번호 = 문장, ↳ = 그 문장이 인용한 원저]\n" + evid)
                 # 걸린 문장만 손보는 일은 보통 노력으로, 문단을 다시 짜야 하면(짜임 지적) 쓴 때와 같은 노력으로
                 r3 = run(pre + rprompt, timeout=1500, model=model, effort=eff if flow["marks"] or eff not in ("xhigh", "max") else None, tools="", system=system or None)
@@ -1911,7 +2072,7 @@ def lib_use(doc, body):
                     stage("recheck")
                     chk2, r4 = _libx_check(text2, evid, job, model, ceff, run)
                     use["tok"] = _tok_add(use["tok"], (r4 or {}).get("tok"))
-                    flow2 = _flow(text2)
+                    flow2 = _flow(text2, norms)
                     b1, b2 = len(_libx_bad(chk)) if chk else 99, len(_libx_bad(chk2)) if chk2 else 99
                     worse = b2 > b1 or (chk2 and chk and chk2["reads"] == "assembled" and chk["reads"] != "assembled") or (b2 == b1 and len(flow2["marks"]) > len(flow["marks"]))
                     if chk2 and not worse:   # 고쳐서 나빠지지 않았을 때만 고친 글을 쓴다
@@ -1922,7 +2083,7 @@ def lib_use(doc, body):
             plan = [{"move": str(x.get("move") or "").strip(), "ev": ev_of(x.get("ev")), "sents": [str(v).strip()[:300] for v in (x.get("sents") or [])[:5] if str(v).strip()]}
                     for x in (r.get("plan") or [])[:8] if isinstance(x, dict) and str(x.get("move") or "").strip()]
             known = set(by_key) | set(prims)
-            use.update(answer=str(r.get("answer") or "").strip(), plan=plan, text=text, cites=cites_for(text), check=chk, check0=chk0, rounds=rounds, draft=draft, changes=changes, flow=flow, flow0=flow0 if rounds == 2 else None,
+            use.update(answer=str(r.get("answer") or "").strip(), plan=plan, text=text, cites=cites_for(text), check=chk, check0=chk0, rounds=rounds, draft=draft, changes=changes, flow=flow, flow0=flow0 if rounds == 2 else None, norms={k: norms.get(k) for k in ("src", "npar", "npaper", "adv", "back", "tied", "cited", "ends")},
                        unknown=[k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", text)) if k not in known and k != "?"], todo=text.count("[@?]"), sec=round(time.time() - t0))
             steps[-1][1] = round(time.time() - steps[-1][2])
             use["steps"] = [[x[0], x[1]] for x in steps]
