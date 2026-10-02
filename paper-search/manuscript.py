@@ -1589,21 +1589,72 @@ def _tok_add(a, b):
     return out
 
 
-# 글의 규칙 — 비교 시험(2026-10-02)에서 쓴 글이 '인용 하나에 문장 한 조각'을 이어 붙인 글로 읽혔다(원문은 저자의 말로 논증하고 인용은 문장 끝에 묶여 있다).
+# 글의 규칙 — 처음엔 '인용은 문장 끝에 묶어, 한 문장 = 한 걸음'으로 적었더니 '주장 + 인용 묶음'인 문장이 나란히 놓인 글이 나왔다(사용자: 인용 나열 한 문장의 되풀이, AI 티).
+# 잘 쓴 문단은 덩이의 짜임이 있고(머리 문장 → 펴는 문장), 문장마다 앞 문장을 이어받고, 인용은 그 사실을 처음 말한 자리에만 있다.
 _LIBX_STYLE = (
-    "[글 — 이어 붙인 티가 나지 않게]\n"
-    "- 한 문장은 논증의 한 걸음이다. 근거 문장 하나를 문장(또는 절) 하나로 옮기지 마라. 여러 논문이 같은 점을 받치면 그 점을 저자의 말로 한 번 말하고 인용을 문장 끝에 묶어 단다([@A][@B][@C]).\n"
-    "- 인용은 문장 끝에 둔다(대조되는 두 사례를 한 문장에 놓을 때만 절 끝에도). 한 문장에 인용 자리는 많아야 둘. 쉼표·쌍반점마다 사례와 인용이 하나씩 달리는 나열 문장을 쓰지 마라 — 예를 늘어놓는 문장은 문단에 하나면 된다.\n"
-    "- 문장 사이를 저자의 추론으로 잇는다. 다음 문장이 왜 오는지가 글에 드러나야 한다 — 앞 문장의 귀결이 다음 문장의 전제가 되게 하거나, 이유·대조·귀결을 말로 밝힌다. "
-    "'for example'·'for instance' 로 사례 문장을 따로 세우는 것은 문단에 한 번까지 — 사례는 되도록 주장 문장 안의 구로 넣고, 사례의 세부(속도·수치·시편)는 논증에 필요한 만큼만 옮긴다.\n"
+    "[글 — 문단의 짜임과 이음]\n"
+    "- 문단은 사실을 한 문장씩 늘어놓은 목록이 아니라 짜임이다: 주제문 → 덩이 2~4개 → (필요하면) 전환이나 맺음. 덩이 하나는 머리 문장(주장) 하나와 그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)로 이루어지고, "
+    "덩이 안에도 순서가 있다(요인 → 그 귀결, 주장 → 사례 → 뜻하는 바).\n"
+    "- 넓게 스치지 말고 깊게 편다. 근거를 한 문장에 하나씩 스치듯 언급하지 말고, 덩이마다 가장 알맞은 근거 한두 편을 골라 그것이 무엇을 보였는지, 왜 그런지(기전), 그래서 무엇이 따라 나오는지를 두세 문장에 걸쳐 쓴다. 쓰지 않는 근거가 많아도 된다.\n"
+    "- 둘째 문장부터 모든 문장은 앞 문장을 이어받아 시작한다. 방법은 둘이다: ① 관계를 이음말로 밝힌다 — 대조(However, In contrast), 귀결(As a result, Thus), 예시(For example), 차례(First, Second, Lastly) "
+    "② 앞 문장이 끝에 내놓은 것을 첫머리에서 받는다 — 'This/These/Such + 앞 문장의 내용을 가리키는 명사', 또는 앞 문장의 핵심어를 주어로. 앞 문장과 아무 이음 없이 새 사실로 시작하는 문장을 두지 마라. "
+    "새로 꺼내는 내용은 문장 끝에 두어 다음 문장이 받게 한다. 이런 평범한 이음말은 기계가 쓴 티가 아니니 아끼지 마라 — 다만 관계가 실제로 그럴 때만 쓰고, 덧붙임(Moreover·Furthermore·Additionally)은 문단에 한 번까지. 이음의 방법을 섞는다: 같은 말로 시작하는 문장(Such …, This …, For example/For instance)이 문단에 세 번 이상 나오지 않게.\n"
+    "- 인용은 그 사실을 처음 말하는 자리에 한 번 단다 — 문장 가운데(그 사실을 말한 구 바로 뒤)에 달아도 된다. 같은 근거를 이어서 펴는 문장, 귀결을 말하는 문장, 틀·연결 문장, 저자의 추론에는 인용을 달지 않는다. "
+    "'주장 + 인용 묶음'으로 끝나는 문장이 연달아 나오면 인용을 나열한 글로 읽힌다 — 인용으로 끝나는 문장은 문단의 절반 이하, 연달아서는 둘까지. 한 문장에 인용 자리는 많아야 둘.\n"
+    "- 여러 논문이 같은 점을 받치면 그 점을 저자의 말로 한 번 말하고 인용을 묶어 단다([@A][@B]) — 논문마다 문장을 따로 세우지 않는다. "
+    "묶어서 일반화할 때는 근거가 받치는 폭까지만(사례가 두 재료뿐이면 'in several ductile metals'·'e.g.' 처럼 폭을 드러내고 '모든'·'항상'으로 넓히지 않는다).\n"
     "- 문장의 주어는 현상·재료·공정이다. 논문이나 저자를 주어로 세우는 문장('A et al. showed …')은 그 연구가 논증의 전환점일 때만.\n"
-    "- 틀을 잡는 문장, 앞뒤를 잇는 문장, 저자의 추론은 인용 없이 쓴다. 잘 쓴 서론 문단은 문장 서넛 중 하나가 그렇다.\n"
-    "- 개별 논문의 세부(재료·수치·조건)는 논증을 앞으로 밀 때만 넣는다 — 기전을 설명하거나, 숫자가 요점이거나, 일반론의 예외일 때. 같은 사실을 두 번 말하지 마라.\n"
-    "- 여러 근거가 같은 방향을 가리키면 저자의 말로 묶어 일반화해도 된다(그때 인용은 그 사례들이다). 단 근거가 받치는 폭까지만 — 사례가 두 재료뿐이면 'in several ductile metals'·'e.g.' 처럼 폭을 드러내고 '모든'·'항상'으로 넓히지 않는다.\n"
-    "- 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장은 대체로 15~35 단어로 길이를 섞고, 쌍반점으로 문장을 잇지 않는다. 인용하는 논문도 논증에 필요한 만큼만(250 단어에 6~10편이 보통이다).\n"
+    "- 같은 사실을 두 번 말하지 마라. 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장은 대체로 15~35 단어로 길이를 섞고, 쌍반점으로 문장을 잇지 않는다.\n"
     "- 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 저자의 주문이 정한 흐름의 마지막 걸음에서 끝낸다 — 주문에 없는 본 연구의 결과·연구 질문으로 건너뛰지 마라(그것은 다른 문단의 몫이다).\n"
     "- 영어로 쓸 때 기계가 쓴 티가 나는 말버릇을 쓰지 마라: notably, crucial, pivotal, comprehensive, intricate, delve, underscore, shed light, 'plays a key role', 'it is worth noting', 'not only … but also', 'a wide range of', "
     "줄표(—)로 끼워 넣는 삽입구, 무엇이든 셋씩 나열하기, 교훈을 말하는 맺음.\n")
+_FLOW_CITE = r"(?:\[@[^\]\s,;]+\]\s*)+|\[\d[\d,\u2013\u2014\- ]*\]"
+_FLOW_CONN = re.compile(
+    r"^(?:(?:however|thus|therefore|hence|consequently|as a result|as such|for example|for instance|furthermore|moreover|in addition|additionally|first|second|third|lastly|finally|in contrast|"
+    r"on the other hand|by contrast|conversely|yet|but|while|although|though|since|because|accordingly|similarly|likewise|indeed|in particular|specifically|of course|to this end|more recently|"
+    r"recently|then|here|in turn|instead|nevertheless|nonetheless|even|when|once|if|under|to|one of|one is|one factor|another|a second|a third|the first|the second|the third|the remaining|a further)\b"
+    r"|그러나|하지만|따라서|그러므로|그 결과|이에 따라|이 때문에|예를 들어|예컨대|또한|한편|반면|나아가|더욱이|특히|즉|다만|그럼에도|이와 달리|마찬가지로|첫째|둘째|셋째|마지막으로|먼저|다음으로|실제로|그런데|이처럼|이로써|여기서|이때)", re.I)
+_FLOW_CONN_IN = re.compile(r"^(?:\S+\s+){1,3}(?:however|therefore|thus|also|in turn|too|likewise|instead|for example|for instance|then|accordingly)\b", re.I)
+_FLOW_BACK = re.compile(r"^(?:(?:this|these|those|such|the same|the latter|the former|its|their|it|they|each|both|here|there)\b|이 |이는|이러한|이들|이런|그 |그러한|이것|이와|이를|이에|앞서|해당|같은 )", re.I)
+_FLOW_STOP = set("the a an of in on at to for from by with and or as is are was were be been has have had that this these those which its their it they not no can may such than then also into over under "
+                 "between during using based more most other some any all each both one two three when while where how what whose who".split())
+
+
+def _flow(text):
+    """문장과 문장이 어떻게 이어지는지 센다(영어·한국어) → {n, loose[이음 없이 시작하는 문장 번호], tied(이음말이나 앞 문장을 가리키는 말로 시작하는 문장 수), ends(인용으로 끝나는 문장 수),
+    run(그런 문장이 연달아 가장 긴 것), run_at[시작, 끝], marks[고쳐 쓰기에 줄 지적]}. 잘 쓴 서론 문단 6개의 평균: 이음 없음 5%, 이음말·가리킴 70%, 인용으로 끝남 37%, 연달아 2.3문장."""
+    flat = re.sub(r"\s+(" + _FLOW_CITE + r")\s*([.,;])", r" \1\2", _norm_ws(text))
+    sents = [x for x in re.split(r"(?<=[.!?])\s+(?=[A-Z\uac00-\ud7a3\u201c\"'(])", flat) if len(x) > 12]
+
+    def words(t):
+        t = re.sub(_FLOW_CITE, " ", t).lower()
+        return {w[:6] for w in re.findall(r"[a-z]{4,}", t) if w not in _FLOW_STOP} | {w[:2] for w in re.findall(r"[\uac00-\ud7a3]{2,}", t)}
+    loose, tied, ends, run, best, at = [], 0, 0, 0, 0, [0, 0]
+    for i, st in enumerate(sents):
+        bare = re.sub(_FLOW_CITE, " ", st).strip()
+        end = bool(re.search(r"(?:" + _FLOW_CITE + r")\s*[.;]?\s*$", st))
+        ends += end
+        run = run + 1 if end else 0
+        if run > best:
+            best, at = run, [i + 2 - run, i + 1]
+        if i == 0:
+            continue
+        link = bool(_FLOW_CONN.match(bare) or _FLOW_CONN_IN.match(bare) or _FLOW_BACK.match(bare))
+        tied += link
+        if not link and not (words(" ".join(bare.split()[:8])) & words(sents[i - 1])):
+            loose.append(i + 1)
+    n = len(sents)
+    marks = []
+    if len(loose) >= 2:
+        marks.append("- 짜임(이음): 문장 %s 이(가) 앞 문장과 아무 이음 없이 새 사실로 시작한다 — 앞 문장이 끝에 내놓은 것을 첫머리에서 받거나, 관계를 밝히는 이음말로 시작하게 고쳐라." % ", ".join(str(x) for x in loose))
+    if n >= 5 and tied < 0.45 * (n - 1):
+        marks.append("- 짜임(이음): 이음말이나 앞 문장을 가리키는 말로 시작하는 문장이 %d개 중 %d개뿐이다 — 문장들이 나란히 놓인 목록으로 읽힌다. 문장마다 앞 문장과의 관계(대조·귀결·예시·차례)를 밝히거나 앞 문장의 내용을 받아 시작하게 고쳐라." % (n - 1, tied))
+    if (best >= 4 or (n >= 5 and ends > 0.6 * n)) and tied < 0.6 * (n - 1):   # 이음말로 잘 이어진 열거(First … Second … Lastly …)는 문장마다 인용이 있어도 나열로 읽히지 않는다
+        marks.append("- 짜임(인용 나열): 문장 %d개 중 %d개가 '주장 + 인용'으로 끝나고, 문장 %d~%d 은 연달아 그렇다 — 인용을 나열한 글로 읽힌다. 그 대목을 덩이로 다시 짜라: 머리 문장을 세우고, 근거 한두 편을 골라 "
+                     "그 내용을 두세 문장으로 편다(무엇을 보였나 → 왜 그런가 → 그래서 무엇이 따르나). 인용은 그 사실을 처음 말한 자리에 한 번만 달고, 펴는 문장에는 달지 않는다. 덜 중요한 근거와 그 인용은 뺀다." % (n, ends, at[0], at[1]))
+    return {"n": n, "loose": loose, "tied": tied, "ends": ends, "run": best, "run_at": at, "marks": marks}
+
+
 # 근거의 규칙 — 같은 시험에서 인용 문장 넷 중 하나가 근거보다 나아갔다: 재인용을 그 논문의 결과로, 옛 논문의 '아직 모른다'를 지금의 공백으로, 사례보다 넓은 일반화, 다른 스케일에 옮겨 적용.
 _LIBX_GROUND = (
     "[근거 — 믿을 수 있게]\n"
@@ -1646,7 +1697,8 @@ def _libx_check(text, evid, job, model, eff, run):
         "- prose: 글의 문제만, 심사위원이 고치라고 요구할 만큼 뚜렷한 것만 낸다(취향의 차이, 더 좋게 쓸 수도 있었다는 정도는 내지 마라. 없으면 빈 배열). "
         "sev: major = 그대로는 실을 수 없다(문단이 논증으로 읽히지 않게 만드는 문제) / minor = 손보면 좋다. stitched = 인용 하나에 문장 한 조각씩 이어 붙였다 / list = 사례를 늘어놓은 문장 / repeat = 같은 사실을 되풀이한다 / "
         "overcite = 한 문장에 인용 자리가 셋 이상이거나 인용이 지나치게 촘촘하다 / subject = 논문·저자를 주어로 세운 문장이 잦다 / ending = 마지막 문장이 요약·교훈이다 / phrase = 기계가 쓴 티가 나는 말버릇. at = 문장 번호(1부터).\n"
-        "- reads: 통독했을 때 저자가 자기 말로 펴는 논증으로 읽히면 argued, 인용을 모아 이어 붙인 글로 읽히면 assembled.\n\n"
+        "- reads: argued = 문장마다 앞 문장을 이어받고(이음말, 앞 문장의 내용을 받는 첫머리) 덩이의 짜임이 있어 저자가 펴는 논증으로 읽힌다 / "
+        "assembled = '사실 + 인용'인 문장들이 이음 없이 나란히 놓여 인용을 모아 늘어놓은 글로 읽힌다(인용으로 끝나는 문장이 연달아 나온다).\n\n"
         "[이 문단이 할 일]\n%s\n\n[문단]\n%s\n\n[근거]\n%s" % (job[:1500], text, evid))
     res = run(prompt, timeout=900, model=model, effort=eff, tools="")
     r = _json_in((res or {}).get("text") or "")
@@ -1735,14 +1787,15 @@ def lib_use(doc, body):
         tail = "- 저자의 주문: " + job + "\n\n[주제]\n" + item.get("topic", "") + "\n\n[근거 — E번호 = 논문, E번호.번호 = 문장, ↳ = 그 문장이 인용한 원저]\n" + evid
         prompt = (head +
             "이 근거로 원고에 넣을 문단을 써 달라고 한다. 좋은 저널 논문의 문단은 근거를 차례로 옮긴 글이 아니라, 저자가 자기 목소리로 펴는 논증에 문헌이 받침으로 붙은 글이다. 그렇게 쓰려면 순서대로 하라:\n"
-            "① 뼈대 — 이 문단이 독자를 어디서 어디로 데려가는지 3~6걸음으로 정한다. 걸음 하나는 저자가 하는 주장 한 문장(문헌을 가리지 않고도 읽히는 말)이다. 걸음마다 앞 걸음에서 어떻게 넘어오는지(이유·대조·귀결)도 정한다. 저자의 주문에 흐름이 있으면 그 흐름을 따른다.\n"
-            "② 걸음마다 그 주장을 받치는 근거 문장(E번호.번호)을 고른다. 근거를 다 쓰려 하지 마라 — 논증에 필요한 것만 쓰고 나머지는 버린다.\n"
+            "① 짜임 — 문단을 주제문과 덩이 2~4개로 짠다(저자의 주문에 흐름이 있으면 그 흐름의 걸음이 덩이가 된다). 덩이마다 머리 문장이 할 주장(문헌을 가리지 않고도 읽히는 저자의 말)을 정하고, "
+            "그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)를 정한다. 그리고 문장마다 앞 문장과 무엇으로 이을지 — 어떤 이음말로, 또는 앞 문장의 무엇을 받아 시작할지 — 를 정한다.\n"
+            "② 덩이마다 받칠 근거 문장(E번호.번호)을 고른다. 근거를 다 쓰려 하지 마라 — 덩이마다 한두 편을 깊게 쓰고 나머지는 버린다.\n"
             "   저자의 주문에 적힌 걸음은 받칠 근거가 서재에 없어도 빼지 않는다 — 저자가 아는 것이다. 그 걸음이 저자의 논지·동기(왜 이 연구가 필요한가)면 인용 없이 저자의 말로 쓰고, "
             "문헌이 있어야 할 구체적인 사실이면 그대로 쓰되 인용 자리에 [@?] 를 달아 저자가 출처를 달게 한다(어느 문장인지 answer 에 알린다). 주문에 없는 걸음을 근거 없이 지어 넣지는 마라.\n"
-            "③ 뼈대대로 글을 쓴다.\n"
+            "③ 짠 대로 글을 쓴다. 쓴 뒤 스스로 읽어 본다: 문장마다 첫머리가 앞 문장을 이어받는가, '주장 + 인용'으로 끝나는 문장이 연달아 셋 이상 나오지 않는가. 걸리면 고친 뒤에 낸다.\n"
             "먼저 JSON 하나로 답하고:\n"
             "{\"answer\": \"무엇을 어떻게 썼는지, 어디에 넣으면 좋은지, 저자가 확인할 것(근거가 모자란 걸음, 재인용) — 한국어 2~5문장\", "
-            "\"plan\": [{\"move\": \"걸음 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"]}]}\n"
+            "\"plan\": [{\"move\": \"덩이의 주장 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"], \"sents\": [\"머리: 할 말\", \"귀결 (앞 문장의 무엇을 받아, 또는 어떤 이음말로): 할 말\"]}]}\n"
             "그 뒤에 쓴 글을 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(쓴 문단들 — 문단 사이는 빈 줄, 제목 줄 없이)\n<<<END>>>\n"
             "규칙:\n"
             "- 넣을 곳: " + place + ". 그 절의 지금 글과 앞뒤 절을 읽고, 이미 쓴 내용과 겹치지 않고 이어지게 쓴다. 원고의 언어·문체·용어·기호를 따른다.\n"
@@ -1823,16 +1876,18 @@ def lib_use(doc, body):
             chk, r2 = _libx_check(text, evid, job, model, ceff, run)
             use["tok"] = _tok_add(use["tok"], (r2 or {}).get("tok"))
             draft, changes, rounds, chk0 = "", "", 1, None
-            if _libx_redo(chk):
+            flow = flow0 = _flow(text)
+            if _libx_redo(chk) or flow["marks"]:
                 marks = []
-                for i, x in enumerate(chk["sentences"]):
+                for i, x in enumerate((chk or {}).get("sentences") or []):
                     if x in _libx_bad(chk):
                         marks.append("- 문장 %d \"%s…\": %s%s — %s%s" % (i + 1, x["s"][:70], x["verdict"], ("/" + x["type"]) if x["type"] else "", x["why"], (" → " + x["fix"]) if x["fix"] else ""))
-                for x in chk["prose"]:
+                for x in (chk or {}).get("prose") or []:
                     if x["sev"] == "major" or chk["reads"] == "assembled":
                         marks.append("- 글(%s) 문장 %s: %s" % (x["kind"], ", ".join(str(v) for v in x["at"]) or "전체", x["note"]))
-                if chk["reads"] == "assembled":
+                if chk and chk["reads"] == "assembled":
                     marks.append("- 통독: 저자의 논증이 아니라 인용을 모아 이어 붙인 글로 읽힌다.")
+                marks += flow["marks"]
                 stage("revise")
                 rprompt = (head +
                     "앞서 이 근거로 쓴 [문단]을 심사위원이 근거와 대조하고 글을 읽어 보았다 — 아래 [지적]. 문단을 고쳐 써라.\n"
@@ -1841,28 +1896,33 @@ def lib_use(doc, body):
                     "고친 글의 인용 자리와 문헌 수는 처음 글보다 늘지 않아야 한다.\n"
                     "- 원저가 풀리지 않은 재인용(secondhand 인데 달 원저 열쇠가 근거에 없다)은 논증에 꼭 필요하면 그대로 두고(저자가 원저를 찾는다), 아니면 뺀다.\n"
                     "- 저자의 주문에 적힌 걸음은 근거가 없어도 지우지 않는다: 저자의 논지는 저자의 말로 두고, 문헌이 있어야 할 사실은 근거 없는 열쇠를 떼고 [@?] 를 단다. [@?] 가 달린 문장은 그대로 둔다.\n"
-                    "- 글 지적이 있으면 그 대목을 다시 엮는다. 이어 붙임·나열·되풀이는 낱말을 손보는 것으로 고쳐지지 않는다 — 그 대목이 말하려는 주장을 먼저 한 문장으로 정하고, 사례는 그 받침으로 문장 끝에 묶어라.\n"
-                    "- 지적이 없는 문장은 글자 그대로 둔다(멀쩡한 문장을 다시 쓰지 마라). 새 사례·새 내용·새 문헌을 더하지 마라 — 걸린 문장을 근거 안에 들이는 데 꼭 필요할 때만. 고친 뒤에도 흐름과 분량이 저자의 주문에 맞아야 한다.\n"
+                    "- 글·짜임 지적이 있으면 그 대목을 다시 짠다(이때는 지적이 없는 이웃 문장의 첫머리와 순서도 손봐도 된다). 이어 붙임·나열은 낱말을 손보는 것으로 고쳐지지 않는다 — "
+                    "그 대목의 머리 문장을 세우고, 근거 한두 편을 두세 문장으로 펴고, 덜 중요한 근거와 그 인용은 뺀다. 문장마다 앞 문장을 이어받아 시작하게 한다. 다만 근거와 맞던 말을 근거 밖으로 내보내지 마라.\n"
+                    "- 그 밖에 지적이 없는 문장은 글자 그대로 둔다(멀쩡한 문장을 다시 쓰지 마라). 새 사례·새 내용·새 문헌을 더하지 마라 — 걸린 문장을 근거 안에 들이는 데 꼭 필요할 때만. 고친 뒤에도 흐름과 분량이 저자의 주문에 맞아야 한다.\n"
                     "먼저 JSON 하나로 답하고: {\"changes\": \"무엇을 왜 고쳤는지 한국어 1~3문장\"}\n"
                     "그 뒤에 고친 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(문단)\n<<<END>>>\n"
                     "규칙:\n" + _LIBX_STYLE + cite_rule +
                     "- 저자의 주문: " + job + "\n\n[지적]\n" + "\n".join(marks) + "\n\n[문단]\n" + text + "\n\n[근거 — E번호 = 논문, E번호.번호 = 문장, ↳ = 그 문장이 인용한 원저]\n" + evid)
-                r3 = run(pre + rprompt, timeout=1500, model=model, effort=None if eff in ("xhigh", "max") else eff, tools="", system=system or None)   # 걸린 곳만 손보는 일 — 보통 노력으로
+                # 걸린 문장만 손보는 일은 보통 노력으로, 문단을 다시 짜야 하면(짜임 지적) 쓴 때와 같은 노력으로
+                r3 = run(pre + rprompt, timeout=1500, model=model, effort=eff if flow["marks"] or eff not in ("xhigh", "max") else None, tools="", system=system or None)
                 use["tok"] = _tok_add(use["tok"], (r3 or {}).get("tok"))
                 j3, text2 = _rewrite_in((r3 or {}).get("text") or "")
                 if text2 and _norm_ws(text2) != _norm_ws(text):
                     stage("recheck")
                     chk2, r4 = _libx_check(text2, evid, job, model, ceff, run)
                     use["tok"] = _tok_add(use["tok"], (r4 or {}).get("tok"))
-                    worse = chk2 and (len(_libx_bad(chk2)) > len(_libx_bad(chk)) or (chk2["reads"] == "assembled" and chk["reads"] != "assembled"))
+                    flow2 = _flow(text2)
+                    b1, b2 = len(_libx_bad(chk)) if chk else 99, len(_libx_bad(chk2)) if chk2 else 99
+                    worse = b2 > b1 or (chk2 and chk and chk2["reads"] == "assembled" and chk["reads"] != "assembled") or (b2 == b1 and len(flow2["marks"]) > len(flow["marks"]))
                     if chk2 and not worse:   # 고쳐서 나빠지지 않았을 때만 고친 글을 쓴다
-                        draft, text, chk0, chk, rounds, changes = text, text2, chk, chk2, 2, str(j3.get("changes") or "").strip()
+                        draft, text, chk0, chk, rounds, changes, flow = text, text2, chk, chk2, 2, str(j3.get("changes") or "").strip(), flow2
             for c in (chk, chk0):
                 for x in (c or {}).get("sentences") or []:
                     x["ev"] = ev_of(x["ev"])
-            plan = [{"move": str(x.get("move") or "").strip(), "ev": ev_of(x.get("ev"))} for x in (r.get("plan") or [])[:8] if isinstance(x, dict) and str(x.get("move") or "").strip()]
+            plan = [{"move": str(x.get("move") or "").strip(), "ev": ev_of(x.get("ev")), "sents": [str(v).strip()[:300] for v in (x.get("sents") or [])[:5] if str(v).strip()]}
+                    for x in (r.get("plan") or [])[:8] if isinstance(x, dict) and str(x.get("move") or "").strip()]
             known = set(by_key) | set(prims)
-            use.update(answer=str(r.get("answer") or "").strip(), plan=plan, text=text, cites=cites_for(text), check=chk, check0=chk0, rounds=rounds, draft=draft, changes=changes,
+            use.update(answer=str(r.get("answer") or "").strip(), plan=plan, text=text, cites=cites_for(text), check=chk, check0=chk0, rounds=rounds, draft=draft, changes=changes, flow=flow, flow0=flow0 if rounds == 2 else None,
                        unknown=[k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", text)) if k not in known and k != "?"], todo=text.count("[@?]"), sec=round(time.time() - t0))
             steps[-1][1] = round(time.time() - steps[-1][2])
             use["steps"] = [[x[0], x[1]] for x in steps]

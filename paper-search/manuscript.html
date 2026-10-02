@@ -1704,6 +1704,13 @@ const LIB_VT = { general: "사례보다 넓게 일반화", stale: "옛 논문이
 const libTodo = x => x.verdict === "own" && x.type === "brief";
 const libBad = x => x.verdict === "over" || x.verdict === "none" || (x.verdict === "own" && x.type === "needs");
 const libEvHtml = ev => (ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + (e.sent ? "&kind=translation&sent=" + e.sent : "") + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("");
+function libFlowHtml(u) {   // 문장과 문장의 이음 (서버가 센 것): 앞 문장과 이음 없이 시작하는 문장, 인용으로 끝나는 문장이 연달아 나오는지
+  const f = u.flow; if (!f || !f.n) return "";
+  const loose = f.loose || [];
+  return "<br>문장 이음: 이음말이나 앞 문장을 받는 말로 시작하는 문장 " + f.tied + "/" + Math.max(0, f.n - 1) + (loose.length ? " · 이음 없이 시작하는 문장 " + loose.join(", ") + "번" : "") +
+    " · 인용으로 끝나는 문장 " + f.ends + "/" + f.n + (f.run >= 3 ? " (연달아 " + f.run + "문장)" : "") +
+    ((f.marks || []).length ? " <span style='color:var(--amber)'>— 아직 사실을 나란히 늘어놓은 글로 읽힐 수 있습니다. 주문에 문단의 흐름을 더 자세히 적어 다시 써 보세요.</span>" : "");
+}
 function libCheckHtml(u) {
   if (!u.plan && !u.check) return "";   // 예전에 쓴 글 (대조하지 않았다)
   const c = u.check;
@@ -1719,11 +1726,11 @@ function libCheckHtml(u) {
       " · <b style='color:" + (bad.length ? "var(--amber)" : "var(--green)") + "'>확인할 곳 " + bad.length + "</b>" + (ss.some(x => x.second) ? " · 재인용에 기댄 문장 " + ss.filter(x => x.second).length : "") +
       (u.rounds > 1 ? "<br>처음 쓴 글에서 걸린 " + (((u.check0 || {}).sentences || []).filter(libBad).length || "몇") + "곳을 고쳐 쓴 뒤 다시 대조한 결과입니다." + (u.changes ? " " + esc(u.changes) : "") : "") +
       (c.reads === "assembled" ? "<br><span style='color:var(--amber)'>통독: 아직 인용을 이어 붙인 글로 읽힙니다 — 손보거나 주문을 바꿔 다시 써 보세요.</span>" : "") +
-      (c.prose || []).map(p => "<br>글: " + esc(p.note)).join("") + "</div>" +
+      (c.prose || []).map(p => "<br>글: " + esc(p.note)).join("") + libFlowHtml(u) + "</div>" +
       bad.map(row).join("") + sec.map(row).join("") +
       (rest.length ? "<details class='libmore'><summary>" + (bad.length || sec.length ? "나머지 문장 " : "문장 ") + rest.length + "개와 그 근거</summary>" + rest.map(row).join("") + "</details>" : "");
   }
-  return h + ((u.plan || []).length ? "<details class='libmore'><summary>문단의 뼈대 (" + u.plan.length + "걸음)</summary>" + u.plan.map((p, i) => "<div class='libchk nv'><div class='q'>" + (i + 1) + ". " + esc(p.move) + "</div>" + libEvHtml(p.ev) + "</div>").join("") + "</details>" : "") +
+  return h + ((u.plan || []).length ? "<details class='libmore'><summary>문단의 짜임 (덩이 " + u.plan.length + "개)</summary>" + u.plan.map((p, i) => "<div class='libchk nv'><div class='q'>" + (i + 1) + ". " + esc(p.move) + "</div>" + (p.sents || []).map(t => "<div>· " + esc(t) + "</div>").join("") + libEvHtml(p.ev) + "</div>").join("") + "</details>" : "") +
     (u.draft ? "<details class='libmore'><summary>처음 쓴 글과 견주기</summary><div class='rvdiff'>" + wordDiff(u.draft, u.text) + "</div></details>" : "");
 }
 const LIB_KIND = { ok: "인용이 맞음", weak: "인용이 약함", uncited: "인용 없음", conflict: "근거와 어긋남", add: "넣으면 좋음" };
