@@ -1611,9 +1611,11 @@ def _tok_add(a, b):
 # ② '모든 문장이 앞 문장을 이어받게' → 잘 쓴 문단 8개에는 맞았지만 서재의 논문 전체(IJMTM 25편·JMPT 12편)보다 촘촘했다: 접속 부사·받는 말로 시작하는 문장 60%(논문 39%), 인용이 달린 문장 67%(50%),
 # 접속 부사를 주어 뒤에 끼운 문장 12~18%(논문 1~4%, 그것도 거의 also). ③ 기준을 내가 정한 숫자가 아니라 서재의 그 저널 논문에서 잰 평균(_style_norms)으로, 드문 것(문장 가운데 접속 부사, 저자 주어)은 사례로.
 # Stylus — Athenaeum 의 글쓰기 지능(사용자가 붙인 이름, 2026-10-05): 문단의 짜임·문장 이음·새 대목을 여는 법·인용 자리의 규칙 + 서재 논문에서 잰 사례와 범위 + 근거 대조.
-# 판: 1 = 뼈대 → 쓰기 → 근거 대조 → 고쳐 쓰기(2026-10-02) · 2 = 관계마다 논문이 드러내는 방법을 사례로, 숫자는 쓰고 난 뒤 범위 확인(10-02) · 3 = 새 대목을 여는 문장·90% 범위·대화에도 적용(10-02~05).
-# 규칙을 바꾸면 번호를 올리고 CLAUDE.md 의 'Stylus' 에 무엇이 바뀌었는지 적는다. 문단 쓰기·대화의 결과에 남아 화면에 'Stylus 3' 으로 보인다.
-STYLUS = "Stylus 3"
+# 판 번호(사용자 뜻, 2026-10-05): 서론 문단 쓰기·대화까지 다듬은 지금이 Stylus 1. 업데이트마다 1.1 · 1.1.1 · 1.1.2 …, 큰 변동이면 1.2, 획기적이면 2.0.
+#   1 = 서론(문헌 문단): 뼈대 → 쓰기 → 근거 대조 → 고쳐 쓰기, 관계마다 논문이 드러내는 방법을 사례로, 새 대목을 여는 문장, 쓰고 난 뒤 90% 범위 확인, 대화에도 적용 (2026-10-02~05)
+#   1.1 = 결론 쓰기(stylus_conclusion): 결론의 논리(문장마다 왜 그 자리인가) + 원고 안의 결과·논의와 대조 + 수치 그대로 확인 (2026-10-05)
+# 규칙을 바꾸면 번호를 올리고 CLAUDE.md 의 'Stylus' 에 무엇이 바뀌었는지 적는다. 문단 쓰기·대화·결론의 결과에 남아 화면에 보인다.
+STYLUS = "Stylus 1.1"
 _LIBX_STYLE = (
     "[글 — 문단의 짜임과 이음]\n"
     "- 문단은 사실을 한 문장씩 늘어놓은 목록이 아니라 짜임이다: 주제문 → 덩이 2~4개 → (필요하면) 전환이나 맺음. 덩이 하나는 머리 문장(주장) 하나와 그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)로 이루어지고, "
@@ -4277,6 +4279,197 @@ def _ask_selection(doc, body):
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
 
+# ---------- Stylus 1.1 · 결론 쓰기 ----------
+# 사용자(2026-10-05): '통계도 중요하지만 통계는 검토할 때나 쓰는 것. 메인 논리가 중요하다 — 왜 이게 처음에 나오고 왜 둘째로, 셋째로 나오는지.'
+# 그래서 쓸 때는 아래 논리만 주고, 서재의 IJMTM 26편·JMPT 13편 결론에서 잰 범위(_CONCL_BAND)는 쓰고 난 뒤의 확인에만 쓴다.
+_CONCL_LOGIC = (
+    "[결론의 논리 — 문장마다 왜 그 자리에 오는가]\n"
+    "1. 첫 문장: 이 연구가 무엇을 무엇으로 어떻게 했는지(수행). 결론만 읽는 독자가 많다 — 뒤의 결과를 해석할 틀이 먼저 있어야 한다. 서론의 배경이나 문제를 되풀이하지 않는다(결론은 답하는 자리지 문제를 다시 세우는 자리가 아니다). "
+    "1~2문장 — 재료·공정·방법의 이름까지만, 실험 조건의 수치는 결과를 읽는 데 꼭 필요한 것만.\n"
+    "2. 결과 묶음: 서론 끝에 세운 물음(또는 결과 절이 다룬 물음)의 차례대로 답한다 — 결론은 논증의 재연이다. 물음 하나에 결과 한두 문장(본문에서 관찰·측정한 것, 수치는 본문의 것 그대로) + 그것이 뜻하는 바·까닭 한 문장(해석). "
+    "관찰만 늘어놓으면 데이터 목록이고, 해석만 쓰면 받침 없는 주장이다. 다만 결과 문장마다 해석을 달지는 않는다 — 결과 두세 개를 묶어 해석 하나(이 분야 논문의 결론에서 해석 문장은 일곱에 하나쯤이고 결과 문장이 셋에 하나다). 결과 사이의 차례는 의존 관계를 따른다: 현상(무엇이 일어나나) → 조건(언제·어디서) → 기전(왜) → 귀결(그래서 무엇이 달라지나) — 뒤의 것이 앞의 것을 전제로 한다. "
+    "**물음은 보통 2~4개다 — 본문의 결과를 모두 옮기지 않는다.** 결론은 답을 꿰는 자리지 결과 절의 재진술이 아니다: 물음에 답하는 결과만 고르고, 그 답을 이루지 않는 세부 수치·조건별 관찰은 뺀다(본문에 있다). 한 물음에 둘째·셋째 결과를 붙일 때도 해석은 하나로 묶는다. "
+    "수치는 답의 크기를 보여 주는 대표값 하나씩만(이 분야 논문의 결론은 결과 문장 다섯에 하나에 수치가 든다) — 한 문장에 수치를 셋 넘게 늘어놓지 않고, 조건별 값의 나열(λ 가 몇에서 몇, Sa 가 몇에서 몇 …)은 본문에 둔다.\n"
+    "3. 종합: 결과가 셋 이상이면 그것들을 묶어 연구 질문에 대한 큰 답을 한두 문장으로 — 독자가 결과 목록에서 스스로 꿰어야 할 것을 저자가 꿰어 준다.\n"
+    "4. 끝: 이 답이 누구에게 어디에 쓸모 있는가(의의) 또는 무엇이 남았는가(향후) — 끝 문장은 독자가 가져갈 말이어야 한다. 한계는 쓰더라도 1~2문장, 끝 바로 앞에.\n"
+    "5. 하지 않는 것: 문헌 인용(결론은 이 연구의 말이다), 본문에 없는 주장·수치, 새로움의 과장('for the first time' 은 정말 그럴 때 한 번), 교훈조의 맺음, 결과 절의 문장을 그대로 베끼기(말을 줄여 다시 쓴다), 서론의 되풀이.\n"
+    "6. 꼴: 저자가 정하지 않았으면 문단으로 쓴다(2~4문단: 수행 / 결과들 / 종합·의의). 저자가 '목록' 이라 했으면 결과 묶음을 (1) (2) … 번호 항목으로 — 항목마다 결과 + 해석의 두 문장.\n"
+    "7. 문장: 앞 문장을 이어받는 방법은 서론과 같다(접속 부사는 맨 앞에, 가운데는 also 만; 관계가 실제로 그럴 때만). 완곡한 말(may·suggest)은 해석에만, 결과에는 쓰지 않는다. 문장 길이는 섞는다.\n"
+    "8. 분량: 결론은 1분 안에 읽히는 요약이다 — 이 분야 논문의 결론은 가운데가 문장 15개·낱말 400개이고, 긴 결과 절을 가진 논문도 20문장을 넘기는 일이 드물다. 주문에 분량이 없으면 문장 8~16개·낱말 250~450개 안에서 쓴다. 길어지면 결과를 더 쓰지 말고 물음 단위로 묶어라.\n")
+# 쓰고 난 뒤의 확인 — 2026-10-05 에 서재의 IJMTM 26편·JMPT 13편 결론에서 잰 것(논문의 90% 가 드는 범위). 문장 수 · 낱말 수 · 수치가 든 문장 % · 완곡한 말이 든 문장 % · 접속 부사·받는 말로 시작하는 문장 % · 인용이 든 문장 수
+_CONCL_BAND = {"nsent": (6, 36), "words": (155, 879), "num": (5, 55), "hedge": (0, 31), "tied": (0, 50), "cited": (0, 1)}
+_CONCL_SHARE = {"수행": (0, 54), "결과": (0, 57), "해석": (0, 36), "의의": (0, 20), "향후": (0, 16), "배경": (0, 37), "한계": (0, 15), "새로움": (0, 20)}   # 걸음마다 문장의 비율(%)
+_CONCL_MOVES = ("수행", "결과", "해석", "의의", "향후", "배경", "한계", "새로움", "그밖")
+_NUM_RX = re.compile(r"(?<![A-Za-z\[])\d+(?:[.,]\d+)*(?![\]\d])")
+_HEDGE_RX = re.compile(r"\b(may|might|could|possibly|likely|suggest(?:s|ed)?|appears?|appeared|seem(?:s|ed)?|tends?|tended|probably|potentially|it is believed)\b", re.I)
+
+
+def _concl_flow(text):
+    """결론이 논문의 범위 안인지 — 쓰고 난 뒤의 확인. → {n, words, num, hedge, tied, cited, out[], notes[]}"""
+    st = _flow_stats(text)
+    ss = _flow_sents(text, _FLOW_CITE)
+    n = max(1, len(ss))
+    v = {"n": len(ss), "words": len(text.split()), "num": round(100.0 * sum(1 for t in ss if _NUM_RX.search(re.sub(_FLOW_CITE, " ", t))) / n),
+         "hedge": round(100.0 * sum(1 for t in ss if _HEDGE_RX.search(t)) / n), "tied": round(100.0 * st["tied"] / max(1, n - 1)), "cited": st["cited"]}
+    names = {"nsent": "문장 수", "words": "낱말 수", "num": "수치가 든 문장", "hedge": "완곡한 말(may·suggest …)이 든 문장", "tied": "접속 부사나 받는 말로 시작하는 문장", "cited": "인용이 든 문장"}
+    out, notes = [], []
+    for k, (lo, hi) in _CONCL_BAND.items():
+        x = v["n"] if k == "nsent" else v[k]
+        if x < lo or x > hi:
+            out.append(k)
+            notes.append("%s %s%s — 논문 결론의 90%%는 %s~%s%s" % (names[k], x, "" if k in ("nsent", "words", "cited") else "%", lo, hi, "" if k in ("nsent", "words", "cited") else "%"))
+    if st["mid"]:
+        out.append("mid"); notes.append("문장 %s 은 접속 부사가 주어 뒤에 있음" % ", ".join(str(x[0]) for x in st["mid"]))
+    v.update(out=out, notes=notes)
+    return v
+
+
+def _concl_numbers(text, doc, nid, key):
+    """결론의 수치 가운데 원고의 다른 절(초록 포함)에 없는 것 — 결론에 새 수치를 들이지 않았는지(프로그램이 확인, 연도는 뺀다)."""
+    body = [(doc.get("front") or {}).get("abstract") or ""]
+    for n in doc.get("outline") or []:
+        if str(n.get("id")) != str(nid):
+            body.append((n.get(key) or n.get("draft_en" if key == "draft" else "draft") or ""))
+    for f in doc.get("figures") or []:
+        body.append(str(f.get("caption") or ""))
+    norm = lambda x: x.replace(",", "")
+    have = {norm(x) for x in _NUM_RX.findall(" ".join(body))}
+    out = []
+    for x in dict.fromkeys(_NUM_RX.findall(re.sub(_FLOW_CITE, " ", text))):
+        if re.match(r"^(19|20)\d\d$", x) or norm(x) in have or len(x) <= 1:   # 연도·한 자리 수(항목 번호 (1) 등)는 넘긴다
+            continue
+        out.append(x)
+    return out
+
+
+def _concl_check(text, doc, nid, key, system, pre, run, model):
+    """쓴 결론을 원고와 대조한다(다른 호출): 문장마다 걸음 · 원고의 어느 절이 받치는가 · 받침보다 나아갔는가. → (check, 결과)"""
+    prompt = (pre +
+        "당신은 기계가공 분야 국제 저널의 까다로운 심사위원이다. 위에 저자의 원고 전체가 있다. 아래 [결론]은 그 원고의 결론 절로 쓴 글이다. 문장마다 (가) 걸음과 (나) 원고의 받침을 본다. JSON 으로만 답하라:\n"
+        "{\"sentences\": [{\"s\": \"그 문장의 첫 8 낱말 그대로\", \"move\": \"" + "|".join(_CONCL_MOVES) + "\", \"verdict\": \"ok|over|none|own\", \"src\": \"받치는 절 이름과 그 문장의 첫 구절(원고 그대로, 20자 안팎)\", "
+        "\"why\": \"한국어 한 문장 — 결론부터\", \"fix\": \"over·none 일 때 원고 안에 들게 고치는 법 한국어 한 줄\"}], "
+        "\"order\": [\"차례가 논리에 어긋나는 곳이 있으면 한국어 한 문장씩(어느 문장이 왜 앞·뒤로 가야 하나). 없으면 빈 배열\"], \"reads\": \"argued|listed\"}\n"
+        "규칙:\n"
+        "- 결론의 모든 문장을 순서대로 하나씩 낸다. why·fix 는 사람(저자)이 읽는 말로 짧게, 내부 표시(분류어·번호) 없이.\n"
+        "- verdict: ok = 원고의 결과·논의·방법 절에 그 말의 받침이 있다 / over = 받침은 있으나 더 세거나 넓게 말했다(수치·조건·범위가 다르다, '항상·모든'으로 넓혔다) / none = 원고에 없는 주장·수치 / own = 받침이 필요 없는 저자의 말(수행 재진술·종합·의의·향후·한계).\n"
+        "- 수행 문장은 원고의 방법 절과, 결과·해석 문장은 결과·논의 절과 맞춘다. 결과 절에 있는 수치를 결론에서 다르게 적었으면 over.\n"
+        "- order: 1절의 논리(수행 → 물음의 차례대로 결과+해석 → 종합 → 의의·향후, 한계는 끝 앞)와 결과 사이의 의존 관계(현상 → 조건 → 기전 → 귀결)에 비추어 자리가 틀린 문장만.\n"
+        "- reads: 결론이 저자의 논증으로 읽히면 argued, 결과를 늘어놓은 목록으로만 읽히면 listed.\n\n"
+        "[결론]\n" + text)
+    res = run(prompt, timeout=900, model=model, effort=None, tools="", system=system or None) if run else None
+    r = _json_in((res or {}).get("text") or "")
+    if not isinstance(r, dict) or not isinstance(r.get("sentences"), list):
+        return None, res
+    ss = []
+    for x in r["sentences"]:
+        if not isinstance(x, dict):
+            continue
+        ss.append({"s": str(x.get("s") or "")[:160], "move": x.get("move") if x.get("move") in _CONCL_MOVES else "그밖", "verdict": x.get("verdict") if x.get("verdict") in ("ok", "over", "none", "own") else "own",
+                   "src": str(x.get("src") or "")[:120], "why": str(x.get("why") or "")[:400], "fix": str(x.get("fix") or "")[:300]})
+    share = {}
+    for m in _CONCL_MOVES[:-1]:
+        share[m] = round(100.0 * sum(1 for x in ss if x["move"] == m) / max(1, len(ss)))
+    share_out = [m for m, (lo, hi) in _CONCL_SHARE.items() if share.get(m, 0) > hi]
+    return {"sentences": ss, "order": [str(x)[:300] for x in (r.get("order") or []) if str(x).strip()][:6], "reads": "listed" if r.get("reads") == "listed" else "argued",
+            "share": share, "share_out": share_out, "first": ss[0]["move"] if ss else "", "last": ss[-1]["move"] if ss else ""}, res
+
+
+def _concl_bad(chk):
+    return [x for x in (chk or {}).get("sentences") or [] if x["verdict"] in ("over", "none")]
+
+
+def stylus_conclusion(doc, body):
+    """결론 절을 Stylus 로 쓴다: 원고 전체(캐시된 시스템 프롬프트)를 읽고 _CONCL_LOGIC 대로 → 원고와 대조·수치 확인·범위 확인 → 걸린 곳이 있으면 한 번 고쳐 쓴다.
+    body = {node: 결론 절 id, key: draft|draft_en, note: 저자의 주문, form: para|list, effort}. 결과는 화면이 doc.stylus 에 남긴다(서버는 저장하지 않는다)."""
+    nid = str(body.get("node") or "")
+    node = _rev_node(doc, nid)
+    if node is None:
+        return {"error": "결론을 쓸 절을 찾지 못했습니다"}
+    key = "draft_en" if body.get("key") == "draft_en" else "draft"
+    lang_en = key == "draft_en" or (doc.get("meta") or {}).get("lang") == "en"
+    note = str(body.get("note") or "").strip()
+    form = "list" if body.get("form") == "list" else ("para" if body.get("form") == "para" else "")
+    model, eff = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
+    run = cfg.get("claude_run")
+    if not run:
+        return {"error": "Claude 를 부를 수 없습니다"}
+    system, pre, whole = _ctx(doc, nid, key, "결론 " + note, True)
+    cur = (node.get(key) or "").strip()
+    t0 = time.time()
+    steps = []
+    skey = "stylus:" + str(doc.get("id"))
+
+    def stage(name):
+        now = time.time()
+        if steps:
+            steps[-1][1] = round(now - steps[-1][2])
+        steps.append([name, 0, now])
+        _LIBX_STAGE[skey] = {"stage": name, "t": now}
+    heads = {k: [n.get("heading", "") for n in doc.get("outline") or [] if n.get("level", 1) == 1 and re.search(rx, (n.get("heading") or "").lower() + " " + (_MINE_RX.get(k) or ""), re.I)] for k, rx in _SEC_RX.items()}
+    head = ("당신은 기계가공·재료 분야 국제 저널 논문의 공저자다. 위에 저자의 원고 전체가 있다(결론 절 「" + (node.get("heading") or "") + "」" + (" 에는 지금 이런 글이 있다 — 참고만 하고 처음부터 다시 쓴다" if cur else " 은 아직 비어 있다") + "). "
+            "원고의 서론 끝에 세운 물음, 방법 절이 한 일, 결과·논의 절이 보인 것을 읽고 결론 절을 써라. 결론은 이 원고의 말이다 — 원고에 있는 것만, 원고의 용어·기호·수치 그대로.\n")
+    prompt = (pre + head + _CONCL_LOGIC +
+        ("- 꼴: 저자가 번호 목록을 원한다 — 결과 묶음을 (1) (2) … 항목으로.\n" if form == "list" else "- 꼴: 문단으로 쓴다(번호 목록 없이).\n" if form == "para" else "") +
+        ("- 저자의 주문: " + note + "\n" if note else "") +
+        "- 글의 언어: " + ("영어(원고의 영문 절과 같은 문체·시제)" if lang_en else "한국어(원고의 문체대로, 학술 문체)") + ". 분량은 주문에 없으면 원고의 결과 절 분량에 비례해 6~20문장.\n"
+        "먼저 JSON 하나로 답하고:\n"
+        "{\"answer\": \"한국어 2~4문장, 두괄식 — 무엇을 어떤 차례로 썼는지, 저자가 확인할 것\", "
+        "\"plan\": [{\"move\": \"수행|결과|해석|종합|의의|향후|한계\", \"why\": \"이 문장이 왜 이 자리에 오는가 — 한국어 한 문장\", \"src\": \"받침이 되는 원고의 절과 첫 구절\", \"sents\": [\"그 걸음의 문장 번호들\"]}]}\n"
+        "그 뒤에 쓴 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(결론 — 문단 사이는 빈 줄, 제목 줄 없이)\n<<<END>>>\n" + _ANSWER_RULE)
+    stage("write")
+    res = run(prompt, timeout=1500, model=model, effort=eff, tools="", system=system or None)
+    raw = (res or {}).get("text") or ""
+    tok = (res or {}).get("tok")
+    r, text = _rewrite_in(raw)
+    if not text:
+        _LIBX_STAGE.pop(skey, None)
+        return {"error": "쓴 글이 끝까지 오지 않았습니다 — 다시 해 보세요" + _why()}
+    stage("check")
+    chk, r2 = _concl_check(text, doc, nid, key, system, pre, run, model)
+    tok = _tok_add(tok, (r2 or {}).get("tok"))
+    nums = _concl_numbers(text, doc, nid, key)
+    flow = _concl_flow(text)
+    draft, changes, rounds, chk0, flow0 = "", "", 1, None, None
+    marks = ["- 문장 \"%s…\": %s — %s%s" % (x["s"][:60], "원고에 없는 말" if x["verdict"] == "none" else "원고보다 나아간 말", x["why"], (" → " + x["fix"]) if x["fix"] else "") for x in _concl_bad(chk)]
+    marks += ["- 수치 %s 은 원고의 다른 절에 없다 — 원고의 수치로 바꾸거나 뺀다" % x for x in nums[:8]]
+    marks += ["- 차례: " + x for x in (chk or {}).get("order") or []]
+    if chk and chk["reads"] == "listed":
+        marks.append("- 통독: 결과를 늘어놓은 목록으로만 읽힌다 — 결과마다 해석을 붙이고 종합 문장으로 꿰어라.")
+    marks += ["- 범위: " + x for x in flow["notes"]]
+    if marks:
+        stage("revise")
+        rp = (pre + head + "앞서 쓴 [결론]을 심사위원이 원고와 대조했다 — 아래 [지적]. 지적된 문장만 고치고 나머지는 글자 그대로 둔다(차례 지적이 있으면 그 문장들을 옮긴다). 원고에 없는 수치·주장은 원고의 것으로 바꾸거나 뺀다.\n"
+              "먼저 JSON 하나로 답하고: {\"changes\": \"무엇을 왜 고쳤는지 한국어 1~3문장\"}\n그 뒤에 고친 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(결론)\n<<<END>>>\n" + _CONCL_LOGIC +
+              "\n[지적]\n" + "\n".join(marks) + "\n\n[결론]\n" + text)
+        r3 = run(rp, timeout=1200, model=model, effort=None, tools="", system=system or None)
+        tok = _tok_add(tok, (r3 or {}).get("tok"))
+        j3, text2 = _rewrite_in((r3 or {}).get("text") or "")
+        if text2 and _norm_ws(text2) != _norm_ws(text):
+            stage("recheck")
+            chk2, r4 = _concl_check(text2, doc, nid, key, system, pre, run, model)
+            tok = _tok_add(tok, (r4 or {}).get("tok"))
+            nums2, flow2 = _concl_numbers(text2, doc, nid, key), _concl_flow(text2)
+            b1, b2 = len(_concl_bad(chk)) + len(nums) if chk else 99, len(_concl_bad(chk2)) + len(nums2) if chk2 else 99
+            if chk2 and b2 <= b1 and not (chk2["reads"] == "listed" and chk["reads"] != "listed"):
+                draft, text, chk0, chk, flow0, flow, nums, rounds, changes = text, text2, chk, chk2, flow, flow2, nums2, 2, str(j3.get("changes") or "").strip()
+    steps[-1][1] = round(time.time() - steps[-1][2])
+    _LIBX_STAGE.pop(skey, None)
+    plan = [{"move": str(x.get("move") or "")[:10], "why": str(x.get("why") or "")[:300], "src": str(x.get("src") or "")[:120], "sents": [str(v)[:20] for v in (x.get("sents") or [])[:12]]}
+            for x in ((r or {}).get("plan") or [])[:12] if isinstance(x, dict)]
+    return {"id": "c%d" % int(time.time() * 1000), "kind": "conclusion", "node": nid, "key": key, "t": time.time(), "note": note, "form": form, "text": text, "answer": str((r or {}).get("answer") or "").strip(),
+            "plan": plan, "check": chk, "check0": chk0, "nums_missing": nums, "flow": flow, "flow0": flow0, "draft": draft, "changes": changes, "rounds": rounds,
+            "stylus": STYLUS, "model": (res or {}).get("model", ""), "tok": tok, "sec": round(time.time() - t0), "steps": [[x[0], x[1]] for x in steps], "whole": bool(whole)}
+
+
+def stylus_op(doc, body):
+    op = body.get("op") or "conclusion"
+    if op == "stage":
+        return _LIBX_STAGE.get("stylus:" + str(doc.get("id"))) or {}
+    if op == "conclusion":
+        return stylus_conclusion(doc, body)
+    return {"error": "알 수 없는 동작"}
+
+
 # ---------- 리비전: 심사 의견(편집자·심사위원)을 하나씩 같이 처리 ----------
 # doc["revision"] = {"rounds": [{id, title, file, created, decision, raw, base: {절 id: {draft, draft_en}}, items: [...]}]}
 # item = {id(R1.2), reviewer, no, kind(major|minor|praise), text(원문 그대로), status(todo|plan|applied|done), gist, work, suggest: [절 id],
@@ -4913,6 +5106,11 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, {"memos": [{k: m.get(k) for k in ("id", "thread", "pending", "unread", "error")} for m in doc.get("memos") or []]})
+        if p == "/api/ms/stylus":   # Stylus 로 절 쓰기 (지금은 결론)
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            return h._send(200, stylus_op(doc, body))
         if p == "/api/ms/ask_sel":   # 고른 글을 놓고 Claude 에게 묻기·고쳐 달라기
             doc = load_ms(body.get("id"))
             if not doc:
