@@ -239,3 +239,24 @@ function mountUiControls(sel) {
   const host = typeof sel === "string" ? document.querySelector(sel) : sel;
   if (host && !host.querySelector(".uictl")) host.insertAdjacentHTML("beforeend", uiControlsHtml());
 }
+
+// ---------- 이 창이 옛 화면인지 알리기 ----------
+// 프로그램을 고친 뒤에도 이미 열어 둔 창은 옛 화면(옛 스크립트) 그대로다 → 서버의 화면 파일이 이 창을 연 뒤에 바뀌었으면 알린다. 저절로 새로 고치지는 않는다(쓰던 글·열어 둔 것을 잃지 않게).
+(function () {
+  let mine = null, told = false;
+  function tell() {
+    if (told || document.getElementById("uiStale")) return; told = true;
+    const d = document.createElement("div"); d.id = "uiStale";
+    d.innerHTML = "<span>프로그램이 업데이트되었습니다 — 이 창은 옛 화면입니다.</span><button class='act ready' id='uiStaleGo'>새로 고침</button><button class='act' id='uiStaleNo'>나중에</button>";
+    document.body.appendChild(d);
+    document.getElementById("uiStaleGo").onclick = () => location.reload();
+    document.getElementById("uiStaleNo").onclick = () => d.remove();
+  }
+  function check() {
+    fetch("/api/version").then(r => r.json()).then(v => { if (!v.ui) return; if (mine === null) mine = v.ui; else if (v.ui !== mine) tell(); }).catch(() => {});
+  }
+  check();
+  window.addEventListener("focus", check);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+  setInterval(check, 180000);
+})();

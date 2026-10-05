@@ -773,6 +773,27 @@ function cleanDiff(a, b) {   // 새 글(b)만 보인다 — a 와 달라진 곳�
 const flowNote = f => !f ? "" : "<div class='hint' style='font-size:11px" + ((f.notes || []).length ? ";color:var(--amber)" : "") + "'>" +
   ((f.notes || []).length ? "논문의 범위와 견줌 — " + f.notes.map(esc).join(" · ") : f.was ? "문장 이음·인용 자리는 고치기 전의 글과 같은 꼴 (논문의 범위 밖인 " + f.was + "가지는 고치기 전에도 있던 것)"
     : "문장 이음·인용 자리가 논문 문단의 범위 안 (접속 부사나 받는 말로 시작 " + f.tied[0] + "/" + f.tied[1] + ")") + "</div>";
+// ---- 기다림: 실제로 걸린 시간을 기억해(localStorage ms_dur) 다음 예상에 쓰고, 막대는 지난 시간대로 차오른다 — 사용자: '생각하는 중 막대의 진행이 맞지 않는다'
+const durLoad = () => { try { return JSON.parse(localStorage.getItem("ms_dur") || "{}"); } catch (e) { return {}; } };
+function durGet(key, fallback) { const d = durLoad()[key]; return d && d.n ? Math.round(d.a) : fallback; }
+function durPut(key, sec) {   // 최근 것에 더 무게를 둔 평균
+  if (!(sec > 2) || sec > 3600) return; const all = durLoad(), d = all[key] || { a: sec, n: 0 };
+  d.a = d.n ? d.a * 0.6 + sec * 0.4 : sec; d.n = Math.min(99, (d.n || 0) + 1); all[key] = d;
+  try { localStorage.setItem("ms_dur", JSON.stringify(all)); } catch (e) {}
+}
+const chatDurKey = m => ["ask", m.effort || "xhigh", scopeWide(m.scope) ? "wide" : m.scope === "para" ? "para" : "sel", m.lib ? "lib" : "", m.ev ? "ev" : ""].join("|");
+const chatDurGuess = m => ({ max: 120, fable: 90, xhigh: 70, high: 40, fast: 18 }[m.effort] || 60) + (m.lib ? 40 : 0) + (m.ev ? 15 : 0) + (m.scope === "para" || scopeWide(m.scope) ? 20 : 0);   // 잰 것이 없을 때 (2026-10-02 에 재 본 값)
+const fmtSec = s => s < 55 ? Math.max(5, Math.round(s / 5) * 5) + "초" : Math.floor(s / 60) + "분" + (Math.round(s % 60) >= 10 ? " " + Math.round(s % 60 / 10) * 10 + "초" : "");
+const waitFrac = (el, exp) => el <= exp ? Math.min(0.9, el / Math.max(1, exp) * 0.9) : Math.min(0.97, 0.9 + 0.07 * (1 - exp / el));   // 예상의 90% 까지 차오르고, 넘기면 천천히 97% 까지
+const waitEta = (el, exp) => el <= exp ? "약 " + fmtSec(exp - el) + " 남음" : "예상(" + fmtSec(exp) + ")보다 오래 걸리고 있습니다 · " + fmtSec(el) + "째";
+function waitHtml(label, startMs, expectSec, extra, labelId) {   // waitTick 이 1초마다 막대와 남은 시간을 고친다
+  const el = Math.max(0, (Date.now() - startMs) / 1000);
+  return "<div class='prog' data-wait='" + Math.round(startMs) + "|" + Math.round(expectSec) + "'><span" + (labelId ? " id='" + labelId + "'" : "") + ">" + label + "</span><span class='pbar'><i style='width:" + Math.round(waitFrac(el, expectSec) * 100) + "%;transition:width 1.2s linear'></i></span><span class='eta'>" + waitEta(el, expectSec) + "</span></div>" + (extra || "");
+}
+setInterval(() => document.querySelectorAll(".prog[data-wait]").forEach(p => {
+  const [s, e] = p.dataset.wait.split("|").map(Number), el = (Date.now() - s) / 1000, i = p.querySelector(".pbar i"), t = p.querySelector(".eta");
+  if (i) i.style.width = Math.round(waitFrac(el, e) * 100) + "%"; if (t) t.textContent = waitEta(el, e);
+}), 1000);
 function revBusyHtml(label, sec) { return "<div class='prog'><span>" + label + "</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + sec + "초</span></div>"; }
 function revImportHtml() {
   return "<div class='rvimp'><div class='hint'>심사 결과 파일(편집자 편지·심사위원 의견)을 넣으면 지적마다 나눠 목록으로 만듭니다. 그 시점의 원고를 기억해 두었다가 나중에 「수정 표시 원고」로 바뀐 곳을 표시합니다.</div>" +
@@ -1661,7 +1682,7 @@ async function refsUndoRenumber() {
 }
 
 // ---------- 서재에서 뽑기: 주제를 적으면 내 논문들에서 그 내용을 말한 대목과 논문을 모은다 ----------
-let libList = null, libItem = null, libBusy = null, libErr = "";
+let libList = null, libItem = null, libBusy = null, libErr = "", libT0 = 0, libUseT0 = 0;
 const libEffort = () => chatEffort();   // 대화와 같은 모델 설정 (환경설정 → Claude). 두 곳에 따로 두니 값이 어긋났다   // 기본은 Opus · 엑스트라 (사용자 지시 2026-10-01 — 예전 기본 '보통'이 저장돼 있을 수 있어 키를 바꿨다)
 function renderLib() {
   const el = $("tab-lib"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
@@ -1672,7 +1693,7 @@ function renderLib() {
     "<textarea id='libTopic' rows='2' placeholder='예: BUE 탈락에 관해 언급한 부분 / 인선 반경이 칩 두께보다 작을 때 플로잉을 무시할 수 있다는 근거'>" + esc(libBusy ? libBusy.topic : "") + "</textarea>" +
     "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px;align-items:center'><button class='btn pri' id='libRun'" + (libBusy ? " disabled" : "") + ">찾기</button>" +
     "<select id='libEffort' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2)' title='후보 문장 가운데 정말 그 내용인 것을 고르는 모델'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (libEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>" +
-    (libBusy ? "<div class='prog'><span>서재를 훑고 고르는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~1~2분</span></div><div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>" : "") +
+    (libBusy ? waitHtml("서재를 훑고 고르는 중", libT0, durGet("lib|" + libEffort(), 70), "<div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>") : "") +
     (libErr ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(libErr) + "</div>" : "") +
     (libList && libList.length ? "<div class='sec' style='padding-left:0'>지난 결과</div><div class='libpast'>" + libList.map(x => "<a href='#' data-xid='" + esc(x.id) + "'" + (it && it.id === x.id ? " class='on'" : "") + ">" + esc(x.topic.slice(0, 60)) + " <span class='hint' style='display:inline'>· 논문 " + x.papers + "편 · " + fmtT(x.t) + "</span></a>").join("") + "</div>" : "");
   if (it) {
@@ -1694,8 +1715,9 @@ function renderLib() {
   $("libEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
   const run = async () => {
     const topic = ta.value.trim(); if (!topic || libBusy) return;
-    libBusy = { topic }; libErr = ""; renderLib(); animateBars(el);
+    libBusy = { topic }; libErr = ""; libT0 = Date.now(); renderLib(); animateBars(el);
     let r; try { r = await api("/api/ms/lib", { op: "run", topic, effort: libEffort() }); } catch (e) { r = { error: "서버 연결 실패" }; }
+    if (!r.error) durPut("lib|" + libEffort(), (Date.now() - libT0) / 1000);
     libBusy = null;
     if (r.error) libErr = r.error; else { libItem = r; libList = [{ id: r.id, topic: r.topic, t: r.t, papers: r.papers.length }].concat((libList || []).filter(x => x.id !== r.id)); }
     renderLib();
@@ -1780,7 +1802,7 @@ function libUseHtml(it) {
     "<button class='btn' id='libToChat' title='이 근거를 대화에 같이 보내게 합니다 — 원고의 글을 드래그해 물으면(또는 Ctrl+K) Claude 가 이 문장들을 받침으로 그 자리의 문장·문단을 쓰고 인용을 답니다. 대화 카드의 「근거」 에서 바꾸거나 끕니다'>대화에서 이 근거 쓰기</button>" +
     "<select id='libNodeSel' style='font-size:12px;border-color:transparent;background:transparent;color:var(--text-2);max-width:170px' title='문단을 넣을 절'><option value=''>넣을 절 (Claude 가 추천)</option>" +
     doc.outline.map(n => "<option value='" + n.id + "'" + (libNode === n.id ? " selected" : "") + ">" + esc((n.level === 2 ? "　" : "") + n.heading.slice(0, 30)) + "</option>").join("") + "</select></div>" +
-    (libUseBusy ? "<div class='prog'><span id='libStage'>" + (LIB_STAGE[libUseStage] || "") + "</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>" + (libUseBusy === "map" ? "~1~3분" : "~4~9분") + "</span></div><div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>" : "") +
+    (libUseBusy ? waitHtml(LIB_STAGE[libUseStage] || "", libUseT0, durGet("libuse|" + libUseBusy + "|" + libEffort(), libUseBusy === "map" ? 100 : 360), "<div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>", "libStage") : "") +
     (libUseErr ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(libUseErr) + "</div>" : "");
   uses.forEach((u, ui) => {
     if (u.mode === "map") {
@@ -1806,11 +1828,12 @@ function libUseBind(el, it) {
   if (q("libToChat")) q("libToChat").onclick = () => { localStorage.setItem("ms_sel_ev", it.id); switchTab("chat"); renderChat(); };
   const run = async mode => {
     if (libUseBusy) return; const mid = doc.id;
-    libUseBusy = mode; libUseStage = mode; libUseErr = ""; renderLib();
+    libUseBusy = mode; libUseStage = mode; libUseErr = ""; libUseT0 = Date.now(); renderLib();
     clearInterval(libStageT);   // 문단 쓰기는 네 단계 — 서버에 어느 단계인지 물어 글만 바꾼다(다시 그리면 쓰던 주문 칸의 커서가 날아간다)
     libStageT = setInterval(async () => { try { const g = await api("/api/ms/lib", { op: "stage", xid: it.id }); if (g && g.stage && libUseBusy) { libUseStage = g.stage; const e = $("libStage"); if (e) e.textContent = LIB_STAGE[g.stage] || ""; } } catch (e) {} }, 4000);
     await saveNow();   // 서버가 원고 파일을 읽는다
     let r; try { r = await api("/api/ms/lib", { op: "use", xid: it.id, id: mid, mode, note: libNote.trim(), node: mode === "write" ? libNode : "", effort: libEffort() }); } catch (e) { r = { error: "서버 연결 실패" }; }
+    if (!r.error) durPut("libuse|" + mode + "|" + libEffort(), r.sec || (Date.now() - libUseT0) / 1000);
     libUseBusy = null; clearInterval(libStageT);
     if (r.error) libUseErr = r.error; else if (libItem && libItem.id === it.id) libItem.uses = [r].concat(libItem.uses || []);
     renderLib();
@@ -2277,7 +2300,7 @@ function chatCardHtml(m) {
     return h + (pv ? "<div class='t prev' data-toggle='1'>" + esc(normWs(pv).slice(0, 200)) + "</div>" : "") + "</div>";
   }
   h += "<div class='chbody'>" + (scopeWide(m.scope) ? "" : "<div class='rvtext cq'>" + esc(m.quote) + "</div>") + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
-  if (st === "wait") h += "<div class='prog'><span>Claude 가 생각하는 중</span>" + pbarHtml(0.92, 0, "slow") + "<span class='eta'>~" + (({ max: 110, fable: 80, xhigh: 50, high: 30, fast: 15 }[m.effort] || 40) + (m.lib ? 40 : 0) + (m.whole ? 10 : 0)) + "초</span></div>" + (m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 걸립니다.</div>" : "");
+  if (st === "wait") h += waitHtml("Claude 가 생각하는 중", (m.pending || Date.now() / 1000) * 1000, durGet(chatDurKey(m), chatDurGuess(m)), m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 더 걸립니다.</div>" : "");
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)", m.scope) +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
@@ -2522,6 +2545,7 @@ async function chatAsk(id, text, retry) {   // 묻는다. 답을 기다리지 �
 function memoTake(mm, sm, err) {   // 서버가 답을 얹은 대화를 내 문서에 (본문 등 다른 것은 건드리지 않는다)
   if (sm) { mm.thread = sm.thread || mm.thread; if (sm.error) mm.error = sm.error; else delete mm.error; }
   else if (err) mm.error = err;
+  if (mm.pending && !mm.error) durPut(chatDurKey(mm), Date.now() / 1000 - mm.pending);   // 걸린 시간을 기억 — 다음 예상에
   delete mm.pending;
   mm.unread = !mm.error && (mm.thread || []).some(x => x.role === "claude");   // 손대면 읽은 것으로 바뀐다
   save(true); memoUi(mm.id);

@@ -66,6 +66,7 @@ POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/label
 - 실행: `paper-search\Athenaeum_실행.bat` (포터블판은 동봉 `python\` 을, 아니면 PATH 의 pythonw 를 씀)
 - **업데이트 뒤 옛 서버가 남는 문제(2026-09-29, 친구 PC 에서 '변한 게 없다')**: 실행 bat 이 서버를 켜기 전에 `launch_check.py` 를 불러 같은 포트의 **다른 판** 서버(옛 판은 `/api/version` 이 없어 `?`)를 `Get-NetTCPConnection` 으로 찾아 끈다(명령줄에 server.py 가 있는 것만). 서버는 판을 **켤 때 한 번만** 읽는다(`APP_VERSION`) — 파일이 바뀌어도 옛 프로세스는 옛 판을 알려야 교체된다. 설치 도우미의 업데이트도 `stop_port(8770)` 로 한 번 더 끈다. 어느 판이 도는지는 ⚙ 환경설정 머리에 표시
 - **코드를 고친 뒤 반영**: `python tools\restart_server.py` — 진행 중인 요약·번역이 있으면 멈추지 않고 알려 준다. 끊어도 되면 `--force`
+- **열어 둔 창은 옛 화면이다(2026-10-05)**: 코드를 고치고 서버를 다시 켜도 이미 열린 창은 옛 스크립트로 돈다 — 사용자가 '고쳤다는데 여전히 그대로'(대안이 아직 낱말마다 지움·넣음으로 보임)라고 했고, 새로 고침을 안 한 것이었다. `/api/version` 이 화면 파일(html·js·css)의 마지막 수정 시각 `ui` 를 주고, `ui.js` 가 창을 연 뒤 값이 달라지면(초점·보임·3분마다 확인) 왼쪽 아래에 '프로그램이 업데이트되었습니다 — 새로 고침' 을 띄운다(`#uiStale`, 저절로 새로 고치지는 않는다). 이 알림 자체가 없는 옛 창은 한 번은 손으로 F5. 사용자에게 고친 것을 알릴 때 '열어 둔 창은 새로 고침' 을 같이 말할 것
 - 다른 포트로 시험: 환경변수 `ATHENAEUM_PORT=8790`, 브라우저를 안 띄우려면 `ATHENAEUM_NOBROWSER=1`
 - Python: 개발 PC 는 3.8.6, 포터블판은 3.11.9. 패키지는 `paper-search\requirements.txt` (pymupdf·pypdf·requests·pywin32·numpy·scipy·fonttools)
 - 요약·번역·검토는 `claude -p --model opus` 를 subprocess 로 부른다(사용자 Claude 구독 사용량, API 키 없음). 반드시 `_claude_kw()`(= `_no_window()` + 빈 작업 폴더)를 넘길 것 — `_no_window()` 가 없으면 pythonw 가 콘솔 창을 띄워 사용자 타이핑을 끊는다
@@ -147,6 +148,8 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 - **규칙 나누기**(Claude 실패 시): 심사위원 블록 단위 — 한 줄 머리(`Reviewer #1`)와 글과 붙은 머리(`Reviewer #1: This manuscript …`, Editorial Manager) 모두, 번호 없는 심사위원은 문단마다, 글머리표 목록(`Minor points:` 아래 `- …`)은 표마다, 편집자 편지는 통째로 하나. Claude 나누기도 조각 끝의 맺음말(`Yours sincerely`)·다음 묶음 머리를 뗀다(`_REV_TAIL`).
 - **워드 가져오기**: 수식(`m:oMath`)은 글자만 `⟦…⟧` 로(구조는 못 옮김), 표는 `| a | b |` 글로 그 절에, 한국어 캡션(그림 1., 표 1.)·머리부(초록·키워드). `/api/ms/import {into: id}` = 열려 있는 원고에 덮어쓰기(`merge_docx`: 절 번호·제목으로 맞춰 글만 갱신, 카드·리비전·그림 유지, 언어가 다르면 거절). `list_ms` 는 `_` 로 시작하는 보조 파일을 건너뜀.
 - **Claude 호출 문제 알림**: `_note_claude` 가 로그인 만료(`OAuth session expired`)·한도를 `CLAUDE_STATE` 에 적고 `claude_error()` 로 알림 → 홈 `claudeProblem` 안내, 원고 오류 글 뒤에 이유. 조용히 None 만 돌려주지 말 것.
+
+**답은 사람이 읽는 글 — 두괄식(2026-10-05, 사용자: 'Claude 가 AI 가 알아듣기 쉽게 말하지 사람이 알아듣기 쉽게 말하진 않는 듯. 두괄식으로')**: `_ANSWER_RULE`(첫 문장에 결론 → 까닭 → 저자가 확인할 것 · 짧은 문장 · 내부 표시(E4.1, frame·synth, 규칙 이름, 조각 id) 금지, 논문은 (첫 저자 연도)로 · 고친 글을 answer 에 되풀이하지 않기 · 잘된 점 나열·인사말 금지)을 대화의 두 물음(고른 글·범위)에 넣고, 문단 쓰기·대응의 answer/summary 와 대조의 why 도 같은 꼴로. **긴 지시문에 조각을 끼울 때 `+ 변수 +` 로 넣지 말 것** — `%` 가 마지막 조각에만 걸려 500 이 났다(이 파일 위에 적힌 함정에 또 걸렸다). 자리 표시 `%s` 로 넣고 값은 tuple 에.
 
 ### 원고 '고른 글' — 드래그 → 메모 · Claude 에게 (`manuscript.ask_selection`, `POST /api/ms/ask_sel`)
 원고의 글 칸(textarea)에서 글을 드래그하면 마우스 옆에 「메모」「Claude 에게」(`#selBar`, Ctrl+K)가 뜨고, 누르면 오른쪽 아래 창(`#selPop`)에서 메모를 남기거나 고른 부분을 놓고 묻는다·고쳐 달라고 한다·제 생각을 말한다. 서버는 고른 글이 든 문단(고른 곳을 ⟪ ⟫ 로 표시)·대화를 주고 `{answer, alternatives}` 를 받는다 — 대안은 **고른 부분과 같은 범위**를 대체하는 글이고, 화면이 고른 글과 낱말 단위로 견줘 보여 주며 「이걸로 바꾸기」 는 글 칸에 `execCommand("insertText")` 로 넣는다(Ctrl+Z 가능). 모델은 창 아래에서 고른다: **Opus · 엑스트라**(`claude -p --model opus --effort xhigh`, 기본, 약 40초) / Opus · 최대(`--effort max`) / Fable · 엑스트라(`--model fable`) / Opus · 보통 / Sonnet · 빠름(약 10초) — `ask_claude_json(prompt, model=, effort=)`. 메모와 대화는 `doc.memos = [{id, node, key, quote, start, note, thread[{role, text, alts, base}], t, done}]` 에 남고(서버는 상태를 갖지 않는다 — 화면이 저장), 「메모·피드백」 탭 맨 위에 목록, 원고 모드의 절 아래에 '메모 n'. 대안으로 바꾸면 메모의 `quote` 도 새 글로 바뀌어 이어서 물을 수 있다.
@@ -241,7 +244,7 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 - **글꼴 모양**(환경설정): 「읽기 글꼴 모양」→ `--read-font`(읽기 화면 `#read`), 「원고 글꼴 모양」→ `--ms-font`(원고의 글 칸). 고르지 않으면 변수를 지워 화면 기본을 쓴다. 목록 = 이 PC 에 깔린 것만(`uiFontInstalled`: 캔버스로 폭을 재서 판별) + 사용자가 추가한 것 — 글꼴 파일을 넣으면 저장소 옆 `글꼴\` 폴더에 저장되고(`POST /api/fonts`, `/userfont/<파일>`, git·배포판 제외) `@font-face` 로 등록, 설치된 글꼴 이름을 적으면 localStorage `ui_fonts_custom`.
 - **읽기 화면의 영문(PDF) 크기**: PDF 위 − + · 「폭 맞춤」 · Ctrl+휠 · 환경설정의 「영문(PDF) 크기」 가 모두 `ui_pdf_zoom` 하나를 쓴다(기억됨; `applyUi` → `window.onUiChange` → `setZoom`). 한국어 글과 PDF 사이 막대(`#split`)를 끌어 폭을 나눈다(`reader_pdf_frac`).
 - 로고: 앤티크 골드 `#C9A227` 스와시 A. `logo\make_logo.py` 로 재생성. 한 SVG path 안의 조각은 회전 방향을 같게(아니면 겹친 곳이 구멍남)
-- 모든 기다림은 **예상 시간 기반 진행 막대**(`ui.js`: `progressInfo`·`pbarHtml`·`animateBars`)
+- 모든 기다림은 **예상 시간 기반 진행 막대**(`ui.js`: `progressInfo`·`pbarHtml`·`animateBars`). **대화·서재에서 뽑기·문단 쓰기의 기다림은 실제로 걸린 시간을 기억해 쓴다**(2026-10-05, 사용자: '생각하는 중 막대의 진행 상태가 정확하지 않음' — 전에는 고정 예상(50초)에 CSS 로 92% 까지 미끄러지는 막대라 1분 넘는 물음에서 다 찬 채 멈춰 있었다): `manuscript.html` 의 `durPut(key, sec)`/`durGet(key, fallback)`(localStorage `ms_dur`, 최근 것에 무게를 둔 평균) · `waitHtml(label, startMs, expectSec)`(지난 시간대로 예상의 90% 까지 차오르고 넘기면 '예상(1분 10초)보다 오래 걸리고 있습니다 · 1분 40초째', 1초마다 `data-wait` 막대를 고친다). 열쇠: 대화 `ask|모델|범위|lib|ev`(`chatDurKey`, 답이 오면 `memoTake` 가 기록), 뽑기 `lib|모델`, 문단 쓰기 `libuse|mode|모델`(서버의 `sec`). 처음 값은 `chatDurGuess`(2026-10-02 에 잰 것)
 - 사용자에게 보이는 판단 표시("읽음/안 읽음" 등)는 하지 않는다. 시각·시간·위치 같은 사실만
 
 ---

@@ -1867,6 +1867,12 @@ def _flow(text, nm=None):
 
 
 # ---------- 대화(고른 글·문단·절)에서 글을 쓰거나 고칠 때 — 문단 쓰기에서 다듬은 규칙을 그대로 쓴다 ----------
+# 사용자(2026-10-05): 'Claude 가 사람이 알아듣기 쉽게 말하지 않고 AI 가 알아듣기 쉽게 말한다 — 두괄식으로.' answer 를 쓰는 모든 물음에 붙인다
+_ANSWER_RULE = ("- answer 는 사람(저자)이 읽는 글이다. 두괄식으로: 첫 문장에 결론(무엇을 어떻게 했다 / 답은 무엇이다), 그 다음에 까닭, 마지막에 저자가 확인하거나 정할 것. 짧은 문장으로, 한 번에 한 가지씩. "
+                "내부 표시를 쓰지 마라 — 근거 번호(E4.1), 분류어(frame·synth·needs), 규칙의 이름, 조각 id. 논문은 (첫 저자 연도)로, 문장은 그 첫 구절을 따옴표로 가리킨다. "
+                "고친 글을 answer 에 다시 옮겨 적지 마라(대안·다시 쓴 글에 있다). 잘된 점의 나열, 인사말, 되묻는 말은 넣지 않는다.\n")
+
+
 def _style_pick(starts):
     """_LIBX_STYLE 의 규칙 가운데 그 말로 시작하는 줄만. 규칙을 두 군데에 따로 적지 않으려는 것 — 줄이 없어지면 바로 알게 한다."""
     lines = [ln for ln in _LIBX_STYLE.split("\n") if ln.startswith("- ")]
@@ -1966,7 +1972,8 @@ def _libx_check(text, evid, job, model, eff, run):
         "\"why\": \"한국어 한 문장\", \"fix\": \"over·none·needs 일 때: 근거 안에 들게 고치는 법 한국어 한 줄\"}], "
         "\"prose\": [{\"kind\": \"stitched|list|repeat|overcite|subject|ending|phrase\", \"sev\": \"major|minor\", \"at\": [2, 3], \"note\": \"한국어 한 문장\"}], \"reads\": \"argued|assembled\"}\n"
         "규칙:\n"
-        "- 문단의 모든 문장을 순서대로 하나씩 낸다. why·fix·note 는 문단과 주문이 영어여도 반드시 한국어로 쓴다(화면에서 저자가 읽는다).\n"
+        "- 문단의 모든 문장을 순서대로 하나씩 낸다. why·fix·note 는 문단과 주문이 영어여도 반드시 한국어로 쓴다(화면에서 저자가 읽는다) — 짧게, 결론부터, 사람의 말로: "
+        "'(가)' 같은 경우 번호나 E번호 대신 무엇이 어떻게 그런지를 적고 논문은 (첫 저자 연도)로 가리킨다.\n"
         "- verdict: ok = 단 인용의 근거 문장이 그 주장을 말한다 / synth = 저자의 말로 묶은 일반 서술이고, 단 인용이 저마다 그 서술의 실제 사례이며 서술의 폭이 사례를 넘지 않는다(허용되는 종합) / "
         "over = 근거보다 나아갔다 / none = 단 인용의 근거가 그 말을 하지 않는다 / own = 인용이 없는 문장.\n"
         "- over 의 type: general(사례보다 넓게 일반화) · stale(옛 논문의 '아직 모른다'를 지금의 공백으로 썼다 — 근거 머리줄의 연도를 보라) · "
@@ -2073,7 +2080,7 @@ def lib_use(doc, body):
     if mode == "map":
         prompt = (head +
             "원고에서 이 주제를 말하는 곳을 찾아 근거와 대응시켜라. JSON 으로만 답하라:\n"
-            "{\"summary\": \"원고가 이 주제를 어디서 어떻게 다루고, 근거와 견주어 무엇이 맞고 무엇이 비는지 한국어 3~6문장\", "
+            "{\"summary\": \"한국어 3~6문장, 두괄식 — 첫 문장에 결론(원고가 이 주제를 어디서 어떻게 다루고 무엇이 비는지), 그 다음에 까닭. 근거는 E번호가 아니라 (첫 저자 연도)로\", "
             "\"checks\": [{\"quote\": \"원고의 글 그대로(한 문장 또는 한 구절, 20자 이상)\", \"kind\": \"ok|weak|uncited|conflict|add\", \"ev\": [\"E3.2\"], "
             "\"note\": \"한국어 1~3문장: 왜 그런지, 근거가 무엇을 말하는지\", \"fix\": \"quote 를 그대로 대체할 글. 고칠 것이 없으면 빈 문자열\"}]}\n"
             "규칙:\n"
@@ -2104,7 +2111,7 @@ def lib_use(doc, body):
             "③ 짠 대로 글을 쓴다. 쓴 뒤 스스로 읽어 본다: 문장마다 어느 문장을 무슨 관계로 이어받는지 댈 수 있는가, 대조·귀결·원인처럼 논문이 겉으로 드러내는 관계가 표시 없이 놓이지 않았는가, 풀이·근거에 군더더기 이음말이 붙지 않았는가, "
             "접속 부사를 주어 뒤에 끼워 넣은 문장이 없는가. 걸리면 고친 뒤에 낸다.\n"
             "먼저 JSON 하나로 답하고:\n"
-            "{\"answer\": \"무엇을 어떻게 썼는지, 어디에 넣으면 좋은지, 저자가 확인할 것(근거가 모자란 걸음, 재인용) — 한국어 2~5문장\", "
+            "{\"answer\": \"한국어 2~5문장 — 첫 문장에 무엇을 썼는지, 그 다음에 어떻게·어디에, 마지막에 저자가 확인할 것(근거가 모자란 걸음, 재인용). 근거는 E번호가 아니라 (첫 저자 연도)로\", "
             "\"plan\": [{\"move\": \"덩이의 주장 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"], \"sents\": [\"1 머리: 할 말\", \"2 ←1 귀결 · 'As a result,' 로: 할 말\", \"3 ←2 풀이 · 표시 없이 같은 주어로: 할 말\", \"4 ←1 덧붙임 · 'Moreover,' 로: 할 말\"]}]}\n"
             "(sents 의 꼴 = '문장 번호 ←이어받는 문장 번호 관계 · 드러내는 방법: 할 말'. 문장 번호는 문단 전체에서 이어 매긴다.)\n"
             "그 뒤에 쓴 글을 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(쓴 문단들 — 문단 사이는 빈 줄, 제목 줄 없이)\n<<<END>>>\n"
@@ -4165,12 +4172,13 @@ def _ask_selection(doc, body):
             "- 질문이면 그 답을 한다. 검토·의견을 바라면 지적을 중요한 순서로 3~7개: 지적마다 줄을 바꿔 번호를 붙이고, 어디인지(소절 이름과 그 문장의 앞 구절을 짧게 따옴표로) → 무엇이 문제인지 → 어떻게 고칠지 한 줄.\n"
             "- 이 범위 안에서만 보지 말고, 원고의 다른 곳과 어긋나거나 겹치는 것도 짚어라(어느 절인지 가리켜서).\n"
             "- 잘된 점을 늘어놓지 마라. 고칠 것이 없으면 없다고 말하라. 듣기 좋은 말을 하지 마라.\n"
+            "%s"
             "- alternatives 는 항상 빈 배열이다.\n"
             "%s%s"
             "- 원고에 없는 수치·결과를 지어내지 마라. 저자가 '짧게' 라고 해도 첫머리는 이 JSON 이다.\n\n"
             "%s\n"
             "논문 제목: %s\n물음의 범위: %s\n\n%s\n%s\n[저자의 말]\n%s"
-            % (rewrite_rule, cite_rule, _chat_style(doc, key, scope, "", bool(ev_item)), doc.get("title", ""), label, body_txt, hist, question[:2000]))
+            % (_ANSWER_RULE, rewrite_rule, cite_rule, _chat_style(doc, key, scope, "", bool(ev_item)), doc.get("title", ""), label, body_txt, hist, question[:2000]))
     else:
         if nid == "front":
             text = (doc.get("front") or {}).get("abstract") or ""
@@ -4193,13 +4201,13 @@ def _ask_selection(doc, body):
             "%s"
             "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
             "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
-            "%s"
+            "%s%s"
             "- 원고에 없는 수치·결과를 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
             "%s\n"
             "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
             % ("영어로" if lang_en else "한국어로",
                "- 저자는 문단 하나를 통째로 골랐다. 문장만이 아니라 문단의 구성(첫 문장이 요지를 여는지, 문장 순서, 앞뒤 문단과의 이음)도 보라. 대안은 문단 전체를 대체하며 대안은 1~2개면 된다.\n" if scope == "para" else "",
-               cite_rule, _chat_style(doc, key, scope, quote, bool(ev_item)), doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
+               _ANSWER_RULE, cite_rule, _chat_style(doc, key, scope, quote, bool(ev_item)), doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
     cited = _cited_refs(doc, quote, para)
     extra = ""

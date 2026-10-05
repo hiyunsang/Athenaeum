@@ -1053,6 +1053,14 @@ def _read_app_version():
         return "?"
 
 
+def ui_stamp():
+    """화면 파일(html·js·css)이 마지막으로 바뀐 때. 프로그램을 고쳐도 이미 열린 창은 옛 화면 그대로라, 창이 이 값을 견줘 '새로 고침'을 알린다."""
+    try:
+        return int(max(os.path.getmtime(os.path.join(BASE, f)) for f in os.listdir(BASE) if f.endswith((".html", ".js", ".css"))))
+    except (OSError, ValueError):
+        return 0
+
+
 APP_VERSION = _read_app_version()   # 켤 때 한 번만 읽는다 — 업데이트로 파일이 바뀌어도 옛 프로세스는 옛 판을 알려야 launch_check 가 바꿔 켤 수 있다
 
 
@@ -2902,7 +2910,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(404, {"error": "no font"})
         elif url.path == "/api/version":   # 실행 bat(launch_check)·설치 도우미·환경설정이 어느 판이 도는지 확인
-            self._send(200, {"version": app_version()})
+            self._send(200, {"version": app_version(), "ui": ui_stamp()})   # ui = 화면 파일이 마지막으로 바뀐 때 — 열어 둔 창이 옛 화면인지 ui.js 가 견준다
         elif url.path == "/ui.js":
             with open(os.path.join(BASE, "ui.js"), "rb") as f:
                 self._send(200, f.read(), "application/javascript; charset=utf-8")

@@ -181,3 +181,7 @@ button { font: inherit; }
 .maplegend .lg:hover, .maplegend .lg.on { color: var(--text); font-weight: 600; }
 .maplegend .hint { padding: 0; text-align: left; line-height: inherit; width: 100%; }
 .mapctl .coh { display: flex; align-items: center; gap: var(--s2); }
+
+/* 이 창이 옛 화면일 때의 알림 (ui.js) */
+#uiStale { position: fixed; left: var(--s4); bottom: var(--s4); z-index: 9999; display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); background: var(--surface); color: var(--text);
+  border: 1px solid var(--line-2); border-left: 3px solid var(--amber); border-radius: var(--r); font-size: 12.5px; box-shadow: 0 10px 30px #0004; }
