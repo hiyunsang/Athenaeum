@@ -1614,20 +1614,34 @@ def _tok_add(a, b):
 # 판 번호(사용자 뜻, 2026-10-05): 서론 문단 쓰기·대화까지 다듬은 지금이 Stylus 1. 업데이트마다 1.1 · 1.1.1 · 1.1.2 …, 큰 변동이면 1.2, 획기적이면 2.0.
 #   1 = 서론(문헌 문단): 뼈대 → 쓰기 → 근거 대조 → 고쳐 쓰기, 관계마다 논문이 드러내는 방법을 사례로, 새 대목을 여는 문장, 쓰고 난 뒤 90% 범위 확인, 대화에도 적용 (2026-10-02~05)
 #   1.1 = 결론 쓰기(stylus_conclusion): 결론의 논리(문장마다 왜 그 자리인가) + 원고 안의 결과·논의와 대조 + 수치 그대로 확인 (2026-10-05)
+#   1.2 = 문장의 크기와 첫머리: 문장의 크기는 하는 일의 크기를 따른다 · 새 대상은 새 주어로 · 대명사와 줄임 · 부사구로 여는 것을 아낌 · 괄호 · ', and' 로 두 사실을 묶지 않기 (_rhythm 으로 극단만 확인) (2026-10-05)
 # 규칙을 바꾸면 번호를 올리고 CLAUDE.md 의 'Stylus' 에 무엇이 바뀌었는지 적는다. 문단 쓰기·대화·결론의 결과에 남아 화면에 보인다.
-STYLUS = "Stylus 1.1"
+STYLUS = "Stylus 1.2"
 _LIBX_STYLE = (
     "[글 — 문단의 짜임과 이음]\n"
     "- 문단은 사실을 한 문장씩 늘어놓은 목록이 아니라 짜임이다: 주제문 → 덩이 2~4개 → (필요하면) 전환이나 맺음. 덩이 하나는 머리 문장(주장) 하나와 그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)로 이루어지고, "
     "덩이 안에도 순서가 있다(요인 → 그 귀결, 주장 → 사례 → 뜻하는 바).\n"
-    "- 넓게 스치지 말고 깊게 편다. 근거를 한 문장에 하나씩 스치듯 언급하지 말고, 덩이마다 가장 알맞은 근거 한두 편을 골라 그것이 무엇을 보였는지, 왜 그런지(기전), 그래서 무엇이 따라 나오는지를 두세 문장에 걸쳐 쓴다. 쓰지 않는 근거가 많아도 된다.\n"
+    "- 넓게 스치지 말고 깊게 편다. 근거를 한 문장에 하나씩 스치듯 언급하지 말고, 덩이마다 가장 알맞은 근거 한두 편을 골라 그것이 무엇을 보였는지, 왜 그런지(기전), 그래서 무엇이 따라 나오는지를 두세 문장에 걸쳐 쓴다. 쓰지 않는 근거가 많아도 된다. "
+    "근거를 대는 문장에는 그 연구의 구체적인 것(재료·조건·값)을 하나는 싣는다 — 근거 문장에 수치가 있으면 그것을. 구체적인 것이 없는 근거 문장은 일반론과 구별되지 않는다.\n"
     "- 모든 문장은 앞의 어느 문장을 무슨 관계로 이어받는지가 분명해야 한다(풀이·근거·사례·덧붙임·대조·귀결·원인·평가·필요). 대개는 바로 앞 문장을, 때로는 더 앞의 머리 문장을 이어받는다(같은 머리 아래 나란히 놓이는 둘째·셋째 항목). "
     "그 관계를 겉으로 어떻게 드러낼지는 관계에 따라 다르다 — 아래 [이 분야 논문은 문장 사이의 관계를 이렇게 드러낸다]의 사례에서 그 문장에 맞는 방법을 고른다. 접속 부사의 개수를 맞추려 하지 마라. "
-    "새로 꺼내는 내용은 문장 끝에 두어 다음 문장이 받게 한다.\n"
+    "새로 꺼내는 내용은 문장 끝에 두어 다음 문장이 받게 한다. 이어받는다는 것은 내용의 관계다 — 문장 첫머리에 앞 문장의 낱말을 꼭 두라는 뜻이 아니다(아래 '문장의 첫머리').\n"
     "- 새 대목을 여는 문장(앞의 어느 문장도 직접 이어받지 않는 문장)은 뜬금없이 들리기 쉽다. 일반 법칙을 맨 단언으로 던지지 마라('The flow mode determines the forces.', 'Each mode also leaves a signature on the chip.'). "
     "이 분야 논문은 그런 문장을 그 말이 어떤 자리의 말인지 세워서 연다 — 아래 [새 대목을 여는 문장]의 사례. 또 머리 문장은 그 대목의 내용을 실제로 담는다: 다음 문장이 곧바로 같은 말을 구체적으로 되풀이할 '예고 문장'을 따로 세우지 말고 한 문장으로 쓴다.\n"
     "- 주어에 앞에서 쓰지 않은 한정어를 갑자기 붙이지 않는다('the prevailing flow mode'·'each flow mode' → 앞에서 쓴 대로 'the flow mode'). 새 정보는 서술부에 둔다. "
     "구체적인 사례(수치·실험)를 말한 바로 다음 문장에서 다리 없이 일반론으로 돌아가지 않는다.\n"
+    "- 문장의 크기는 그 문장이 하는 일의 크기를 따른다. 주장·전환·판정은 짧게 쓴다(열 낱말 안팎: 'However, this explanation fails for soft metals.') — 문단에 한둘이면 요점이 선다(짧은 문장을 여럿 만들면 토막글이 된다). "
+    "근거·결과를 대는 문장은 누가 어떤 재료·조건에서 무엇을 얼마나 보였는지를 한 문장에 싣는다 — 조건을 떼어 다른 문장으로 보내면 그 결과가 언제 참인지가 떨어져 나간다. "
+    "관계절(which·where)·분사구(leading to …)·괄호로 달아 서른다섯 낱말을 넘겨도 되고, 그런 긴 문장이 문단에 한둘 있는 것이 이 분야의 글이다. 모든 문장을 스물 몇 낱말로 고르게 다듬지 마라 — 사람의 글은 들쭉날쭉하고, 고른 글이 기계가 쓴 글이다. "
+    "단순한 말을 늘이지 말고, 한 근거를 두 문장으로 쪼개 길이를 맞추지도 마라. 주제문(첫 문장)은 문단이 다룰 범위를 담을 만큼 충분히 쓴다.\n"
+    "- 문장의 첫머리(주어)는 그 문장이 무엇에 관한 말인지다. 앞 문장이 내놓은 것을 이어 가는 문장이면 그것을 받고, 새 대상·새 연구·새 사례에 관한 문장이면 그 대상을 주어로 바로 시작한다 — 앞에 나온 낱말을 첫머리에 억지로 끌어오지 않는다. "
+    "사람의 글은 문장 셋 중 하나가 앞에 없던 말로 시작하고, 그래도 읽히는 것은 내용이 이어지기 때문이다. 같은 중심 낱말로 문장을 거듭 시작하면 한 낱말 둘레를 맴도는 글이 된다.\n"
+    "- 같은 것을 다시 가리킬 때는 줄인다: 바로 앞 문장의 주어가 그대로면 It·They 로 받고, 긴 명사구는 둘째부터 짧게 쓴다('the tool–chip interface' → 'the interface'). "
+    "'This finding'·'This result'·'This behavior'·'This phenomenon' 같은 두루뭉술한 명사로 받지 않는다 — 앞 문장이 말한 것의 이름을 댄다('This thickening', 'The resulting pressure').\n"
+    "- 조건·범위의 부사구('In dry turning of steel, …', 'For brittle materials, …', 'When …')를 문장 첫머리에 두는 것은 그 조건이 앞 문장과의 차이일 때뿐이다(범위가 바뀐다, 조건이 맞선다). "
+    "그렇지 않으면 조건은 동사 뒤에 둔다('Dimples stabilized the BUE in dry turning of steel'). 문장마다 부사구로 열면 목록으로 읽힌다.\n"
+    "- 덧붙일 말(약어, 예, 값, 조건)은 괄호에 넣어 문장을 늘리지 않고 싣는다 — '(e.g., Cu and Al)', '(up to 10–15 times the undeformed chip thickness)'. "
+    "쌍점으로 목록을 달거나 서로 다른 두 사실을 ', and' 로 한 문장에 묶지 않는다: 두 사실이면 두 문장이고, 하나가 다른 것의 조건·까닭·결과면 종속절이다(because·although·so that·which).\n"
     "- 접속 부사는 문장 맨 앞에 쉼표와 함께 둔다('However, …', 'Therefore, …', 'As a result, …'). 문장 가운데에 두는 것은 'also' 뿐이다 — 같은 주어의 또 다른 작용·결과를 덧붙일 때('The excessive deformation also causes …', 'They also found …'). "
     "'therefore'·'then'·'instead'·'in turn'·'however' 를 주어 뒤에 끼워 넣지 마라(이 분야 논문은 그렇게 쓰지 않는다).\n"
     "- 저자를 주어로 세우는 문장('A et al. [n] studied …')은 저자의 버릇을 따른다: 원고가 선행 연구를 그렇게 소개해 왔으면 쓰고, 아니면 쓰지 않는다(아래 [원고의 버릇]). "
@@ -1636,7 +1650,7 @@ _LIBX_STYLE = (
     "어떤 문장에 인용이 달리고 안 달리는지도 아래 사례를 따른다. 한 문장에 인용 자리는 많아야 둘.\n"
     "- 여러 논문이 같은 점을 받치면 그 점을 저자의 말로 한 번 말하고 인용을 묶어 단다([@A][@B]) — 논문마다 문장을 따로 세우지 않는다. "
     "묶어서 일반화할 때는 근거가 받치는 폭까지만(사례가 두 재료뿐이면 'in several ductile metals'·'e.g.' 처럼 폭을 드러내고 '모든'·'항상'으로 넓히지 않는다).\n"
-    "- 같은 사실을 두 번 말하지 마라. 같은 이음말로 시작하는 문장이 문단에 세 번 이상 나오지 않게 한다. 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장은 대체로 15~35 단어로 길이를 섞고, 쌍반점으로 문장을 잇지 않는다.\n"
+    "- 같은 사실을 두 번 말하지 마라. 같은 이음말로 시작하는 문장이 문단에 세 번 이상 나오지 않게 한다. 분량: 주문에 없으면 150~250 단어, 문장 6~10개. 문장 길이를 고르게 맞추지 않는다(위 '문장의 크기'). 쌍반점으로 문장을 잇지 않는다.\n"
     "- 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 저자의 주문이 정한 흐름의 마지막 걸음에서 끝낸다 — 주문에 없는 본 연구의 결과·연구 질문으로 건너뛰지 마라(그것은 다른 문단의 몫이다). "
     "맺는 말('This explains why …')을 먼저 하고 그 까닭을 다음 문장에서 다시 풀지 않는다 — 까닭(기전)을 먼저 말하고, 그것이 설명하는 것으로 끝낸다.\n"
     "- 영어로 쓸 때 기계가 쓴 티가 나는 말버릇을 쓰지 마라: notably, crucial, pivotal, comprehensive, intricate, delve, underscore, shed light, 'plays a key role', 'it is worth noting', 'not only … but also', 'a wide range of', "
@@ -1801,8 +1815,8 @@ def _norms_text(nm, auth=None):
            "- 새 대목이 앞 대목과 실제로 맺는 관계를 접속 부사로 드러낸다(가장 흔하다): 뒤집으면 'However, …', 같은 층위의 것을 하나 더 들면 'In addition, …', 앞 대목에서 따라 나오면 'Therefore, …'.\n"
            "- 앞에서 이미 나온 말을 주어로 받는다: 바로 앞 문장이 끝에 내놓은 말(앞 문장이 'in situ studies' 로 끝났으면 'The in situ approach has also …')이나 더 앞 문장의 중심 낱말. "
            "앞 대목을 가리키는 도입구로 다리를 놓아도 된다('In addition to these process attributes, …', 'Apart from …').\n"
-           "- 범위나 때를 도입구로 세운다: 'For brittle materials, …', 'In micro milling, …', 'At the micro scale, …', 'More recently, …', 'Early studies …'.\n"
            "- 구체적인 대상을 주어로 그냥 시작한다 — 그 대상이 문단의 주제에 속한다는 것이 읽는 사람에게 분명할 때('Micro stripe grooves on the rake face decreased …'). 뜬금없는 것은 구체적인 대상이 아니라 일반 법칙을 맨 단언으로 던질 때다.\n"
+           "- 범위나 때가 실제로 바뀔 때에만 그것을 도입구로 세운다: 'For brittle materials, …', 'At the micro scale, …', 'More recently, …'. 문단에 한두 번 — 문장마다 'In …,' 로 열지 않는다.\n"
            "- 드물게(논문 스무 문단에 하나쯤), 그 사실이 이 분야에서 정말 오래 받아들여진 것일 때에만 알려진 정도를 세운다('It has long been known that …', '… has been well studied', '… has been ascribed to several factors') "
            "또는 요점에 이름을 붙인다('An important feature of X is that …'). 이것을 기본 꼴로 삼지 마라: 한 문단에 한 번까지, 주제문을 'It is well established that …' 으로 꾸미지 않는다 — 문헌이 있어야 할 주장을 그 말로 덮지도 않는다.\n"
            "[이 분야 논문은 문장 사이의 관계를 이렇게 드러낸다 — 관계마다. 접속 부사의 개수를 맞추려 하지 말고, 문장마다 그 관계에 맞는 방법을 고른다]\n"
@@ -1830,6 +1844,66 @@ def _author_style(doc, key):
     text = "\n".join((n.get(key) or n.get("draft_en" if key == "draft" else "draft") or "") for n in doc.get("outline") or [])
     sents = _flow_sents(text[:200000], _FLOW_CITE_AY)
     return sum(1 for x in sents if _FLOW_AUTH.match(x)), len(sents)
+
+
+_RH_SHELL = r"(finding|findings|result|results|behaviou?r|phenomen(?:on|a)|observations?|effects?|approach|approaches|mechanisms?|process|fact|trends?|differences?|changes?|issues?|problems?|features?|aspects?|situation|cases?)"
+_RH_PREP = r"(in|at|for|on|under|during|with|by|from|when|after|before|as|since|although|though|while|whereas|using|to|because|if|once|given|based|following|despite|among|within|through|due|owing|compared|unlike|besides|apart|according|regarding|upon|beyond|without)"
+_RH_STOP = set("the of and in to a is for with that on as by this at from are be were was which it an or can has have been these its their than into also not such more but between during due used using while when both may each other through under over after before where high low very two one however therefore thus moreover furthermore addition result results study paper work present shown show showed found".split())
+# 2026-10-05 에 서재에서 잰 것(문단마다의 값이 퍼진 범위의 끝): 서론 115문단 · 결론 39편. 문단 하나는 대개 이 안에 든다 — 여기서 걸리는 것은 극단뿐이고, 갈리는 것은 여러 문단의 분포다(스크래치 human_ai.py 로 본다).
+_RH_BAND = {"intro": {"cv": 21, "prep": 40, "andj": 38, "colon": 20, "rep": 4}, "concl": {"cv": 29, "prep": 48, "andj": 29, "colon": 33, "rep": 5, "first": 41}}
+
+
+def _rhythm(text, kind="intro"):
+    """문장의 크기와 첫머리 — 사람의 글과 기계의 글이 갈리는 곳을 센다(쓰고 난 뒤의 확인; 극단만 지적).
+    → {n, cv(길이의 변동 %), lens[가장 짧은, 가장 긴], fresh(앞에 없던 말로 시작한 문장 %), prep, andj, colon(%), shell[문장 번호], rep[[구, 횟수]], marks[]}"""
+    sents = _flow_sents(text, _FLOW_CITE)
+    clean = [re.sub(r"\s+", " ", re.sub(_FLOW_CITE, "", x)).strip() for x in sents]
+    words = [re.findall(r"[A-Za-z][A-Za-z\-']*", x) for x in clean]
+    n = len(clean)
+    if n < 6 or min(len(w) for w in words) < 2:
+        return {"n": n, "marks": []}
+    L = [len(w) for w in words]
+    mean = sum(L) / float(n)
+    cv = 100.0 * (sum((x - mean) ** 2 for x in L) / n) ** 0.5 / mean
+    stem = lambda w: re.sub(r"(ing|ed|es|s|ly|ions?|ive|al)$", "", w.lower())[:7]
+    cont = lambda ws: {stem(w) for w in ws if len(w) > 3 and w.lower() not in _RH_STOP}
+    fresh, prep, shell = 0, [], []
+    for i in range(1, n):
+        th = cont(words[i][:max(4, int(len(words[i]) * 0.4))])
+        if not any(th & cont(words[j]) for j in range(max(0, i - 4), i)):
+            fresh += 1
+        if re.match(r"^" + _RH_PREP + r"\b", clean[i], re.I) and not _FLOW_CONN.match(clean[i]):
+            prep.append(i + 1)
+        if re.match(r"^(this|these|such|those)\s+(\w+\s+)?" + _RH_SHELL + r"\b", clean[i], re.I):
+            shell.append(i + 1)
+    andj = [i + 1 for i, x in enumerate(clean) if re.search(r",\s+and\s+\w+\s+\w+", x)]
+    colon = [i + 1 for i, x in enumerate(clean) if ":" in x or ";" in x]
+    bg = {}
+    for w in words:
+        cw = [x.lower() for x in w]
+        for a, c in zip(cw, cw[1:]):
+            if len(a) > 3 and len(c) > 3 and a not in _RH_STOP and c not in _RH_STOP:
+                bg[(a, c)] = bg.get((a, c), 0) + 1
+    rep = sorted(([" ".join(k), v] for k, v in bg.items() if v >= 3), key=lambda x: -x[1])[:3]
+    bd = _RH_BAND.get(kind) or _RH_BAND["intro"]
+    m, marks = n - 1, []
+    if cv < bd["cv"]:
+        marks.append("- 문장의 크기: 문장 %d개가 %d~%d 낱말로 너무 고르다 — 사람의 글은 들쭉날쭉하다. 주장·전환·판정은 열 낱말 안팎으로 짧게 떼고, 근거를 대는 문장은 조건·값을 한 문장에 담아 길게 쓴다(고르게 다듬은 두 문장을 하나로 합치거나 요점을 짧은 문장으로 뗀다)." % (n, min(L), max(L)))
+    if fresh == 0 and n >= 7:
+        marks.append("- 문장의 첫머리: 둘째 문장부터 모든 문장이 앞에 나온 낱말로 시작한다 — 새 대상·새 연구·새 사례를 말하는 문장은 그것을 주어로 바로 시작한다(앞의 낱말을 첫머리에 끌어오지 않는다).")
+    if 100.0 * len(prep) / m > bd["prep"]:
+        marks.append("- 문장의 첫머리: 부사구·종속절로 여는 문장이 %d개 중 %d개다(문장 %s) — 조건이 앞 문장과의 차이일 때만 앞에 두고, 나머지는 조건을 동사 뒤로 옮긴다." % (m, len(prep), ", ".join(str(x) for x in prep)))
+    if len(shell) >= 2:
+        marks.append("- 받는 말: 문장 %s 이 'This finding/result/behavior' 같은 두루뭉술한 명사로 시작한다 — 앞 문장이 말한 것의 이름을 대거나 It·They 로 받는다." % ", ".join(str(x) for x in shell))
+    # 같은 두 낱말 묶음의 되풀이(rep)는 지적하지 않는다 — 사람의 글도 문단의 열쇠말을 네댓 번 되풀이한다(서론 문단 84개 중 31개가 걸렸다). 값만 남긴다
+    if 100.0 * len(andj) / n > bd["andj"]:
+        marks.append("- 한 문장에 두 사실: ', and' 로 두 절을 이은 문장이 %d개 중 %d개다(문장 %s) — 서로 다른 사실이면 두 문장으로, 하나가 다른 것의 조건·까닭·결과면 종속절로." % (n, len(andj), ", ".join(str(x) for x in andj)))
+    if 100.0 * len(colon) / n > bd["colon"]:
+        marks.append("- 쌍점·쌍반점으로 이어 붙인 문장이 %d개 중 %d개다(문장 %s) — 목록을 달지 말고 문장으로 푼다." % (n, len(colon), ", ".join(str(x) for x in colon)))
+    if bd.get("first") and L[0] > bd["first"]:
+        marks.append("- 첫 문장이 %d 낱말이다 — 수행을 한 문장에 다 담지 말고 재료·방법의 이름까지만 쓴다." % L[0])
+    return {"n": n, "cv": int(round(cv)), "lens": [min(L), max(L)], "short": sum(1 for x in L if x <= 14), "fresh": int(round(100.0 * fresh / m)), "prep": int(round(100.0 * len(prep) / m)),
+            "andj": int(round(100.0 * len(andj) / n)), "colon": int(round(100.0 * len(colon) / n)), "shell": shell, "rep": rep, "marks": marks}
 
 
 def _flow(text, nm=None):
@@ -1868,7 +1942,9 @@ def _flow(text, nm=None):
     if ex >= 2 or rep_w:
         marks.append("- 이음(낱말): " + ("예시의 이음말(For example·For instance …)로 시작하는 문장이 %d개다 — 이 분야 논문에서는 사례 다섯에 하나만 그렇게 시작한다(문단에 많아야 하나). " % ex if ex >= 2 else "") +
                      ("같은 이음말(%s)이 세 번 이상 나온다. " % ", ".join(rep_w) if rep_w else "") + "사례는 표시 없이 그 사실을 말하고 인용을 달거나 주장 문장 안의 구로 넣는다.")
-    st.update(pct={k: int(round(v)) for k, v in pct.items()}, out=out, marks=marks)
+    rh = _rhythm(text, "intro")   # 문장의 크기와 첫머리 (Stylus 1.2) — 극단만 지적
+    marks += rh["marks"]
+    st.update(pct={k: int(round(v)) for k, v in pct.items()}, out=out, marks=marks, rhythm=rh)
     return st
 
 
@@ -1900,7 +1976,7 @@ def _chat_style(doc, key, scope, quote, ev=False):
         head += "- 다만 저자가 [근거]를 써서 글을 쓰거나 받침을 달아 달라고 하면, 근거에서 가져온 내용과 인용을 더한다 — 근거가 말하는 데까지만.\n"
     if scope == "sel" and len(quote or "") < 80 and not ev:
         return head + _style_pick(("주어에 앞에서", "접속 부사는 문장 맨 앞", "영어로 쓸 때"))
-    body = (_style_pick(("문단은 사실을",)) if scope != "sel" else "") + _style_pick(("모든 문장은 앞의", "새 대목을 여는 문장", "주어에 앞에서", "접속 부사는 문장 맨 앞", "저자를 주어로 세우는"))
+    body = (_style_pick(("문단은 사실을",)) if scope != "sel" else "") + _style_pick(("모든 문장은 앞의", "새 대목을 여는 문장", "주어에 앞에서", "문장의 크기는", "문장의 첫머리(주어)는", "같은 것을 다시 가리킬", "조건·범위의 부사구", "덧붙일 말", "접속 부사는 문장 맨 앞", "저자를 주어로 세우는"))
     body += ("- 문단의 마지막 문장은 앞을 요약하거나 교훈을 말하지 않는다. 맺는 말('This explains why …')을 먼저 하고 그 까닭을 다음 문장에서 다시 풀지 않는다 — 까닭(기전)을 먼저 말하고, 그것이 설명하는 것으로 끝낸다.\n"
              "- 같은 이음말로 시작하는 문장이 한 문단에 세 번 이상 나오지 않게 한다. 쌍반점으로 문장을 잇지 않는다. 같은 사실을 두 번 말하지 않는다.\n")
     if ev:
@@ -1944,6 +2020,11 @@ def _chat_flow(text, nm=None, base=None):
             rw = [x for x, v in cnt.items() if v >= 3]
             if rw:
                 notes.append(("rep", w + "같은 이음말(%s)로 시작하는 문장이 세 번 이상" % ", ".join(rw)))
+            rh = f.get("rhythm") or {}
+            if rh.get("cv") is not None and rh["cv"] < _RH_BAND["intro"]["cv"]:
+                notes.append(("even", w + "문장 길이가 %d~%d 낱말로 너무 고름 — 요점은 짧게, 근거는 길게" % tuple(rh["lens"])))
+            if len(rh.get("shell") or []) >= 2:
+                notes.append(("shell", w + "'This finding/result' 같은 두루뭉술한 말로 받는 문장 %s" % ", ".join(str(x) for x in rh["shell"])))
         return notes, seen, tied, tot
 
     notes, seen, tied, tot = scan(text)
@@ -2118,8 +2199,8 @@ def lib_use(doc, body):
             "접속 부사를 주어 뒤에 끼워 넣은 문장이 없는가. 걸리면 고친 뒤에 낸다.\n"
             "먼저 JSON 하나로 답하고:\n"
             "{\"answer\": \"한국어 2~5문장 — 첫 문장에 무엇을 썼는지, 그 다음에 어떻게·어디에, 마지막에 저자가 확인할 것(근거가 모자란 걸음, 재인용). 근거는 E번호가 아니라 (첫 저자 연도)로\", "
-            "\"plan\": [{\"move\": \"덩이의 주장 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"], \"sents\": [\"1 머리: 할 말\", \"2 ←1 귀결 · 'As a result,' 로: 할 말\", \"3 ←2 풀이 · 표시 없이 같은 주어로: 할 말\", \"4 ←1 덧붙임 · 'Moreover,' 로: 할 말\"]}]}\n"
-            "(sents 의 꼴 = '문장 번호 ←이어받는 문장 번호 관계 · 드러내는 방법: 할 말'. 문장 번호는 문단 전체에서 이어 매긴다.)\n"
+            "\"plan\": [{\"move\": \"덩이의 주장 — 한국어 한 문장\", \"ev\": [\"E3.2\", \"E5.1\"], \"sents\": [\"1 머리 · 짧게: 할 말\", \"2 ←1 근거 · 새 주어(그 연구의 대상)로 · 길게(조건·값을 한 문장에): 할 말\", \"3 ←2 귀결 · 'As a result,' 로: 할 말\", \"4 ←2 풀이 · It 으로 받아: 할 말\", \"5 ←1 대조 · 'However,' 로 · 짧게: 할 말\"]}]}\n"
+            "(sents 의 꼴 = '문장 번호 ←이어받는 문장 번호 관계 · 첫머리(새 주어 / It·They / 앞 문장이 말한 것의 이름 / 접속 부사) · 크기(짧게·길게, 정할 것이 있을 때): 할 말'. 문장 번호는 문단 전체에서 이어 매긴다.)\n"
             "그 뒤에 쓴 글을 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(쓴 문단들 — 문단 사이는 빈 줄, 제목 줄 없이)\n<<<END>>>\n"
             "규칙:\n"
             "- 넣을 곳: " + place + ". 그 절의 지금 글과 앞뒤 절을 읽고, 이미 쓴 내용과 겹치지 않고 이어지게 쓴다. 원고의 언어·문체·용어·기호를 따른다.\n"
@@ -4294,8 +4375,11 @@ _CONCL_LOGIC = (
     "4. 끝: 이 답이 누구에게 어디에 쓸모 있는가(의의) 또는 무엇이 남았는가(향후) — 끝 문장은 독자가 가져갈 말이어야 한다. 한계는 쓰더라도 1~2문장, 끝 바로 앞에.\n"
     "5. 하지 않는 것: 문헌 인용(결론은 이 연구의 말이다), 본문에 없는 주장·수치, 새로움의 과장('for the first time' 은 정말 그럴 때 한 번), 교훈조의 맺음, 결과 절의 문장을 그대로 베끼기(말을 줄여 다시 쓴다), 서론의 되풀이.\n"
     "6. 꼴: 저자가 정하지 않았으면 문단으로 쓴다(2~4문단: 수행 / 결과들 / 종합·의의). 저자가 '목록' 이라 했으면 결과 묶음을 (1) (2) … 번호 항목으로 — 항목마다 결과 + 해석의 두 문장.\n"
-    "7. 문장: 앞 문장을 이어받는 방법은 서론과 같다(접속 부사는 맨 앞에, 가운데는 also 만; 관계가 실제로 그럴 때만). 완곡한 말(may·suggest)은 해석에만, 결과에는 쓰지 않는다. 문장 길이는 섞는다.\n"
-    "8. 분량: 결론은 1분 안에 읽히는 요약이다 — 이 분야 논문의 결론은 가운데가 문장 15개·낱말 400개이고, 긴 결과 절을 가진 논문도 20문장을 넘기는 일이 드물다. 주문에 분량이 없으면 문장 8~16개·낱말 250~450개 안에서 쓴다. 길어지면 결과를 더 쓰지 말고 물음 단위로 묶어라.\n")
+    "7. 문장: 앞 문장을 이어받는 방법은 서론과 같다(접속 부사는 맨 앞에, 가운데는 also 만; 관계가 실제로 그럴 때만). 완곡한 말(may·suggest)은 해석에만, 결과에는 쓰지 않는다. "
+    "대비의 틀('rather than'·'not … but'·'only')은 이 연구가 실제로 무엇을 뒤집을 때만 쓴다. 첫 문장도 서른 낱말을 넘기지 않는다.\n"
+    "8. 분량: 결론은 1분 안에 읽히는 요약이다 — 이 분야 논문의 결론은 가운데가 문장 15개·낱말 400개이고, 긴 결과 절을 가진 논문도 20문장을 넘기는 일이 드물다. 주문에 분량이 없으면 문장 8~16개·낱말 250~450개 안에서 쓴다. 길어지면 결과를 더 쓰지 말고 물음 단위로 묶어라.\n"
+    "9. 문장의 크기와 첫머리 — 사람이 쓴 글과 기계가 쓴 글이 갈리는 곳(결론에서는 특히: 결과 문장은 수치·조건을 담아 길어도 되지만 답·종합·의의는 짧게 끊는다):\n") + _style_pick(
+    ("문장의 크기는", "문장의 첫머리(주어)는", "같은 것을 다시 가리킬", "조건·범위의 부사구", "덧붙일 말"))
 # 쓰고 난 뒤의 확인 — 2026-10-05 에 서재의 IJMTM 26편·JMPT 13편 결론에서 잰 것(논문의 90% 가 드는 범위). 문장 수 · 낱말 수 · 수치가 든 문장 % · 완곡한 말이 든 문장 % · 접속 부사·받는 말로 시작하는 문장 % · 인용이 든 문장 수
 _CONCL_BAND = {"nsent": (6, 36), "words": (155, 879), "num": (5, 55), "hedge": (0, 31), "tied": (0, 50), "cited": (0, 1)}
 _CONCL_SHARE = {"수행": (0, 54), "결과": (0, 57), "해석": (0, 36), "의의": (0, 20), "향후": (0, 16), "배경": (0, 37), "한계": (0, 15), "새로움": (0, 20)}   # 걸음마다 문장의 비율(%)
@@ -4320,7 +4404,10 @@ def _concl_flow(text):
             notes.append("%s %s%s — 논문 결론의 90%%는 %s~%s%s" % (names[k], x, "" if k in ("nsent", "words", "cited") else "%", lo, hi, "" if k in ("nsent", "words", "cited") else "%"))
     if st["mid"]:
         out.append("mid"); notes.append("문장 %s 은 접속 부사가 주어 뒤에 있음" % ", ".join(str(x[0]) for x in st["mid"]))
-    v.update(out=out, notes=notes)
+    rh = _rhythm(text, "concl")   # 문장의 크기와 첫머리 (Stylus 1.2)
+    for mk in rh["marks"]:
+        out.append("rhythm"); notes.append(mk[2:])
+    v.update(out=out, notes=notes, rhythm=rh)
     return v
 
 

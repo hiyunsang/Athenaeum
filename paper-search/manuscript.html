@@ -1766,6 +1766,8 @@ function libFlowHtml(u) {   // 쓴 문단이 논문의 범위(서재의 IJMTM·J
   return "<br>논문의 범위(문단 열에 아홉이 드는 범위)와 견줌" + (nm.src ? " <span style='color:var(--text-3)'>— 서재의 " + esc(nm.src) + " 서론 " + nm.npar + "문단</span>" : "") + ": " +
     one("접속 부사나 앞 문장을 받는 말로 시작하는 문장", "tied", f.tied, Math.max(1, f.n - 1)) + " · " + one("인용이 달린 문장", "cited", f.cited == null ? 0 : f.cited, f.n) + " · " + one("인용으로 끝나는 문장", "ends", f.ends, f.n) +
     ((f.mid || []).length ? " · <span style='color:var(--amber)'>접속 부사를 문장 가운데 둔 문장 " + f.mid.map(x => x[0]).join(", ") + "번 (논문에서는 also 말고는 거의 없음)</span>" : "") +
+    (f.rhythm && f.rhythm.n >= 6 && f.rhythm.lens ? "<br>문장의 크기와 첫머리: 길이 " + f.rhythm.lens[0] + "~" + f.rhythm.lens[1] + "낱말 · 열네 낱말 이하의 짧은 문장 " + f.rhythm.short + "개 · 앞에 없던 말로 시작한 문장 " + f.rhythm.fresh + "%" +
+      ((f.rhythm.marks || []).length ? " <span style='color:var(--amber)'>— " + f.rhythm.marks.map(x => esc(x.replace(/^- /, "").split(" — ")[0])).join(" · ") + "</span>" : "") : "") +
     ((f.marks || []).length ? "<br><span style='color:var(--amber)'>논문의 범위에서 벗어난 곳이 남았습니다 — 그 대목을 손보거나 다시 써 보세요.</span>" : "");
 }
 function libCheckHtml(u) {
