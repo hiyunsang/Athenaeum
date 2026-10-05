@@ -21,7 +21,7 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
     mathtex.py       (0.8k줄) 수식: LaTeX(부분집합) → MathML(화면 미리보기)·OMML(워드 수식), OMML → LaTeX(워드에서 가져오기)
     wordsync.py      (0.5k줄) 워드 문단 ↔ 글 변환(가져오기와 공유), 바뀐 글만 원본 문단에 갈아 끼우기
     vocab.py         (360줄)  단어장: 논문에서 담기·목록 담기·Anki 내보내기
-    study.py         (0.9k줄) 공부: 주제 → 내 서재의 논문만으로 교과서 한 장 (훑기 → 읽고 메모 → 짜기 → 쓰기 → 원문 대조)
+    study.py         (1.2k줄) 공부: 주제 → 내 서재의 논문만으로 교과서 한 장 (훑기 → 읽고 메모 → 짜기 → 쓰기 → 원문 대조)
     mapper.py                  관련 논문 맵 (OpenAlex)
     rules.py                   규칙 기반 라벨 분류 (Claude 실패 시 폴백)
     batch_generate.py          일괄 요약·번역 (대기열 JSON)
