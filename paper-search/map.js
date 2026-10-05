@@ -51,7 +51,7 @@ function renderResultMap(m, host, opts) {
   const legend = document.createElement("div"); legend.className = "maplegend";
   legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
     m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
-    (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기</span>");
+    (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
   host.appendChild(legend);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
   const G = m.groups.length || 1, sims = m.sims, DMIN = 60, DMAX = 560;
@@ -59,6 +59,18 @@ function renderResultMap(m, host, opts) {
   const strength = nodes.map((n, i) => nodes.reduce((acc, _, j) => acc + (i !== j && sims[i] && sims[i][j] ? sims[i][j] : 0), 0));
   const maxStr = Math.max(0.001, ...strength), conn = strength.map(v => Math.sqrt(v / maxStr));
   nodes.forEach((n, i) => { n.links = m.edges.filter(e => e[0] === i || e[1] === i).length; n.conn = conn[i]; });
+  // 중요도(이름표를 누구에게 먼저 주나): 피인용 + 연결 강도, 보유 논문은 조금 더, 시드는 맨 앞
+  const maxCit = Math.max(1, ...nodes.map(n => n.cit || 0));
+  nodes.forEach(n => { n.imp = 0.6 * Math.sqrt((n.cit || 0) / maxCit) + 0.4 * n.conn + (n.owned ? 0.3 : 0) + (n.seed ? 9 : 0); });
+  // 논문이 많으면 선은 논문마다 가장 강한 몇 개만 그린다(마우스를 올리거나 누른 논문의 선은 다 보인다) — 150편 맵이 선으로 뒤덮이던 문제(사용자, 2026-10-05)
+  const KEEP = nodes.length > 80 ? 2 : nodes.length > 40 ? 3 : 99;
+  const edgeOn = new Uint8Array(m.edges.length);
+  if (KEEP < 99) {
+    const per = nodes.map(() => []);
+    m.edges.forEach((e, ei) => { per[e[0]].push(ei); per[e[1]].push(ei); });
+    const rank = ei => { const e = m.edges[ei]; return e[2] * 10 + (e[3] == null ? 0.3 : e[3]); };   // 직접 인용 > 동시인용 > 공통 참고문헌 > 이웃, 같은 종류면 유사도
+    per.forEach(lst => lst.sort((a, b) => rank(b) - rank(a)).slice(0, KEEP).forEach(ei => { edgeOn[ei] = 1; }));
+  } else edgeOn.fill(1);
   host._nodes = nodes;
   // 결정적 난수 (같은 결과 → 같은 그림)
   let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -205,16 +217,27 @@ function renderResultMap(m, host, opts) {
     });
   }
   const lightness = (col) => { const h = /hsl\(\s*[\d.]+,\s*[\d.]+%,\s*([\d.]+)%/.exec(col); if (h) return +h[1]; const x = /^#([0-9a-f]{6})$/i.exec(col); if (!x) return 50; const v = parseInt(x[1], 16); return ((v >> 16) * 0.299 + ((v >> 8) & 255) * 0.587 + (v & 255) * 0.114) / 2.55; };
-  function drawNodeLabels() {   // 후광 없이: 큰 원엔 원 안 가운데(어두운 원엔 흰 글자), 작은 원엔 바로 위(회색). 모든 원에
-    const u = Math.min(k, 1.5) / k, fs = 10 * u;
+  function drawNodeLabels() {   // 후광 없이: 큰 원엔 원 안 가운데(어두운 원엔 흰 글자), 작은 원엔 바로 위(회색).
+    // 논문이 많으면(40편 넘게) 이름표는 중요한 논문부터 놓되 다른 이름표와 겹치면 건너뛴다. 확대하면 자리가 생겨 더 보이고, 올리거나 누른 논문은 늘 보인다
+    const u = Math.min(k, 1.5) / k, fs = 10 * u, many = nodes.length > 40;
+    const strongOf = n => n === hovered || n === selected ? 2 : n.seed ? 1 : 0;
+    const order = many ? nodes.slice().sort((a, b) => (strongOf(b) - strongOf(a)) || (b.imp - a.imp)) : nodes;
+    const cut = many && k < 1.6 ? order[Math.floor(order.length * 0.6)].imp : -1;   // 많고 확대하지 않았으면 중요도 아래 40% 는 이름표 없이
+    const placed = [], hit = (p, q) => p[0] < q[0] + q[2] && q[0] < p[0] + p[2] && p[1] < q[1] + q[3] && q[1] < p[1] + p[3];
     ctx.textAlign = "center"; ctx.globalAlpha = introP;
-    for (const n of nodes) {
-      const strong = n === hovered || n === selected || !!n.seed;
+    for (const n of order) {
+      const strong = strongOf(n) > 0;
       if (!inFocus(n) && !strong) continue;
+      if (!strong && n.imp < cut) continue;
       const r = n.r * zr(), t = (n.author || "") + ", " + (n.year || "?");
       ctx.font = (strong ? "600 " : "") + fs + "px " + font;
-      const inside = r >= ctx.measureText(t).width / 2 + 5 * u;   // 글자가 원 안에 들어갈 때만 안에 (흰 글자가 바탕으로 삐져나오면 안 보임)
+      const tw = ctx.measureText(t).width, inside = r >= tw / 2 + 5 * u;   // 글자가 원 안에 들어갈 때만 안에 (흰 글자가 바탕으로 삐져나오면 안 보임)
       const y = inside ? n.y + 3.5 * u : n.y - r - 3 * u;
+      if (many) {
+        const rect = [n.x - tw / 2 - 2 * u, y - fs, tw + 4 * u, fs * 1.3];
+        if (!strong && placed.some(p => hit(p, rect))) continue;
+        placed.push(rect);
+      }
       if (!inside) { ctx.lineWidth = 1 * u; ctx.strokeStyle = bg; ctx.lineJoin = "round"; ctx.strokeText(t, n.x, y); }   // 선·다른 원 위에서도 읽히게 얇은 후광
       ctx.fillStyle = inside ? (lightness(n.col) < 58 ? "rgba(255,255,255,0.92)" : "rgba(28,28,26,0.85)") : (strong ? textCol : text2);
       ctx.fillText(t, n.x, y);
@@ -225,9 +248,9 @@ function renderResultMap(m, host, opts) {
     screen(ctx); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); view(ctx);
     drawHulls();
     const lw = px1();   // 선 두께는 화면 기준
-    for (const [i, j, w, s] of m.edges) {
+    const isAct = e => { const a = nodes[e[0]], b = nodes[e[1]]; return (hovered && (a === hovered || b === hovered)) || (selected && (a === selected || b === selected)); };   // 올리거나 누른 논문의 선
+    const drawEdge = ([i, j, w, s], act) => {
       const a = nodes[i], b = nodes[j];
-      const act = (hovered && (a === hovered || b === hovered)) || (selected && (a === selected || b === selected));   // 올리거나 누른 논문의 선
       const st = Math.max(0, Math.min(1, s == null ? 0.3 : s));   // 유사도 → 진하기·굵기
       let base = w === 2 ? 0.55 + st * 0.35 : w === 3 ? 0.45 + st * 0.3 : w === 1 ? 0.3 + st * 0.35 : 0.18 + st * 0.2;
       if (focusG !== null && !(inFocus(a) && inFocus(b))) base *= 0.25;   // 강조 군집 밖의 선은 흐리게
@@ -235,9 +258,11 @@ function renderResultMap(m, host, opts) {
       ctx.strokeStyle = act ? accent : (dark ? "rgba(215,215,210," : "rgba(60,60,58,") + (act ? 1 : base).toFixed(2) + ")";
       ctx.lineWidth = lw * (act ? 1.8 : (w === 2 ? 1.2 + st * 0.8 : w === 0 ? 0.9 : 1 + st * 0.7));
       ctx.setLineDash(w === 3 ? [2 * lw, 4 * lw] : []);   // 점선 = 동시인용 (남들이 둘을 함께 인용)
-      ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       ctx.setLineDash([]);
-    }
+    };
+    m.edges.forEach((e, ei) => { if (edgeOn[ei] && !isAct(e)) drawEdge(e, false); });   // 논문이 많으면 강한 선만
+    m.edges.forEach(e => { if (isAct(e)) drawEdge(e, true); });                            // 올리거나 누른 논문의 선은 모두, 맨 위에
     const order = nodes.slice().sort((a, b) => b.r - a.r);   // 큰 원을 먼저 → 작은 원이 위에 보임. 마우스를 올린 원은 맨 위
     for (const top of [selected, hovered]) if (top) { order.splice(order.indexOf(top), 1); order.push(top); }
     for (const n of order) {
