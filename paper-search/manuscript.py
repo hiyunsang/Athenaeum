@@ -1610,6 +1610,10 @@ def _tok_add(a, b):
 # 글의 규칙 — 세 번 고쳤다. ① '인용은 문장 끝에 묶어, 한 문장 = 한 걸음' → '주장 + 인용 묶음'인 문장이 나란히 놓였다(사용자: 인용 나열 한 문장의 되풀이, AI 티).
 # ② '모든 문장이 앞 문장을 이어받게' → 잘 쓴 문단 8개에는 맞았지만 서재의 논문 전체(IJMTM 25편·JMPT 12편)보다 촘촘했다: 접속 부사·받는 말로 시작하는 문장 60%(논문 39%), 인용이 달린 문장 67%(50%),
 # 접속 부사를 주어 뒤에 끼운 문장 12~18%(논문 1~4%, 그것도 거의 also). ③ 기준을 내가 정한 숫자가 아니라 서재의 그 저널 논문에서 잰 평균(_style_norms)으로, 드문 것(문장 가운데 접속 부사, 저자 주어)은 사례로.
+# Stylus — Athenaeum 의 글쓰기 지능(사용자가 붙인 이름, 2026-10-05): 문단의 짜임·문장 이음·새 대목을 여는 법·인용 자리의 규칙 + 서재 논문에서 잰 사례와 범위 + 근거 대조.
+# 판: 1 = 뼈대 → 쓰기 → 근거 대조 → 고쳐 쓰기(2026-10-02) · 2 = 관계마다 논문이 드러내는 방법을 사례로, 숫자는 쓰고 난 뒤 범위 확인(10-02) · 3 = 새 대목을 여는 문장·90% 범위·대화에도 적용(10-02~05).
+# 규칙을 바꾸면 번호를 올리고 CLAUDE.md 의 'Stylus' 에 무엇이 바뀌었는지 적는다. 문단 쓰기·대화의 결과에 남아 화면에 'Stylus 3' 으로 보인다.
+STYLUS = "Stylus 3"
 _LIBX_STYLE = (
     "[글 — 문단의 짜임과 이음]\n"
     "- 문단은 사실을 한 문장씩 늘어놓은 목록이 아니라 짜임이다: 주제문 → 덩이 2~4개 → (필요하면) 전환이나 맺음. 덩이 하나는 머리 문장(주장) 하나와 그것을 펴는 문장 한두 개(풀이·기전, 사례, 귀결, 단서)로 이루어지고, "
@@ -2136,7 +2140,7 @@ def lib_use(doc, body):
         _LIBX_STAGE.pop(item["id"], None)
         return {"error": "Claude 응답이 없습니다" + _why()}
     by_key = {k["key"]: k for k in keys}
-    use = {"id": "u%d" % int(time.time() * 1000), "mode": mode, "doc": doc.get("id"), "t": time.time(), "note": note, "node": nid,
+    use = {"id": "u%d" % int(time.time() * 1000), "mode": mode, "doc": doc.get("id"), "t": time.time(), "note": note, "node": nid, "stylus": STYLUS,
            "model": (res or {}).get("model", ""), "tok": (res or {}).get("tok"), "sec": round(time.time() - t0)}
 
     def cites_for(text):
@@ -3640,7 +3644,7 @@ def ask_selection(doc, body):
                 m.pop("error", None)
                 m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time(),
                                                    "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "whole": bool(res.get("whole")), "tok": res.get("tok"), "refs": res.get("refs") or [],
-                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or [], "altflow": res.get("altflow") or [], "unknown": res.get("unknown") or [], "ev": res.get("ev")})
+                                                   "rw": res.get("rewrites") or [], "cites": res.get("cites") or [], "altflow": res.get("altflow") or [], "unknown": res.get("unknown") or [], "ev": res.get("ev"), "stylus": res.get("stylus") or ""})
                 m["unread"] = True
         with _REV_LOCK:   # 기다리는 동안 저장된 글 위에 답만 얹는다
             fresh = load_ms(doc["id"]) or doc
@@ -4269,7 +4273,7 @@ def _ask_selection(doc, body):
     unknown = [k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", used)) if k not in known and k != "?"]
     answer = str(r.get("answer") or "").strip() + ("\n\n(다시 쓴 글의 일부가 끝까지 오지 않아 그 조각은 버렸습니다 — 범위를 좁혀 다시 물어 주세요.)" if lost else "")
     return {"answer": answer, "alternatives": alts, "altflow": altflow if any(altflow) else [], "rewrites": rws, "cites": cites, "unknown": unknown,
-            "ev": {"id": ev_item.get("id"), "topic": str(ev_item.get("topic") or "")[:80]} if ev_item else None, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
+            "ev": {"id": ev_item.get("id"), "topic": str(ev_item.get("topic") or "")[:80]} if ev_item else None, "stylus": STYLUS, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
 
