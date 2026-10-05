@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>공부 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  header .brand-mark { height: 24px; display: block; }
+  header h1 { font-size: 14px; font-weight: 600; }
+  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 264px minmax(0, 1fr) 400px; }
+  #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; }
+  #main { background: var(--surface); overflow-y: auto; min-width: 0; }
+  #srcp { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-width: 0; padding: var(--s3) var(--s4) var(--s8); }
+  /* 왼쪽: 새로 쓰기 + 목록 */
+  .newbox { padding: var(--s3); border-bottom: 1px solid var(--line); }
+  .newbox textarea { width: 100%; resize: vertical; min-height: 62px; }
+  .newbox .row { display: flex; gap: var(--s2); margin-top: var(--s2); }
+  .newbox select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 12px; }
+  .newbox .primary { width: 100%; margin-top: var(--s2); }
+  .newbox .hint { margin-top: var(--s2); line-height: 1.5; }
+  .sitem { padding: 9px var(--s3) 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .sitem:hover { background: var(--hover); }
+  .sitem .tt { font-weight: 600; line-height: 1.35; }
+  .sitem .mm { color: var(--text-3); font-size: 11.5px; margin-top: 2px; }
+  .sitem .mm .run { color: var(--accent); } .sitem .mm .bad { color: var(--amber); }
+  /* 가운데: 장 */
+  .page { max-width: var(--read-width); margin: 0 auto; padding: var(--s8) var(--s6) 96px; }
+  .ch { font-size: calc(15.5px * var(--read-scale)); line-height: var(--read-lh); font-family: var(--read-font, var(--font)); }
+  .ch h1 { font-family: var(--font-serif); font-size: 1.75em; line-height: 1.3; font-weight: 600; margin: 0 0 var(--s2); }
+  .ch .scope { color: var(--text-2); margin: 0 0 var(--s2); }
+  .ch .meta { font-family: var(--font); font-size: 12px; color: var(--text-3); line-height: 1.6; padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
+  .ch .meta .act { padding: 2px 6px; margin-left: -6px; }
+  .ch h2 { font-family: var(--font-serif); font-size: 1.28em; line-height: 1.35; font-weight: 600; margin: 2.1em 0 .2em; }
+  .ch h2 .no { color: var(--text-3); font-weight: 400; margin-right: .4em; }
+  .ch .aim { font-family: var(--font); font-size: 12.5px; color: var(--text-3); margin: 0 0 .7em; }
+  .ch h3 { font-size: 1.02em; font-weight: 600; margin: 1.5em 0 .3em; }
+  .ch p { margin: 0 0 .95em; text-align: justify; word-break: keep-all; }
+  .ch ul { margin: .4em 0 1em; padding-left: 1.3em; } .ch li { margin-bottom: .45em; }
+  .ch .toc { font-family: var(--font); font-size: 13px; margin: var(--s4) 0 0; padding: 0; list-style: none; line-height: 1.6; }
+  .ch .toc li { display: flex; gap: var(--s2); padding: 3px 0; margin: 0; } .ch .toc .no { color: var(--text-3); min-width: 1.4em; }
+  .ch .toc a { color: var(--text); } .ch .toc .q { color: var(--text-3); }
+  .u { cursor: pointer; border-radius: 2px; }
+  .u:hover { background: var(--hover); }
+  .u.on { background: var(--sel-bg); box-shadow: inset 0 -2px 0 var(--accent); }
+  .u .c { font-family: var(--font); font-size: .74em; color: var(--accent); margin-left: 1px; white-space: nowrap; }
+  .ch .refs { font-family: var(--font); font-size: 13px; line-height: 1.55; }
+  .ch .refs .r { display: flex; gap: var(--s2); padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .ch .refs .r .n { color: var(--text-3); min-width: 2.2em; } .ch .refs .r .b { flex: 1; min-width: 0; }
+  .ch .refs .r .act { padding: 0 4px; }
+  .ch .terms { font-family: var(--font); font-size: 13px; columns: 2; column-gap: var(--s6); }
+  .ch .terms div { break-inside: avoid; padding: 2px 0; } .ch .terms span { color: var(--text-3); }
+  .empty { max-width: 620px; margin: 0 auto; padding: 72px var(--s6); color: var(--text-2); line-height: 1.75; }
+  .empty h2 { font-family: var(--font-serif); font-size: 22px; color: var(--text); margin-bottom: var(--s3); }
+  .empty ol { padding-left: 1.3em; } .empty li { margin-bottom: 6px; }
+  /* 쓰는 중 */
+  .run h2 { font-family: var(--font-serif); font-size: 22px; margin-bottom: var(--s1); }
+  .stg { display: flex; align-items: center; gap: var(--s3); padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--text-3); }
+  .stg .k { width: 1.3em; text-align: center; }
+  .stg.done { color: var(--text-2); } .stg.done .k { color: var(--green); }
+  .stg.now { color: var(--text); font-weight: 600; } .stg.now .k { color: var(--accent); }
+  .stg .cnt { margin-left: auto; font-weight: 400; color: var(--text-3); white-space: nowrap; }
+  .stgbar { padding: 6px 0 2px 2.1em; }
+  .pbar.live > i { transition: width 1s linear; }
+  .plist { margin-top: var(--s4); } .plist .p { display: flex; gap: var(--s2); padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .plist .p .k { width: 1.3em; color: var(--green); text-align: center; } .plist .p .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plist .p .m { color: var(--text-3); white-space: nowrap; }
+  .logl { color: var(--text-2); font-size: 12.5px; padding: 3px 0; }
+  .warnbox { background: var(--amber-bg); color: var(--amber); border-radius: var(--r); padding: var(--s2) var(--s3); margin: var(--s3) 0; line-height: 1.55; }
+  /* 오른쪽: 근거 */
+  #srcp .sec:first-child { margin-top: 0; }
+  .spq { line-height: 1.6; padding: var(--s2) 0 var(--s3); border-bottom: 1px solid var(--line-2); }
+  .srci { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+  .srci .sm { font-size: 12px; color: var(--text-2); margin-bottom: 4px; } .srci .sm b { color: var(--text); }
+  .srci .tag { color: var(--amber); margin-left: 4px; }
+  .srci .en { line-height: 1.55; } .srci .ko { color: var(--text-2); line-height: 1.6; margin-top: 5px; }
+  .srci .cited { color: var(--text-3); font-size: 11.5px; line-height: 1.5; margin-top: 5px; }
+  .srci .act { padding: 4px 0; display: inline-block; margin-top: 2px; }
+  .kv { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; } .kv span:first-child { color: var(--text-3); min-width: 6.5em; }
+  .rm { padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .rm .w { color: var(--amber); margin-top: 2px; } .rm .s { color: var(--text-3); }
+  @media (max-width: 1100px) { #app { grid-template-columns: 220px minmax(0, 1fr) 320px; } }
+  @media print {
+    header, #side, #srcp, .noprint { display: none !important; }
+    body { overflow: visible; display: block; background: #fff; } #app { display: block; } #main { overflow: visible; }
+    .page { max-width: none; padding: 0; } .u.on { background: none; box-shadow: none; }
+  }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
+  <h1>공부</h1>
+  <span class="hint">내 서재의 논문만으로 쓰는 교과서 한 장 — 문장을 누르면 그 근거인 논문의 원문 문장이 오른쪽에 보입니다</span>
+  <span style="margin-left:auto"></span>
+</header>
+<div id="app">
+  <aside id="side">
+    <div class="newbox">
+      <textarea id="topic" rows="3" placeholder="공부할 주제 (예: 단결정 실리콘 절삭)"></textarea>
+      <div class="row">
+        <select id="depth" title="읽을 논문의 수"><option value="small">핵심만 · 10편까지</option><option value="mid">보통 · 20편까지</option><option value="wide">넓게 · 36편까지</option></select>
+        <select id="effort" title="쓰는 모델"><option value="xhigh">Opus · 엑스트라</option><option value="high">Opus · 보통</option><option value="max">Opus · 최대</option><option value="fable">Fable · 엑스트라</option><option value="fast">Sonnet · 빠름 (대조는 Opus)</option></select>
+      </div>
+      <button class="primary" id="go">쓰기 시작</button>
+      <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
+    </div>
+    <div id="list"></div>
+  </aside>
+  <main id="main"></main>
+  <aside id="srcp"></aside>
+</div>
+<script>
+mountUiControls("header");
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// 논문에서 꺼낸 글: 번역문의 위·아래 첨자 태그와 굵은 글씨 표시는 살리고, 수식 그림 자리는 말로
+const rich = s => esc(s).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\[\[EQ:[^\]]*\]\]/g, "〔수식〕");
+async function api(path, body) { const r = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : undefined); return r.json(); }
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const fmtDate = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" + (Math.round(s % 60) ? " " + Math.round(s % 60) + "초" : "");
+const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
+
+const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
+  ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"]];
+const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
+const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
+let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info";
+
+$("depth").value = lsGet("study_depth", "mid");
+$("effort").value = lsGet("ms_sel_effort", "xhigh");     // 원고의 대화·서재에서 뽑기와 같은 설정
+if (!$("effort").value) $("effort").value = "xhigh";
+$("depth").onchange = () => lsSet("study_depth", $("depth").value);
+$("effort").onchange = () => lsSet("ms_sel_effort", $("effort").value);
+
+// ---------- 목록 ----------
+async function loadList() {
+  let r; try { r = await api("/api/study"); } catch (e) { return; }
+  items = r.items || []; renderList();
+}
+function stateText(x) {
+  if (x.status === "running") { const s = STAGES.find(a => a[0] === x.stage); return "<span class='run'>쓰는 중" + (s ? " — " + esc(s[1]) : "") + "</span>"; }
+  if (x.status === "done") return x.stats ? "논문 " + x.stats.cited + "편 · 문장 " + x.stats.units + "개" : "다 씀";
+  if (x.status === "error") return "<span class='bad'>멈춤 — 이어서 쓸 수 있음</span>";
+  return "<span class='bad'>멈춤</span>";
+}
+function renderList() {
+  $("list").innerHTML = items.length ? items.map(x => "<div class='sitem" + (x.id === curId ? " sel" : "") + "' data-id='" + esc(x.id) + "'><div class='tt'>" + esc(x.title || x.topic) + "</div>" +
+    "<div class='mm'>" + fmtDate(x.t) + " · " + stateText(x) + "</div></div>").join("") : "<div class='hint' style='padding:var(--s3)'>아직 쓴 것이 없습니다.</div>";
+  $("list").querySelectorAll(".sitem").forEach(el => el.onclick = () => openStudy(el.dataset.id));
+}
+
+// ---------- 열기 · 살피기 ----------
+async function openStudy(id) {
+  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; clearTimeout(pollT);
+  renderList(); await refresh(true);
+}
+async function refresh(first) {
+  if (!curId) { cur = null; renderMain(); renderPanel(); return; }
+  let st; try { st = await api("/api/study/get?id=" + encodeURIComponent(curId)); } catch (e) { pollT = setTimeout(refresh, 5000); return; }
+  if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); return; }
+  const was = cur && cur.id === st.id ? cur.status : "";
+  cur = st; got = Date.now();
+  if (first || st.status !== "done" || was !== "done") { renderMain(); renderPanel(); }
+  if (was && was !== st.status) loadList();
+  clearTimeout(pollT);
+  if (st.status === "running") pollT = setTimeout(refresh, 4000);
+}
+
+// ---------- 가운데 ----------
+function renderMain() {
+  const m = $("main"); clearInterval(tickT);
+  if (!cur) { m.innerHTML = emptyHtml(); return; }
+  if (cur.status === "done" && cur.chapter) { m.innerHTML = chapterHtml(); bindChapter(); return; }
+  m.innerHTML = runHtml(); bindRun();
+  if (cur.status === "running") tickT = setInterval(tick, 1000);
+}
+function emptyHtml() {
+  return "<div class='empty'><h2>내 서재로 공부하기</h2>" +
+    "<p>왼쪽에 주제를 적으면, 서재에 있는 논문을 읽어 전공책의 한 장처럼 정리합니다.</p>" +
+    "<ol><li>서재의 모든 문장을 훑어 그 주제를 다룬 논문을 찾습니다.</li><li>고른 논문을 한 편씩 읽고, 주제에 관한 사실을 근거 문장의 번호와 함께 메모로 뽑습니다.</li>" +
+    "<li>메모를 절로 짜서 교과서 글을 씁니다.</li><li>쓴 문장을 하나씩 논문의 원문 문장과 대조합니다. 원문이 말하지 않는 문장은 고치고, 고쳐도 맞지 않으면 뺍니다. 수치는 프로그램이 따로 대조합니다.</li></ol>" +
+    "<p>다 쓴 장에서 문장을 누르면 그 근거인 원문 문장이 오른쪽에 보이고, 논문의 그 자리로 바로 갈 수 있습니다. 화면에 보이는 원문은 Claude 가 적은 것이 아니라 논문 파일에서 꺼낸 것입니다.</p>" +
+    "<p class='hint'>서재에 없는 내용은 싣지 않습니다. 서재의 논문으로 답하지 못한 물음은 장 끝에 따로 적습니다.</p></div>";
+}
+
+// ---- 쓰는 중 / 멈춤
+const fastRun = () => ((cur.opts || {}).effort) === "fast";
+function expectSec(stage) {
+  const pr = cur.prog || {}, n = pr.total || 1, f = fastRun();
+  return ({ plan: 30, scan: 12, select: 45, read: Math.ceil(n / 4) * (f ? 70 : 150), outline: f ? 70 : 260, write: Math.ceil(n / 3) * (f ? 70 : 260), verify: Math.ceil(n / 3) * (f ? 60 : 170), wrap: 30 })[stage] || 60;
+}
+function stageFrac() {
+  const pr = cur.prog || {}, el = (cur.now - (cur.stage_t || cur.now)) + (Date.now() - got) / 1000, T = expectSec(cur.stage);
+  const byTime = Math.min(0.92, el / T);
+  if (pr.total) { const step = 1 / pr.total; return Math.min(0.97, pr.done / pr.total + step * Math.min(0.9, byTime * pr.total - pr.done > 0 ? Math.min(1, byTime * pr.total - pr.done) : 0.1)); }
+  return byTime;
+}
+function runHtml() {
+  const k = STAGES.findIndex(a => a[0] === cur.stage), running = cur.status === "running", pr = cur.prog || {};
+  const rows = STAGES.map((a, i) => {
+    const cls = i < k ? "done" : i === k ? (running ? "now" : "") : "";
+    const cnt = i === k && pr.total ? pr.done + " / " + pr.total : "";
+    return "<div class='stg " + cls + "'><span class='k'>" + (i < k ? "✓" : i === k && running ? "▸" : "·") + "</span><span>" + a[1] + "</span><span class='cnt' " + (i === k ? "id='stgCnt'" : "") + ">" + cnt + "</span></div>" +
+      (i === k && running ? "<div class='stgbar'><span class='pbar wide live'><i id='stgBar' style='width:" + Math.round(stageFrac() * 100) + "%'></i></span></div>" : "");
+  }).join("");
+  const papers = cur.papers || [];
+  const plist = papers.length ? "<div class='sec'>읽는 논문 " + papers.length + "편</div><div class='plist'>" + papers.map(p =>
+    "<div class='p'><span class='k'>" + (p.read ? "✓" : "") + "</span><span class='t' title='" + esc(p.title) + "'><b>" + esc(p.short) + "</b> " + esc(p.title) + "</span><span class='m'>" +
+    (p.role === "core" ? "통째로" : "맞은 대목") + (p.read ? " · 메모 " + (p.nnotes || 0) : p.fail ? " · 못 읽음" : "") + "</span></div>").join("") + "</div>" : "";
+  const head = running ? "<div class='hint' id='runEl'></div>" :
+    "<div class='warnbox'>" + (cur.status === "error" ? "멈췄습니다 — " + esc(cur.error || "") : "멈춰 있습니다.") + " 지금까지 한 것은 남아 있어 남은 단계부터 이어서 씁니다.</div>";
+  return "<div class='page run'><h2>" + esc((cur.plan || {}).title || cur.topic) + "</h2>" +
+    "<div class='hint' style='margin-bottom:var(--s3)'>" + esc(cur.topic) + " · " + esc(EFFORT[(cur.opts || {}).effort] || "") + "</div>" + head +
+    "<div style='margin:var(--s3) 0'>" + rows + "</div>" +
+    "<div>" + (running ? "<button class='ghostbtn' id='stopBtn'>멈추기</button>" : "<button class='primary' id='resumeBtn'>이어서 쓰기</button> <button class='act warn' id='delBtn'>지우기</button>") + "</div>" +
+    ((cur.log || []).length ? "<div class='sec'>진행</div>" + cur.log.map(l => "<div class='logl'>" + esc(l.m) + "</div>").join("") : "") + plist + "</div>";
+}
+function tick() {
+  if (!cur || cur.status !== "running") return;
+  const b = $("stgBar"); if (b) b.style.width = Math.round(stageFrac() * 100) + "%";
+  const el = $("runEl"); if (el) el.textContent = "시작한 지 " + fmtDur(Date.now() / 1000 - cur.t) + " · 창을 닫아도 계속 씁니다";
+}
+function bindRun() {
+  tick();
+  const s = $("stopBtn"); if (s) s.onclick = async () => { s.disabled = true; s.textContent = "지금 하던 호출이 끝나면 멈춥니다…"; await api("/api/study", { op: "stop", id: cur.id }); };
+  const r = $("resumeBtn"); if (r) r.onclick = async () => { r.disabled = true; const x = await api("/api/study", { op: "resume", id: cur.id }); if (x.error) alert(x.error); await refresh(true); loadList(); };
+  const d = $("delBtn"); if (d) d.onclick = delStudy;
+}
+async function delStudy() {
+  if (!cur || !confirm("「" + ((cur.chapter || cur.plan || {}).title || cur.topic) + "」 를 지울까요?")) return;
+  const r = await api("/api/study", { op: "delete", id: cur.id }); if (r.error) { alert(r.error); return; }
+  cur = null; curId = ""; lsSet("study_last", ""); await loadList(); renderMain(); renderPanel();
+}
+
+// ---- 다 쓴 장
+const paperOf = key => cur.papers[+key.split(":")[0]];
+const citeNums = u => [...new Set((u.src || []).map(k => paperOf(k).n).filter(Boolean))].sort((a, b) => a - b);
+function unitHtml(u, key) {
+  const ns = citeNums(u);
+  return "<span class='u" + (key === selKey ? " on" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
+}
+function chapterHtml() {
+  const ch = cur.chapter, s = cur.stats || {}, body = ch.sections.filter(x => x.kind !== "summary"), summ = ch.sections.find(x => x.kind === "summary");
+  let no = 0;
+  const secHtml = (sec, si) => {
+    const blocks = sec.blocks.map((b, bi) => b.h ? "<h3>" + esc(b.h) + "</h3>" : "<p>" + b.units.map((u, ui) => unitHtml(u, si + "." + bi + "." + ui)).join(" ") + "</p>").join("");
+    return "<h2 id='sec" + si + "'><span class='no'>" + (++no) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + blocks;
+  };
+  const toc = body.map((sec, i) => "<li><span class='no'>" + (i + 1) + "</span><span><a href='#sec" + ch.sections.indexOf(sec) + "'>" + esc(sec.title) + "</a>" + (sec.aim ? " <span class='q'>— " + esc(sec.aim) + "</span>" : "") + "</span></li>").join("");
+  const cited = cur.papers.map((p, i) => [p, i]).filter(x => x[0].n).sort((a, b) => a[0].n - b[0].n);
+  const si = summ ? ch.sections.indexOf(summ) : -1;
+  return "<div class='page ch'><h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
+    "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((k, u) => k + u.t.length, 0), 0), 0)) + " 자 · " + fmtDate(cur.t) +
+    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>" +
+    "<ul class='toc'>" + toc + "</ul>" +
+    ch.sections.map((sec, i) => sec.kind === "summary" ? "" : secHtml(sec, i)).join("") +
+    (summ ? "<h2>핵심 정리</h2><ul>" + summ.blocks.map((b, bi) => (b.units || []).map((u, ui) => "<li>" + unitHtml(u, si + "." + bi + "." + ui) + "</li>").join("")).join("") + "</ul>" : "") +
+    ((ch.gaps || []).length ? "<h2>이 서재로는 답하지 못한 것</h2><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul>" : "") +
+    ((ch.terms || []).length ? "<h2>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div>" : "") +
+    "<h2>참고문헌</h2><div class='refs'>" + cited.map(([p, i]) => "<div class='r' id='ref" + p.n + "'><span class='n'>[" + p.n + "]</span><span class='b'>" + esc(p.ref || p.title) +
+      " <span class='noprint'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></span></span></div>").join("") + "</div></div>";
+}
+const unitAt = key => { const [a, b, c] = key.split(".").map(Number); return cur.chapter.sections[a].blocks[b].units[c]; };
+function selectUnit(key, scroll) {
+  selKey = key; panel = "unit";
+  $("main").querySelectorAll(".u.on").forEach(e => e.classList.remove("on"));
+  const el = $("main").querySelector(".u[data-u='" + key + "']");
+  if (el) { el.classList.add("on"); if (scroll) el.scrollIntoView({ block: "center" }); }
+  renderPanel();
+}
+function bindChapter() {
+  $("main").querySelectorAll(".u").forEach(el => el.onclick = () => selectUnit(el.dataset.u));
+  const msg = t => { $("chMsg").textContent = t; setTimeout(() => { if ($("chMsg")) $("chMsg").textContent = ""; }, 2500); };
+  const md = async () => { const r = await api("/api/study", { op: "md", id: cur.id }); if (r.error) { msg(r.error); return null; } return r; };
+  $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
+  $("mdSave").onclick = async () => { const r = await md(); if (!r) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([r.md], { type: "text/markdown;charset=utf-8" })); a.download = r.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
+  $("printBtn").onclick = () => window.print();
+  $("infoBtn").onclick = () => { panel = "info"; selKey = ""; $("main").querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
+  $("delBtn").onclick = delStudy;
+}
+document.addEventListener("keydown", e => {      // 문장을 하나씩 넘기며 근거 보기: ↑↓ 또는 J·K
+  if (!cur || cur.status !== "done" || !selKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "")) return;
+  const d = (e.key === "ArrowDown" || e.key === "j") ? 1 : (e.key === "ArrowUp" || e.key === "k") ? -1 : 0; if (!d) return;
+  const all = [...$("main").querySelectorAll(".u")].map(x => x.dataset.u), i = all.indexOf(selKey) + d;
+  if (i >= 0 && i < all.length) { e.preventDefault(); selectUnit(all[i], true); }
+});
+
+// ---------- 오른쪽: 근거 ----------
+function renderPanel() {
+  const el = $("srcp");
+  if (!cur) { el.innerHTML = ""; return; }
+  if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
+  if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey)); el.scrollTop = 0; return; }
+  el.innerHTML = infoPanel();
+  const rb = $("rmBtn"); if (rb) rb.onclick = () => { panel = panel === "removed" ? "info" : "removed"; renderPanel(); };
+}
+function unitPanel(u) {
+  const src = (u.src || []).map(k => [k, cur.src[k]]).filter(x => x[1]);
+  const head = "<div class='sec'>고른 문장</div><div class='spq'>" + esc(u.t) + "</div>";
+  if (!src.length) return head + "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>앞뒤의 사실을 잇는 문장입니다. 근거 문장을 달지 않았고, 새 사실을 담지 않았는지 대조했습니다.</div>";
+  return head + "<div class='sec'>근거 — 논문의 원문 문장 " + src.length + "개</div>" + (u.fixed ? "<div class='hint'>원문과 대조하며 한 번 고쳐 쓴 문장입니다.</div>" : "") +
+    src.map(([k, s]) => { const p = paperOf(k), sid = k.split(":")[1], can = /^s\d+$/.test(sid);
+      return "<div class='srci'><div class='sm'><b>[" + (p.n || "") + "] " + esc(p.short) + "</b> · " + esc(p.journal) + (s.page ? " · p." + s.page : "") + (s.sec ? " · " + esc(s.sec) : "") +
+        (s.own ? "" : " · <span class='tag' title='이 논문이 자기 결과가 아니라 다른 연구를 전한 문장입니다'>다른 연구를 전한 문장</span>") + "</div>" +
+        "<div class='en'>" + esc(s.en) + "</div>" + (s.ko ? "<div class='ko'>" + rich(s.ko) + "</div>" : "") +
+        ((s.cited || []).length ? "<div class='cited'>이 문장이 인용한 문헌: " + s.cited.map(c => "[" + esc(c.n) + "] " + esc(c.line)).join(" / ") + "</div>" : "") +
+        (p.unitwarn ? "<div class='cited' style='color:var(--amber)'>이 논문의 PDF 는 μ 글자가 깨져 꺼내집니다 — 원문의 'mm'·'lm' 는 μm 일 수 있습니다.</div>" : "") +
+        "<a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + (can ? "&kind=translation&sent=" + sid : "") + "'>" + (can ? "논문에서 이 문장 보기" : "논문 열기") + "</a></div>"; }).join("") +
+    "<div class='hint' style='padding-top:var(--s3)'>↑ ↓ 로 앞뒤 문장으로 넘어갑니다.</div>";
+}
+function infoPanel() {
+  const s = cur.stats || {}, sc = cur.scan || {}, papers = cur.papers || [], rm = cur.removed || [], tok = cur.tok || {};
+  const kv = (a, b) => "<div class='kv'><span>" + a + "</span><span>" + b + "</span></div>";
+  const read = papers.filter(p => p.read);
+  let h = "<div class='sec'>이 장의 기록</div>" +
+    kv("훑은 서재", "논문 " + (sc.files || 0) + "편 · 문장 " + (sc.sents || 0).toLocaleString() + "개") +
+    kv("읽은 논문", read.length + "편 (통째로 " + read.filter(p => p.mode === "full").length + " · 맞은 대목만 " + read.filter(p => p.mode !== "full").length + ")") +
+    kv("뽑은 메모", (s.notes || 0) + "개") +
+    kv("실은 문장", (s.units || 0) + "개 = 사실 " + (s.fact || 0) + " + 잇는 말 " + (s.bridge || 0)) +
+    kv("근거 원문", (s.srcs || 0) + "문장 · 논문 " + (s.cited || 0) + "편") +
+    kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
+    kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
+    kv("읽은 토큰", fmtTok(tok.in || 0) + (tok.cached ? " (그중 캐시 " + fmtTok(tok.cached) + ")" : "") + " · 호출 " + (cur.calls || 0) + "번");
+  if (panel === "removed") h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
+    rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
+      (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
+  else h += "<div class='sec'>읽은 논문</div>" + papers.map(p => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
+      (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") +
+    "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다.</div>";
+  return h;
+}
+
+// ---------- 시작 ----------
+$("go").onclick = async () => {
+  const topic = $("topic").value.trim(); if (!topic) { $("topic").focus(); return; }
+  $("go").disabled = true;
+  let r; try { r = await api("/api/study", { op: "start", topic, depth: $("depth").value, effort: $("effort").value }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  $("go").disabled = false;
+  if (r.error) { $("newMsg").textContent = "⚠ " + r.error; return; }
+  $("topic").value = ""; await loadList(); openStudy(r.id);
+};
+$("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) $("go").click(); });
+(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; renderList(); refresh(true); })();
+setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
+</script>
+</body>
+</html>

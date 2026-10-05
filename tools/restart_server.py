@@ -35,12 +35,21 @@ def pythonw():
 
 
 def running_jobs():
+    n, names = 0, []
     try:
         d = json.load(urllib.request.urlopen(URL + "/api/jobs", timeout=5))
-        return d.get("running", 0), [j.get("file", "")[:50] + " (" + j.get("kind", "") + ")"
-                                     for j in d.get("jobs", []) if j.get("status") == "running"]
+        n, names = d.get("running", 0), [j.get("file", "")[:50] + " (" + j.get("kind", "") + ")"
+                                         for j in d.get("jobs", []) if j.get("status") == "running"]
     except Exception:
-        return 0, []
+        pass
+    try:   # 쓰는 중인 공부(15~30분짜리) — 끊기면 「이어서」 로 남은 단계부터 다시 쓸 수 있지만 하던 호출은 버려진다
+        d = json.load(urllib.request.urlopen(URL + "/api/study", timeout=5))
+        live = [x for x in d.get("items", []) if x.get("status") == "running"]
+        n += len(live)
+        names += [(x.get("title") or x.get("topic") or "")[:50] + " (공부)" for x in live]
+    except Exception:
+        pass
+    return n, names
 
 
 def pids_on_port():

@@ -2622,6 +2622,10 @@ import vocab
 vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
            claude=_claude, claude_json=ask_claude_json)
 
+# ---------- 공부 (내 서재의 논문만으로 쓰는 교과서 한 장 — 문장마다 논문의 원문 문장에 묶는다) ----------
+import study
+study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error)
+
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
@@ -2644,6 +2648,8 @@ class Handler(BaseHTTPRequestHandler):
             return ms.handle_get(self, url)
         if url.path in ("/vocab", "/vocab/quiz") or url.path.startswith("/api/vocab"):
             return vocab.handle_get(self, url)
+        if url.path == "/study" or url.path.startswith("/api/study"):
+            return study.handle_get(self, url)
         if url.path == "/api/intake":
             return self._send(200, intake.view())
         if url.path in ("/", "/index.html"):
@@ -3073,6 +3079,8 @@ class Handler(BaseHTTPRequestHandler):
             return ms.handle_post(self, body)
         if self.path.startswith("/api/vocab"):
             return vocab.handle_post(self, body)
+        if self.path.startswith("/api/study"):
+            return study.handle_post(self, body)
         if self.path == "/api/intake":
             return self._send(200, intake.control(body))
         if self.path == "/api/read_ping":
