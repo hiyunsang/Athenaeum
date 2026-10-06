@@ -181,7 +181,9 @@ const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "
   ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
-let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info";
+let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
+const URLP = new URLSearchParams(location.search);   // ?id=장 &view=sec&si=2&u=2.1.0 — 특정 장·절·문장으로 바로 열기 (튜토리얼 화면 찍기에도 씀)
+if (URLP.get("id")) curId = URLP.get("id");
 let view = { kind: "overview", si: -1 };                      // 가운데 칸에 무엇을 보이나: overview · sec(si) · summary · gaps · terms · refs · map · all
 let askCtx = null, askOpen = null, askDraft = "", askedSet = new Set(), chatPollT = null, askTick = null;   // 드래그해 묻기: askCtx = 새로 고른 대목 {quote, keys}, askOpen = 열어 둔 대화 id
 let mapStamp = "", mapSel = null, mapZoom = +lsGet("study_map_zoom", 1) || 1, mapMode = "all", mapSi = -1, mapTick = null;   // 마인드맵
@@ -358,7 +360,7 @@ function overviewBody(all) {
   const ch = cur.chapter, s = cur.stats || {}, secs = bodySecs(), summ = ch.sections.find(x => x.kind === "summary");
   const chars = ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((q, u) => q + u.t.length, 0), 0), 0);
   let h = "<h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
-    "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) +
+    "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) + (cur.stylus ? " · " + esc(cur.stylus) + " 로 씀" : "") +
     "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
   if (!all) {
     h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
@@ -379,7 +381,7 @@ function overviewBody(all) {
 const summaryHtml = (summ, si) => "<ul>" + summ.blocks.map((b, bi) => (b.units || []).map((u, ui) => "<li>" + unitHtml(u, si + "." + bi + "." + ui) + "</li>").join("")).join("") + "</ul>";
 function refsHtml() {
   const cited = cur.papers.filter(p => p.n).sort((a, b) => a.n - b.n);
-  return "<div class='refs'>" + cited.map(p => "<div class='r' id='ref" + p.n + "'><span class='n'>[" + p.n + "]</span><span class='b'>" + esc(p.ref || p.title) +
+  return "<div class='refs'>" + cited.map(p => "<div class='r' id='ref" + p.n + "'><a href='#' class='n' data-paper='" + cur.papers.indexOf(p) + "' title='이 논문이 언급된 문장 보기'>[" + p.n + "]</a><span class='b'>" + esc(p.ref || p.title) +
     " <span class='noprint'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></span></span></div>").join("") + "</div>";
 }
 function sectionHtml(si) {
@@ -406,6 +408,7 @@ function bindChapter() {
   const m = $("main");
   m.querySelectorAll(".u").forEach(el => el.onclick = () => { const sl = document.getSelection(); if (sl && !sl.isCollapsed && String(sl).trim().length >= 2) return; selectUnit(el.dataset.u); });
   m.querySelectorAll("[data-v]").forEach(el => el.onclick = e => { e.preventDefault(); gotoView(el.dataset.v, +(el.dataset.si || -1)); });
+  m.querySelectorAll("[data-paper]").forEach(el => el.onclick = e => { e.preventDefault(); openPaper(+el.dataset.paper); });
   const msg = t => { const c = $("chMsg"); if (!c) return; c.textContent = t; setTimeout(() => { if ($("chMsg")) $("chMsg").textContent = ""; }, 2500); };
   const md = async () => { const r = await api("/api/study", { op: "md", id: cur.id }); if (r.error) { msg(r.error); return null; } return r; };
   if ($("mdCopy")) $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
@@ -631,6 +634,7 @@ function renderPanel() {
   if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
   if (panel === "ask") { el.innerHTML = askPanel(); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
   if (panel === "mapnode" && mapSel) { el.innerHTML = mapNodePanel(); bindChatLinks(el); el.scrollTop = 0; return; }
+  if (panel === "paper" && paperSel != null) { el.innerHTML = paperPanel(); bindChatLinks(el); const c = $("paperClose"); if (c) c.onclick = () => { panel = selKey ? "unit" : "info"; renderPanel(); }; el.scrollTop = 0; return; }
   if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey), selKey); bindChatLinks(el); el.scrollTop = 0; return; }
   el.innerHTML = infoPanel();
   bindChatLinks(el);
@@ -638,7 +642,27 @@ function renderPanel() {
 }
 function bindChatLinks(el) {
   el.querySelectorAll("[data-chat]").forEach(a => a.onclick = ev => { ev.preventDefault(); openChat(a.dataset.chat); });
+  el.querySelectorAll("[data-paper]").forEach(a => a.onclick = ev => { ev.preventDefault(); openPaper(+a.dataset.paper); });
   el.querySelectorAll("[data-unit]").forEach(a => a.onclick = ev => { ev.preventDefault(); gotoUnit(a.dataset.unit); });
+}
+// 읽은 논문 하나 → 장에서 그 논문이 받치는 문장(절마다)과 그 논문에서 가져온 원문 문장 (사용자 2026-10-06: '우측에 읽은 논문 누르면 언급된 부분 볼 수 있게')
+function openPaper(pi) { paperSel = pi; panel = "paper"; renderPanel(); }
+function paperPanel() {
+  const pi = paperSel, p = cur.papers[pi]; if (!p) { panel = "info"; return infoPanel(); }
+  const hits = [];
+  cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => (b.units || []).forEach((u, ui) => { if ((u.src || []).some(k => +k.split(":")[0] === pi)) hits.push({ key: si + "." + bi + "." + ui, u, si }); })));
+  const num = k => +(k.split(":")[1].replace(/\D/g, "") || 0);
+  const srcKeys = Object.keys(cur.src || {}).filter(k => +k.split(":")[0] === pi).sort((a, b) => num(a) - num(b));
+  let h = "<div class='sec'>논문</div><div class='spq'><b>" + (p.n ? "[" + p.n + "] " : "") + esc(p.short) + "</b> · " + esc(p.journal) + " " + esc(p.year) + "<div class='hint' style='margin-top:4px;line-height:1.5'>" + esc(p.title) + "</div>" +
+    (p.about ? "<div style='margin-top:6px;line-height:1.55;font-size:13px'>" + esc(p.about) + "</div>" : "") +
+    "<div class='noprint' style='margin-top:4px'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></div></div>";
+  h += "<div class='sec'>이 논문이 받치는 장의 문장 " + hits.length + "개 <span style='font-weight:400;text-transform:none'>— 누르면 본문으로</span></div>";
+  let lastSi = -1;
+  hits.forEach(x => { if (x.si !== lastSi) { lastSi = x.si; const sec = cur.chapter.sections[x.si]; h += "<div class='hint' style='padding:8px 0 2px;font-weight:600;color:var(--text-2)'>" + esc(sec.kind === "summary" ? "핵심 정리" : sec.title) + "</div>"; } h += "<div class='chl' data-unit='" + x.key + "'>" + esc(x.u.t) + "</div>"; });
+  if (!hits.length) h += "<div class='hint'>이 논문은 장의 글에 쓰이지 않았습니다.</div>";
+  if (srcKeys.length) h += "<details class='evd'><summary>이 논문에서 가져온 원문 문장 " + srcKeys.length + "개</summary>" + srcItemsHtml(srcKeys.map(k => [k, cur.src[k]])) + "</details>";
+  h += "<div class='row noprint' style='padding-top:var(--s3)'><button class='act' id='paperClose'>닫기</button></div>";
+  return h;
 }
 function chatListHtml(list) {
   return list.map(c => "<div class='chl' data-chat='" + esc(c.id) + "'>" + esc(((c.thread || [])[0] || {}).text || "").slice(0, 90) + "<div class='m'>" + fmtDate(c.t) + " · 「" + esc(c.quote.slice(0, 40)) + (c.quote.length > 40 ? "…" : "") + "」" + (c.pending ? " · <span style='color:var(--accent)'>Claude 생각 중</span>" : " · 답 " + (c.thread || []).filter(m => m.role === "claude").length) + "</div></div>").join("");
@@ -654,7 +678,7 @@ function unitPanel(u, key) {
 }
 function srcItemsHtml(src) {
   return src.map(([k, s]) => { const p = paperOf(k), sid = k.split(":")[1], can = /^s\d+$/.test(sid);
-      return "<div class='srci'><div class='sm'><b>[" + (p.n || "") + "] " + esc(p.short) + "</b> · " + esc(p.journal) + (s.page ? " · p." + s.page : "") + (s.sec ? " · " + esc(s.sec) : "") +
+      return "<div class='srci'><div class='sm'><b><a href='#' data-paper='" + (+k.split(":")[0]) + "' title='이 논문이 언급된 문장 보기' style='color:inherit'>[" + (p.n || "") + "] " + esc(p.short) + "</a></b> · " + esc(p.journal) + (s.page ? " · p." + s.page : "") + (s.sec ? " · " + esc(s.sec) : "") +
         (s.own ? "" : " · <span class='tag' title='이 논문이 자기 결과가 아니라 다른 연구를 전한 문장입니다'>다른 연구를 전한 문장</span>") + "</div>" +
         "<div class='en'>" + esc(s.en) + "</div>" + (s.ko ? "<div class='ko'>" + rich(s.ko) + "</div>" : "") +
         ((s.cited || []).length ? "<div class='cited'>이 문장이 인용한 문헌: " + s.cited.map(c => "[" + esc(c.n) + "] " + esc(c.line)).join(" / ") + "</div>" : "") +
@@ -677,7 +701,7 @@ function infoPanel() {
   if (panel === "removed") h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
     rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
-  else h += "<div class='sec'>읽은 논문</div>" + papers.map(p => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
+  else h += "<div class='sec'>읽은 논문 <span style='font-weight:400;text-transform:none'>— 누르면 그 논문이 언급된 문장</span></div>" + papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
       (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") +
     "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다. 글을 드래그하면 그 대목을 놓고 Claude 에게 물을 수 있습니다.</div>";
   const chats = (cur.chats || []).slice().reverse();
@@ -695,7 +719,8 @@ $("go").onclick = async () => {
   $("topic").value = ""; await loadList(); openStudy(r.id);
 };
 $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) $("go").click(); });
-(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList(); })();
+(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList();
+  if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); } })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
 </script>
 </body>

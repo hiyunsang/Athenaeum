@@ -244,6 +244,13 @@ async function smartSearch(q, plan) {
   if (s.smartResult) renderSmart(s.smartResult);
   else if (s.smart && s.smartKey) pollSmart(s.smartKey, smartProgressBox());  // 아직 돌던 중이면 이어받기
 })();
+(function fromUrl() {   // ?q=검색어&go=1&view=map — 검색어를 넘겨 열면 바로 검색 (튜토리얼 화면 찍기에도 쓴다)
+  const up = new URLSearchParams(location.search);
+  if (!up.get("q")) return;
+  document.getElementById("q").value = up.get("q");
+  if (up.get("view")) { try { localStorage.setItem("explore_view", up.get("view")); } catch (e) {} }
+  if (up.get("go")) setTimeout(search, 300);
+})();
 
 function renderSmart(r) {
   smartbox.innerHTML = ""; rowSeq = 0; for (const k in rowIndex) delete rowIndex[k];

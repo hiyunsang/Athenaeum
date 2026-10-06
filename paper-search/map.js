@@ -48,11 +48,14 @@ function renderResultMap(m, host, opts) {
   const dark = (document.documentElement.getAttribute("data-theme") === "dark") || (() => { const h = /^#([0-9a-f]{6})$/i.exec(bg); if (!h) return false; const v = parseInt(h[1], 16); return ((v >> 16) * 0.299 + ((v >> 8) & 255) * 0.587 + (v & 255) * 0.114) < 128; })();
   const gcolor = (gi) => mapColor(gi, m.groups[gi], dark);
   const tint = (hex) => { const v = parseInt(hex.slice(1), 16); return "rgba(" + (v >> 16) + "," + ((v >> 8) & 255) + "," + (v & 255) + "," + (dark ? 0.30 : 0.20) + ")"; };   // 연한 채움
-  const legend = document.createElement("div"); legend.className = "maplegend";
+  // 범례는 맵 위에 떠 있는 상자로 (소주제 색·연도) — 아래에 두니 보기 불편하다는 사용자 말(2026-10-06). 긴 설명 줄은 맵 아래 .maplegend-hint 에
+  const legend = document.createElement("div"); legend.className = "maplegend"; legend.style.left = (LIST_W ? LIST_W + 8 : 8) + "px";
   legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
-    m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("") +
-    (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
-  host.appendChild(legend);
+    m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("");
+  wrap.appendChild(legend);
+  const legendHint = document.createElement("div"); legendHint.className = "maplegend-hint";
+  legendHint.innerHTML = (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
+  host.appendChild(legendHint);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
   const G = m.groups.length || 1, sims = m.sims, DMIN = 60, DMAX = 560;
   // 연결 강도 = 다른 논문과의 유사도 합 (0~1 로 정규화). 관계대로 배치에서 가운데로 당기는 힘 = 이 값. 연결 수는 선 개수

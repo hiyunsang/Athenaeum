@@ -2878,6 +2878,25 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/explore":
             with open(os.path.join(BASE, "explore.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/tutorial":   # 사용법 — 화면마다 그림에 말풍선으로 (paper-search\tutorial.html, 그림은 tutorial\)
+            with open(os.path.join(BASE, "tutorial.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path.startswith("/tutorial/"):
+            fname = os.path.basename(url.path)
+            fpath = os.path.join(BASE, "tutorial", fname)
+            ext = fname.rsplit(".", 1)[-1].lower()
+            ctypes = {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml"}
+            if ext in ctypes and os.path.isfile(fpath):
+                with open(fpath, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctypes[ext])
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "public, max-age=3600")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self._send(404, {"error": "not found"})
         elif url.path == "/favicon.ico" or url.path.startswith("/logo/"):
             # 로고·아이콘 파일 (paper-search\logo\, make_logo.py 로 생성)
             fname = "athenaeum.ico" if url.path == "/favicon.ico" else os.path.basename(url.path)

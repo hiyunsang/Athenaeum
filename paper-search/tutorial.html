@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사용법 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  /* 화면마다 그림에 말풍선 — SEM 장비 매뉴얼처럼: 그림 위에 번호 상자, 빨간 화살표로 그 자리를 가리키고, 아래에 번호대로 설명 */
+  header { display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header .brand-mark { height: 24px; display: block; }
+  header h1 { font-size: 14px; font-weight: 600; }
+  header nav { display: flex; gap: 2px; margin-left: var(--s3); flex-wrap: wrap; }
+  header nav a { color: var(--text-quiet); font-size: 12.5px; padding: 4px 8px; border-radius: var(--r); }
+  header nav a:hover { color: var(--accent); background: var(--hover); text-decoration: none; }
+  #wrap { max-width: 1400px; margin: 0 auto; padding: var(--s6) var(--s6) 120px; }
+  .intro { max-width: 860px; line-height: 1.75; font-size: 14px; }
+  .intro h2 { font-family: var(--font-serif); font-size: 24px; margin-bottom: var(--s3); }
+  .flow { display: flex; gap: var(--s2); align-items: stretch; flex-wrap: wrap; margin: var(--s4) 0; }
+  .flow .st { flex: 1; min-width: 150px; border: 1px solid var(--line-2); border-radius: var(--r); padding: 10px 12px; background: var(--panel); font-size: 13px; line-height: 1.5; }
+  .flow .st b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .flow .st .w { color: var(--text-3); font-size: 11.5px; }
+  section.scr { margin-top: 56px; page-break-inside: avoid; }
+  section.scr h2 { font-family: var(--font-serif); font-size: 26px; display: flex; align-items: baseline; gap: var(--s3); }
+  section.scr h2 .w { font-family: var(--font); font-size: 13px; color: var(--text-3); font-weight: 400; }
+  section.scr h2 .w a { color: var(--accent); }
+  section.scr .lead { max-width: 860px; font-size: 14px; line-height: 1.7; color: var(--text-2); margin: var(--s2) 0 var(--s4); }
+  .fig { position: relative; width: 100%; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; background: #fff; }
+  .fig img { display: block; width: 100%; height: auto; }
+  .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .fig .co { position: absolute; background: rgba(255, 252, 240, .96); color: #1c1c1a; border: 1.5px solid #3a3a36; border-radius: 9px; padding: 7px 10px 8px 9px; font-size: 13px; line-height: 1.45; box-shadow: 0 3px 10px #0003; box-sizing: border-box; }
+  .fig .co b.n { display: inline-block; min-width: 20px; height: 20px; border-radius: 50%; background: #c0392b; color: #fff; font-size: 12px; line-height: 20px; text-align: center; margin-right: 6px; font-weight: 700; vertical-align: 1px; }
+  :root[data-theme=dark] .fig .co { background: rgba(40, 40, 38, .96); color: #e8e6e1; border-color: #a8a8a0; }
+  .notes { margin: var(--s4) 0 0; padding: 0; list-style: none; columns: 2; column-gap: var(--s8); max-width: 1400px; }
+  .notes li { break-inside: avoid; display: flex; gap: var(--s2); padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; line-height: 1.6; }
+  .notes li b.n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #c0392b; color: #fff; font-size: 12px; line-height: 22px; text-align: center; font-weight: 700; margin-top: 2px; }
+  .notes li b.t { color: var(--text); }
+  .steps { max-width: 900px; margin: var(--s4) 0 0; padding-left: 1.4em; font-size: 14px; line-height: 1.75; }
+  .steps li { margin-bottom: 4px; }
+  .steps b { color: var(--text); }
+  .tip { max-width: 900px; margin: var(--s3) 0 0; padding: 8px 12px; background: var(--amber-bg); color: var(--amber); border-radius: var(--r); font-size: 13px; line-height: 1.6; }
+  .where { max-width: 860px; font-size: 13.5px; line-height: 1.7; }
+  .where code { background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+  @media (max-width: 1000px) { .notes { columns: 1; } .fig .co { font-size: 11px; padding: 4px 6px; } }
+  @media print { header { position: static; } #wrap { padding: 0; max-width: none; } section.scr { margin-top: 32px; } .fig .co { font-size: 11px; } }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
+  <h1>사용법</h1>
+  <nav id="nav"></nav>
+  <span style="margin-left:auto"></span><span id="uiCtlHost"></span>
+</header>
+<div id="wrap">
+  <div class="intro">
+    <h2>Athenaeum — 내 서재로 논문을 모으고, 읽고, 공부하고, 쓰는 작업대</h2>
+    <p>모든 것이 이 컴퓨터 안에서 돕니다. 논문 PDF·요약·번역·공부·원고는 전부 이 폴더에 저장되고, Claude 는 요약·번역·공부·원고의 글을 쓸 때 Claude Code 로 부릅니다(내 Claude 구독 사용량, API 키 없음). 화면마다 어디가 무엇이고 어떻게 쓰는지를 아래 그림에 번호로 적었습니다. 홈 위쪽 「도움말」 로 언제든 다시 엽니다.</p>
+    <div class="flow">
+      <div class="st"><b>① 모으기</b>다운로드 폴더에 논문 PDF 가 들어오면 알아서 이름을 바꿔 보관<span class="w">홈 → 수집</span></div>
+      <div class="st"><b>② 찾기</b>내 서재는 라벨·본문으로, 세상의 논문은 말로 적어 탐색<span class="w">홈 검색 · 논문 탐색</span></div>
+      <div class="st"><b>③ 읽기</b>요약과 문장 단위 전문 번역, 드래그 → 원문·메모·질문·단어<span class="w">요약 보기 · 번역 보기</span></div>
+      <div class="st"><b>④ 공부</b>주제 하나를 내 서재의 논문만으로 교과서 한 장으로<span class="w">공부</span></div>
+      <div class="st"><b>⑤ 쓰기</b>근거 카드 → 개요 → 초안 → 검토 → 영문 → 워드, 심사 의견까지<span class="w">원고</span></div>
+    </div>
+    <p><b>처음 시작</b>: ZIP 을 풀고 「Athenaeum 설치.bat」 → Claude Code 설치·로그인 확인 → 바탕화면 아이콘. 그다음 홈의 「수집」 에서 감시 폴더(기본: 내 다운로드)를 확인하고, 논문이 열 편쯤 모이면 홈이 권하는 대로 「라벨 체계 설정」 에서 내 분야의 체계를 Claude 에게 받아 적용하세요.</p>
+  </div>
+  <div id="screens"></div>
+  <section class="scr" id="data">
+    <h2>데이터는 어디에</h2>
+    <div class="where">
+      <p>프로그램 폴더 안에 모두 있습니다. 폴더를 통째로 옮기거나 복사해도 됩니다.</p>
+      <p><code>논문모음\</code> 논문 PDF (연도_저널_저자_제목.pdf) · <code>번역\</code> 요약·전문 번역 · <code>메모\</code> 읽기 메모와 질문 · <code>공부\</code> 공부(교과서 장) · <code>원고\</code> 원고와 판 이력·내보낸 워드 · <code>단어장\</code> 단어 · <code>관련맵\</code> 탐색 캐시</p>
+      <p>Claude 호출은 모두 Claude Code 를 거칩니다. 홈에 「Claude Code 가 설치되어 있지 않습니다」 가 뜨면 설치·로그인한 뒤 그대로 두면 저절로 사라집니다. 긴 작업(공부 20편: 30~40분, 번역 5~10분)은 창을 닫아도 서버가 계속 하고, 다시 열면 결과가 있습니다.</p>
+    </div>
+  </section>
+</div>
+<script>
+mountUiControls("#uiCtlHost");
+const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const IMG_W = 1440, IMG_H = 900;
+// 그림마다: 말풍선 = {n 번호, t 상자의 짧은 글, to [x,y,w,h] 가리킬 자리(그림 좌표), box [x,y,w] 상자 자리, d 아래 설명}
+const SCREENS = [
+  { id: "home", title: "홈", where: "/", lead: "서재의 논문 목록입니다. 위 메뉴로 다른 화면(논문 탐색·공부·원고·단어장)을 열고, 왼쪽 라벨로 좁히고, 줄마다 요약·번역을 엽니다.",
+    callouts: [
+      { n: 1, t: "위 메뉴 — 논문 탐색 · 공부 · 원고 · 단어장. 각각 따로 창으로 열립니다", to: [269, 5, 336, 24], box: [300, 130, 400], d: "<b class='t'>논문 탐색</b>은 세상의 논문을, <b class='t'>공부</b>는 내 서재로 교과서 한 장을, <b class='t'>원고</b>는 논문 쓰기, <b class='t'>단어장</b>은 논문에서 담은 말. 모두 따로 창이라 홈과 나란히 두고 씁니다." },
+      { n: 2, t: "검색 — 제목·저자·연도·저널·라벨. Enter 를 누르면 PDF 본문까지", to: [741, 2, 280, 31], box: [740, 130, 330], d: "낱말을 적으면 바로 좁혀집니다. Enter 를 누르면 논문 본문(PDF 글)에서도 찾습니다. 「제안 라벨 포함」 은 Claude 가 제안했지만 아직 확정하지 않은 라벨까지 보는 것." },
+      { n: 3, t: "⚙ 설정 — 테마·글꼴·Claude 모델·API 키·연결", to: [675, 7, 54, 20], box: [1095, 130, 330], d: "갈래(일반·읽기·원고·Claude·글꼴·연결)로 나뉘어 있고, 머리에 지금 판 번호가 보입니다. OpenAlex·Elsevier 키는 없어도 됩니다." },
+      { n: 4, t: "수집 — 다운로드 폴더를 지켜보다 새 논문 PDF 를 이름 바꿔 보관", to: [498, 5, 107, 24], box: [480, 220, 330], d: "브라우저로 받은 PDF 가 다운로드 폴더에 들어오면 DOI 로 서지를 찾아 <b class='t'>연도_저널_저자_제목.pdf</b> 로 바꿔 논문모음에 넣고 라벨을 붙입니다. 논문이 아닌 PDF 는 건드리지 않습니다. 패널에서 감시 폴더를 바꿉니다." },
+      { n: 5, t: "왼쪽 — 최근 읽음 · 저널 · 라벨(유형·재료·공정·현상·방법…). 누르면 교집합으로 좁혀집니다", to: [0, 77, 232, 816], box: [14, 500, 205], d: "라벨은 새 논문이 들어올 때 Claude 가 붙입니다. 체계를 고치거나 다시 분류하려면 「라벨 체계 설정 ↗」." },
+      { n: 6, t: "줄마다 — 요약 보기 · 번역 보기 · 관련맵 · 라벨 편집", to: [1105, 84, 320, 22], box: [760, 230, 420], d: "<b class='t'>요약 보기</b>·<b class='t'>번역 보기</b> 는 읽기 화면을 엽니다. 아직 없으면 Claude 가 만듭니다(요약 1분, 전문 번역 5~10분 — 그동안 다른 일을 해도 됩니다). <b class='t'>관련맵</b> 은 그 논문의 인용 관계 맵, <b class='t'>라벨 편집</b> 은 라벨 손보기." },
+      { n: 7, t: "작업 — 지금 만드는 요약·번역과 대기열", to: [161, 46, 61, 24], box: [20, 150, 200], d: "여러 편을 한꺼번에 요청해도 차례로 만듭니다. 막대가 예상 시간을 보여 줍니다." }],
+    steps: ["논문이 들어오면 홈 목록 맨 위에 나타납니다 (「수집 · 오늘 n편」).", "라벨을 눌러 좁히고, 검색창에 낱말을 적어 더 좁힙니다.", "「요약 보기」 로 먼저 훑고, 자세히 읽을 논문은 「번역 보기」.", "연구 주제를 넓게 찾으려면 「논문 탐색」, 한 주제를 서재로 공부하려면 「공부」."] },
+  { id: "reader", title: "읽기", where: "요약 보기 · 번역 보기", lead: "왼쪽은 메모·질문, 가운데는 한국어 요약 또는 문장 단위로 원문과 맞춘 전문 번역, 오른쪽은 원문 PDF 입니다. 번역의 문장을 드래그하면 PDF 의 그 문장이 강조됩니다.",
+    callouts: [
+      { n: 1, t: "요약 ↔ 전문 번역 전환 · 다시 생성 · PDF 켜고 끄기", to: [120, 5, 230, 30], box: [20, 560, 300], d: "<b class='t'>요약</b> 은 리뷰/연구 논문을 구분해 한줄 요약·노벨티·핵심 결과·한계·초록을 담습니다. <b class='t'>전문 번역</b> 은 문장마다 원문과 맞춰져 있습니다(수식·첨자 유지). 번역이 이상하면 「다시 생성」." },
+      { n: 2, t: "번역 — 문장을 드래그하면 PDF 의 그 문장이 강조되고 「메모 · 질문 · 단어」 단추가 뜹니다", to: [340, 40, 579, 860], box: [380, 790, 480], d: "<b class='t'>메모</b> 는 이 논문에 남고 원고의 근거 카드로도 담깁니다(출처 자동). <b class='t'>질문</b> 은 드래그한 문장을 놓고 Claude 에게 묻습니다. <b class='t'>단어</b> 는 뜻·예문·출처가 붙어 단어장에 들어갑니다. 「원고에 담기」 로 바로 근거 카드가 됩니다." },
+      { n: 3, t: "원문 PDF — 크기 − + · 폭 맞춤 · 영역 확대 · 원문 따라가기 · 캡션 번역", to: [925, 40, 515, 860], box: [960, 640, 440], d: "「원문 따라가기」 를 켜 두면 번역을 굴릴 때 PDF 가 같은 자리로 따라옵니다. 그림·표 캡션에 마우스를 올리면 번역이 보입니다. 가운데 막대를 끌어 번역·PDF 폭을 나눕니다." },
+      { n: 4, t: "Claude 에게 질문 — 드래그한 문장이 같이 갑니다", to: [12, 80, 315, 47], box: [14, 330, 310], d: "답은 아래에 쌓이고 논문의 메모 파일에 남습니다. 이 논문의 전문(요약·번역)을 배경으로 답합니다." },
+      { n: 5, t: "메모 — 이 논문에 남기는 메모. 홈의 「최근 읽음」·원고의 근거로", to: [12, 213, 315, 47], box: [14, 430, 310], d: "읽은 시각·시간·위치는 자동으로 기록되어 홈 왼쪽 「최근 읽음」 에 보입니다. 다음에 열면 보던 자리부터." }],
+    steps: ["홈에서 「요약 보기」 → 훑어보고, 읽을 만하면 「전문 번역」.", "문장을 드래그 → PDF 원문 확인 → 「메모」 또는 「원고에 담기」(근거 카드).", "모르는 말은 드래그 → 「단어」. 궁금한 것은 「질문」."] },
+  { id: "explore", title: "논문 탐색", where: "홈 → 논문 탐색 (따로 큰 창)", lead: "주제를 말로 적으면 Claude 가 검색 계획(개념·동의어)을 짜서 OpenAlex(+Scopus)에서 찾고, 결과를 소주제로 묶어 목록과 맵으로 보여 줍니다. 내 서재에 있는 논문은 「보유」 로 표시됩니다.",
+    callouts: [
+      { n: 1, t: "검색창 — 한국어로 말하듯 적어도 됩니다. 「스마트 탐색」 이 켜져 있으면 Claude 가 계획을 짭니다", to: [123, 9, 630, 31], box: [1000, 60, 400], d: "예: 'BUE 논문인데 in situ 로 본 것, 재료는 탄탈럼'. 연도·정렬을 고를 수 있습니다. 낱말 그대로의 기본 검색 결과는 아래에 접혀 있습니다." },
+      { n: 2, t: "검색 계획 — 필수/선택 개념과 검색어. 고쳐서 「이 검색 계획으로 다시 검색」", to: [12, 57, 1416, 238], box: [1000, 130, 400], d: "필수는 모두 들어가야 하고 선택은 하나면 됩니다. 검색어를 쉼표로 고치거나 필수를 끄고 다시 검색하면 Claude 계획 단계 없이 바로 찾습니다. 제외어는 엉뚱한 분야를 거릅니다." },
+      { n: 3, t: "Claude 와 이야기 — 지금 보이는 결과를 놓고 묻기", to: [836, 11, 98, 25], box: [1000, 200, 400], d: "'이 중에 실제로 in situ 영상을 찍은 건 어느 것?' 처럼 묻습니다. 답의 [번호] 를 누르면 그 논문으로." },
+      { n: 4, t: "보기: 목록 ↔ 맵 · 배치(관계대로 ↔ 소주제로) · 색(연도/소주제) · 확대", to: [12, 303, 1416, 91], box: [960, 318, 440], d: "<b class='t'>관계대로</b> 는 인용·동시인용·공통 참고문헌으로 놓아 관계가 많은 논문이 가운데에 옵니다. <b class='t'>소주제로</b> 는 Claude 가 나눈 소주제대로 모읍니다." },
+      { n: 5, t: "범례 — 소주제별 색. 마우스를 올리면 그 군집만 강조, 누르면 고정", to: [301, 411, 250, 93], box: [600, 430, 360], d: "맵 위에 떠 있어 보면서 고를 수 있습니다. 색을 「연도」 로 바꾸면 최근 논문일수록 진하게." },
+      { n: 6, t: "맵 — 원 = 논문(크기 = 피인용), 선 = 관계. 휠 확대, 빈 곳 드래그, 원을 누르면 오른쪽에 정보", to: [293, 403, 1160, 650], box: [1000, 760, 420], d: "정보 패널에서 초록 찾기·짧은 요약·초록 번역·관련맵·논문 페이지. 논문이 많으면 강한 선과 겹치지 않는 이름표만 보이고, 확대하면 더 보입니다." },
+      { n: 7, t: "소주제별 목록 — 보유한 논문은 「보유」. 누르면 맵에서 선택", to: [13, 403, 280, 650], box: [20, 700, 260], d: "보유하지 않은 논문은 「논문 페이지」 에서 받으면 수집이 알아서 보관합니다." }],
+    steps: ["주제를 말로 적고 「검색」 (스마트 탐색 1~2분).", "검색 계획을 보고 필수·검색어를 고쳐 다시 검색.", "「맵」 에서 군집을 보고, 원을 눌러 초록·요약을 확인.", "받을 논문은 「논문 페이지」 로 — 다운로드하면 서재에 들어옵니다."] },
+  { id: "study", title: "공부", where: "홈 → 공부 (따로 큰 창)", lead: "주제를 적으면 내 서재의 논문만 읽어 교과서 한 장을 씁니다. 문장마다 논문의 원문 문장에 묶여 있고, 쓴 뒤 원문과 대조해 맞지 않는 문장은 뺍니다. 왼쪽 차례로 절마다 읽고, 문장을 누르면 근거가 오른쪽에 보입니다.",
+    callouts: [
+      { n: 1, t: "새 장 쓰기 — 주제 · 범위(핵심만 10편 / 보통 20편 / 넓게 36편) · 모델 → 「쓰기 시작」", to: [0, 46, 271, 43], box: [300, 440, 380], d: "20편이면 Opus 로 30~40분, 토큰 100만쯤. 창을 닫아도 계속 쓰고, 멈추면 「이어서 쓰기」. 쓰는 동안 단계(훑기 → 읽기 → 짜기 → 쓰기 → 대조)가 보입니다." },
+      { n: 2, t: "장의 차례 — 절을 누르면 그 절만. 마인드맵 · 핵심 정리 · 답하지 못한 것 · 용어 · 참고문헌", to: [0, 89, 271, 604], box: [300, 530, 380], d: "「전체를 한 번에」 는 인쇄용. 「이 서재로는 답하지 못한 것」 에는 서재에 없거나 논문끼리 엇갈리는 것이 적혀 있습니다 — 다음에 읽을 논문의 실마리." },
+      { n: 3, t: "이 절에 쓰인 논문 — 펴면 각 연구가 무엇을 어떤 조건으로 했는지 한 줄씩", to: [300, 170, 712, 27], box: [720, 310, 300], d: "절의 근거가 된 논문만 모아 보여 줍니다. 「요약」 으로 그 논문의 요약을 엽니다." },
+      { n: 4, t: "문장을 누르면 → 오른쪽에 근거 원문. 드래그하면 「Claude 에게」", to: [300, 257, 712, 47], box: [320, 620, 420], d: "파란 번호 [n] 은 참고문헌. ↑↓ 로 앞뒤 문장을 넘기며 근거를 봅니다. 드래그해 물으면 그 대목의 근거 원문이 같이 가고, Opus 가 답합니다 — 서재에 없어 Claude 가 보탠 말은 '서재 밖:' 으로 갈라 노란 바탕에." },
+      { n: 5, t: "근거 — 논문 파일에서 꺼낸 원문 그대로(영어·번역·쪽). 「논문에서 이 문장 보기」 로 그 자리로", to: [1057, 176, 367, 322], box: [1056, 560, 368], d: "'다른 연구를 전한 문장' 표시는 그 논문이 남의 연구를 소개한 문장이라는 뜻이고, 그 문장이 인용한 문헌이 같이 보입니다. 대조도 Claude 가 하는 것이라 중요한 문장은 직접 확인하세요." },
+      { n: 6, t: "마인드맵 — 장을 한 그림으로. SVG·PNG 로 저장해 발표 자료에", to: [0, 166, 271, 30], box: [300, 710, 380], d: "주제 → 절 → 요점, 절을 고르면 연구(무엇을 해서 무엇을 보았나)와 열린 물음까지. 이름표를 누르면 받치는 문장과 원문이 오른쪽에." }],
+    steps: ["왼쪽 「새 장 쓰기」 에 주제(예: 단결정 실리콘 절삭)를 적고 「쓰기 시작」.", "다 쓰면 「개요」 로 차례를 보고, 절을 하나씩 읽습니다.", "믿기 어려운 문장은 눌러서 원문을 확인, 더 알고 싶으면 드래그해 Claude 에게.", "발표에 쓸 그림은 「마인드맵」 → PNG 저장. 글은 「md 파일로」."],
+    tip: "오른쪽 「이 장의 기록」 에서 읽은 논문을 누르면 그 논문이 장의 어디에 쓰였는지, 어떤 원문 문장을 가져왔는지 보입니다." },
+  { id: "studymap", title: "공부 — 마인드맵", where: "공부 → 장의 차례 → 마인드맵 (그림)", lead: "장 전체(주제 → 절 → 요점) 또는 절 하나(요점 · 연구가 무엇을 해서 무엇을 보았나 · 아직 엇갈리거나 모르는 것)를 한 그림으로 봅니다. 이름표마다 그것을 받치는 장의 문장이 있습니다.",
+    callouts: [
+      { n: 1, t: "장 전체 / 절 하나 고르기 · 확대 축소 · SVG 저장 · PNG 저장 · 다시 만들기", to: [288, 134, 736, 54], box: [720, 250, 300], d: "처음에는 「마인드맵 만들기」(Opus, 3~8분). PNG 는 2배 크기로 저장되어 발표 자료에 넣기 좋습니다." },
+      { n: 2, t: "이름표를 누르면 → 받치는 장의 문장(본문으로 가기)과 근거 원문이 오른쪽에", to: [539, 295, 210, 34], box: [320, 430, 300], d: "이름표는 Claude 가 장의 문장을 줄인 것이라 뜻이 거칠 수 있습니다 — 발표에 쓸 때는 눌러서 원문을 확인하세요." },
+      { n: 3, t: "읽은 논문 — 누르면 그 논문이 장의 어디에 쓰였는지, 가져온 원문 문장은 무엇인지", to: [1057, 358, 367, 27], box: [1056, 660, 368], d: "장에 쓰이지 않은 논문도 표시됩니다. 「이 장의 기록」 에는 훑은 서재·메모·고쳐 쓴 문장·뺀 문장(까닭과 함께)·걸린 시간·토큰이 있습니다." }],
+    steps: [] },
+  { id: "ms", title: "원고", where: "홈 → 원고 (따로 큰 창)", lead: "근거 카드 → 개요 → 문단(주장·카드·초안·검토·영문) → 워드로 이어지는 논문 쓰기 작업대입니다. 워드 원고를 가져와 이어 쓸 수도 있고, 고친 글은 사본 워드 파일에 자동 반영됩니다.",
+    callouts: [
+      { n: 1, t: "개요 — 절·소절. 누르면 그 절로. 「+ 절」 「개요 검토」(Claude 가 빠진 절·순서를 봄)", to: [0, 112, 259, 141], box: [20, 420, 220], d: "원고를 처음 만들면 머리부(제목·초록·키워드·하이라이트)와 절이 생깁니다. 절 제목 옆 「잘 쓴 ○○ 보기 →」 는 서재의 잘 쓴 논문이 그 절을 어떻게 썼는지(본보기)." },
+      { n: 2, t: "문단 모드 ↔ 원고 모드", to: [909, 9, 121, 25], box: [760, 620, 300], d: "<b class='t'>문단 모드</b> 는 절 하나를 주장 → 카드 → 초안 → 검토 → 영문으로 꼼꼼히. <b class='t'>원고 모드</b> 는 전체를 한 화면에 펼쳐 워드처럼 이어서 씁니다(「집중」 으로 양옆 숨김)." },
+      { n: 3, t: "서랍 — 대화 · 근거(카드·서재에서 뽑기·자료·참고문헌) · 검토(피드백·리비전·점검) · 참고(본보기·Stylus) · 그림 · 내보내기", to: [1101, 44, 339, 64], box: [1110, 340, 320], d: "<b class='t'>서재에서 뽑기</b> 는 주제를 적으면 내 논문들에서 그 내용을 말한 대목을 모읍니다 → 「이 근거로 문단 쓰기」. <b class='t'>리비전</b> 은 심사 의견 파일을 넣어 지적마다 처리. <b class='t'>Stylus</b> 는 결론 쓰기." },
+      { n: 4, t: "근거 카드 — 읽기 화면에서 드래그해 담은 문장(출처 자동). 「이 문단에 붙이기」", to: [1113, 172, 315, 100], box: [1110, 500, 320], d: "카드마다 원문 문장·쪽으로 되돌아갈 수 있어 인용이 어디서 왔는지 늘 압니다. 초안의 [c3] 은 내보낼 때 참고문헌 번호로 바뀝니다." },
+      { n: 5, t: "주장 → 카드 붙이기 → 초안 쓰기 → 이 문단 검토 → 영문화. 글을 드래그하면 「Claude 에게」(Ctrl+K)", to: [284, 722, 792, 66], box: [300, 810, 420], d: "대화는 글 옆에 워드 메모처럼 붙고, 대안은 「이걸로 바꾸기」·「고치기 전으로 되돌리기」. 글은 원고의 글쓰기 지능 <b class='t'>Stylus</b> 가 서재의 IJMTM·JMPT 논문에서 잰 규칙으로 씁니다." },
+      { n: 6, t: "워드 가져오기 — 개요·문단·참고문헌·주석이 들어오고, 고친 글은 사본 워드 파일에 자동 반영", to: [589, 9, 81, 25], box: [330, 620, 400], d: "서식·그림·수식·표는 워드 것 그대로 두고 바뀐 문단만 고칩니다. 「내보내기」 탭에서 .docx·수정 표시 원고·답변서." }],
+    steps: ["「+ 새 원고」 또는 「워드 가져오기」.", "읽기 화면에서 드래그 → 「원고에 담기」 로 근거 카드를 모읍니다.", "개요를 짜고, 문단 모드에서 주장 → 카드 → 초안 → 검토 → 영문.", "원고 모드에서 통독하며 고치고, 「내보내기」 로 워드.", "심사 의견이 오면 「검토 → 리비전」 에 파일을 넣고 지적마다 처리."],
+    tip: "처음 열면 「이 화면은 어떻게 쓰나」 안내가 보입니다. 닫은 뒤에도 위쪽 「안내」 로 다시 봅니다." },
+  { id: "vocab", title: "단어장", where: "홈 → 단어장", lead: "논문을 읽다 드래그해 담은 말과 시험 단어를 한곳에 모읍니다. 외우는 일은 Anki 로 내보내 폰에서.",
+    callouts: [
+      { n: 1, t: "목록 · 담기(목록 붙여 넣기 — 뜻은 Claude 가 채움) · 훑어보기(카드 넘기기) · Anki 로 내보내기", to: [114, 7, 280, 31], box: [430, 190, 360], d: "읽기 화면에서 드래그 → 「단어」 로 담긴 말은 뜻·품사·발음·예문(영/한)·출처가 자동으로 붙습니다." },
+      { n: 2, t: "검색 · 묶음 · 태그 · 담은 곳 · 상태 · 정렬 · 「예문·품사·관계어 채우기」", to: [253, 77, 934, 29], box: [900, 190, 300], d: "채우기는 비어 있는 뜻·예문·동의어·반의어·파생어를 Claude 가 채웁니다." },
+      { n: 3, t: "단어마다 — 뜻 · 품사 · 발음 · 동의어 ≠ 반의어 · 파생어 · 예문(영/한) · 출처 · 아직/알아요 · 초록이 보기", to: [253, 127, 934, 148], box: [430, 420, 480], d: "「초록이 보기」 는 같은 어근의 다른 품사까지. 「훑어보기」 에서 스페이스로 뒤집고 1·2·3 으로 모르겠어요·알아요·건너뛰기." }],
+    steps: [] },
+];
+const screensEl = document.getElementById("screens"), nav = document.getElementById("nav");
+nav.innerHTML = SCREENS.map(s => "<a href='#" + s.id + "'>" + esc(s.title) + "</a>").join("") + "<a href='#data'>데이터</a>";
+function figHtml(s) {
+  return "<div class='fig' data-id='" + s.id + "'><img src='/tutorial/" + s.id + ".png' alt='" + esc(s.title) + "'><svg viewBox='0 0 " + IMG_W + " " + IMG_H + "' preserveAspectRatio='none'></svg>" +
+    s.callouts.map(c => "<div class='co' data-n='" + c.n + "' style='left:" + (c.box[0] / IMG_W * 100) + "%;top:" + (c.box[1] / IMG_H * 100) + "%;width:" + (c.box[2] / IMG_W * 100) + "%'><b class='n'>" + c.n + "</b>" + esc(c.t) + "</div>").join("") + "</div>";
+}
+screensEl.innerHTML = SCREENS.map(s => "<section class='scr' id='" + s.id + "'><h2>" + esc(s.title) + " <span class='w'>" + esc(s.where) + "</span></h2><p class='lead'>" + esc(s.lead) + "</p>" + figHtml(s) +
+  "<ul class='notes'>" + s.callouts.map(c => "<li><b class='n'>" + c.n + "</b><span><b class='t'>" + esc(c.t.split(" — ")[0]) + "</b> — " + c.d + "</span></li>").join("") + "</ul>" +
+  (s.steps.length ? "<ol class='steps'>" + s.steps.map(x => "<li>" + esc(x) + "</li>").join("") + "</ol>" : "") + (s.tip ? "<div class='tip'>" + esc(s.tip) + "</div>" : "") + "</section>").join("");
+// 화살표: 상자 가장자리에서 가리킬 자리의 가장자리까지 (그림 좌표). 상자 높이는 그려진 뒤에 잰다
+function clipTo(cx, cy, tx, ty, r) {   // (cx,cy)→(tx,ty) 선이 사각형 r=[x,y,w,h] 의 테두리와 만나는 점 (안에서 밖으로)
+  const dx = tx - cx, dy = ty - cy; let t = 1;
+  if (dx) t = Math.min(t, ((dx > 0 ? r[0] + r[2] : r[0]) - cx) / dx);
+  if (dy) t = Math.min(t, ((dy > 0 ? r[1] + r[3] : r[1]) - cy) / dy);
+  return [cx + dx * t, cy + dy * t];
+}
+function drawArrows() {
+  document.querySelectorAll(".fig").forEach(fig => {
+    const s = SCREENS.find(x => x.id === fig.dataset.id), svg = fig.querySelector("svg"), fw = fig.clientWidth, k = IMG_W / fw;
+    let out = "<defs><marker id='ah' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='7' markerHeight='7' orient='auto-start-reverse'><path d='M0 0 L10 5 L0 10 z' fill='#c0392b'/></marker></defs>";
+    s.callouts.forEach(c => {
+      const el = fig.querySelector(".co[data-n='" + c.n + "']"), b = [c.box[0], c.box[1], el.offsetWidth * k, el.offsetHeight * k], to = c.to;
+      const bc = [b[0] + b[2] / 2, b[1] + b[3] / 2], tc = [to[0] + to[2] / 2, to[1] + to[3] / 2];
+      // 가리킬 자리가 크면(칸 전체) 상자에서 가까운 테두리 쪽을 겨눈다
+      const aim = (to[2] > 600 || to[3] > 300) ? [Math.min(Math.max(bc[0], to[0] + 40), to[0] + to[2] - 40), Math.min(Math.max(bc[1], to[1] + 30), to[1] + to[3] - 30)] : tc;
+      const p0 = clipTo(bc[0], bc[1], aim[0], aim[1], b);
+      const inside = aim[0] > to[0] && aim[0] < to[0] + to[2] && aim[1] > to[1] && aim[1] < to[1] + to[3];
+      const p1 = inside && (to[2] > 600 || to[3] > 300) ? aim : clipTo(aim[0], aim[1], p0[0], p0[1], to);
+      out += "<rect x='" + to[0] + "' y='" + to[1] + "' width='" + to[2] + "' height='" + to[3] + "' rx='4' fill='none' stroke='#c0392b' stroke-width='2.5' stroke-dasharray='" + ((to[2] > 600 || to[3] > 300) ? "8 5" : "0") + "'/>";
+      out += "<line x1='" + p0[0] + "' y1='" + p0[1] + "' x2='" + p1[0] + "' y2='" + p1[1] + "' stroke='#c0392b' stroke-width='2.5' marker-end='url(#ah)'/>";
+    });
+    svg.innerHTML = out;
+  });
+}
+drawArrows();
+window.addEventListener("resize", drawArrows);
+document.querySelectorAll(".fig img").forEach(i => i.addEventListener("load", drawArrows));
+</script>
+</body>
+</html>

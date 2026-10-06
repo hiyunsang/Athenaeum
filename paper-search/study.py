@@ -41,7 +41,7 @@ _JOBS = {}          # 공부 id → {"stop": bool, "t0": 시작 시각}
 _SENT_CACHE = {}    # 파일 → ((정렬표 mtime, 번역 mtime), 문장들)
 _LIST_CACHE = {}    # 공부 파일 이름 → (mtime, 목록에 보일 것)
 
-VERSION = "공부 1"
+VERSION = "공부 1.1"   # 1.1 = 쓰기에 Stylus(원고의 글쓰기 지능) 규칙 적용 · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
 _STAGES = ["plan", "scan", "select", "read", "outline", "write", "verify", "wrap"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
@@ -711,6 +711,27 @@ _WRITE_RULES = (
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n")
 
 
+# Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
+_STYLUS_PICK = ("문단은 사실을 한 문장씩", "넓게 스치지 말고 깊게 편다", "모든 문장은 앞의 어느 문장을", "새 대목을 여는 문장", "주어에 앞에서 쓰지 않은 한정어", "문장의 크기는",
+                "문장의 첫머리(주어)는", "같은 것을 다시 가리킬 때는 줄인다", "조건·범위의 부사구", "덧붙일 말", "여러 논문이 같은 점을 받치면", "같은 사실을 두 번 말하지 마라", "마지막 문장은 앞을 요약하거나")
+
+
+def _stylus_block():
+    """쓰기 물음에 붙는 Stylus 규칙 + 이 분야 논문의 짜임·관계 사례(서재에서 잰 것). 물음의 % 형식에 끼우지 말고 값으로 넣는다(사례 글에 % 가 있다)."""
+    try:
+        rules = ms._style_pick(_STYLUS_PICK)
+    except Exception:
+        rules = ""
+    try:
+        norms = ms._norms_text(ms._style_norms(), None)
+    except Exception:
+        norms = ""
+    return ("[Stylus — 문장과 문단의 규칙] 이 연구자의 서재에 있는 논문(IJMTM·JMPT)의 글을 재서 만든 규칙이다. 영어 논문에서 잰 것이라 보기가 영어지만 한국어 글에도 그대로 적용한다 — "
+            "It·They 는 '이는'·'이것'·'그것' 이나 주어 생략으로, [@A][@B] 인용 묶음은 줄 끝의 메모 번호 묶음(⟦N3.2, N7.1⟧)으로, '인용'은 메모 번호로 읽는다. "
+            "낱말 수·문장 수의 숫자는 이 절에 적용하지 않는다(절의 분량은 메모가 받치는 만큼). 위 '쓰는 법'과 어긋나면 위 '쓰는 법'이 우선이다.\n"
+            + rules + ("\n" + norms if norms else ""))
+
+
 def _write_prompt(st, k):
     ol = st["outline"]
     sec = ol["sections"][k]
@@ -726,8 +747,9 @@ def _write_prompt(st, k):
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n문장 하나. ⟦N3.2⟧\n문장 하나. ⟦N3.4, N7.1⟧\n¶\n### 소제목 (필요할 때만)\n앞의 사실들을 묶는 문장. ⟦-⟧\n<<<END>>>\n"
                 "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호를 적는다. ¶ 한 줄은 문단을 나눈다.\n"
                 "- ⟦-⟧ 는 이음 문장(이 절이 무엇을 다루는지 알리거나, 바로 앞에 쓴 사실들을 묶거나, 다음으로 넘기는 말)에만 쓴다. 이음 문장에는 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 주제문이어도 메모 번호를 적는다.\n\n")
-    return (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n\n" + form + _WRITE_RULES + "\n[논문]\n%s\n\n[용어]\n%s\n\n[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s") % (
-        ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "", plist, terms, nlist)
+    return (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n\n" + form + _WRITE_RULES + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s") % (
+        ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "",
+        _stylus_block() if sec.get("kind") != "summary" else "", plist, terms, nlist)
 
 
 _REF_OPEN, _REF_CLOSE = r"[⟦⟨〈《〚\[]{1,2}", r"[⟧⟩〉》〛\]]{1,2}"   # 닫는 괄호를 다른 글자로 쓴 것(⟦N8.5⟩)도 읽는다
@@ -980,6 +1002,7 @@ def _wrap(st):
     ol = st["outline"]
     st["chapter"] = {"title": ol["title"], "scope": st["plan"]["scope"], "sections": secs, "terms": ol.get("terms") or [], "gaps": ol.get("gaps") or []}
     st["src"] = src
+    st["stylus"] = getattr(ms, "STYLUS", "")
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full")}

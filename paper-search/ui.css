@@ -169,7 +169,12 @@ button { font: inherit; }
 .mappanel .rv { color: var(--amber); }
 .maptip { position: absolute; max-width: 320px; background: var(--text); color: var(--surface); font-size: 12px; line-height: 1.5; padding: 6px 9px; border-radius: var(--r); pointer-events: none; z-index: 3; }
 .maptip .hint { color: var(--line-2); padding: 0; text-align: left; line-height: inherit; }
-.maplegend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: var(--s1) 12px var(--s2); font-size: 12px; color: var(--text-2); }
+.maplegend { position: absolute; top: 8px; left: 8px; z-index: 3; display: flex; flex-direction: column; gap: 3px; max-width: 250px; max-height: calc(100% - 16px); overflow-y: auto; padding: 7px 10px 8px; margin: 0;
+  background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 2px 10px #0002; font-size: 12px; line-height: 1.4; color: var(--text-2); }
+.maplegend .yr { padding-bottom: 4px; margin-bottom: 2px; border-bottom: 1px solid var(--line); }
+.maplegend .lg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.maplegend-hint { margin: var(--s1) 12px var(--s2); font-size: 12px; color: var(--text-3); line-height: 1.5; }
+.maplegend-hint .hint { padding: 0; text-align: left; line-height: inherit; }
 .maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; box-sizing: border-box; }
 .maplegend i.hollow { background: transparent !important; border: 1px solid var(--text-3); }
 .maplegend .grad { width: 44px; height: 10px; border-radius: 2px; background: linear-gradient(90deg, hsl(178, 26%, 76%), hsl(178, 26%, 30%)); }
@@ -179,7 +184,7 @@ button { font: inherit; }
 .mapctl .cmode .act.on { color: var(--accent); font-weight: 600; }
 .maplegend .lg { cursor: pointer; }
 .maplegend .lg:hover, .maplegend .lg.on { color: var(--text); font-weight: 600; }
-.maplegend .hint { padding: 0; text-align: left; line-height: inherit; width: 100%; }
+.maplegend .hint { padding: 0; text-align: left; line-height: inherit; }
 .mapctl .coh { display: flex; align-items: center; gap: var(--s2); }
 
 /* 이 창이 옛 화면일 때의 알림 (ui.js) */
