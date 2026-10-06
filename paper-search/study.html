@@ -11,38 +11,60 @@
   header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
   header .brand-mark { height: 24px; display: block; }
   header h1 { font-size: 14px; font-weight: 600; }
-  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 264px minmax(0, 1fr) 400px; }
-  #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; }
+  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 272px minmax(0, 1fr) 400px; }
+  #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; padding-bottom: var(--s8); }
   #main { background: var(--surface); overflow-y: auto; min-width: 0; }
   #srcp { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-width: 0; padding: var(--s3) var(--s4) var(--s8); }
-  /* 왼쪽: 새로 쓰기 + 목록 */
-  .newbox { padding: var(--s3); border-bottom: 1px solid var(--line); }
+  /* 왼쪽: 새로 쓰기 · 장의 차례 · 목록 */
+  .sideh { display: flex; align-items: center; gap: var(--s2); padding: 10px var(--s3) 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; }
+  .sideh .act { margin-left: auto; padding: 0 4px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .newbox { padding: 0 var(--s3) var(--s3); border-bottom: 1px solid var(--line); }
+  .newbox.closed .nbb { display: none; }
   .newbox textarea { width: 100%; resize: vertical; min-height: 62px; }
   .newbox .row { display: flex; gap: var(--s2); margin-top: var(--s2); }
   .newbox select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 12px; }
   .newbox .primary { width: 100%; margin-top: var(--s2); }
   .newbox .hint { margin-top: var(--s2); line-height: 1.5; }
-  .sitem { padding: 9px var(--s3) 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .oi { display: flex; gap: var(--s2); align-items: baseline; padding: 6px var(--s3) 6px 10px; cursor: pointer; font-size: 12.5px; line-height: 1.4; color: var(--text); border-left: 3px solid transparent; }
+  .oi:hover { background: var(--hover); }
+  .oi.on { background: var(--sel-bg); border-left-color: var(--accent); }
+  .oi .no { color: var(--text-3); min-width: 1.3em; font-variant-numeric: tabular-nums; }
+  .oi .t { flex: 1; min-width: 0; }
+  .oi .n { color: var(--text-3); font-size: 11px; white-space: nowrap; }
+  .oi.sub { color: var(--text-2); }
+  .oi.fig .t::before { content: "▦ "; color: var(--text-3); }
+  #outline { border-bottom: 1px solid var(--line); padding-bottom: var(--s2); }
+  .sitem { padding: 8px var(--s3) 9px; border-bottom: 1px solid var(--line); cursor: pointer; }
   .sitem:hover { background: var(--hover); }
-  .sitem .tt { font-weight: 600; line-height: 1.35; }
+  .sitem .tt { font-weight: 600; line-height: 1.35; font-size: 12.5px; }
   .sitem .mm { color: var(--text-3); font-size: 11.5px; margin-top: 2px; }
   .sitem .mm .run { color: var(--accent); } .sitem .mm .bad { color: var(--amber); }
   /* 가운데: 장 */
-  .page { max-width: var(--read-width); margin: 0 auto; padding: var(--s8) var(--s6) 96px; }
+  .page { max-width: var(--read-width); margin: 0 auto; padding: var(--s6) var(--s6) 96px; }
   .ch { font-size: calc(15.5px * var(--read-scale)); line-height: var(--read-lh); font-family: var(--read-font, var(--font)); }
+  .crumb { font-family: var(--font); font-size: 12px; color: var(--text-3); margin-bottom: var(--s4); display: flex; gap: var(--s2); align-items: center; }
+  .crumb a { color: var(--text-3); } .crumb .sp { color: var(--line-2); }
   .ch h1 { font-family: var(--font-serif); font-size: 1.75em; line-height: 1.3; font-weight: 600; margin: 0 0 var(--s2); }
   .ch .scope { color: var(--text-2); margin: 0 0 var(--s2); }
   .ch .meta { font-family: var(--font); font-size: 12px; color: var(--text-3); line-height: 1.6; padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
   .ch .meta .act { padding: 2px 6px; margin-left: -6px; }
-  .ch h2 { font-family: var(--font-serif); font-size: 1.28em; line-height: 1.35; font-weight: 600; margin: 2.1em 0 .2em; }
+  .ch h2 { font-family: var(--font-serif); font-size: 1.28em; line-height: 1.35; font-weight: 600; margin: 1.2em 0 .2em; }
+  .ch h2.first { margin-top: 0; }
   .ch h2 .no { color: var(--text-3); font-weight: 400; margin-right: .4em; }
   .ch .aim { font-family: var(--font); font-size: 12.5px; color: var(--text-3); margin: 0 0 .7em; }
   .ch h3 { font-size: 1.02em; font-weight: 600; margin: 1.5em 0 .3em; }
   .ch p { margin: 0 0 .95em; text-align: justify; word-break: keep-all; }
   .ch ul { margin: .4em 0 1em; padding-left: 1.3em; } .ch li { margin-bottom: .45em; }
   .ch .toc { font-family: var(--font); font-size: 13px; margin: var(--s4) 0 0; padding: 0; list-style: none; line-height: 1.6; }
-  .ch .toc li { display: flex; gap: var(--s2); padding: 3px 0; margin: 0; } .ch .toc .no { color: var(--text-3); min-width: 1.4em; }
-  .ch .toc a { color: var(--text); } .ch .toc .q { color: var(--text-3); }
+  .ch .toc li { display: flex; gap: var(--s2); padding: 5px 0; margin: 0; border-bottom: 1px solid var(--line); cursor: pointer; } .ch .toc li:hover { background: var(--hover); }
+  .ch .toc .no { color: var(--text-3); min-width: 1.4em; }
+  .ch .toc .q { color: var(--text-3); } .ch .toc .n { margin-left: auto; color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+  .secp { font-family: var(--font); font-size: 12.5px; margin: 0 0 1em; }
+  .secp summary { cursor: pointer; color: var(--text-3); padding: 2px 0; }
+  .secp .pp { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); line-height: 1.5; } .secp .pp .n { color: var(--text-3); min-width: 2.2em; }
+  .secp .pp .b { flex: 1; min-width: 0; color: var(--text-2); } .secp .pp .b b { color: var(--text); }
+  .pnav { font-family: var(--font); display: flex; gap: var(--s3); margin-top: var(--s8); padding-top: var(--s3); border-top: 1px solid var(--line); font-size: 13px; }
+  .pnav .act { padding: 6px 8px; max-width: 48%; text-align: left; white-space: normal; line-height: 1.4; } .pnav .nx { margin-left: auto; text-align: right; }
   .u { cursor: pointer; border-radius: 2px; }
   .u:hover { background: var(--hover); }
   .u.on { background: var(--sel-bg); box-shadow: inset 0 -2px 0 var(--accent); }
@@ -56,6 +78,16 @@
   .empty { max-width: 620px; margin: 0 auto; padding: 72px var(--s6); color: var(--text-2); line-height: 1.75; }
   .empty h2 { font-family: var(--font-serif); font-size: 22px; color: var(--text); margin-bottom: var(--s3); }
   .empty ol { padding-left: 1.3em; } .empty li { margin-bottom: 6px; }
+  /* 마인드맵 */
+  .page.mapp { max-width: none; padding: var(--s4) var(--s4) 96px; }
+  .mtb { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin: var(--s2) 0 var(--s3); font-size: 12.5px; }
+  .mtb select { padding: 3px 6px; font-size: 12px; }
+  .mtb .sp { flex: 1; }
+  .mwrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+  .mwrap svg { display: block; }
+  .mnode { cursor: pointer; } .mnode:hover rect { stroke-width: 2; }
+  .mnode.on rect { stroke-width: 2.5; }
+  .mapempty { max-width: 560px; color: var(--text-2); line-height: 1.7; }
   /* 쓰는 중 */
   .run h2 { font-family: var(--font-serif); font-size: 22px; margin-bottom: var(--s1); }
   .stg { display: flex; align-items: center; gap: var(--s3); padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--text-3); }
@@ -109,20 +141,24 @@
 <header>
   <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>공부</h1>
-  <span class="hint">내 서재의 논문만으로 쓰는 교과서 한 장 — 문장을 누르면 근거인 원문 문장이 오른쪽에 보이고, 글을 드래그하면 Claude 에게 물을 수 있습니다</span>
+  <span class="hint">내 서재의 논문만으로 쓰는 교과서 한 장 — 왼쪽 차례로 절마다 읽고, 문장을 누르면 근거인 원문이 오른쪽에, 글을 드래그하면 Claude 에게 묻습니다</span>
   <span style="margin-left:auto"></span>
 </header>
 <div id="app">
   <aside id="side">
-    <div class="newbox">
-      <textarea id="topic" rows="3" placeholder="공부할 주제 (예: 단결정 실리콘 절삭)"></textarea>
-      <div class="row">
-        <select id="depth" title="읽을 논문의 수"><option value="small">핵심만 · 10편까지</option><option value="mid">보통 · 20편까지</option><option value="wide">넓게 · 36편까지</option></select>
-        <select id="effort" title="쓰는 모델"><option value="xhigh">Opus · 엑스트라</option><option value="high">Opus · 보통</option><option value="max">Opus · 최대</option><option value="fable">Fable · 엑스트라</option><option value="fast">Sonnet · 빠름 (대조는 Opus)</option></select>
+    <div class="newbox" id="newbox">
+      <div class="sideh">새 장 쓰기 <button class="act" id="nbTg">접기</button></div>
+      <div class="nbb">
+        <textarea id="topic" rows="3" placeholder="공부할 주제 (예: 단결정 실리콘 절삭)"></textarea>
+        <div class="row">
+          <select id="depth" title="읽을 논문의 수"><option value="small">핵심만 · 10편까지</option><option value="mid">보통 · 20편까지</option><option value="wide">넓게 · 36편까지</option></select>
+          <select id="effort" title="쓰는 모델"><option value="xhigh">Opus · 엑스트라</option><option value="high">Opus · 보통</option><option value="max">Opus · 최대</option><option value="fable">Fable · 엑스트라</option><option value="fast">Sonnet · 빠름 (대조는 Opus)</option></select>
+        </div>
+        <button class="primary" id="go">쓰기 시작</button>
+        <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
       </div>
-      <button class="primary" id="go">쓰기 시작</button>
-      <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
     </div>
+    <div id="outline"></div>
     <div id="list"></div>
   </aside>
   <main id="main"></main>
@@ -146,13 +182,17 @@ const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info";
+let view = { kind: "overview", si: -1 };                      // 가운데 칸에 무엇을 보이나: overview · sec(si) · summary · gaps · terms · refs · map · all
 let askCtx = null, askOpen = null, askDraft = "", askedSet = new Set(), chatPollT = null, askTick = null;   // 드래그해 묻기: askCtx = 새로 고른 대목 {quote, keys}, askOpen = 열어 둔 대화 id
+let mapStamp = "", mapSel = null, mapZoom = +lsGet("study_map_zoom", 1) || 1, mapMode = "all", mapSi = -1, mapTick = null;   // 마인드맵
 
 $("depth").value = lsGet("study_depth", "mid");
 $("effort").value = lsGet("ms_sel_effort", "xhigh");     // 원고의 대화·서재에서 뽑기와 같은 설정
 if (!$("effort").value) $("effort").value = "xhigh";
 $("depth").onchange = () => lsSet("study_depth", $("depth").value);
 $("effort").onchange = () => lsSet("ms_sel_effort", $("effort").value);
+function newboxSet(open) { $("newbox").classList.toggle("closed", !open); $("nbTg").textContent = open ? "접기" : "펴기"; lsSet("study_new_open", open ? "1" : "0"); }
+$("nbTg").onclick = () => newboxSet($("newbox").classList.contains("closed"));
 
 // ---------- 목록 ----------
 async function loadList() {
@@ -166,35 +206,66 @@ function stateText(x) {
   return "<span class='bad'>멈춤</span>";
 }
 function renderList() {
-  $("list").innerHTML = items.length ? items.map(x => "<div class='sitem" + (x.id === curId ? " sel" : "") + "' data-id='" + esc(x.id) + "'><div class='tt'>" + esc(x.title || x.topic) + "</div>" +
-    "<div class='mm'>" + fmtDate(x.t) + " · " + stateText(x) + "</div></div>").join("") : "<div class='hint' style='padding:var(--s3)'>아직 쓴 것이 없습니다.</div>";
+  const others = cur ? items.filter(x => x.id !== curId) : items;
+  $("list").innerHTML = (cur ? "<div class='sideh'>" + (others.length ? "다른 장" : "") + "</div>" : "") + (items.length ? others.map(x => "<div class='sitem' data-id='" + esc(x.id) + "'><div class='tt'>" + esc(x.title || x.topic) + "</div>" +
+    "<div class='mm'>" + fmtDate(x.t) + " · " + stateText(x) + "</div></div>").join("") : "<div class='hint' style='padding:var(--s3)'>아직 쓴 것이 없습니다.</div>");
   $("list").querySelectorAll(".sitem").forEach(el => el.onclick = () => openStudy(el.dataset.id));
+}
+// 장의 차례 (왼쪽) — 원고의 개요처럼 절마다 하나씩, 누르면 가운데에 그 절만
+const bodySecs = () => (cur.chapter.sections || []).map((sec, si) => ({ sec, si })).filter(x => x.sec.kind !== "summary");
+const secUnits = sec => sec.blocks.reduce((n, b) => n + (b.units || []).length, 0);
+function renderOutline() {
+  const el = $("outline");
+  if (!cur || cur.status !== "done" || !cur.chapter) { el.innerHTML = cur ? "<div class='sideh'>지금 장</div><div class='sitem sel'><div class='tt'>" + esc((cur.plan || {}).title || cur.topic) + "</div><div class='mm'>" + stateText(cur) + "</div></div>" : ""; return; }
+  const ch = cur.chapter, on = (k, si) => view.kind === k && (si == null || view.si === si) ? " on" : "";
+  const item = (k, si, cls, no, title, n) => "<div class='oi" + cls + on(k, si) + "' data-v='" + k + "' data-si='" + (si == null ? -1 : si) + "'>" + (no ? "<span class='no'>" + no + "</span>" : "") + "<span class='t'>" + esc(title) + "</span>" + (n ? "<span class='n'>" + n + "</span>" : "") + "</div>";
+  const summ = ch.sections.find(x => x.kind === "summary");
+  el.innerHTML = "<div class='sideh'>장의 차례 <button class='act' id='olTitle' title='이 장의 개요로'>개요</button></div>" +
+    item("overview", null, "", "", ch.title, "") +
+    item("map", null, " fig", "", "마인드맵 (그림)", cur.map ? "" : cur.map_pending ? "만드는 중" : "아직 없음") +
+    bodySecs().map((x, i) => item("sec", x.si, "", i + 1, x.sec.title, secUnits(x.sec) + "문장")).join("") +
+    (summ ? item("summary", null, " sub", "", "핵심 정리", secUnits(summ) + "줄") : "") +
+    ((ch.gaps || []).length ? item("gaps", null, " sub", "", "이 서재로는 답하지 못한 것", ch.gaps.length) : "") +
+    ((ch.terms || []).length ? item("terms", null, " sub", "", "용어", ch.terms.length) : "") +
+    item("refs", null, " sub", "", "참고문헌", (cur.stats || {}).cited || "") +
+    item("all", null, " sub", "", "전체를 한 번에 (인쇄용)", "");
+  el.querySelectorAll(".oi").forEach(o => o.onclick = () => gotoView(o.dataset.v, +o.dataset.si));
+  $("olTitle").onclick = () => gotoView("overview");
+}
+function gotoView(kind, si) {
+  view = { kind, si: kind === "sec" ? si : -1 };
+  if (kind === "map" && si >= 0) { mapMode = "sec"; mapSi = si; }
+  renderMain(); $("main").scrollTop = 0;
 }
 
 // ---------- 열기 · 살피기 ----------
 async function openStudy(id) {
-  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; askCtx = null; askOpen = null; askDraft = ""; clearTimeout(pollT); clearTimeout(chatPollT);
-  renderList(); await refresh(true);
+  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; askCtx = null; askOpen = null; askDraft = ""; view = { kind: "overview", si: -1 }; mapStamp = ""; mapSel = null; clearTimeout(pollT); clearTimeout(chatPollT);
+  await refresh(true); renderList();
 }
 async function refresh(first) {
-  if (!curId) { cur = null; renderMain(); renderPanel(); return; }
+  if (!curId) { cur = null; renderMain(); renderPanel(); renderOutline(); return; }
   let st; try { st = await api("/api/study/get?id=" + encodeURIComponent(curId)); } catch (e) { pollT = setTimeout(refresh, 5000); return; }
-  if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); return; }
+  if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); renderOutline(); return; }
   const was = cur && cur.id === st.id ? cur.status : "";
   cur = st; got = Date.now();
+  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "");
   if (first || st.status !== "done" || was !== "done") { renderMain(); renderPanel(); }
+  else if (ms !== mapStamp && view.kind === "map") renderMain();
+  if (ms !== mapStamp) { mapStamp = ms; renderOutline(); }
+  if (first) { renderOutline(); newboxSet(lsGet("study_new_open", st.status === "done" ? "0" : "1") === "1"); }
   if (was && was !== st.status) loadList();
   clearTimeout(pollT);
-  if (st.status === "running") pollT = setTimeout(refresh, 4000);
+  if (st.status === "running" || st.map_pending) pollT = setTimeout(refresh, 4000);
   if (st.status === "done" && (st.chats || []).some(c => c.pending)) startChatPoll();
 }
 
 // ---------- 가운데 ----------
 function renderMain() {
-  const m = $("main"); clearInterval(tickT);
-  if (!cur) { m.innerHTML = emptyHtml(); return; }
-  if (cur.status === "done" && cur.chapter) { m.innerHTML = chapterHtml(); bindChapter(); return; }
-  m.innerHTML = runHtml(); bindRun();
+  const m = $("main"); clearInterval(tickT); clearInterval(mapTick);
+  if (!cur) { m.innerHTML = emptyHtml(); renderOutline(); return; }
+  if (cur.status === "done" && cur.chapter) { m.innerHTML = viewHtml(); bindChapter(); renderOutline(); return; }
+  m.innerHTML = runHtml(); bindRun(); renderOutline();
   if (cur.status === "running") tickT = setInterval(tick, 1000);
 }
 function emptyHtml() {
@@ -202,7 +273,7 @@ function emptyHtml() {
     "<p>왼쪽에 주제를 적으면, 서재에 있는 논문을 읽어 전공책의 한 장처럼 정리합니다.</p>" +
     "<ol><li>서재의 모든 문장을 훑어 그 주제를 다룬 논문을 찾습니다.</li><li>고른 논문을 한 편씩 읽고, 주제에 관한 사실을 근거 문장의 번호와 함께 메모로 뽑습니다.</li>" +
     "<li>메모를 절로 짜서 교과서 글을 씁니다.</li><li>쓴 문장을 하나씩 논문의 원문 문장과 대조합니다. 원문이 말하지 않는 문장은 고치고, 고쳐도 맞지 않으면 뺍니다. 수치는 프로그램이 따로 대조합니다.</li></ol>" +
-    "<p>다 쓴 장에서 문장을 누르면 그 근거인 원문 문장이 오른쪽에 보이고, 논문의 그 자리로 바로 갈 수 있습니다. 화면에 보이는 원문은 Claude 가 적은 것이 아니라 논문 파일에서 꺼낸 것입니다.</p>" +
+    "<p>다 쓴 장은 왼쪽 차례로 절마다 읽습니다. 문장을 누르면 그 근거인 원문 문장이 오른쪽에 보이고, 글을 드래그하면 그 대목을 놓고 Claude 에게 물을 수 있습니다. 마인드맵은 장을 한 그림으로 요약합니다.</p>" +
     "<p class='hint'>서재에 없는 내용은 싣지 않습니다. 서재의 논문으로 답하지 못한 물음은 장 끝에 따로 적습니다.</p></div>";
 }
 
@@ -255,36 +326,70 @@ async function delStudy() {
   cur = null; curId = ""; lsSet("study_last", ""); await loadList(); renderMain(); renderPanel();
 }
 
-// ---- 다 쓴 장
+// ---- 다 쓴 장: 보기마다 따로 그린다
 const paperOf = key => cur.papers[+key.split(":")[0]];
 const citeNums = u => [...new Set((u.src || []).map(k => paperOf(k).n).filter(Boolean))].sort((a, b) => a - b);
+const unitAt = key => { const [a, b, c] = key.split(".").map(Number); return cur.chapter.sections[a].blocks[b].units[c]; };
 function unitHtml(u, key) {
   const ns = citeNums(u);
   return "<span class='u" + (key === selKey ? " on" : "") + (askedSet.has(key) ? " asked" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
 }
-function chapterHtml() {
-  askedSet = new Set((cur.chats || []).flatMap(c => c.keys || []));
-  const ch = cur.chapter, s = cur.stats || {}, body = ch.sections.filter(x => x.kind !== "summary"), summ = ch.sections.find(x => x.kind === "summary");
-  let no = 0;
-  const secHtml = (sec, si) => {
-    const blocks = sec.blocks.map((b, bi) => b.h ? "<h3>" + esc(b.h) + "</h3>" : "<p>" + b.units.map((u, ui) => unitHtml(u, si + "." + bi + "." + ui)).join(" ") + "</p>").join("");
-    return "<h2 id='sec" + si + "'><span class='no'>" + (++no) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + blocks;
-  };
-  const toc = body.map((sec, i) => "<li><span class='no'>" + (i + 1) + "</span><span><a href='#sec" + ch.sections.indexOf(sec) + "'>" + esc(sec.title) + "</a>" + (sec.aim ? " <span class='q'>— " + esc(sec.aim) + "</span>" : "") + "</span></li>").join("");
-  const cited = cur.papers.map((p, i) => [p, i]).filter(x => x[0].n).sort((a, b) => a[0].n - b[0].n);
-  const si = summ ? ch.sections.indexOf(summ) : -1;
-  return "<div class='page ch'><h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
-    "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((k, u) => k + u.t.length, 0), 0), 0)) + " 자 · " + fmtDate(cur.t) +
-    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>" +
-    "<ul class='toc'>" + toc + "</ul>" +
-    ch.sections.map((sec, i) => sec.kind === "summary" ? "" : secHtml(sec, i)).join("") +
-    (summ ? "<h2>핵심 정리</h2><ul>" + summ.blocks.map((b, bi) => (b.units || []).map((u, ui) => "<li>" + unitHtml(u, si + "." + bi + "." + ui) + "</li>").join("")).join("") + "</ul>" : "") +
-    ((ch.gaps || []).length ? "<h2>이 서재로는 답하지 못한 것</h2><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul>" : "") +
-    ((ch.terms || []).length ? "<h2>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div>" : "") +
-    "<h2>참고문헌</h2><div class='refs'>" + cited.map(([p, i]) => "<div class='r' id='ref" + p.n + "'><span class='n'>[" + p.n + "]</span><span class='b'>" + esc(p.ref || p.title) +
-      " <span class='noprint'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></span></span></div>").join("") + "</div></div>";
+const blocksHtml = (sec, si) => sec.blocks.map((b, bi) => b.h ? "<h3>" + esc(b.h) + "</h3>" : "<p>" + b.units.map((u, ui) => unitHtml(u, si + "." + bi + "." + ui)).join(" ") + "</p>").join("");
+const crumb = (t, extra) => "<div class='crumb noprint'><a href='#' data-v='overview'>" + esc(cur.chapter.title) + "</a><span class='sp'>›</span><span>" + esc(t) + "</span>" + (extra || "") + "</div>";
+function secPapersHtml(sec) {   // 이 절에 쓰인 논문: [번호] 저자 연도 — 그 연구가 무엇을 어떤 재료·조건으로 했나 (논문을 읽을 때 Claude 가 적은 한 줄)
+  const idx = [...new Set(sec.blocks.flatMap(b => (b.units || []).flatMap(u => (u.src || []).map(k => +k.split(":")[0]))))].map(i => cur.papers[i]).filter(p => p && p.n).sort((a, b) => a.n - b.n);
+  if (!idx.length) return "";
+  return "<details class='secp noprint'><summary>이 절에 쓰인 논문 " + idx.length + "편 — 각 연구가 무엇을 했나</summary>" + idx.map(p => "<div class='pp'><span class='n'>[" + p.n + "]</span><span class='b'><b>" + esc(p.short) + "</b> " + esc(p.about || p.title) +
+    " <a class='act' style='padding:0 4px' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a></span></div>").join("") + "</details>";
 }
-const unitAt = key => { const [a, b, c] = key.split(".").map(Number); return cur.chapter.sections[a].blocks[b].units[c]; };
+function viewHtml() {
+  askedSet = new Set((cur.chats || []).flatMap(c => c.keys || []));
+  const ch = cur.chapter, k = view.kind;
+  if (k === "map") return mapHtml();
+  if (k === "all") return "<div class='page ch'>" + crumb("전체를 한 번에") + overviewBody(true) + "</div>";
+  if (k === "sec") return "<div class='page ch'>" + sectionHtml(view.si) + "</div>";
+  if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
+  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다.</div><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul></div>";
+  if (k === "terms") return "<div class='page ch'>" + crumb("용어") + "<h2 class='first'>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div></div>";
+  if (k === "refs") return "<div class='page ch'>" + crumb("참고문헌") + "<h2 class='first'>참고문헌</h2>" + refsHtml() + "</div>";
+  return "<div class='page ch'>" + overviewBody(false) + "</div>";
+}
+function overviewBody(all) {
+  const ch = cur.chapter, s = cur.stats || {}, secs = bodySecs(), summ = ch.sections.find(x => x.kind === "summary");
+  const chars = ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((q, u) => q + u.t.length, 0), 0), 0);
+  let h = "<h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
+    "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) +
+    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
+  if (!all) {
+    h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
+      "<li data-v='map' data-si='-1'><span class='no'>▦</span><span>마인드맵 — 장을 한 그림으로" + (cur.map ? "" : " <span class='q'>(아직 만들지 않음)</span>") + "</span></li>" +
+      (summ ? "<li data-v='summary' data-si='-1'><span class='no'>·</span><span>핵심 정리</span><span class='n'>" + secUnits(summ) + "줄</span></li>" : "") +
+      ((ch.gaps || []).length ? "<li data-v='gaps' data-si='-1'><span class='no'>·</span><span>이 서재로는 답하지 못한 것</span><span class='n'>" + ch.gaps.length + "</span></li>" : "") +
+      "<li data-v='refs' data-si='-1'><span class='no'>·</span><span>참고문헌</span><span class='n'>" + (s.cited || 0) + "편</span></li></ul>" +
+      "<p class='hint' style='margin-top:var(--s4)'>절을 누르면 그 절만 보입니다. 절 아래의 「이 절에 쓰인 논문」 을 펴면 각 연구가 무엇을 했는지가 한 줄씩 보입니다.</p>";
+    return h;
+  }
+  let no = 0;
+  h += secs.map(x => "<h2 id='sec" + x.si + "'><span class='no'>" + (++no) + "</span>" + esc(x.sec.title) + "</h2>" + (x.sec.aim ? "<div class='aim'>" + esc(x.sec.aim) + "</div>" : "") + blocksHtml(x.sec, x.si)).join("");
+  if (summ) h += "<h2>핵심 정리</h2>" + summaryHtml(summ, ch.sections.indexOf(summ));
+  if ((ch.gaps || []).length) h += "<h2>이 서재로는 답하지 못한 것</h2><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul>";
+  if ((ch.terms || []).length) h += "<h2>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div>";
+  return h + "<h2>참고문헌</h2>" + refsHtml();
+}
+const summaryHtml = (summ, si) => "<ul>" + summ.blocks.map((b, bi) => (b.units || []).map((u, ui) => "<li>" + unitHtml(u, si + "." + bi + "." + ui) + "</li>").join("")).join("") + "</ul>";
+function refsHtml() {
+  const cited = cur.papers.filter(p => p.n).sort((a, b) => a.n - b.n);
+  return "<div class='refs'>" + cited.map(p => "<div class='r' id='ref" + p.n + "'><span class='n'>[" + p.n + "]</span><span class='b'>" + esc(p.ref || p.title) +
+    " <span class='noprint'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></span></span></div>").join("") + "</div>";
+}
+function sectionHtml(si) {
+  const secs = bodySecs(), i = secs.findIndex(x => x.si === si); if (i < 0) return overviewBody(false);
+  const sec = secs[i].sec, prev = secs[i - 1], next = secs[i + 1];
+  return crumb((i + 1) + " / " + secs.length + " 절", "<span class='sp'>·</span><a href='#' data-v='map' data-si='" + si + "'>이 절을 그림으로</a>") +
+    "<h2 class='first'><span class='no'>" + (i + 1) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + secPapersHtml(sec) + blocksHtml(sec, si) +
+    "<div class='pnav noprint'>" + (prev ? "<button class='act' data-v='sec' data-si='" + prev.si + "'>← " + i + ". " + esc(prev.sec.title) + "</button>" : "") +
+    (next ? "<button class='act nx' data-v='sec' data-si='" + next.si + "'>" + (i + 2) + ". " + esc(next.sec.title) + " →</button>" : "<button class='act nx' data-v='summary' data-si='-1'>핵심 정리 →</button>") + "</div>";
+}
 function selectUnit(key, scroll) {
   selKey = key; panel = "unit";
   $("main").querySelectorAll(".u.on").forEach(e => e.classList.remove("on"));
@@ -292,15 +397,23 @@ function selectUnit(key, scroll) {
   if (el) { el.classList.add("on"); if (scroll) el.scrollIntoView({ block: "center" }); }
   renderPanel();
 }
+function gotoUnit(key) {   // 다른 보기(그림 등)에서 본문의 그 문장으로
+  const si = +key.split(".")[0], sec = cur.chapter.sections[si];
+  view = sec.kind === "summary" ? { kind: "summary", si: -1 } : { kind: "sec", si };
+  renderMain(); selectUnit(key, true);
+}
 function bindChapter() {
-  $("main").querySelectorAll(".u").forEach(el => el.onclick = () => { const sl = document.getSelection(); if (sl && !sl.isCollapsed && String(sl).trim().length >= 2) return; selectUnit(el.dataset.u); });
-  const msg = t => { $("chMsg").textContent = t; setTimeout(() => { if ($("chMsg")) $("chMsg").textContent = ""; }, 2500); };
+  const m = $("main");
+  m.querySelectorAll(".u").forEach(el => el.onclick = () => { const sl = document.getSelection(); if (sl && !sl.isCollapsed && String(sl).trim().length >= 2) return; selectUnit(el.dataset.u); });
+  m.querySelectorAll("[data-v]").forEach(el => el.onclick = e => { e.preventDefault(); gotoView(el.dataset.v, +(el.dataset.si || -1)); });
+  const msg = t => { const c = $("chMsg"); if (!c) return; c.textContent = t; setTimeout(() => { if ($("chMsg")) $("chMsg").textContent = ""; }, 2500); };
   const md = async () => { const r = await api("/api/study", { op: "md", id: cur.id }); if (r.error) { msg(r.error); return null; } return r; };
-  $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
-  $("mdSave").onclick = async () => { const r = await md(); if (!r) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([r.md], { type: "text/markdown;charset=utf-8" })); a.download = r.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
-  $("printBtn").onclick = () => window.print();
-  $("infoBtn").onclick = () => { panel = "info"; selKey = ""; $("main").querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
-  $("delBtn").onclick = delStudy;
+  if ($("mdCopy")) $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
+  if ($("mdSave")) $("mdSave").onclick = async () => { const r = await md(); if (!r) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([r.md], { type: "text/markdown;charset=utf-8" })); a.download = r.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
+  if ($("printBtn")) $("printBtn").onclick = () => { if (view.kind !== "all") { view = { kind: "all", si: -1 }; renderMain(); } setTimeout(() => window.print(), 300); };
+  if ($("infoBtn")) $("infoBtn").onclick = () => { panel = "info"; selKey = ""; m.querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
+  if ($("delBtn")) $("delBtn").onclick = delStudy;
+  if (view.kind === "map") bindMap();
 }
 document.addEventListener("keydown", e => {      // 문장을 하나씩 넘기며 근거 보기: ↑↓ 또는 J·K
   if (!cur || cur.status !== "done" || !selKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "")) return;
@@ -308,6 +421,104 @@ document.addEventListener("keydown", e => {      // 문장을 하나씩 넘기�
   const all = [...$("main").querySelectorAll(".u")].map(x => x.dataset.u), i = all.indexOf(selKey) + d;
   if (i >= 0 && i < all.length) { e.preventDefault(); selectUnit(all[i], true); }
 });
+
+// ---------- 마인드맵: 장을 한 그림으로 (재료는 서버의 Claude 가, 그림은 여기서) ----------
+const MAP_FONT = "'Malgun Gothic', 'Apple SD Gothic Neo', Pretendard, sans-serif";   // PNG 로 뽑을 때 Image 안에서는 웹 글꼴을 못 쓰므로 시스템 글꼴로
+let mctx = null;
+function textW(t, px, bold) { if (!mctx) mctx = document.createElement("canvas").getContext("2d"); mctx.font = (bold ? "600 " : "") + px + "px " + MAP_FONT; return mctx.measureText(t).width; }
+function wrapText(t, maxW, px, bold) {   // 글을 폭에 맞춰 줄로 — 빈칸에서 끊고, 긴 낱말은 글자에서
+  const out = []; let line = "";
+  for (const ch of String(t || "")) {
+    const test = line + ch;
+    if (textW(test, px, bold) <= maxW || !line) { line = test; continue; }
+    const sp = line.lastIndexOf(" ");
+    if (sp > line.length * 0.45) { out.push(line.slice(0, sp)); line = line.slice(sp + 1) + ch; } else { out.push(line); line = ch; }
+  }
+  if (line) out.push(line);
+  return out.slice(0, 6);
+}
+function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function mapHtml() {
+  const m = cur.map, secs = bodySecs();
+  if (mapSi < 0 || !secs.some(x => x.si === mapSi)) mapSi = secs.length ? secs[0].si : -1;
+  let h = "<div class='page ch mapp'>" + crumb("마인드맵") + "<h2 class='first'>마인드맵 — " + esc(cur.chapter.title) + "</h2>";
+  if (!m) {
+    if (cur.map_pending) h += "<div class='mapempty'><div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='mapBar' style='width:2%'></i></span><span class='eta' id='mapEta'>만드는 중</span></div><div class='hint'>장 전체를 읽고 절마다 요점·연구·열린 물음을 짧은 이름표로 뽑습니다. 창을 닫아도 계속 만듭니다.</div></div>";
+    else h += "<div class='mapempty'><p>장을 한 그림으로 요약합니다 — 가운데 주제에서 절마다 가지가 나가고, 가지마다 <b>요점</b>, <b>어떤 연구가 무엇을 해서 무엇을 보았나</b>, <b>아직 엇갈리거나 모르는 것</b>이 달립니다. 모든 이름표는 장의 문장이 받치고(누르면 그 근거가 오른쪽에), SVG·PNG 로 저장해 발표 자료에 넣을 수 있습니다.</p>" +
+      (cur.map_error ? "<div class='warnbox'>" + esc(cur.map_error) + "</div>" : "") +
+      "<div class='mtb'><select id='mapEff'><option value='xhigh'>Opus · 엑스트라</option><option value='max'>Opus · 최대</option></select><button class='primary' id='mapGo'>마인드맵 만들기 (3~8분)</button></div></div>";
+    return h + "</div>";
+  }
+  const modeSel = "<select id='mapMode'><option value='all'" + (mapMode === "all" ? " selected" : "") + ">장 전체 — 절마다 요점</option>" + secs.map((x, i) => "<option value='" + x.si + "'" + (mapMode === "sec" && mapSi === x.si ? " selected" : "") + ">" + (i + 1) + ". " + esc(x.sec.title) + " — 요점·연구·열린 물음</option>").join("") + "</select>";
+  h += "<div class='mtb noprint'>" + modeSel + "<button class='act' id='mapZm'>−</button><span class='hint' id='mapZv'>" + Math.round(mapZoom * 100) + "%</span><button class='act' id='mapZp'>+</button><span class='sp'></span>" +
+    "<button class='act' id='mapSvg'>SVG 저장</button><button class='act' id='mapPng'>PNG 저장</button><button class='act' id='mapRedo' title='장을 다시 읽어 이름표를 새로 뽑습니다'>다시 만들기</button><span class='hint'>" + fmtDate(m.t) + " · " + esc(m.model || "") + "</span></div>" +
+    "<div class='mwrap' id='mwrap'>" + mapSvg() + "</div><p class='hint' style='margin-top:var(--s3)'>이름표를 누르면 그것을 받치는 장의 문장과 근거 원문이 오른쪽에 보입니다. 이름표는 Claude 가 장의 문장을 줄인 것이라 뜻이 거칠 수 있습니다 — 발표에 쓸 때는 눌러서 원문을 확인하세요.</p></div>";
+  return h;
+}
+function mapTree() {   // 그릴 나무: {text, kind, w, px, bold, data, children}
+  const m = cur.map, C = { root: { w: 190, px: 15, bold: true }, sec: { w: 210, px: 13, bold: true }, pt: { w: 250, px: 12.5 }, paper: { w: 300, px: 12 }, open: { w: 250, px: 12.5 } };
+  const node = (text, kind, data, children) => ({ text, kind, data, children: children || [], ...C[kind] });
+  if (mapMode === "all") {
+    return node(m.root, "root", null, m.branches.map(b => node(b.title, "sec", { si: b.si }, b.points.map(p => node(p.label, "pt", p)))));
+  }
+  const b = m.branches.find(x => x.si === mapSi);
+  if (!b) return node(m.root, "root", null, []);
+  const kids = b.points.map(p => node(p.label, "pt", p));
+  if (b.papers.length) kids.push(node("연구 — 무엇을 해서 무엇을 보았나", "pt", { label: "연구", keys: [], detail: "" }, b.papers.map(p => node("[" + p.n + "] " + cur.papers[p.pi].short + " · " + p.did + " → " + p.found, "paper", p))));
+  if (b.open.length) kids.push(node("아직 엇갈리거나 모르는 것", "open", { label: "열린 물음", keys: [], detail: "" }, b.open.map(o => node(o, "open", { label: o, keys: [], detail: o, isOpen: true }))));
+  return node(b.title, "root", { si: b.si }, kids);
+}
+function mapSvg() {
+  const root = mapTree(), GAPX = 44, GAPY = 8, PAD = 16;
+  const prep = (n, d) => { n.depth = d; n.lines = wrapText(n.text, n.w - 16, n.px, n.bold); n.h = n.lines.length * (n.px * 1.4) + 14; n.children.forEach(c => prep(c, d + 1)); n.sh = n.children.length ? Math.max(n.h, n.children.reduce((a, c) => a + c.sh, 0) + GAPY * (n.children.length - 1)) : n.h; };
+  prep(root, 0);
+  const cols = []; const colw = (n) => { cols[n.depth] = Math.max(cols[n.depth] || 0, n.w); n.children.forEach(colw); }; colw(root);
+  const xs = []; let x = PAD; cols.forEach((w, i) => { xs[i] = x; x += w + GAPX; });
+  const W = x - GAPX + PAD, H = root.sh + PAD * 2;
+  const place = (n, y0) => { n.x = xs[n.depth]; n.cy = y0 + n.sh / 2; n.y = n.cy - n.h / 2; const tot = n.children.reduce((a, c) => a + c.sh, 0) + GAPY * Math.max(0, n.children.length - 1); let y = y0 + (n.sh - tot) / 2; n.children.forEach(c => { place(c, y); y += c.sh + GAPY; }); };
+  place(root, PAD);
+  const col = { text: cssVar("--text"), line: cssVar("--line-2"), accent: cssVar("--accent"), abg: cssVar("--accent-bg"), surface: cssVar("--surface"), panel: cssVar("--panel"), amber: cssVar("--amber"), ambg: cssVar("--amber-bg"), t3: cssVar("--text-3") };
+  const style = { root: [col.abg, col.accent], sec: [col.panel, col.accent], pt: [col.surface, col.line], paper: [col.surface, col.line], open: [col.ambg, col.amber] };
+  let out = [], k = 0;
+  const draw = n => {
+    const [fill, stroke] = style[n.kind], id = "n" + (k++); n.id = id;
+    const clickable = n.data && ((n.data.keys || []).length || n.data.isOpen || n.data.si != null);
+    out.push("<g class='mnode" + (mapSel && mapSel.id === id ? " on" : "") + "' data-m='" + id + "'" + (clickable ? "" : " style='cursor:default'") + "><rect x='" + n.x + "' y='" + n.y.toFixed(1) + "' width='" + n.w + "' height='" + n.h.toFixed(1) + "' rx='7' fill='" + fill + "' stroke='" + stroke + "' stroke-width='1.2'/>" +
+      "<text x='" + (n.x + 8) + "' y='" + (n.y + 7 + n.px).toFixed(1) + "' font-size='" + n.px + "'" + (n.bold ? " font-weight='600'" : "") + " fill='" + (n.kind === "open" ? col.amber : col.text) + "'>" + n.lines.map((l, i) => "<tspan x='" + (n.x + 8) + "'" + (i ? " dy='" + (n.px * 1.4).toFixed(1) + "'" : "") + ">" + esc(l) + "</tspan>").join("") + "</text></g>");
+    n.children.forEach(c => { const x1 = n.x + n.w, x2 = c.x, mx = (x1 + x2) / 2; out.push("<path d='M" + x1 + " " + n.cy.toFixed(1) + " C" + mx + " " + n.cy.toFixed(1) + " " + mx + " " + c.cy.toFixed(1) + " " + x2 + " " + c.cy.toFixed(1) + "' fill='none' stroke='" + col.line + "' stroke-width='1.3'/>"); draw(c); });
+  };
+  draw(root);
+  mapNodes = []; const collect = n => { mapNodes.push(n); n.children.forEach(collect); }; collect(root);
+  return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 " + W + " " + H + "' width='" + Math.round(W * mapZoom) + "' height='" + Math.round(H * mapZoom) + "' font-family=\"" + MAP_FONT + "\" data-w='" + W + "' data-h='" + H + "'><rect width='" + W + "' height='" + H + "' fill='" + col.surface + "'/>" + out.join("") + "</svg>";
+}
+let mapNodes = [];
+function bindMap() {
+  const go = $("mapGo"); if (go) go.onclick = async () => { go.disabled = true; const r = await api("/api/study", { op: "map", id: cur.id, effort: $("mapEff").value }); if (r.error) { alert(r.error); go.disabled = false; return; } await refresh(false); renderMain(); };
+  if (cur.map_pending) { const T = 300, tk = () => { const el = Date.now() / 1000 - cur.map_pending, b = $("mapBar"), e2 = $("mapEta"); if (!b) { clearInterval(mapTick); return; } b.style.width = Math.round(Math.min(0.92, el / T * 0.9) * 100) + "%"; e2.textContent = (el > T ? "예상보다 오래 걸리고 있습니다 · " : "만드는 중 · ") + fmtDur(el) + "째"; }; tk(); mapTick = setInterval(tk, 1000); }
+  const ms = $("mapMode"); if (ms) ms.onchange = () => { if (ms.value === "all") mapMode = "all"; else { mapMode = "sec"; mapSi = +ms.value; } mapSel = null; renderMain(); };
+  const zm = $("mapZm"), zp = $("mapZp"); const setZ = z => { mapZoom = Math.max(0.4, Math.min(2.5, Math.round(z * 10) / 10)); lsSet("study_map_zoom", mapZoom); const s = $("mwrap").querySelector("svg"); s.setAttribute("width", Math.round(+s.dataset.w * mapZoom)); s.setAttribute("height", Math.round(+s.dataset.h * mapZoom)); $("mapZv").textContent = Math.round(mapZoom * 100) + "%"; };
+  if (zm) zm.onclick = () => setZ(mapZoom - 0.1); if (zp) zp.onclick = () => setZ(mapZoom + 0.1);
+  const name = () => (cur.chapter.title + (mapMode === "sec" ? " — " + cur.chapter.sections[mapSi].title : "")).replace(/[\\/:*?"<>|]/g, " ").slice(0, 80);
+  const svgText = () => { const s = $("mwrap").querySelector("svg").cloneNode(true); s.setAttribute("width", s.dataset.w); s.setAttribute("height", s.dataset.h); s.querySelectorAll(".on").forEach(g => g.classList.remove("on")); return s.outerHTML; };
+  const dl = (href, fn) => { const a = document.createElement("a"); a.href = href; a.download = fn; a.click(); };
+  if ($("mapSvg")) $("mapSvg").onclick = () => { const u = URL.createObjectURL(new Blob([svgText()], { type: "image/svg+xml;charset=utf-8" })); dl(u, name() + ".svg"); setTimeout(() => URL.revokeObjectURL(u), 3000); };
+  if ($("mapPng")) $("mapPng").onclick = () => { const s = $("mwrap").querySelector("svg"), W = +s.dataset.w, H = +s.dataset.h, img = new Image(); img.onload = () => { const c = document.createElement("canvas"); c.width = W * 2; c.height = H * 2; const g = c.getContext("2d"); g.scale(2, 2); g.drawImage(img, 0, 0); c.toBlob(b => { const u = URL.createObjectURL(b); dl(u, name() + ".png"); setTimeout(() => URL.revokeObjectURL(u), 3000); }, "image/png"); }; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText()); };
+  if ($("mapRedo")) $("mapRedo").onclick = async () => { if (!confirm("장을 다시 읽어 마인드맵을 새로 만들까요? (Opus, 3~8분)")) return; const r = await api("/api/study", { op: "map", id: cur.id, effort: lsGet("study_ask_effort", "xhigh") === "max" ? "max" : "xhigh" }); if (r.error) { alert(r.error); return; } cur.map = null; await refresh(false); renderMain(); };
+  $("main").querySelectorAll(".mnode").forEach(g => g.onclick = () => { const n = mapNodes.find(x => x.id === g.dataset.m); if (!n || !n.data) return; if (n.data.si != null && !(n.data.keys || []).length) { if (mapMode === "all") { mapMode = "sec"; mapSi = n.data.si; mapSel = null; renderMain(); } return; } if (!(n.data.keys || []).length && !n.data.isOpen) return; mapSel = { id: n.id, node: n }; $("main").querySelectorAll(".mnode.on").forEach(x => x.classList.remove("on")); g.classList.add("on"); panel = "mapnode"; renderPanel(); });
+}
+function mapNodePanel() {
+  const n = mapSel.node, d = n.data, keys = d.keys || [];
+  let h = "<div class='sec'>" + (n.kind === "paper" ? "연구" : n.kind === "open" ? "열린 물음" : "요점") + "</div><div class='spq'>" + esc(n.kind === "paper" ? "[" + d.n + "] " + cur.papers[d.pi].short : d.label) + "</div>";
+  if (n.kind === "paper") h += "<div class='kv'><span>무엇을 했나</span><span>" + esc(d.did) + "</span></div><div class='kv'><span>무엇을 보았나</span><span>" + esc(d.found) + "</span></div><div class='kv'><span>논문</span><span>" + esc(cur.papers[d.pi].about || cur.papers[d.pi].title) + " <a class='act' style='padding:0 4px' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(cur.papers[d.pi].file) + "&kind=summary'>요약</a></span></div>";
+  else if (d.detail && d.detail !== d.label) h += "<div class='hint' style='line-height:1.6;padding:var(--s2) 0'>" + esc(d.detail) + "</div>";
+  if (d.isOpen) return h + "<div class='hint' style='line-height:1.6'>장의 「이 서재로는 답하지 못한 것」 과 본문에서 엇갈리거나 비어 있다고 적은 것입니다.</div>";
+  if (keys.length) {
+    h += "<div class='sec'>이 이름표를 받치는 장의 문장 " + keys.length + "개</div>" + keys.map(k => { let u; try { u = unitAt(k); } catch (e) { return ""; } return "<div class='chl' data-unit='" + k + "'>" + esc(u.t) + "<div class='m'>" + esc(cur.chapter.sections[+k.split(".")[0]].title) + " · 본문에서 보기</div></div>"; }).join("");
+    const src = [...new Set(keys.flatMap(k => { try { return unitAt(k).src || []; } catch (e) { return []; } }))].map(k => [k, cur.src[k]]).filter(x => x[1]);
+    if (src.length) h += "<details class='evd' open><summary>근거 원문 " + src.length + "개</summary>" + srcItemsHtml(src) + "</details>";
+  }
+  return h;
+}
 
 // ---------- 드래그 → Claude 에게 (원고의 「Claude 에게」 와 같은 길) ----------
 function selBarHide() { const b = $("selBar"); if (b) b.style.display = "none"; }
@@ -378,7 +589,7 @@ function askPanel() {
     h += "<div class='ask'><textarea id='askIn' placeholder='" + (chat ? "이어서 묻기 (Ctrl+Enter)" : "이 대목을 놓고 묻기 — 뜻, 근거가 맞는지, 다른 조건에서는 어떤지 … (Ctrl+Enter)") + "'>" + esc(chat && chat.error ? (chat.thread.slice(-1)[0] || {}).text || askDraft : askDraft) + "</textarea>" +
       "<div class='row'><select id='askEff' title='답하는 모델 — Opus 엑스트라 이상'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
       "<label title='장과 근거만으로 답할 수 없을 때 서재의 요약·번역을 찾아봅니다 (읽은 토큰이 크게 늘 수 있습니다)'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
-      "<button class='primary' id='askGo'>" + (chat ? "묻기" : "묻기") + "</button></div><div class='hint' id='askMsg'></div></div>";
+      "<button class='primary' id='askGo'>묻기</button></div><div class='hint' id='askMsg'></div></div>";
   }
   h += "<div class='row noprint' style='display:flex;gap:var(--s2);padding-top:var(--s3)'><button class='act' id='askClose'>닫기</button>" + (chat ? "<button class='act warn' id='askDel'>이 대화 지우기</button>" : "") + "</div>";
   return h;
@@ -419,12 +630,16 @@ function renderPanel() {
   if (!cur) { el.innerHTML = ""; return; }
   if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
   if (panel === "ask") { el.innerHTML = askPanel(); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
+  if (panel === "mapnode" && mapSel) { el.innerHTML = mapNodePanel(); bindChatLinks(el); el.scrollTop = 0; return; }
   if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey), selKey); bindChatLinks(el); el.scrollTop = 0; return; }
   el.innerHTML = infoPanel();
   bindChatLinks(el);
   const rb = $("rmBtn"); if (rb) rb.onclick = () => { panel = panel === "removed" ? "info" : "removed"; renderPanel(); };
 }
-function bindChatLinks(el) { el.querySelectorAll("[data-chat]").forEach(a => a.onclick = ev => { ev.preventDefault(); openChat(a.dataset.chat); }); }
+function bindChatLinks(el) {
+  el.querySelectorAll("[data-chat]").forEach(a => a.onclick = ev => { ev.preventDefault(); openChat(a.dataset.chat); });
+  el.querySelectorAll("[data-unit]").forEach(a => a.onclick = ev => { ev.preventDefault(); gotoUnit(a.dataset.unit); });
+}
 function chatListHtml(list) {
   return list.map(c => "<div class='chl' data-chat='" + esc(c.id) + "'>" + esc(((c.thread || [])[0] || {}).text || "").slice(0, 90) + "<div class='m'>" + fmtDate(c.t) + " · 「" + esc(c.quote.slice(0, 40)) + (c.quote.length > 40 ? "…" : "") + "」" + (c.pending ? " · <span style='color:var(--accent)'>Claude 생각 중</span>" : " · 답 " + (c.thread || []).filter(m => m.role === "claude").length) + "</div></div>").join("");
 }
@@ -480,7 +695,7 @@ $("go").onclick = async () => {
   $("topic").value = ""; await loadList(); openStudy(r.id);
 };
 $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) $("go").click(); });
-(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; renderList(); refresh(true); })();
+(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList(); })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
 </script>
 </body>

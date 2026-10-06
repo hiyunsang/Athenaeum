@@ -1366,6 +1366,147 @@ def chat_delete(sid, cid):
         _save(st)
     return {"ok": True}
 
+# ---------- 마인드맵(그림) 재료 ----------
+# 사용자(2026-10-06): 'PPT 나 figure 하나 정도로 마인드맵 같은 기능 — 여기서 뭘 했고, 어떤 연구가 이루어졌고, 결과는 어떤지 시각화'.
+# Claude 는 짧은 이름표만 짓고, 이름표마다 그것을 말하는 장의 문장 id(keys)를 적게 한다 — 없는 것은 버린다. 그림은 화면(study.html)이 그린다.
+def _chapter_text_ids(st):
+    """장 전체 — 문장마다 [u절.덩이.문장] id 를 앞에."""
+    ch = st.get("chapter") or {}
+    P = st.get("papers") or []
+    num = lambda keys: sorted({P[int(k.split(":")[0])].get("n") for k in keys if P[int(k.split(":")[0])].get("n")})
+    out = ["# " + str(ch.get("title") or ""), str(ch.get("scope") or ""), ""]
+    for si, sec in enumerate(ch.get("sections") or []):
+        if sec.get("kind") == "summary":
+            continue
+        out.append("## (si=%d) %s%s" % (si, sec["title"], (" — " + sec["aim"]) if sec.get("aim") else ""))
+        for bi, b in enumerate(sec.get("blocks") or []):
+            if "h" in b:
+                out.append("### " + b["h"])
+                continue
+            out.append(" ".join("[u%d.%d.%d] %s%s" % (si, bi, ui, u["t"], (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else "") for ui, u in enumerate(b.get("units") or [])))
+        out.append("")
+    cited = sorted((p for p in P if p.get("n")), key=lambda p: p["n"])
+    out += ["## 참고문헌 (장의 [번호]) — 논문마다 '무엇을 어떤 재료·조건·방법으로 했나'"] + ["[%d] %s — %s" % (p["n"], p["short"], (p.get("about") or p.get("title") or "")[:200]) for p in cited]
+    return "\n".join(out)
+
+
+def _map_prompt(st):
+    return (
+        "아래 장(연구자가 자기 서재의 논문만으로 쓴 교과서 한 장)을 한 장의 마인드맵으로 요약할 재료를 만든다. 연구자가 발표 자료에 넣어 "
+        "'이 주제에서 무엇을 다루고, 어떤 연구가 무엇을 해서 무엇을 보았고, 아직 모르거나 엇갈리는 것은 무엇인지' 를 한눈에 보게 하려는 것이다. 그림은 프로그램이 그린다 — 당신은 짧은 이름표와 그것을 받치는 문장 id 만 준다.\n"
+        "JSON 으로만 답하라:\n"
+        "{\"root\": \"장의 주제를 12자 안팎으로\",\n"
+        " \"branches\": [{\"si\": 0, \"title\": \"절 이름을 14자 안팎으로\",\n"
+        "   \"points\": [{\"label\": \"요점 20자 안팎\", \"detail\": \"그 요점을 한 문장으로(40자 안팎)\", \"keys\": [\"u0.1.2\"]}],\n"
+        "   \"papers\": [{\"n\": 4, \"did\": \"이 절과 관련해 그 연구가 무엇을 어떻게 했나(25자 안팎)\", \"found\": \"무엇을 보았나(30자 안팎, 수치는 문장 그대로)\", \"keys\": [\"u0.3.1\"]}],\n"
+        "   \"open\": [\"엇갈리거나 아직 모르는 것(25자 안팎)\"]}]}\n"
+        "규칙:\n"
+        "- 절(si)마다 하나씩, 장의 차례대로. points 는 절마다 3~5개 — 배우는 사람이 기억할 요점(개념·기전·영향 인자·값의 범위). papers 는 절마다 2~5편 — 그 절의 내용을 실제로 받치는 논문만, [번호] 는 장의 참고문헌 번호.\n"
+        "- 모든 label·detail·did·found 는 keys 에 적은 장의 문장이 말하는 것을 줄인 것이어야 한다. keys 는 1~4개, 장에 있는 id 그대로. 장에 없는 사실·수치·논문은 넣지 않는다. keys 로 받칠 수 없는 항목은 넣지 않는다.\n"
+        "- open 은 장의 글이나 '이 서재로는 답하지 못한 것'에 실제로 있는 것만, 0~2개.\n"
+        "- 이름표는 명사구로 짧게. 번역투·'~에 대한 연구' 같은 군말을 뺀다. 전문 용어는 장에 쓰인 한국어 그대로.\n\n"
+        + _chapter_text_ids(st))
+
+
+def map_start(sid, body):
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만 그릴 수 있습니다"}
+        if st.get("map_pending"):
+            return {"error": "이미 만드는 중입니다"}
+        st["map_pending"] = time.time()
+        st.pop("map_error", None)
+        st["map_opts"] = {"effort": effort}
+        _save(st)
+    threading.Thread(target=_map_job, args=(sid,), name="study-map", daemon=True).start()
+    return {"ok": True}
+
+
+def _map_job(sid):
+    st = _load(sid)
+    if not st:
+        return
+    model, eff = _CHAT_EFFORT.get((st.get("map_opts") or {}).get("effort"), _CHAT_EFFORT["xhigh"])
+    t0 = time.time()
+    res, err, m = None, "", None
+    try:
+        run = cfg.get("claude_run")
+        res = run(_map_prompt(st), timeout=1800, model=model, effort=eff, tools="") if run else None
+        d = _json_of((res or {}).get("text") or "")
+        if not d or not isinstance(d.get("branches"), list):
+            err = "Claude 가 그림 재료를 주지 않았습니다" + _why()
+        else:
+            m = _map_clean(st, d)
+            if not m["branches"]:
+                err = "장의 문장이 받치는 항목이 없어 그리지 못했습니다"
+    except Exception as e:
+        err = "Claude 호출 실패: " + str(e)[:200]
+    with _LOCK:
+        st = _load(sid)
+        if not st:
+            return
+        st.pop("map_pending", None)
+        if err:
+            st["map_error"] = err
+        else:
+            m.update(t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"))
+            st["map"] = m
+            st.pop("map_error", None)
+        _save(st)
+
+
+def _map_clean(st, d):
+    """Claude 의 답에서 장의 문장이 받치는 항목만 남긴다. keys 는 'u0.1.2' → '0.1.2'."""
+    P = st.get("papers") or []
+    by_n = {p.get("n"): i for i, p in enumerate(P) if p.get("n")}
+    nsec = len((st.get("chapter") or {}).get("sections") or [])
+
+    def keys_of(x):
+        out = []
+        for k in (x.get("keys") if isinstance(x.get("keys"), list) else [])[:6]:
+            k = re.sub(r"^u", "", str(k).strip())
+            if _unit_at(st, k)[1] and k not in out:
+                out.append(k)
+        return out
+
+    def short(v, n):
+        return re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+
+    branches, seen = [], set()
+    for b in d.get("branches") or []:
+        if not isinstance(b, dict):
+            continue
+        try:
+            si = int(b.get("si"))
+        except (TypeError, ValueError):
+            continue
+        if si < 0 or si >= nsec or si in seen:
+            continue
+        sec = st["chapter"]["sections"][si]
+        if sec.get("kind") == "summary":
+            continue
+        seen.add(si)
+        points = [{"label": short(p.get("label"), 40), "detail": short(p.get("detail"), 120), "keys": keys_of(p)} for p in (b.get("points") or [])[:6] if isinstance(p, dict)]
+        points = [p for p in points if p["label"] and p["keys"]]
+        papers = []
+        for p in (b.get("papers") or [])[:6]:
+            if not isinstance(p, dict):
+                continue
+            try:
+                nn = int(p.get("n"))
+            except (TypeError, ValueError):
+                continue
+            ks = keys_of(p)
+            if nn in by_n and ks:
+                papers.append({"n": nn, "pi": by_n[nn], "did": short(p.get("did"), 50), "found": short(p.get("found"), 60), "keys": ks})
+        if points or papers:
+            branches.append({"si": si, "title": short(b.get("title"), 30) or sec["title"][:30], "points": points, "papers": papers,
+                             "open": [short(x, 50) for x in (b.get("open") or [])[:3] if short(x, 50)]})
+    branches.sort(key=lambda x: x["si"])
+    return {"root": short(d.get("root"), 24) or (st["chapter"].get("title") or "")[:24], "branches": branches}
+
 
 # ---------- HTTP ----------
 def _q(url, k):
@@ -1406,6 +1547,8 @@ def handle_post(h, body):
             return h._send(200, {"ok": True})
         if op == "ask":
             return h._send(200, chat_ask(sid, body))
+        if op == "map":
+            return h._send(200, map_start(sid, body))
         if op == "chat_delete":
             return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
         if op == "md":
