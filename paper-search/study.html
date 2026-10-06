@@ -81,6 +81,21 @@
   .srci .act { padding: 4px 0; display: inline-block; margin-top: 2px; }
   .kv { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; } .kv span:first-child { color: var(--text-3); min-width: 6.5em; }
   .rm { padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .rm .w { color: var(--amber); margin-top: 2px; } .rm .s { color: var(--text-3); }
+  /* 드래그 → Claude 에게 */
+  #selBar { position: fixed; z-index: 31; display: none; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 4px 14px #0003; padding: 2px; white-space: nowrap; }
+  #selBar button { font-size: 12.5px; padding: 4px 10px; }
+  .u.asked { border-bottom: 1px dotted var(--accent); }
+  .ask textarea { width: 100%; resize: vertical; min-height: 60px; margin-top: var(--s2); }
+  .ask .row { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s2); flex-wrap: wrap; }
+  .ask .row select { padding: 3px 6px; font-size: 12px; } .ask .row label { font-size: 12px; color: var(--text-2); display: inline-flex; gap: 4px; align-items: center; }
+  .ask .row .primary { margin-left: auto; }
+  .msg { padding: var(--s2) 0 var(--s3); border-bottom: 1px solid var(--line); line-height: 1.65; }
+  .msg .who { font-size: 11px; color: var(--text-3); margin-bottom: 3px; }
+  .msg.me { color: var(--text-2); } .msg.me .body { white-space: pre-wrap; }
+  .msg p { margin: 0 0 .6em; } .msg p:last-child { margin-bottom: 0; }
+  .msg p.beyond { background: var(--amber-bg); color: var(--amber); padding: 4px 8px; border-radius: var(--r); }
+  details.evd summary { cursor: pointer; padding: 6px 0; color: var(--text-3); font-size: 12px; } details.evd .srci:first-of-type { border-top: 1px solid var(--line); }
+  .chl { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; cursor: pointer; } .chl:hover { background: var(--hover); } .chl .m { color: var(--text-3); font-size: 11.5px; }
   @media (max-width: 1100px) { #app { grid-template-columns: 220px minmax(0, 1fr) 320px; } }
   @media print {
     header, #side, #srcp, .noprint { display: none !important; }
@@ -94,7 +109,7 @@
 <header>
   <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>공부</h1>
-  <span class="hint">내 서재의 논문만으로 쓰는 교과서 한 장 — 문장을 누르면 그 근거인 논문의 원문 문장이 오른쪽에 보입니다</span>
+  <span class="hint">내 서재의 논문만으로 쓰는 교과서 한 장 — 문장을 누르면 근거인 원문 문장이 오른쪽에 보이고, 글을 드래그하면 Claude 에게 물을 수 있습니다</span>
   <span style="margin-left:auto"></span>
 </header>
 <div id="app">
@@ -131,6 +146,7 @@ const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info";
+let askCtx = null, askOpen = null, askDraft = "", askedSet = new Set(), chatPollT = null, askTick = null;   // 드래그해 묻기: askCtx = 새로 고른 대목 {quote, keys}, askOpen = 열어 둔 대화 id
 
 $("depth").value = lsGet("study_depth", "mid");
 $("effort").value = lsGet("ms_sel_effort", "xhigh");     // 원고의 대화·서재에서 뽑기와 같은 설정
@@ -157,7 +173,7 @@ function renderList() {
 
 // ---------- 열기 · 살피기 ----------
 async function openStudy(id) {
-  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; clearTimeout(pollT);
+  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; askCtx = null; askOpen = null; askDraft = ""; clearTimeout(pollT); clearTimeout(chatPollT);
   renderList(); await refresh(true);
 }
 async function refresh(first) {
@@ -170,6 +186,7 @@ async function refresh(first) {
   if (was && was !== st.status) loadList();
   clearTimeout(pollT);
   if (st.status === "running") pollT = setTimeout(refresh, 4000);
+  if (st.status === "done" && (st.chats || []).some(c => c.pending)) startChatPoll();
 }
 
 // ---------- 가운데 ----------
@@ -243,9 +260,10 @@ const paperOf = key => cur.papers[+key.split(":")[0]];
 const citeNums = u => [...new Set((u.src || []).map(k => paperOf(k).n).filter(Boolean))].sort((a, b) => a - b);
 function unitHtml(u, key) {
   const ns = citeNums(u);
-  return "<span class='u" + (key === selKey ? " on" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
+  return "<span class='u" + (key === selKey ? " on" : "") + (askedSet.has(key) ? " asked" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
 }
 function chapterHtml() {
+  askedSet = new Set((cur.chats || []).flatMap(c => c.keys || []));
   const ch = cur.chapter, s = cur.stats || {}, body = ch.sections.filter(x => x.kind !== "summary"), summ = ch.sections.find(x => x.kind === "summary");
   let no = 0;
   const secHtml = (sec, si) => {
@@ -275,7 +293,7 @@ function selectUnit(key, scroll) {
   renderPanel();
 }
 function bindChapter() {
-  $("main").querySelectorAll(".u").forEach(el => el.onclick = () => selectUnit(el.dataset.u));
+  $("main").querySelectorAll(".u").forEach(el => el.onclick = () => { const sl = document.getSelection(); if (sl && !sl.isCollapsed && String(sl).trim().length >= 2) return; selectUnit(el.dataset.u); });
   const msg = t => { $("chMsg").textContent = t; setTimeout(() => { if ($("chMsg")) $("chMsg").textContent = ""; }, 2500); };
   const md = async () => { const r = await api("/api/study", { op: "md", id: cur.id }); if (r.error) { msg(r.error); return null; } return r; };
   $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
@@ -291,28 +309,142 @@ document.addEventListener("keydown", e => {      // 문장을 하나씩 넘기�
   if (i >= 0 && i < all.length) { e.preventDefault(); selectUnit(all[i], true); }
 });
 
+// ---------- 드래그 → Claude 에게 (원고의 「Claude 에게」 와 같은 길) ----------
+function selBarHide() { const b = $("selBar"); if (b) b.style.display = "none"; }
+function selBarShow(e, html, bind) {
+  let bar = $("selBar");
+  if (!bar) { bar = document.createElement("div"); bar.id = "selBar"; document.body.appendChild(bar); bar.addEventListener("mousedown", ev => ev.preventDefault()); }   // 누를 때 고른 글이 풀리지 않게
+  bar.innerHTML = html; bind(bar);
+  bar.style.display = "block";
+  bar.style.left = Math.max(8, Math.min(window.innerWidth - bar.offsetWidth - 8, e.clientX - 20)) + "px";
+  bar.style.top = Math.max(50, e.clientY - 40) + "px";
+}
+document.addEventListener("mousedown", e => { if (!(e.target.closest && e.target.closest("#selBar"))) selBarHide(); });
+$("main").addEventListener("mouseup", e => {
+  if (e.target.closest && e.target.closest("#selBar")) return;
+  if (!cur || cur.status !== "done" || !cur.chapter) return;
+  const sl = document.getSelection(); if (!sl || sl.isCollapsed || !sl.rangeCount) { selBarHide(); return; }
+  const range = sl.getRangeAt(0), ch = $("main").querySelector(".ch");
+  if (!ch || !ch.contains(range.commonAncestorContainer)) { selBarHide(); return; }
+  const frag = range.cloneContents(); frag.querySelectorAll(".c").forEach(x => x.remove());    // 인용 번호는 뺀다
+  const quote = (frag.textContent || "").replace(/\s+/g, " ").trim();
+  const keys = [...ch.querySelectorAll(".u")].filter(el => range.intersectsNode(el)).map(el => el.dataset.u);
+  if (quote.length < 2 || !keys.length) { selBarHide(); return; }
+  selBarShow(e, "<button class='primary' title='고른 대목을 놓고 Claude 에게 묻습니다 (Opus)'>Claude 에게</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openAsk({ quote, keys }); });
+});
+function openAsk(ctx) { askCtx = ctx; askOpen = null; askDraft = ""; panel = "ask"; renderPanel(); const t = $("askIn"); if (t) t.focus(); }
+function openChat(cid) { askOpen = cid; askCtx = null; askDraft = ""; panel = "ask"; renderPanel(); }
+function markAsked() { askedSet = new Set((cur.chats || []).flatMap(c => c.keys || [])); $("main").querySelectorAll(".u").forEach(el => el.classList.toggle("asked", askedSet.has(el.dataset.u))); }
+async function pollChats() {
+  if (!cur || cur.status !== "done") return false;
+  let r; try { r = await api("/api/study/chats?id=" + encodeURIComponent(cur.id)); } catch (e) { return false; }
+  if (!cur || r.error) return false;
+  const before = JSON.stringify(cur.chats || []);
+  cur.chats = r.chats || [];
+  if (JSON.stringify(cur.chats) === before) return false;
+  cur.chats.forEach(c => (c.thread || []).forEach(m => { if (m.role === "claude" && m.sec && (c.opts || {}).effort) askRemember(c.opts.effort, m.sec); }));   // 걸린 시간을 기억해 다음 기다림 막대에 쓴다
+  const el = $("srcp"), top = el.scrollTop;
+  markAsked(); renderPanel();
+  if (panel !== "ask" || askOpen) el.scrollTop = top;     // 답이 와서 다시 그려도 읽던 자리를 지킨다
+  return true;
+}
+function startChatPoll() {
+  clearTimeout(chatPollT);
+  const loop = async () => { await pollChats(); if (cur && (cur.chats || []).some(c => c.pending)) chatPollT = setTimeout(loop, 4000); };
+  chatPollT = setTimeout(loop, 4000);
+}
+const askDurKey = eff => "study_ask_dur|" + eff;
+function askExpect(eff) { const v = +lsGet(askDurKey(eff), 0); return v || (eff === "max" ? 180 : 100); }
+const askSeen = new Set();
+function askRemember(eff, sec) { const k = eff + "|" + sec; if (askSeen.has(k)) return; askSeen.add(k); const v = +lsGet(askDurKey(eff), 0); lsSet(askDurKey(eff), Math.round(v ? v * 0.6 + sec * 0.4 : sec)); }
+function msgHtml(m) {
+  if (m.role === "user") return "<div class='msg me'><div class='who'>나 · " + fmtDate(m.t) + "</div><div class='body'>" + esc(m.text) + "</div></div>";
+  const paras = String(m.text || "").split(/\n{2,}|\n(?=\S)/).map(x => x.trim()).filter(Boolean);
+  return "<div class='msg'><div class='who'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") + (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + "</div>" +
+    paras.map(p => "<p" + (/^서재 밖\s*:/.test(p) ? " class='beyond' title='장과 근거에 없어 Claude 가 제 지식으로 보탠 부분입니다 — 서재에서 확인된 것이 아닙니다'" : "") + ">" + esc(p).replace(/\n/g, "<br>") + "</p>").join("") + "</div>";
+}
+function askPanel() {
+  const chat = askOpen ? (cur.chats || []).find(c => c.id === askOpen) : null;
+  const ctx = chat || askCtx; if (!ctx) { panel = "info"; return infoPanel(); }
+  const keys = ctx.keys || [], srcKeys = [...new Set(keys.flatMap(k => { try { return unitAt(k).src || []; } catch (e) { return []; } }))];
+  const src = srcKeys.map(k => [k, cur.src[k]]).filter(x => x[1]);
+  let h = "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "</div><div class='spq'>" + esc(ctx.quote) + "</div>" +
+    "<details class='evd'" + (chat ? "" : " open") + "><summary>이 대목의 근거 원문 " + src.length + "개 — Claude 에게 같이 갑니다</summary>" + (src.length ? srcItemsHtml(src) : "<div class='hint'>근거 표시가 없는 이음 문장입니다.</div>") + "</details>";
+  if (chat) h += (chat.thread || []).map(msgHtml).join("");
+  if (chat && chat.pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 대화에 남습니다.</div>";
+  if (chat && chat.error) h += "<div class='warnbox'>" + esc(chat.error) + " — 아래에서 다시 물으세요.</div>";
+  if (!(chat && chat.pending)) {
+    const eff = lsGet("study_ask_effort", "xhigh"), lib = lsGet("study_ask_lib", "0") === "1";
+    h += "<div class='ask'><textarea id='askIn' placeholder='" + (chat ? "이어서 묻기 (Ctrl+Enter)" : "이 대목을 놓고 묻기 — 뜻, 근거가 맞는지, 다른 조건에서는 어떤지 … (Ctrl+Enter)") + "'>" + esc(chat && chat.error ? (chat.thread.slice(-1)[0] || {}).text || askDraft : askDraft) + "</textarea>" +
+      "<div class='row'><select id='askEff' title='답하는 모델 — Opus 엑스트라 이상'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
+      "<label title='장과 근거만으로 답할 수 없을 때 서재의 요약·번역을 찾아봅니다 (읽은 토큰이 크게 늘 수 있습니다)'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
+      "<button class='primary' id='askGo'>" + (chat ? "묻기" : "묻기") + "</button></div><div class='hint' id='askMsg'></div></div>";
+  }
+  h += "<div class='row noprint' style='display:flex;gap:var(--s2);padding-top:var(--s3)'><button class='act' id='askClose'>닫기</button>" + (chat ? "<button class='act warn' id='askDel'>이 대화 지우기</button>" : "") + "</div>";
+  return h;
+}
+function bindAsk() {
+  const t = $("askIn");
+  if (t) {
+    t.oninput = () => { askDraft = t.value; };
+    t.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); askSend(); } });
+  }
+  const g = $("askGo"); if (g) g.onclick = askSend;
+  const c = $("askClose"); if (c) c.onclick = () => { panel = selKey ? "unit" : "info"; askCtx = null; askOpen = null; renderPanel(); };
+  const d = $("askDel"); if (d) d.onclick = async () => { if (!confirm("이 대화를 지울까요?")) return; const r = await api("/api/study", { op: "chat_delete", id: cur.id, chat: askOpen }); if (r.error) { alert(r.error); return; } cur.chats = (cur.chats || []).filter(x => x.id !== askOpen); askOpen = null; askCtx = null; panel = "info"; markAsked(); renderPanel(); };
+  const chat = askOpen ? (cur.chats || []).find(c => c.id === askOpen) : null;
+  clearInterval(askTick);
+  if (chat && chat.pending) {
+    const eff = (chat.opts || {}).effort || "xhigh", T = askExpect(eff);
+    const tk = () => { const el = Date.now() / 1000 - chat.pending, b = $("askBar"), e2 = $("askEta"); if (!b) { clearInterval(askTick); return; }
+      b.style.width = Math.round(Math.min(0.92, el / T * 0.9) * 100) + "%"; e2.textContent = (el > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el) + "째"; };
+    tk(); askTick = setInterval(tk, 1000);
+  }
+}
+async function askSend() {
+  const t = $("askIn"), q = (t ? t.value : "").trim(); if (!q) { if (t) t.focus(); return; }
+  const eff = $("askEff").value, lib = $("askLib").checked;
+  lsSet("study_ask_effort", eff); lsSet("study_ask_lib", lib ? "1" : "0");
+  $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
+  let r; try { r = await api("/api/study", { op: "ask", id: cur.id, chat: askOpen || "", quote: (askCtx || {}).quote || "", keys: (askCtx || {}).keys || [], question: q, effort: eff, lib }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; return; }
+  askOpen = r.chat; askDraft = "";
+  await pollChats(); renderPanel(); startChatPoll();
+}
+
 // ---------- 오른쪽: 근거 ----------
 function renderPanel() {
   const el = $("srcp");
+  clearInterval(askTick);
   if (!cur) { el.innerHTML = ""; return; }
   if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
-  if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey)); el.scrollTop = 0; return; }
+  if (panel === "ask") { el.innerHTML = askPanel(); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
+  if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey), selKey); bindChatLinks(el); el.scrollTop = 0; return; }
   el.innerHTML = infoPanel();
+  bindChatLinks(el);
   const rb = $("rmBtn"); if (rb) rb.onclick = () => { panel = panel === "removed" ? "info" : "removed"; renderPanel(); };
 }
-function unitPanel(u) {
+function bindChatLinks(el) { el.querySelectorAll("[data-chat]").forEach(a => a.onclick = ev => { ev.preventDefault(); openChat(a.dataset.chat); }); }
+function chatListHtml(list) {
+  return list.map(c => "<div class='chl' data-chat='" + esc(c.id) + "'>" + esc(((c.thread || [])[0] || {}).text || "").slice(0, 90) + "<div class='m'>" + fmtDate(c.t) + " · 「" + esc(c.quote.slice(0, 40)) + (c.quote.length > 40 ? "…" : "") + "」" + (c.pending ? " · <span style='color:var(--accent)'>Claude 생각 중</span>" : " · 답 " + (c.thread || []).filter(m => m.role === "claude").length) + "</div></div>").join("");
+}
+function unitPanel(u, key) {
   const src = (u.src || []).map(k => [k, cur.src[k]]).filter(x => x[1]);
+  const mine = (cur.chats || []).filter(c => (c.keys || []).includes(key));
+  const tail = (mine.length ? "<div class='sec'>이 문장을 두고 나눈 대화 " + mine.length + "개</div>" + chatListHtml(mine) : "") +
+    "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>↑ ↓ 로 앞뒤 문장으로 넘어갑니다. 글을 드래그하면 Claude 에게 물을 수 있습니다.</div>";
   const head = "<div class='sec'>고른 문장</div><div class='spq'>" + esc(u.t) + "</div>";
-  if (!src.length) return head + "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>앞뒤의 사실을 잇는 문장입니다. 근거 문장을 달지 않았고, 새 사실을 담지 않았는지 대조했습니다.</div>";
-  return head + "<div class='sec'>근거 — 논문의 원문 문장 " + src.length + "개</div>" + (u.fixed ? "<div class='hint'>원문과 대조하며 한 번 고쳐 쓴 문장입니다.</div>" : "") +
-    src.map(([k, s]) => { const p = paperOf(k), sid = k.split(":")[1], can = /^s\d+$/.test(sid);
+  if (!src.length) return head + "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>앞뒤의 사실을 잇는 문장입니다. 근거 문장을 달지 않았고, 새 사실을 담지 않았는지 대조했습니다.</div>" + tail;
+  return head + "<div class='sec'>근거 — 논문의 원문 문장 " + src.length + "개</div>" + (u.fixed ? "<div class='hint'>원문과 대조하며 한 번 고쳐 쓴 문장입니다.</div>" : "") + srcItemsHtml(src) + tail;
+}
+function srcItemsHtml(src) {
+  return src.map(([k, s]) => { const p = paperOf(k), sid = k.split(":")[1], can = /^s\d+$/.test(sid);
       return "<div class='srci'><div class='sm'><b>[" + (p.n || "") + "] " + esc(p.short) + "</b> · " + esc(p.journal) + (s.page ? " · p." + s.page : "") + (s.sec ? " · " + esc(s.sec) : "") +
         (s.own ? "" : " · <span class='tag' title='이 논문이 자기 결과가 아니라 다른 연구를 전한 문장입니다'>다른 연구를 전한 문장</span>") + "</div>" +
         "<div class='en'>" + esc(s.en) + "</div>" + (s.ko ? "<div class='ko'>" + rich(s.ko) + "</div>" : "") +
         ((s.cited || []).length ? "<div class='cited'>이 문장이 인용한 문헌: " + s.cited.map(c => "[" + esc(c.n) + "] " + esc(c.line)).join(" / ") + "</div>" : "") +
         (p.unitwarn ? "<div class='cited' style='color:var(--amber)'>이 논문의 PDF 는 μ 글자가 깨져 꺼내집니다 — 원문의 'mm'·'lm' 는 μm 일 수 있습니다.</div>" : "") +
-        "<a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + (can ? "&kind=translation&sent=" + sid : "") + "'>" + (can ? "논문에서 이 문장 보기" : "논문 열기") + "</a></div>"; }).join("") +
-    "<div class='hint' style='padding-top:var(--s3)'>↑ ↓ 로 앞뒤 문장으로 넘어갑니다.</div>";
+        "<a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + (can ? "&kind=translation&sent=" + sid : "") + "'>" + (can ? "논문에서 이 문장 보기" : "논문 열기") + "</a></div>"; }).join("");
 }
 function infoPanel() {
   const s = cur.stats || {}, sc = cur.scan || {}, papers = cur.papers || [], rm = cur.removed || [], tok = cur.tok || {};
@@ -332,7 +464,9 @@ function infoPanel() {
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
   else h += "<div class='sec'>읽은 논문</div>" + papers.map(p => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
       (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") +
-    "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다.</div>";
+    "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다. 글을 드래그하면 그 대목을 놓고 Claude 에게 물을 수 있습니다.</div>";
+  const chats = (cur.chats || []).slice().reverse();
+  if (chats.length) h += "<div class='sec'>Claude 와 나눈 대화 " + chats.length + "개</div>" + chatListHtml(chats);
   return h;
 }
 

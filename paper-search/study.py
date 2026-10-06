@@ -1188,6 +1188,184 @@ def to_md(st):
         out.append("")
     return "\n".join(out)
 
+# ---------- 묻기: 장의 글을 드래그해 Claude 에게 (원고의 대화와 같은 길) ----------
+# 사용자(2026-10-06): '드래그해서 질문할 수 있게 — Claude Opus 로(엑스트라 이상), 원고처럼'. 배경(장 전체 + 참고문헌)은 시스템 프롬프트로 주어
+# 두 번째 물음부터 캐시에서 읽히게 하고, 고른 대목의 근거 원문과 물음만 물음에 붙인다. 답은 서버가 그 대화에 얹어 저장한다 — 창을 닫아도 남는다.
+_CHAT_EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max")}
+_CHAT_RULE = (
+    "답하는 법:\n"
+    "- 답은 사람이 읽는 한국어 글이다. 두괄식으로: 첫 문장에 답, 그 다음에 까닭과 근거, 마지막에 연구자가 확인하거나 더 볼 것. 짧은 문장으로 한 번에 한 가지씩. 인사말·되묻는 말·잘된 점의 나열은 넣지 않는다.\n"
+    "- 근거는 [고른 대목의 근거 원문] 과 장의 글이 우선이다. 거기서 답할 수 있으면 그것으로 답하고, 논문은 장의 [번호] 로 가리킨다(예: Liu 등(2019)[2]). 원문 문장을 끌어 쓸 때는 그 문장의 번호(s12)도 적는다.\n"
+    "- 장과 근거에 없는 것을 당신의 지식으로 보태야 하면, 그 부분은 '서재 밖:' 으로 시작하는 문단에 따로 적어 갈라 둔다 — 연구자는 서재에서 확인한 것과 아닌 것을 구분해야 한다. 지어낸 수치·인용은 절대 쓰지 않는다.\n"
+    "- 고른 대목이 근거를 넘어 말했거나 근거와 다르게 읽힌다고 보이면 그렇게 말한다(이 장은 Claude 가 쓴 것이라 틀릴 수 있다).\n"
+    "- 내부 표시(메모 번호, 규칙 이름)는 쓰지 않는다. 마크다운 제목·굵게 표시 없이 문단으로 쓴다(필요하면 번호 목록).\n")
+
+
+def _chapter_text(st):
+    """장 전체를 글로 — 절마다 문장과 인용 번호, 참고문헌. 물음마다 글자 하나까지 같아야 캐시가 맞는다 (다 쓴 장은 바뀌지 않는다)."""
+    ch = st.get("chapter") or {}
+    P = st.get("papers") or []
+    num = lambda keys: sorted({P[int(k.split(":")[0])].get("n") for k in keys if P[int(k.split(":")[0])].get("n")})
+    out = ["# " + str(ch.get("title") or ""), str(ch.get("scope") or ""), ""]
+    k = 0
+    for sec in ch.get("sections") or []:
+        if sec.get("kind") == "summary":
+            out.append("## 핵심 정리")
+        else:
+            k += 1
+            out.append("## %d. %s" % (k, sec["title"]))
+        for b in sec.get("blocks") or []:
+            if "h" in b:
+                out.append("### " + b["h"])
+            else:
+                out.append(" ".join("%s%s" % (u["t"], (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else "") for u in b.get("units") or []))
+        out.append("")
+    if ch.get("gaps"):
+        out += ["## 이 서재로는 답하지 못한 것"] + ["- " + g for g in ch["gaps"]] + [""]
+    cited = sorted((p for p in P if p.get("n")), key=lambda p: p["n"])
+    out += ["## 참고문헌 (장의 [번호])"] + ["[%d] %s — %s" % (p["n"], p["short"], p.get("ref") or p.get("title") or "") for p in cited]
+    return "\n".join(out)
+
+
+def _chat_system(st):
+    return ("아래는 연구자가 자기 서재(영어 논문들)의 논문만으로 쓴 전공 교과서의 한 장이다. 사실 문장은 모두 논문의 원문 문장에 묶여 있고 원문과 대조한 것이다. "
+            "연구자가 이 장의 한 대목을 골라 묻는다. [번호] 는 장 끝 참고문헌의 번호다.\n\n" + _chapter_text(st))
+
+
+def _unit_at(st, key):
+    try:
+        a, b, c = (int(x) for x in str(key).split("."))
+        u = st["chapter"]["sections"][a]["blocks"][b]["units"][c]
+        return st["chapter"]["sections"][a], u
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None, None
+
+
+def _chat_evidence(st, keys):
+    """고른 대목에 든 문장들의 근거 원문 → 글. 문장마다: 장의 문장, 그 아래 근거 원문(논문 [번호], 문장 번호, 전한 말 표시, 영어, 번역)"""
+    P, src = st.get("papers") or [], st.get("src") or {}
+    lines, seen = [], set()
+    for key in keys[:14]:
+        _sec, u = _unit_at(st, key)
+        if not u:
+            continue
+        lines.append("· " + u["t"])
+        for k in u.get("src") or []:
+            s = src.get(k)
+            if not s or k in seen:
+                continue
+            seen.add(k)
+            p = P[int(k.split(":")[0])]
+            lines.append("    [%s] %s · %s%s%s: \"%s\"%s" % (p.get("n", "?"), p["short"], k.split(":")[1], (" · p.%s" % s["page"]) if s.get("page") else "",
+                                                           "" if s.get("own") else " · 이 논문이 남의 연구를 전한 문장", s["en"][:700], (" / 번역: " + s["ko"][:400]) if s.get("ko") else ""))
+    return "\n".join(lines)
+
+
+def _chat_prompt(st, chat, question, lib):
+    sec, _u = _unit_at(st, (chat.get("keys") or [""])[0])
+    ev = _chat_evidence(st, chat.get("keys") or [])
+    th = [m for m in chat.get("thread") or [] if m.get("text")]
+    past = "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", m["text"][:3000]) for m in th[-8:-1]) if len(th) > 1 else ""
+    out = ("연구자가 장에서 고른 대목을 놓고 묻는다.\n\n[고른 대목]%s\n%s\n\n[고른 대목의 근거 원문]\n%s\n\n" % (
+        (" (절: %s)" % sec["title"]) if sec else "", chat.get("quote", "")[:3000], ev or "(근거 표시 없는 이음 문장)"))
+    if past:
+        out += "[지난 대화]\n" + past + "\n\n"
+    out += "[물음]\n" + question + "\n\n" + _CHAT_RULE
+    if lib:
+        out += ("\n[서재를 찾아볼 수 있다]\n연구자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
+                "원문 PDF 는 \"%s\" 에 같은 이름으로 있다.\n- 장과 근거만으로 답할 수 없는 물음일 때만 찾아라. Grep 으로 용어(영어·한국어)를 *.요약.md 에서 찾고, 필요한 논문의 .번역.md 에서 그 부분만 Read 한다(통째로 읽지 마라). 도구는 많아야 8번.\n"
+                "- 서재에서 확인한 것은 (저자 연도, 파일 이름)으로 가리키고, 확인하지 못한 것은 확인하지 못했다고 말하라.") % (cfg["GEN_DIR"], cfg["ARCHIVE"])
+    else:
+        out += "\n(너는 파일을 열 수 없다. 장과 여기 준 근거만 보고 답하라. 더 확인할 것이 있으면 무엇을 봐야 하는지 말하라.)"
+    return out
+
+
+def _chat_find(st, cid):
+    return next((x for x in st.get("chats") or [] if x.get("id") == cid), None)
+
+
+def chat_ask(sid, body):
+    """물음을 대화에 적어 저장하고 스레드로 답을 받는다 → {chat}. 이어 묻기는 chat 에 그 대화의 id."""
+    question = str(body.get("question") or "").strip()
+    if len(question) < 2:
+        return {"error": "물음을 적어 주세요"}
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만 물을 수 있습니다"}
+        chat = _chat_find(st, str(body.get("chat") or ""))
+        if not chat:
+            keys = [str(k) for k in (body.get("keys") or []) if _unit_at(st, k)[1]][:14]
+            sec, _u = _unit_at(st, keys[0]) if keys else (None, None)
+            chat = {"id": "q%d" % int(time.time() * 1000), "quote": str(body.get("quote") or "").strip()[:3000], "keys": keys,
+                    "sec": sec["title"] if sec else "", "t": time.time(), "thread": []}
+            st.setdefault("chats", []).append(chat)
+        if chat.get("pending"):
+            return {"error": "이 대화는 아직 답을 기다리고 있습니다"}
+        th = chat.setdefault("thread", [])
+        if th and th[-1].get("role") == "user" and chat.get("error"):   # 지난번 물음이 답을 못 받았다 → 그 물음을 바꿔 다시
+            th[-1] = {"role": "user", "text": question, "t": time.time()}
+        else:
+            th.append({"role": "user", "text": question, "t": time.time()})
+        chat["pending"] = time.time()
+        chat.pop("error", None)
+        chat["opts"] = {"effort": effort, "lib": bool(body.get("lib"))}
+        _save(st)
+        cid = chat["id"]
+    threading.Thread(target=_chat_job, args=(sid, cid), name="study-chat", daemon=True).start()
+    return {"chat": cid}
+
+
+def _chat_job(sid, cid):
+    st = _load(sid)
+    chat = _chat_find(st, cid) if st else None
+    if not chat:
+        return
+    question = (chat.get("thread") or [{}])[-1].get("text") or ""
+    model, eff = _CHAT_EFFORT.get((chat.get("opts") or {}).get("effort"), _CHAT_EFFORT["xhigh"])
+    lib = bool((chat.get("opts") or {}).get("lib"))
+    t0 = time.time()
+    res, err = None, ""
+    try:
+        run = cfg.get("claude_run")
+        res = run(_chat_prompt(st, chat, question, lib), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
+                  add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=_chat_system(st)) if run else None
+        if not res or not (res.get("text") or "").strip():
+            err = "Claude 응답이 없습니다" + _why()
+    except Exception as e:
+        err = "Claude 호출 실패: " + str(e)[:200]
+    with _LOCK:
+        st = _load(sid)
+        chat = _chat_find(st, cid) if st else None
+        if not chat:
+            return
+        chat.pop("pending", None)
+        if err:
+            chat["error"] = err
+        else:
+            chat.pop("error", None)
+            chat["thread"].append({"role": "claude", "text": res["text"].strip(), "t": time.time(), "sec": round(time.time() - t0),
+                                   "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib})
+        _save(st)
+
+
+def chats_of(sid):
+    st = _load(sid)
+    if not st:
+        return {"error": "찾지 못했습니다"}
+    return {"chats": st.get("chats") or [], "now": time.time()}
+
+
+def chat_delete(sid, cid):
+    with _LOCK:
+        st = _load(sid)
+        if not st:
+            return {"error": "찾지 못했습니다"}
+        st["chats"] = [x for x in st.get("chats") or [] if x.get("id") != cid]
+        _save(st)
+    return {"ok": True}
+
 
 # ---------- HTTP ----------
 def _q(url, k):
@@ -1203,6 +1381,8 @@ def handle_get(h, url):
         return h._send(200, {"items": list_studies(), "running": len(_JOBS), "version": VERSION})
     if p == "/api/study/get":
         return h._send(200, get(_q(url, "id")))
+    if p == "/api/study/chats":
+        return h._send(200, chats_of(_q(url, "id")))
     return h._send(404, {"error": "unknown"})
 
 
@@ -1224,6 +1404,10 @@ def handle_post(h, body):
             if os.path.isfile(fp) and os.path.dirname(os.path.abspath(fp)) == os.path.abspath(cfg["DIR"]):
                 os.remove(fp)
             return h._send(200, {"ok": True})
+        if op == "ask":
+            return h._send(200, chat_ask(sid, body))
+        if op == "chat_delete":
+            return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
         if op == "md":
             st = _load(sid)
             if not st or not st.get("chapter"):
