@@ -3,7 +3,7 @@
 논문을 **모으고(수집) → 찾고(검색) → 읽고(요약·번역) → 쓰는(원고)** 일을 한 프로그램에서 합니다.
 컴퓨터를 켜면 자동으로 서버가 조용히 돌고(창 없음), 화면은 브라우저에서 `http://localhost:8770` 로 봅니다.
 
-- 그림으로 보는 사용법: 홈 위쪽 **도움말** (`http://localhost:8770/tutorial`) — 화면마다 어디가 무엇이고 어떻게 쓰는지 번호로
+- 그림으로 보는 사용법: 홈 위쪽 **도움말** (`http://localhost:8770/tutorial`) — 논문 · 탐색 · 공부 · 원고 네 갈래로, 화면마다 어디가 무엇이고 어떻게 쓰는지 번호로. **처음 열면 이것이 먼저 뜨고**, 「시작하기」 를 누르면 홈으로
 - 열기: 바탕화면 **Athenaeum** 바로가기 (또는 `Documents\MAENG_paper\paper-search\Athenaeum_실행.bat`)
 - 서버 자동 시작: 시작프로그램 폴더(`Win+R` → `shell:startup`)의 `Athenaeum_시작.vbs`
 - 코드·설정: `Documents\MAENG_paper\paper-search\`, 논문 실체: `Documents\MAENG_paper\논문모음\`

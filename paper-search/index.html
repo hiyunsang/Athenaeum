@@ -132,6 +132,10 @@
   #closeDrawer { float: right; cursor: pointer; color: var(--text-3); font-size: 14px; }
 </style>
 <script src="/ui.js"></script>
+<script>
+// 처음 켠 사람(이 브라우저에서 아직 사용법을 본 적 없음)에게는 사용법이 먼저 뜬다 — 「시작하기」 를 누르면 tutorial_seen 이 적히고 홈으로. ?nofirst=1 은 시험용
+(function () { try { if (!localStorage.getItem("tutorial_seen") && !/[?&]nofirst=1/.test(location.search)) location.replace("/tutorial?first=1"); } catch (e) {} })();
+</script>
 </head>
 <body>
 <header>

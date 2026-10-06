@@ -19,7 +19,7 @@
   .flow { display: flex; gap: var(--s2); align-items: stretch; flex-wrap: wrap; margin: var(--s4) 0; }
   .flow .st { flex: 1; min-width: 150px; border: 1px solid var(--line-2); border-radius: var(--r); padding: 10px 12px; background: var(--panel); font-size: 13px; line-height: 1.5; }
   .flow .st b { display: block; font-size: 14px; margin-bottom: 2px; }
-  .flow .st .w { color: var(--text-3); font-size: 11.5px; }
+  .flow .st .w { display: block; margin-top: 3px; color: var(--text-3); font-size: 11.5px; }
   section.scr { margin-top: 56px; page-break-inside: avoid; }
   section.scr h2 { font-family: var(--font-serif); font-size: 26px; display: flex; align-items: baseline; gap: var(--s3); }
   section.scr h2 .w { font-family: var(--font); font-size: 13px; color: var(--text-3); font-weight: 400; }
@@ -41,6 +41,24 @@
   .tip { max-width: 900px; margin: var(--s3) 0 0; padding: 8px 12px; background: var(--amber-bg); color: var(--amber); border-radius: var(--r); font-size: 13px; line-height: 1.6; }
   .where { max-width: 860px; font-size: 13.5px; line-height: 1.7; }
   .where code { background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+  /* 네 갈래: 논문 · 탐색 · 공부 · 원고 */
+  #first { display: none; margin: 0 0 var(--s4); padding: var(--s3) var(--s4); background: var(--accent-bg); color: var(--text); border-left: 3px solid var(--accent); border-radius: var(--r); font-size: 14px; line-height: 1.7; }
+  #first.on { display: block; }
+  #first .primary { margin-left: var(--s3); padding: 6px 14px; }
+  .chap { margin-top: 64px; padding-top: var(--s4); border-top: 2px solid var(--text); }
+  .chap h2.ct { font-family: var(--font-serif); font-size: 30px; margin: 0; display: flex; align-items: baseline; gap: var(--s3); }
+  .chap h2.ct .no { color: var(--accent); }
+  .chap .cl { max-width: 860px; font-size: 14px; line-height: 1.7; color: var(--text-2); margin: var(--s2) 0 0; }
+  section.scr { margin-top: 40px; }
+  section.scr h2 { font-size: 22px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s3); margin: var(--s4) 0; }
+  .cards a { display: block; border: 1px solid var(--line-2); border-radius: var(--r); padding: 12px 14px; background: var(--panel); color: var(--text); text-decoration: none; line-height: 1.5; font-size: 13px; }
+  .cards a:hover { border-color: var(--accent); text-decoration: none; }
+  .cards a b { display: block; font-size: 16px; margin-bottom: 4px; } .cards a b .no { color: var(--accent); margin-right: 4px; }
+  .cards a .w { display: block; color: var(--text-3); font-size: 11.5px; margin-top: 4px; }
+  @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  #startBar { position: sticky; bottom: 0; display: none; justify-content: flex-end; gap: var(--s3); align-items: center; padding: var(--s2) var(--s4); background: var(--surface); border-top: 1px solid var(--line-2); box-shadow: 0 -6px 20px #0002; font-size: 13px; }
+  #startBar.on { display: flex; }
   @media (max-width: 1000px) { .notes { columns: 1; } .fig .co { font-size: 11px; padding: 4px 6px; } }
   @media print { header { position: static; } #wrap { padding: 0; max-width: none; } section.scr { margin-top: 32px; } .fig .co { font-size: 11px; } }
 </style>
@@ -54,6 +72,7 @@
   <span style="margin-left:auto"></span><span id="uiCtlHost"></span>
 </header>
 <div id="wrap">
+  <div id="first"><b>처음 오셨군요.</b> 네 가지 — <b>논문 · 탐색 · 공부 · 원고</b> — 를 차례로 훑어보고 아래 「시작하기」 를 누르면 홈으로 갑니다. 이 사용법은 홈 위쪽 「도움말」 로 언제든 다시 엽니다. <button class="primary" id="startTop">시작하기 → 홈</button></div>
   <div class="intro">
     <h2>Athenaeum — 내 서재로 논문을 모으고, 읽고, 공부하고, 쓰는 작업대</h2>
     <p>모든 것이 이 컴퓨터 안에서 돕니다. 논문 PDF·요약·번역·공부·원고는 전부 이 폴더에 저장되고, Claude 는 요약·번역·공부·원고의 글을 쓸 때 Claude Code 로 부릅니다(내 Claude 구독 사용량, API 키 없음). 화면마다 어디가 무엇이고 어떻게 쓰는지를 아래 그림에 번호로 적었습니다. 홈 위쪽 「도움말」 로 언제든 다시 엽니다.</p>
@@ -64,9 +83,16 @@
       <div class="st"><b>④ 공부</b>주제 하나를 내 서재의 논문만으로 교과서 한 장으로<span class="w">공부</span></div>
       <div class="st"><b>⑤ 쓰기</b>근거 카드 → 개요 → 초안 → 검토 → 영문 → 워드, 심사 의견까지<span class="w">원고</span></div>
     </div>
+    <div class="cards">
+      <a href="#papers"><b><span class="no">1</span>논문</b>모으고 · 찾고 · 읽기 — 홈, 읽기 화면, 단어장<span class="w">서재의 논문은 알아서 들어오고, 요약·번역으로 읽습니다</span></a>
+      <a href="#explore"><b><span class="no">2</span>탐색</b>세상의 논문을 말로 찾기 — 검색 계획, 맵<span class="w">아직 내 서재에 없는 논문을 찾아 받습니다</span></a>
+      <a href="#study"><b><span class="no">3</span>공부</b>내 서재로 쓰는 교과서 한 장 — 근거 원문, 마인드맵<span class="w">한 주제를 서재의 논문만으로 정리해 배웁니다</span></a>
+      <a href="#ms"><b><span class="no">4</span>원고</b>근거 카드 → 개요 → 초안 → 검토 → 워드<span class="w">논문을 쓰고, 심사 의견까지 처리합니다</span></a>
+    </div>
     <p><b>처음 시작</b>: ZIP 을 풀고 「Athenaeum 설치.bat」 → Claude Code 설치·로그인 확인 → 바탕화면 아이콘. 그다음 홈의 「수집」 에서 감시 폴더(기본: 내 다운로드)를 확인하고, 논문이 열 편쯤 모이면 홈이 권하는 대로 「라벨 체계 설정」 에서 내 분야의 체계를 Claude 에게 받아 적용하세요.</p>
   </div>
   <div id="screens"></div>
+  <div id="startBar"><span>네 가지를 다 보셨으면</span><button class="primary" id="startBottom">시작하기 → 홈</button></div>
   <section class="scr" id="data">
     <h2>데이터는 어디에</h2>
     <div class="where">
@@ -143,15 +169,29 @@ const SCREENS = [
       { n: 3, t: "단어마다 — 뜻 · 품사 · 발음 · 동의어 ≠ 반의어 · 파생어 · 예문(영/한) · 출처 · 아직/알아요 · 초록이 보기", to: [253, 127, 934, 148], box: [430, 420, 480], d: "「초록이 보기」 는 같은 어근의 다른 품사까지. 「훑어보기」 에서 스페이스로 뒤집고 1·2·3 으로 모르겠어요·알아요·건너뛰기." }],
     steps: [] },
 ];
+// 네 갈래 — 사용자(2026-10-06): '대체로 논문, 탐색, 공부, 원고 넷으로 나눠서'
+const CHAPTERS = [
+  { id: "papers", no: 1, title: "논문 — 모으고, 찾고, 읽기", lead: "논문은 다운로드 폴더에서 알아서 들어오고, 홈에서 라벨·검색으로 찾고, 요약과 문장 단위 전문 번역으로 읽습니다. 읽다가 드래그하면 원문 확인·메모·질문·단어·원고의 근거 카드가 됩니다.", screens: ["home", "reader", "vocab"] },
+  { id: "explore", no: 2, title: "탐색 — 세상의 논문 찾기", lead: "내 서재에 없는 논문을 찾을 때. 주제를 말로 적으면 Claude 가 검색 계획을 짜서 OpenAlex(+Scopus)에서 찾고, 소주제로 묶어 목록과 맵으로 보여 줍니다. 받으면 서재에 들어옵니다.", screens: ["explore"] },
+  { id: "study", no: 3, title: "공부 — 내 서재로 쓰는 교과서 한 장", lead: "한 주제를 서재의 논문만 읽어 교과서 한 장으로 정리합니다. 문장마다 논문의 원문 문장에 묶여 있어 누르면 확인할 수 있고, 마인드맵으로 한눈에 봅니다.", screens: ["study", "studymap"] },
+  { id: "ms", no: 4, title: "원고 — 논문 쓰기", lead: "읽으며 모은 근거 카드로 개요를 짜고, 문단마다 주장 → 카드 → 초안 → 검토 → 영문으로 쓰고, 워드로 내보냅니다. 워드 원고를 가져와 이어 쓰고, 심사 의견도 여기서 처리합니다.", screens: ["ms"] },
+];
 const screensEl = document.getElementById("screens"), nav = document.getElementById("nav");
-nav.innerHTML = SCREENS.map(s => "<a href='#" + s.id + "'>" + esc(s.title) + "</a>").join("") + "<a href='#data'>데이터</a>";
+nav.innerHTML = CHAPTERS.map(c => "<a href='#" + c.id + "'>" + c.no + " " + esc(c.title.split(" — ")[0]) + "</a>").join("") + "<a href='#data'>데이터</a>";
+const byId = Object.fromEntries(SCREENS.map(s => [s.id, s]));
+const scrHtml = (s, c, i) => "<section class='scr' id='" + s.id + "'><h2>" + c.no + "." + (i + 1) + " " + esc(s.title) + " <span class='w'>" + esc(s.where) + "</span></h2><p class='lead'>" + esc(s.lead) + "</p>" + figHtml(s) +
+  "<ul class='notes'>" + s.callouts.map(k => "<li><b class='n'>" + k.n + "</b><span><b class='t'>" + esc(k.t.split(" — ")[0]) + "</b> — " + k.d + "</span></li>").join("") + "</ul>" +
+  (s.steps.length ? "<ol class='steps'>" + s.steps.map(x => "<li>" + esc(x) + "</li>").join("") + "</ol>" : "") + (s.tip ? "<div class='tip'>" + esc(s.tip) + "</div>" : "") + "</section>";
 function figHtml(s) {
   return "<div class='fig' data-id='" + s.id + "'><img src='/tutorial/" + s.id + ".png' alt='" + esc(s.title) + "'><svg viewBox='0 0 " + IMG_W + " " + IMG_H + "' preserveAspectRatio='none'></svg>" +
     s.callouts.map(c => "<div class='co' data-n='" + c.n + "' style='left:" + (c.box[0] / IMG_W * 100) + "%;top:" + (c.box[1] / IMG_H * 100) + "%;width:" + (c.box[2] / IMG_W * 100) + "%'><b class='n'>" + c.n + "</b>" + esc(c.t) + "</div>").join("") + "</div>";
 }
-screensEl.innerHTML = SCREENS.map(s => "<section class='scr' id='" + s.id + "'><h2>" + esc(s.title) + " <span class='w'>" + esc(s.where) + "</span></h2><p class='lead'>" + esc(s.lead) + "</p>" + figHtml(s) +
-  "<ul class='notes'>" + s.callouts.map(c => "<li><b class='n'>" + c.n + "</b><span><b class='t'>" + esc(c.t.split(" — ")[0]) + "</b> — " + c.d + "</span></li>").join("") + "</ul>" +
-  (s.steps.length ? "<ol class='steps'>" + s.steps.map(x => "<li>" + esc(x) + "</li>").join("") + "</ol>" : "") + (s.tip ? "<div class='tip'>" + esc(s.tip) + "</div>" : "") + "</section>").join("");
+screensEl.innerHTML = CHAPTERS.map(c => "<div class='chap' id='" + c.id + "'><h2 class='ct'><span class='no'>" + c.no + "</span>" + esc(c.title) + "</h2><p class='cl'>" + esc(c.lead) + "</p>" + c.screens.map((id, i) => scrHtml(byId[id], c, i)).join("") + "</div>").join("");
+// 처음 켠 사람에게 먼저 뜨는 길: 홈이 ?first=1 로 보낸다 → 「시작하기」 를 누르면 본 것으로 적고 홈으로 (사용자 2026-10-06: '처음 깔고 시작하면 누구에게나 다 뜨게')
+const FIRST = new URLSearchParams(location.search).get("first") === "1";
+if (FIRST) { document.getElementById("first").classList.add("on"); document.getElementById("startBar").classList.add("on"); }
+const start = () => { try { localStorage.setItem("tutorial_seen", String(Date.now())); } catch (e) {} location.href = "/"; };
+document.getElementById("startTop").onclick = start; document.getElementById("startBottom").onclick = start;
 // 화살표: 상자 가장자리에서 가리킬 자리의 가장자리까지 (그림 좌표). 상자 높이는 그려진 뒤에 잰다
 function clipTo(cx, cy, tx, ty, r) {   // (cx,cy)→(tx,ty) 선이 사각형 r=[x,y,w,h] 의 테두리와 만나는 점 (안에서 밖으로)
   const dx = tx - cx, dy = ty - cy; let t = 1;
