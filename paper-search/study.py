@@ -11,14 +11,17 @@ Athenaeum 공부 — 내 서재의 논문만으로 쓰는 교과서 한 장.
   2 훑기   서재의 모든 문장을 낱말로 훑어 논문마다 점수 (프로그램)
   3 고르기 후보 논문의 제목·한줄 요약·점수 → 읽을 논문(핵심 = 통째로 / 관련 = 맞은 대목만)
   4 읽기   논문마다 따로: 원문(문장 번호 붙임)을 읽고 주제에 관한 사실을 메모로 — 메모마다 근거 문장 번호
-  5 짜기   모든 메모 → 장의 절과 차례, 용어표 (메모를 절에 나눈다)
-  6 쓰기   절마다 따로: 그 절의 메모와 근거 문장으로 교과서 글. 문장마다 메모 번호
-  7 대조   절마다 따로(쓴 것과 다른 호출): 문장을 근거 원문과 하나씩 견준다 → 근거를 넘는 문장은 고치고,
+  5 짜기   모든 메모 → 장의 절과 차례, 용어표 (메모를 절에 나눈다) → 절마다 따로 논지(여러 메모가 함께 받치는 문장)를 세우고,
+           어느 논지에도 들지 않는 메모는 '번외'로 남긴다 (2026-10-07: 전에는 절 = 메모 목록이라 글이 논문마다의 결과 나열이 됐다)
+  6 쓰기   절마다 따로: 논지마다 한 문단 — 논지 문장(◆) → 받치는 연구를 메모 하나에 한 문장씩 → 연구들의 관계(같다·조건이 달라 다르다·엇갈린다).
+           수치가 견줄 만하면 표(행마다 메모 번호), 논지를 눈으로 보여 주는 논문의 그림을 캡션 목록에서 골라 '그림:' 한 줄. 절 끝 '### 번외'.
+  7 대조   절마다 따로(쓴 것과 다른 호출): 문장(표의 행·그림 설명도)을 근거 원문과 하나씩 견준다 → 근거를 넘는 문장은 고치고,
            고친 문장을 다시 견줘 통과하지 못하면 뺀다. 수치는 프로그램이 근거 문장의 글자와 따로 대조한다
-  8 마무리 참고문헌(서재의 논문 → Crossref 서지), 근거 문장 모음
+  8 마무리 참고문헌(서재의 논문 → Crossref 서지), 근거 문장 모음, 그림은 논문 PDF 에서 잘라 공부\\그림\\<id>\\ 에 (figcrop)
 
 지어내기를 막는 장치: ① 근거로 보이는 원문은 파일에서 꺼낸다(Claude 는 번호만 준다) ② 없는 문장 번호를 든 메모는 버린다
-③ 메모의 수치가 근거 문장에 없으면 버린다 ④ 쓴 문장은 다른 호출이 원문과 대조한다 ⑤ 통과하지 못한 문장은 싣지 않고 '뺀 문장'에 남긴다.
+③ 메모의 수치가 근거 문장에 없으면 버린다 ④ 쓴 문장은 다른 호출이 원문과 대조한다 ⑤ 통과하지 못한 문장은 싣지 않고 '뺀 문장'에 남긴다
+⑥ 그림은 Claude 가 그리는 것이 아니라 논문의 PDF 에서 그대로 잘라 오고, 캡션 목록에 없는 그림은 쓸 수 없다. 그림 설명 문장은 캡션·근거와 대조한다.
 
 데이터: MAENG_paper\\공부\\<id>.json  (단계마다 저장 — 끊겨도 「이어서」 로 남은 단계부터)
 server.py 가 init() 으로 주입하고 /study, /api/study* 를 이 모듈에 넘긴다. 서재를 읽는 부품은 manuscript 의 것을 쓴다.
@@ -28,20 +31,23 @@ import io
 import json
 import os
 import re
+import shutil
 import threading
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import manuscript as ms
+import figcrop
 
 cfg = {}
 _LOCK = threading.RLock()
 _JOBS = {}          # 공부 id → {"stop": bool, "t0": 시작 시각}
 _SENT_CACHE = {}    # 파일 → ((정렬표 mtime, 번역 mtime), 문장들)
 _LIST_CACHE = {}    # 공부 파일 이름 → (mtime, 목록에 보일 것)
+_CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text, ko}]
 
-VERSION = "공부 1.1"   # 1.1 = 쓰기에 Stylus(원고의 글쓰기 지능) 규칙 적용 · 절마다 보기 · 마인드맵 · 드래그해 묻기
+VERSION = "공부 (2026-10-07)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 논지 층·번외·표·그림을 넣은 날. 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
 _STAGES = ["plan", "scan", "select", "read", "outline", "write", "verify", "wrap"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
@@ -674,6 +680,72 @@ def _outline(st, model, effort):
                      "gaps": [names(str(x).strip())[:300] for x in (d.get("gaps") or [])[:8] if str(x).strip()], "unused": len(notes) - len(used)}
 
 
+# 절의 논지 — 사용자(2026-10-07): 장이 '결과 나열' 로 읽힌다. 재 보니 두 논문 이상이 받치는 문장이 4~5%, 한 논문만의 문단이 41~64% 였다.
+# 짜기가 '메모를 절에 나누기' 로 끝나 쓰는 쪽이 메모 목록을 차례로 풀어 썼기 때문 → 절마다 '여러 메모가 함께 말하는 것'(논지)을 먼저 세우고 문단은 논지마다.
+# 어느 논지에도 들지 않는 메모는 버리지 않고 번외로(사용자: '연구에서 가장 중요한 건 의견이 합치되지 않는 부분').
+_REL = {"agree": "여러 연구가 같은 것을 본다", "cond": "조건이 달라 값이나 양상이 다르다", "conflict": "연구끼리 엇갈린다", "extend": "한 연구가 다른 연구를 넓히거나 기전을 더한다", "single": "한 연구만 말한다"}
+
+
+def _claims(st, k, model, effort):
+    """절 하나의 논지와 번외 → outline.sections[k] 에 claims·extra·claimed 를 적는다. Claude 가 답하지 않으면 False"""
+    ol = st["outline"]
+    sec = ol["sections"][k]
+    plist, nlist = _note_block(st, sec["notes"], with_src=False)
+    toc = "\n".join("%s %d. %s%s" % ("▶" if i == k else "  ", i + 1, s["title"], (" — " + s["aim"]) if s.get("aim") else "") for i, s in enumerate(ol["sections"]))
+    prompt = (
+        "전공 교과서의 한 절을 쓰기 전에 그 절의 논지를 세운다. 절의 재료는 연구자의 서재 논문에서 뽑은 [메모]뿐이다(N번호의 앞 숫자 = 논문 P번호).\n"
+        "JSON 으로만 답하라:\n"
+        "{\"claims\": [{\"t\": \"논지 한 문장(한국어)\", \"notes\": [\"N3.2\", \"N5.1\"], \"rel\": \"agree|cond|conflict|extend|single\", \"how\": \"메모들 사이의 관계 한 구절 — 무엇이 같고 무엇이(어떤 조건이) 다른지\"}],\n"
+        " \"extra\": [\"어느 논지에도 들지 않는 메모 번호\"]}\n"
+        "규칙:\n"
+        "- 논지 = 이 절의 물음에 답하는 한 문장으로 적은 사실. 2~6개, 배우는 사람이 따라갈 차례로(무엇인가 → 무슨 일이 일어나는가 → 왜 → 무엇이 바꾸는가 → 어떻게 아는가 → 어디까지 아는가). 첫 논지는 물음에 대한 답이다.\n"
+        "- 논지는 여러 메모가 함께 받치는 것이 좋다 — 가능하면 둘 이상의 논문. 한 메모만 받치는 논지도 된다(rel: single). 한 메모는 한 논지에만 넣는다.\n"
+        "- rel: agree 여러 연구가 같은 것을 본다 / cond 조건(재료·방위·공구·깊이·속도·방법)이 달라 값이나 양상이 다르다 — how 에 무엇이 다른지 / "
+        "conflict 연구끼리 엇갈린다 — 양쪽을 다 둔다(엇갈리는 것은 배우는 사람에게 가장 중요한 정보다) / extend 한 연구가 다른 연구를 넓히거나 기전을 더한다 / single.\n"
+        "- 논지 문장은 메모들이 말하는 것을 묶은 것이다. 메모에 없는 사실·수치·원인을 넣지 않고, 조건을 떼고 일반 법칙처럼 넓히지 않는다. 수치는 메모 그대로. 교과서적 상식을 보태지 않는다.\n"
+        "- 어느 논지에도 들지 않는 메모는 모두 extra 에 적는다 — 버리지 않는다(절 끝의 '번외'에 실린다).\n\n"
+        "[장] %s — %s\n[절의 차례] (▶ = 이 절)\n%s\n\n[이 절] %s%s\n\n[논문]\n%s\n\n[메모]\n%s") % (
+            ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "", plist, nlist)
+    d = _ask_json(st, prompt, model, effort, 900, need="claims")
+    claims, used = [], set()
+    for c in ((d or {}).get("claims") or [])[:8]:
+        if not isinstance(c, dict):
+            continue
+        ids = [x for x in (str(y).strip() for y in (c.get("notes") if isinstance(c.get("notes"), list) else [])) if x in sec["notes"] and x not in used]
+        t = _clean(str(c.get("t") or "")).strip()
+        if len(t) < 8 or not ids:
+            continue
+        used.update(ids)
+        rel = c.get("rel") if c.get("rel") in _REL else ("single" if len({x.split(".")[0] for x in ids}) < 2 else "agree")
+        claims.append({"t": t[:300], "notes": ids[:12], "rel": rel, "how": str(c.get("how") or "").strip()[:200]})
+    with _LOCK:
+        sec["claims"] = claims
+        sec["extra"] = [x for x in sec["notes"] if x not in used]    # 논지에 들지 않은 메모는 모두 번외 — Claude 가 extra 에 적지 않았어도
+        sec["claimed"] = True
+    return d is not None
+
+
+def _claims_all(st, model, effort):
+    todo = [k for k, s in enumerate(st["outline"]["sections"]) if not s.get("claimed") and s.get("kind") != "summary"]
+    nsec = len(st["outline"]["sections"])
+    _stage(st, "outline", done=nsec - len(todo), total=nsec)
+    if not todo:
+        return
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {ex.submit(_claims, st, k, model, effort): k for k in todo}
+        for f in as_completed(futs):
+            try:
+                f.result()
+            except _Stop:
+                continue
+            except Exception:
+                pass
+            with _LOCK:
+                st["prog"] = {"done": sum(1 for s in st["outline"]["sections"] if s.get("claimed") or s.get("kind") == "summary"), "total": nsec}
+            _save(st)
+    _check_stop(st)
+
+
 # ---------- 6 쓰기 ----------
 def _note_block(st, ids, with_src=True):
     notes, lines, pset = _all_notes(st), [], []
@@ -693,10 +765,68 @@ def _note_block(st, ids, with_src=True):
     return plist, "\n".join(lines)
 
 
+def _claim_block(st, sec):
+    """쓰기 물음의 재료: 논지마다 그 메모와 근거 원문, 끝에 번외 메모 → (논문 목록, 글, 논문 순번들)"""
+    notes, lines, pset = _all_notes(st), [], []
+
+    def memo(nid):
+        pi, n = notes[nid]
+        if pi not in pset:
+            pset.append(pi)
+        out = ["  %s [%s · %s] (P%d %s) %s" % (nid, _KINDS.get(n["kind"], ""), "이 논문의 결과·해석" if n.get("own") else "재인용 — 이 논문이 남의 연구를 전한 말", pi + 1, st["papers"][pi]["short"], n["pt"])]
+        by = {s["sid"]: s for s in _paper_sents(st["papers"][pi]["file"])}
+        for sid in n["s"]:
+            if sid in by:
+                out.append("     %s: \"%s\"" % (sid, by[sid]["en"][:700]))
+        return out
+    for i, c in enumerate(sec.get("claims") or [], 1):
+        lines.append("논지 %d: %s" % (i, c["t"]))
+        lines.append("  메모 사이: %s%s" % (_REL.get(c.get("rel"), ""), (" — " + c["how"]) if c.get("how") else ""))
+        for nid in c["notes"]:
+            if nid in notes:
+                lines += memo(nid)
+        lines.append("")
+    extra = [x for x in sec.get("extra") or [] if x in notes]
+    if extra:
+        lines.append("[번외] 어느 논지에도 들지 않지만 이 절에 속하는 메모 — 절 끝의 '### 번외' 아래에 메모마다 한 문장으로 싣는다")
+        for nid in extra:
+            lines += memo(nid)
+    plist = "\n".join("P%d %s — %s" % (pi + 1, st["papers"][pi]["short"], st["papers"][pi].get("about") or st["papers"][pi]["title"][:120]) for pi in sorted(pset))
+    return plist, "\n".join(lines), pset
+
+
+def _fig_list(st, pis):
+    """절의 논문들의 그림·표 캡션(PDF 에서 읽은 원문 + 번역이 있으면) → (목록 글, {(논문 순번, kind, n): 캡션}). 쓰는 Claude 는 이 목록의 그림만 고를 수 있다"""
+    lines, allow = [], {}
+    for pi in pis:
+        f = st["papers"][pi]["file"]
+        if f not in _CAP_CACHE:
+            try:
+                caps = figcrop.captions(os.path.join(cfg["ARCHIVE"], f))
+            except Exception:
+                caps = []
+            ko = {}
+            d = cfg["load_json"](os.path.join(cfg["GEN_DIR"], os.path.splitext(f)[0] + ".캡션.json"), None)
+            for c in ((d or {}).get("captions") or []) if isinstance(d, dict) else []:
+                if isinstance(c, dict) and c.get("ko"):
+                    ko[(c.get("kind"), c.get("n"))] = str(c["ko"])
+            _CAP_CACHE[f] = [dict(c, ko=ko.get((c["kind"], c["n"]), "")) for c in caps]
+        n = 0
+        for c in _CAP_CACHE[f]:
+            if n >= 14:
+                break
+            n += 1
+            label = "P%d %s %d" % (pi + 1, "Fig." if c["kind"] == "fig" else "Table", c["n"])
+            allow[(pi, c["kind"], c["n"])] = "%s: %s" % (label, c["text"][:400])
+            lines.append("%s (p.%d): %s%s" % (label, c["page"], c["text"][:200], (" — " + c["ko"][:160]) if c.get("ko") else ""))
+    return "\n".join(lines[:80]), allow
+
+
 _WRITE_RULES = (
     "쓰는 법:\n"
-    "1. 교과서답게 쓴다: 개념을 먼저 세우고(무엇인가), 왜 그런지(기전)를 설명하고, 그것을 보인 연구를 근거로 댄다. 논문을 하나씩 차례로 소개하는 글('A 는 …했다. B 는 …했다.')이 아니라 "
-    "개념과 논리의 차례로 쓰고 연구는 그 근거로 쓴다. 문단은 요점 하나를 다루고 첫 문장이 그 요점이다.\n"
+    "1. 교과서답게 쓴다: 문단은 논지 하나를 다룬다 — 첫 문장이 논지(◆, 여러 메모가 함께 말하는 것), 그 뒤에 그것을 받치는 연구를 조건과 함께, 끝에 연구들 사이의 관계(같은 것을 보았는지, "
+    "조건이 달라 어디서 갈리는지, 엇갈리면 양쪽을 조건과 함께, 왜 그런지). 논문을 하나씩 차례로 소개하는 글('A 는 …했다. B 는 …했다.')이 아니라 논지의 차례로 쓰고 연구는 그 근거로 쓴다. "
+    "받치는 연구는 메모 하나에 한 문장을 넘기지 않는다(두 메모를 한 문장에 묶어도 된다) — 메모의 근거 원문을 문장 단위로 되풀이해 옮기지 않는다. 그 메모의 사실 하나와 조건만.\n"
     "2. 사실 문장은 메모와 그 근거 문장이 말하는 데까지만. 조건(재료·결정 방위·공구·절삭 깊이·속도·온도·스케일, 실험인지 시뮬레이션인지)을 떼어 일반 법칙처럼 쓰지 않는다 — "
     "'…에서 …가 관찰되었다', '… 조건에서는 …' 처럼 조건과 함께 쓴다. 한 연구의 결과를 '일반적으로'·'항상' 으로 넓히지 않고, 근거가 조심스럽게 말한 것(may, suggest)을 단정으로 바꾸지 않는다.\n"
     "3. 수치·단위·기호는 근거 문장에 적힌 그대로. 근거가 말로 적은 양(twice, half)은 말로(두 배, 절반). 메모에 없는 수치를 만들지 않는다.\n"
@@ -704,11 +834,17 @@ _WRITE_RULES = (
     "5. '재인용' 메모(그 논문이 남의 연구를 전한 말)는 그 논문의 저자가 한 일처럼 쓰지 않는다 — 그 논문의 저자를 주어로 세우지 않고 사실을 주어로 쓴다. "
     "문장마다 '…로 알려져 있다'·'…라고 보고되어 있다'를 붙이지는 않는다(교과서는 사실을 평서문으로 말하고, 누가 한 말인지는 인용이 알려 준다). 근거 문장에 원래 연구자의 이름이 있으면 그 이름은 써도 된다.\n"
     "6. 연구자를 주어로 세우는 문장은 그 연구만의 실험·관찰·모델을 말할 때만 쓰고, 그때는 [논문]에 적힌 이름과 연도만 쓴다: 'Yan 등(2003)은 …'. 정의·개념·여러 연구가 함께 받치는 설명은 사실을 주어로 쓴다. 인용 번호는 쓰지 않는다(프로그램이 붙인다).\n"
-    "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다.\n"
+    "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다. 관계를 말하는 문장(같다·다르다·엇갈린다·더 크다)은 관계된 메모를 모두 ⟦ ⟧ 에 적는다 — 근거 문장들이 실제로 그 관계를 보일 때만 말한다. "
+    "관계 문장은 앞 문장들을 되풀이하지 않는다 — 무엇이 같고 무엇이(어떤 조건이) 다른지, 왜 그런지만 말한다. 되풀이밖에 할 말이 없으면 관계 문장을 두지 않는다.\n"
     "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
-    "9. 분량은 메모가 받치는 만큼. 메모를 다 쓰려고 늘이지 않는다 — 겹치는 메모는 한 문장에 함께 인용하고, 이 절에 맞지 않는 메모는 쓰지 않아도 된다.\n"
+    "9. 분량: 논지 문단은 3~6문장. 겹치는 메모는 한 문장에 함께 인용한다. 논지에 든 메모를 빠뜨리지 않되, 메모 하나를 여러 문장으로 늘이지 않는다.\n"
     "10. 절을 '이 절은 …를 다룬다' 로 열지 않고 내용으로 바로 들어간다. '…는 다음 절에서 다룬다' 같은 예고로 맺지 않는다. 소제목(###)은 절이 길 때만 둘에서 넷, 문단마다 달지 않는다.\n"
-    "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n")
+    "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
+    "12. 표: 셋 이상의 연구가 견줄 만한 수치(값과 조건)를 주면 표로 묶는다 — '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
+    "칸의 수치·단위·조건은 근거 그대로(표의 행도 본문 문장과 똑같이 원문과 대조된다). 표에 넣은 수치를 본문 문장에 되풀이하지 않는다. 절마다 많아야 둘.\n"
+    "13. 그림: [그림 목록]에 있는 논문의 그림 가운데 이 절의 논지를 눈으로 보여 주는 것을 절마다 0~2개 고른다 — 그 논지 문단 바로 뒤에 '그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦메모 번호⟧' 한 줄. "
+    "설명은 캡션과 메모가 말하는 것만. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
+    "14. 번외: 절 끝 '### 번외' 아래에 [번외] 메모를 메모마다 한 문장으로(조건과 함께), 관련된 것끼리 한 문단. 논지와 어긋나는 메모는 어긋난다고 적는다. 번외 메모를 빠뜨리지 않는다.\n")
 
 
 # Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
@@ -733,9 +869,18 @@ def _stylus_block():
 
 
 def _write_prompt(st, k):
+    """→ (물음, 고를 수 있는 그림 {(논문 순번, kind, n): 캡션})"""
     ol = st["outline"]
     sec = ol["sections"][k]
-    plist, nlist = _note_block(st, sec["notes"])
+    claimed = bool(sec.get("claims")) and sec.get("kind") != "summary"
+    figs = {}
+    if claimed:
+        plist, nlist, pset = _claim_block(st, sec)
+        figtxt, figs = _fig_list(st, pset)
+        material = "[논지] 이 절은 아래 논지의 차례로 쓴다. 논지마다 한 문단(길면 둘). 논지 아래가 그것을 받치는 메모이고, 메모 아래는 그 근거인 논문의 원문 문장이다.\n%s\n\n[그림 목록] (논문의 그림·표 캡션 — 여기 있는 것만 고를 수 있다)\n%s" % (nlist, figtxt or "(없음)")
+    else:
+        plist, nlist = _note_block(st, sec["notes"])
+        material = "[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s" % nlist
     terms = ", ".join("%s = %s" % (t["en"], t["ko"]) for t in ol.get("terms") or []) or "(없음)"
     toc = "\n".join("%s %d. %s%s" % ("▶" if i == k else "  ", i + 1, s["title"], (" — " + s["aim"]) if s.get("aim") else "") for i, s in enumerate(ol["sections"]))
     head = ("당신은 기계가공·재료 분야의 전공 교과서를 쓰는 저자다. 연구자의 서재에 있는 논문에서 뽑은 [메모]만으로 아래 장의 한 절을 쓴다.\n"
@@ -743,13 +888,19 @@ def _write_prompt(st, k):
     if sec.get("kind") == "summary":
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n핵심 사실 하나를 조건과 함께 적은 문장. ⟦N3.2⟧\n핵심 사실 하나. ⟦N3.4, N7.1⟧\n<<<END>>>\n"
                 "- 이 절은 장 끝의 '핵심 정리'다. 6~10줄, 줄마다 이 장의 핵심 사실 하나를 한 문장으로. 줄 끝의 ⟦ ⟧ 안에 근거인 메모 번호. 소제목·이음 문장·문단 나눔 없이.\n\n")
+    elif claimed:
+        form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n◆ 논지 문장(여러 메모가 함께 말하는 것). ⟦N3.2, N5.1⟧\n받치는 연구 하나를 조건과 함께 적은 문장. ⟦N3.2⟧\n또 하나. ⟦N5.1⟧\n두 연구가 같은지, 어디서 갈리는지, 왜 그런지를 말하는 문장. ⟦N3.2, N5.1⟧\n"
+                "그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦N5.1⟧\n¶\n◆ 다음 논지. ⟦N7.1, N8.2⟧\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
+                "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 논지 문장은 줄 머리에 ◆. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄.\n"
+                "- ⟦-⟧ 는 이음 문장(바로 앞에 쓴 것을 묶거나 다음으로 넘기는 말)에만 쓴다. 이음 문장에는 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 주제문이어도 메모 번호를 적는다.\n\n")
     else:
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n문장 하나. ⟦N3.2⟧\n문장 하나. ⟦N3.4, N7.1⟧\n¶\n### 소제목 (필요할 때만)\n앞의 사실들을 묶는 문장. ⟦-⟧\n<<<END>>>\n"
                 "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호를 적는다. ¶ 한 줄은 문단을 나눈다.\n"
                 "- ⟦-⟧ 는 이음 문장(이 절이 무엇을 다루는지 알리거나, 바로 앞에 쓴 사실들을 묶거나, 다음으로 넘기는 말)에만 쓴다. 이음 문장에는 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 주제문이어도 메모 번호를 적는다.\n\n")
-    return (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n\n" + form + _WRITE_RULES + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s") % (
+    prompt = (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n\n" + form + _WRITE_RULES + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n%s") % (
         ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "",
-        _stylus_block() if sec.get("kind") != "summary" else "", plist, terms, nlist)
+        _stylus_block() if sec.get("kind") != "summary" else "", plist, terms, material)
+    return prompt, figs
 
 
 _REF_OPEN, _REF_CLOSE = r"[⟦⟨〈《〚\[]{1,2}", r"[⟧⟩〉》〛\]]{1,2}"   # 닫는 괄호를 다른 글자로 쓴 것(⟦N8.5⟩)도 읽는다
@@ -757,32 +908,89 @@ _REF_END = re.compile(r"\s*" + _REF_OPEN + r"\s*((?:N\d+\.\d+|-|–|—)(?:\s*[,
 _REF_ANY = re.compile(r"\s*" + _REF_OPEN + r"\s*(?:N\d+\.\d+|-)(?:\s*[,;]\s*N\d+\.\d+)*\s*" + _REF_CLOSE)
 
 
-def _parse_units(text, valid):
-    """쓴 글 → [{h: 소제목} | {units: [{t, notes[]}]}]"""
+_FIG_LINE = re.compile(r"^(?:그림|figure|fig\.?)\s*[:：]\s*P\s*(\d{1,2})\s*(fig\.?|figure|table|표|그림)\s*(\d{1,3})\s*[—\-–:.]*\s*(.*)$", re.I)
+_CLAIM_MARK = re.compile(r"^(?:[◆◇■●▶►]|논지\s*\d*\s*[:：])\s*")
+
+
+def _parse_units(text, valid, figs=None):
+    """쓴 글 → 블록 목록: {h: 소제목[, kind: extra]} | {units: [{t, notes[], role?}][, kind]} | {table: {cap, cols}, units: [{t, cells, notes}]} | {fig: {pi, kind, n}, units: [{t, notes, cap}]}
+    ◆ 로 시작하는 문장은 논지(role: claim). '### 번외' 뒤의 블록은 kind: extra. 그림은 figs(허용 목록)에 있는 것만."""
     m = re.search(r"<<<SEC>>>(.*?)(?:<<<END>>>|\Z)", text or "", re.S)
     body = m.group(1) if m else (text or "")
-    blocks, cur = [], None
+    blocks, cur, kind, tab = [], None, "", None
+
+    def refs_of(mm):
+        return [r for r in re.findall(r"N\d+\.\d+", mm.group(1)) if r in valid] if mm else []
     for ln in body.split("\n"):
         ln = ln.strip()
         if not ln or ln in ("¶", "¶"):
-            cur = None
+            cur = tab = None
             continue
         if ln.startswith("#"):
             h = ln.lstrip("#").strip()
             if h:
-                blocks.append({"h": h[:80]})
+                if re.match(r"^번외", h):
+                    kind = "extra"
+                    blocks.append({"h": "번외", "kind": "extra"})
+                else:
+                    blocks.append({"h": h[:80]})
+            cur = tab = None
+            continue
+        if re.match(r"^표\s*[:：]", ln):
+            tab = {"table": {"cap": _REF_ANY.sub("", re.sub(r"^표\s*[:：]\s*", "", ln)).strip()[:200], "cols": []}, "units": []}
+            if kind:
+                tab["kind"] = kind
+            blocks.append(tab)
             cur = None
             continue
-        m = _REF_END.search(ln)
-        refs = [r for r in re.findall(r"N\d+\.\d+", m.group(1)) if r in valid] if m else []
-        t = re.sub(r"^[-•*]\s+", "", (ln[:m.start()] if m else ln).strip())
+        if ln.startswith("|") and tab is not None:
+            mm = _REF_END.search(ln)
+            refs = refs_of(mm)
+            row = ln[:mm.start()] if mm else ln
+            cells = [_REF_ANY.sub("", c).strip() for c in row.strip().strip("|").split("|")]
+            if cells and all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                continue                                    # 머리 행 아래의 구분선
+            if not tab["table"]["cols"] and not refs:
+                tab["table"]["cols"] = [c[:60] for c in cells[:8]]
+                continue
+            if not any(cells):
+                continue
+            tab["units"].append({"t": " | ".join(c for c in cells if c)[:400], "cells": [c[:120] for c in cells[:8]], "notes": refs[:6]})
+            continue
+        tab = None
+        mf = _FIG_LINE.match(ln)
+        if mf:
+            pi, n = int(mf.group(1)) - 1, int(mf.group(3))
+            fk = "table" if mf.group(2).lower().startswith(("t", "표")) else "fig"
+            mm = _REF_END.search(mf.group(4))
+            t = _REF_ANY.sub("", (mf.group(4)[:mm.start()] if mm else mf.group(4))).strip()
+            if figs and (pi, fk, n) in figs and len(t) >= 4:
+                fb = {"fig": {"pi": pi, "kind": fk, "n": n}, "units": [{"t": t[:400], "notes": refs_of(mm)[:6], "cap": figs[(pi, fk, n)][:500]}]}
+                if kind:
+                    fb["kind"] = kind
+                blocks.append(fb)
+            cur = None
+            continue
+        mm = _REF_END.search(ln)
+        refs = refs_of(mm)
+        t = (ln[:mm.start()] if mm else ln).strip()
+        role = ""
+        if _CLAIM_MARK.match(t):
+            role = "claim"
+            t = _CLAIM_MARK.sub("", t)
+        t = re.sub(r"^[-•*]\s+", "", t.strip())
         t = _REF_ANY.sub("", t).strip()   # 문장 가운데 끼운 표시는 뗀다
         if len(t) < 4:
             continue
         if cur is None:
             cur = {"units": []}
+            if kind:
+                cur["kind"] = kind
             blocks.append(cur)
-        cur["units"].append({"t": t, "notes": refs[:6]})
+        u = {"t": t, "notes": refs[:6]}
+        if role:
+            u["role"] = role
+        cur["units"].append(u)
     return blocks
 
 
@@ -792,9 +1000,10 @@ def _write_section(st, k, model, effort):
     blocks, answered = [], False
     for _ in range(2):
         _check_stop(st)
-        text = _ask(st, _write_prompt(st, k), model, effort, 1800)
+        prompt, figs = _write_prompt(st, k)
+        text = _ask(st, prompt, model, effort, 1800)
         answered = answered or bool(text.strip())
-        blocks = _parse_units(text, valid)
+        blocks = _parse_units(text, valid, figs)
         if sum(len(b.get("units") or []) for b in blocks) >= 2:
             return blocks
     return blocks if answered else None
@@ -835,9 +1044,12 @@ def _verify_prompt(st, units, terms):
     for i, u in units:
         src = _src_text(st, _unit_src(st, u))
         miss = u.get("nummiss") or []
-        lines.append("u%d: %s%s" % (i, u["t"], ("   (프로그램: 수치 %s 가 근거에 보이지 않음)" % ", ".join(miss)) if miss else ""))
-        if not src:
+        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(그림 설명) " if u.get("cap") else ""
+        lines.append("u%d: %s%s%s" % (i, tag, u["t"], ("   (프로그램: 수치 %s 가 근거에 보이지 않음)" % ", ".join(miss)) if miss else ""))
+        if not src and not u.get("cap"):
             lines.append("   (근거 표시 없음 — 이음 문장)")
+        if u.get("cap"):
+            lines.append("   캡션 — %s" % u["cap"][:500])
         for pi, sid, own, s in src:
             p = st["papers"][pi]
             lines.append("   근거 — %s (%s %s)%s %s: \"%s\"" % (p["short"], p["journal"], p["year"], "" if own else " · 이 논문이 남의 연구를 전한 문장", sid, s["en"][:900]))
@@ -846,6 +1058,8 @@ def _verify_prompt(st, units, terms):
         "문장이 말하는 사실을 근거 문장이 실제로 말하는지 하나씩 확인하라. 당신이 아는 지식으로 판단하지 말고, 붙여 준 근거 문장만 본다.\n\n"
         "판정:\n"
         "- ok: 문장의 모든 사실(대상·조건·방향·수치·원인)을 근거 문장이 말한다. 한국어로 옮겨 적었거나 여러 근거를 묶은 것은 ok.\n"
+        "  논지 문장(여러 근거를 묶어 말한 것)은 각 부분이 근거 가운데 어느 하나에든 있으면 ok. 근거들이 보이지 않는 관계(같다·다르다·더 크다·엇갈린다)를 말하거나 조건을 떼고 일반 법칙으로 넓혔으면 over.\n"
+        "  표의 행은 칸마다 값·조건이 근거에 있는지 본다. 그림 설명은 캡션과 근거가 말하는 것만 담았으면 ok.\n"
         "- over: 근거보다 나아갔다 — 조건을 떼고 일반화했다, 근거에 없는 원인·결론을 보탰다, 조심스러운 말(may, suggest)을 단정으로 높였다.\n"
         "- none: 근거 문장이 그 말을 하지 않는다(다른 이야기다).\n"
         "- attr: 누가 한 말인지가 틀렸다 — 그 논문이 남의 연구를 전한 문장인데 '그 논문의 저자가 그것을 했다·보였다'고 썼다, 또는 문장 속 저자 이름·연도가 근거의 논문과 다르다. "
@@ -879,6 +1093,8 @@ def _verdicts(d):
 
 def _mark_nums(st, u):
     src = [s["en"] for _pi, _sid, _own, s in _src_text(st, _unit_src(st, u))]
+    if u.get("cap"):
+        src.append(u["cap"])      # 그림 설명의 수치는 캡션에 있어도 된다
     u["nummiss"] = _nums_missing(u["t"], src)
     return u["nummiss"]
 
@@ -937,7 +1153,9 @@ def _verify_section(st, k, model):
             continue
         us = [u for u in b["units"] if u.get("ok") and not u.get("drop")]
         if us:
-            blocks.append({"units": us})
+            nb = {k2: v for k2, v in b.items() if k2 != "units"}     # 표·그림·번외 표시는 그대로
+            nb["units"] = us
+            blocks.append(nb)
     while blocks and "h" in blocks[-1]:      # 글이 따라오지 않는 소제목
         blocks.pop()
     blocks = [b for i, b in enumerate(blocks) if not ("h" in b and i + 1 < len(blocks) and "h" in blocks[i + 1])]
@@ -945,17 +1163,41 @@ def _verify_section(st, k, model):
 
 
 # ---------- 8 마무리 ----------
+def _fig_dir(sid):
+    return os.path.join(cfg["DIR"], "그림", os.path.basename(str(sid)))
+
+
+def _fig_file(st, fig):
+    """논문 PDF 에서 그림(표)을 잘라 공부\\그림\\<id>\\P5_fig4.png 로 → {img, page, w, h, cap_en, cap_ko}. 못 자르면 None(그 그림은 싣지 않는다)"""
+    try:
+        p = st["papers"][fig["pi"]]
+        name = "P%d_%s%d.png" % (fig["pi"] + 1, fig["kind"], fig["n"])
+        r = figcrop.crop(os.path.join(cfg["ARCHIVE"], p["file"]), fig["kind"], fig["n"], os.path.join(_fig_dir(st["id"]), name))
+    except Exception as e:
+        r = {"err": str(e)[:100]}
+    if "err" in r:
+        return None
+    cap = next((c for c in _CAP_CACHE.get(p["file"]) or [] if c["kind"] == fig["kind"] and c["n"] == fig["n"]), None)
+    return {"img": name, "page": r["page"], "w": r["w"], "h": r["h"], "cap_en": (r.get("cap") or "")[:600], "cap_ko": ((cap or {}).get("ko") or "")[:400]}
+
+
 def _wrap(st):
-    """남은 문장으로 장을 묶는다: 인용 번호(처음 나온 순서), 근거 문장 모음, 참고문헌."""
+    """남은 문장으로 장을 묶는다: 인용 번호(처음 나온 순서), 근거 문장 모음, 참고문헌, 그림 자르기."""
     order, src, secs = [], {}, []
-    nunit = nfact = nfixed = 0
+    nunit = nfact = nfixed = nclaim = nmulti = ntab = nfig = nextra = 0
     by = {}
     for sec in st["sections"]:
         blocks = []
         for b in sec.get("blocks") or []:
             if "h" in b:
-                blocks.append({"h": b["h"]})
+                blocks.append({k2: v for k2, v in b.items()})
                 continue
+            nb = {k2: v for k2, v in b.items() if k2 != "units"}
+            if nb.get("fig"):
+                info = _fig_file(st, nb["fig"])
+                if not info:          # 논문에서 그 그림을 잘라 내지 못하면 그림도 설명도 싣지 않는다
+                    continue
+                nb["fig"] = dict(nb["fig"], **info)
             us = []
             for u in b["units"]:
                 ss = _src_text(st, _unit_src(st, u))
@@ -982,9 +1224,21 @@ def _wrap(st):
                 nunit += 1
                 nfact += 1 if refs else 0
                 nfixed += 1 if u.get("fixed") else 0
-                us.append({"t": u["t"], "src": refs, "fixed": bool(u.get("fixed"))})
+                nmulti += 1 if len({r.split(":")[0] for r in refs}) >= 2 else 0
+                item = {"t": u["t"], "src": refs, "fixed": bool(u.get("fixed"))}
+                if u.get("role") == "claim":
+                    item["role"] = "claim"
+                    nclaim += 1
+                if u.get("cells"):
+                    item["cells"] = u["cells"]
+                if nb.get("kind") == "extra":
+                    nextra += 1
+                us.append(item)
             if us:
-                blocks.append({"units": us})
+                nb["units"] = us
+                blocks.append(nb)
+                ntab += 1 if nb.get("table") else 0
+                nfig += 1 if nb.get("fig") else 0
         if blocks:
             secs.append({"title": sec["title"], "aim": sec.get("aim", ""), "kind": sec.get("kind", ""), "blocks": blocks})
     for n, pi in enumerate(order, 1):
@@ -1005,7 +1259,8 @@ def _wrap(st):
     st["stylus"] = getattr(ms, "STYLUS", "")
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
-                   "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full")}
+                   "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
+                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "extra": nextra}
 
 
 # ---------- 흐름 ----------
@@ -1045,6 +1300,12 @@ def _run(st):
         st["removed"] = []
         _save(st)
     _check_stop(st)
+    if any(s.get("blocks") is None for s in st["sections"]):      # 아직 쓰지 않은 절이 있으면 절마다 논지부터 (다 쓴 절은 그대로)
+        _claims_all(st, model, eff)
+        nc = sum(len(s.get("claims") or []) for s in st["outline"]["sections"])
+        if nc:
+            _log(st, "절 %d개에 논지 %d개를 세웠습니다 (논지에 들지 않은 메모 %d개는 번외로)" % (
+                sum(1 for s in st["outline"]["sections"] if s.get("claims")), nc, sum(len(s.get("extra") or []) for s in st["outline"]["sections"])))
     nsec = len(st["sections"])
     todo = [k for k, s in enumerate(st["sections"]) if s.get("blocks") is None]
     _stage(st, "write", done=nsec - len(todo), total=nsec)
@@ -1171,11 +1432,35 @@ def get(sid):
     return st
 
 
+def _fig_label(st, fig):
+    p = st["papers"][fig["pi"]]
+    return "%s%s, %s %d, p.%s" % (p["short"], (" [%d]" % p["n"]) if p.get("n") else "", "Fig." if fig.get("kind") == "fig" else "Table", fig["n"], fig.get("page", "?"))
+
+
+def _block_text(st, b, cite, ids=None):
+    """블록 하나를 글로(md·대화 배경 공용). cite(u) = ' [3,5]' 꼴, ids(ui) = 문장 id 머리(없으면 빈 글). 그림·표의 번호는 문단 순서대로 붙이지 않고 출처로 가리킨다"""
+    if "h" in b:
+        return ["### " + b["h"]]
+    pre = (lambda ui: ids(ui) + " ") if ids else (lambda ui: "")
+    if b.get("table"):
+        cols = (b["table"].get("cols") or [])
+        rows = ["표: " + (b["table"].get("cap") or ""), "| " + " | ".join(cols + ["출처"]) + " |", "|" + "---|" * (len(cols) + 1)]
+        for ui, u in enumerate(b.get("units") or []):
+            cells = list(u.get("cells") or [u["t"]])[:len(cols)] + [""] * max(0, len(cols) - len(u.get("cells") or []))
+            rows.append("| " + " | ".join(pre(ui) + c if i == 0 else c for i, c in enumerate(cells)) + " |" + cite(u).strip() + " |")
+        return rows
+    if b.get("fig"):
+        u = (b.get("units") or [{}])[0]
+        return ["그림: %s%s%s (%s)" % (pre(0), u.get("t", ""), cite(u), _fig_label(st, b["fig"]))]
+    return [" ".join("%s%s%s" % (pre(ui), u["t"], cite(u)) for ui, u in enumerate(b.get("units") or []))]
+
+
 def to_md(st):
     ch = st.get("chapter") or {}
     papers = st.get("papers") or []
     src = st.get("src") or {}
     num = lambda keys: sorted({papers[int(k.split(":")[0])].get("n") for k in keys if papers[int(k.split(":")[0])].get("n")})
+    cite = lambda u: (" [%s]" % ",".join(str(n) for n in num(u["src"]))) if u.get("src") else ""
     out = ["# " + ch.get("title", st.get("topic", "")), "", "> %s" % ch.get("scope", ""),
            "> 내 서재의 논문 %d편으로 씀 · %s · 사실 문장은 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 (%s)" % (
                (st.get("stats") or {}).get("cited", 0), time.strftime("%Y-%m-%d", time.localtime(st.get("t") or 0)), st.get("version", VERSION)), ""]
@@ -1185,16 +1470,13 @@ def to_md(st):
             out += ["## 핵심 정리", ""]
             for b in sec["blocks"]:
                 for u in b.get("units") or []:
-                    out.append("- %s%s" % (u["t"], (" [%s]" % ",".join(str(n) for n in num(u["src"]))) if u["src"] else ""))
+                    out.append("- %s%s" % (u["t"], cite(u)))
             out.append("")
             continue
         k += 1
         out += ["## %d. %s" % (k, sec["title"]), ""]
         for b in sec["blocks"]:
-            if "h" in b:
-                out += ["### " + b["h"], ""]
-            else:
-                out += [" ".join("%s%s" % (u["t"], (" [%s]" % ",".join(str(n) for n in num(u["src"]))) if u["src"] else "") for u in b["units"]), ""]
+            out += _block_text(st, b, cite) + [""]
     if ch.get("gaps"):
         out += ["## 이 서재로는 답하지 못한 것", ""] + ["- " + g for g in ch["gaps"]] + [""]
     if ch.get("terms"):
@@ -1229,6 +1511,7 @@ def _chapter_text(st):
     ch = st.get("chapter") or {}
     P = st.get("papers") or []
     num = lambda keys: sorted({P[int(k.split(":")[0])].get("n") for k in keys if P[int(k.split(":")[0])].get("n")})
+    cite = lambda u: (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else ""
     out = ["# " + str(ch.get("title") or ""), str(ch.get("scope") or ""), ""]
     k = 0
     for sec in ch.get("sections") or []:
@@ -1238,10 +1521,7 @@ def _chapter_text(st):
             k += 1
             out.append("## %d. %s" % (k, sec["title"]))
         for b in sec.get("blocks") or []:
-            if "h" in b:
-                out.append("### " + b["h"])
-            else:
-                out.append(" ".join("%s%s" % (u["t"], (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else "") for u in b.get("units") or []))
+            out += _block_text(st, b, cite)
         out.append("")
     if ch.get("gaps"):
         out += ["## 이 서재로는 답하지 못한 것"] + ["- " + g for g in ch["gaps"]] + [""]
@@ -1397,16 +1677,14 @@ def _chapter_text_ids(st):
     ch = st.get("chapter") or {}
     P = st.get("papers") or []
     num = lambda keys: sorted({P[int(k.split(":")[0])].get("n") for k in keys if P[int(k.split(":")[0])].get("n")})
+    cite = lambda u: (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else ""
     out = ["# " + str(ch.get("title") or ""), str(ch.get("scope") or ""), ""]
     for si, sec in enumerate(ch.get("sections") or []):
         if sec.get("kind") == "summary":
             continue
         out.append("## (si=%d) %s%s" % (si, sec["title"], (" — " + sec["aim"]) if sec.get("aim") else ""))
         for bi, b in enumerate(sec.get("blocks") or []):
-            if "h" in b:
-                out.append("### " + b["h"])
-                continue
-            out.append(" ".join("[u%d.%d.%d] %s%s" % (si, bi, ui, u["t"], (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else "") for ui, u in enumerate(b.get("units") or [])))
+            out += _block_text(st, b, cite, ids=lambda ui, si=si, bi=bi: "[u%d.%d.%d]" % (si, bi, ui))
         out.append("")
     cited = sorted((p for p in P if p.get("n")), key=lambda p: p["n"])
     out += ["## 참고문헌 (장의 [번호]) — 논문마다 '무엇을 어떤 재료·조건·방법으로 했나'"] + ["[%d] %s — %s" % (p["n"], p["short"], (p.get("about") or p.get("title") or "")[:200]) for p in cited]
@@ -1547,6 +1825,13 @@ def handle_get(h, url):
         return h._send(200, get(_q(url, "id")))
     if p == "/api/study/chats":
         return h._send(200, chats_of(_q(url, "id")))
+    if p == "/api/study/fig":          # 장에 실은 그림(논문 PDF 에서 잘라 둔 PNG): ?id=<공부 id>&name=P5_fig4.png
+        name = os.path.basename(_q(url, "name"))
+        fp = os.path.join(_fig_dir(_q(url, "id")), name)
+        if name.lower().endswith(".png") and os.path.isfile(fp):
+            with open(fp, "rb") as f:
+                return h._send(200, f.read(), "image/png")
+        return h._send(404, {"error": "no fig"})
     return h._send(404, {"error": "unknown"})
 
 
@@ -1567,6 +1852,7 @@ def handle_post(h, body):
             fp = _path(sid)
             if os.path.isfile(fp) and os.path.dirname(os.path.abspath(fp)) == os.path.abspath(cfg["DIR"]):
                 os.remove(fp)
+                shutil.rmtree(_fig_dir(sid), ignore_errors=True)     # 그 장의 그림도
             return h._send(200, {"ok": True})
         if op == "ask":
             return h._send(200, chat_ask(sid, body))

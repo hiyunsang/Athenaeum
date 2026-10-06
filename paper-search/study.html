@@ -69,6 +69,24 @@
   .u:hover { background: var(--hover); }
   .u.on { background: var(--sel-bg); box-shadow: inset 0 -2px 0 var(--accent); }
   .u .c { font-family: var(--font); font-size: .74em; color: var(--accent); margin-left: 1px; white-space: nowrap; }
+  .u.claim { font-weight: 600; }                       /* 논지 문장 — 문단의 첫 문장, 여러 논문이 함께 받친다 */
+  /* 번외: 논지에 들지 않지만 서재가 말한 것 — 절 끝에 조금 작게 */
+  .ch h3.extra { color: var(--text-2); font-size: .92em; margin-top: 1.8em; padding-top: .7em; border-top: 1px solid var(--line); }
+  .ch h3.extra::after { content: " — 논지에 들지 않지만 서재가 말한 것"; font-weight: 400; color: var(--text-3); font-size: .9em; }
+  .ch p.extra { color: var(--text-2); font-size: .94em; }
+  /* 표: 행마다 근거가 있어 문장처럼 누른다 */
+  .sttab { font-family: var(--font); font-size: .8em; line-height: 1.45; border-collapse: collapse; width: 100%; margin: .3em 0 1.1em; }
+  .sttab caption { caption-side: top; text-align: left; color: var(--text-2); padding: 0 0 .45em; } .sttab caption b { color: var(--text); }
+  .sttab th, .sttab td { border-bottom: 1px solid var(--line); padding: 4px 8px 4px 0; text-align: left; vertical-align: top; }
+  .sttab th { color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--line-2); }
+  .sttab tr.u.on td { background: var(--sel-bg); } .sttab tr.u.on { box-shadow: none; }
+  .sttab td.c { color: var(--accent); white-space: nowrap; font-size: .92em; }
+  /* 그림: 논문 PDF 에서 잘라 온 것 — 설명 문장은 본문 문장처럼 근거가 있다 */
+  .stfig { margin: .5em 0 1.2em; }
+  .stfig img { display: block; max-width: 100%; max-height: 540px; border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+  .stfig figcaption { font-family: var(--font); font-size: .84em; color: var(--text-2); line-height: 1.55; margin-top: .45em; }
+  .stfig .fno { font-weight: 600; color: var(--text); margin-right: .25em; } .stfig .src { color: var(--text-3); }
+  .stfig details { margin-top: 2px; } .stfig summary { cursor: pointer; color: var(--text-3); font-size: .92em; } .stfig details .ko { color: var(--text-3); margin-top: 2px; }
   .ch .refs { font-family: var(--font); font-size: 13px; line-height: 1.55; }
   .ch .refs .r { display: flex; gap: var(--s2); padding: 5px 0; border-bottom: 1px solid var(--line); }
   .ch .refs .r .n { color: var(--text-3); min-width: 2.2em; } .ch .refs .r .b { flex: 1; min-width: 0; }
@@ -334,9 +352,27 @@ const citeNums = u => [...new Set((u.src || []).map(k => paperOf(k).n).filter(Bo
 const unitAt = key => { const [a, b, c] = key.split(".").map(Number); return cur.chapter.sections[a].blocks[b].units[c]; };
 function unitHtml(u, key) {
   const ns = citeNums(u);
-  return "<span class='u" + (key === selKey ? " on" : "") + (askedSet.has(key) ? " asked" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
+  return "<span class='u" + (u.role === "claim" ? " claim" : "") + (key === selKey ? " on" : "") + (askedSet.has(key) ? " asked" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
 }
-const blocksHtml = (sec, si) => sec.blocks.map((b, bi) => b.h ? "<h3>" + esc(b.h) + "</h3>" : "<p>" + b.units.map((u, ui) => unitHtml(u, si + "." + bi + "." + ui)).join(" ") + "</p>").join("");
+function figNums() {   // 장 전체에서 그림·표의 차례 번호 — 절 하나만 볼 때도 같은 번호
+  if (cur._nums) return cur._nums;
+  const m = {}; let f = 0, t = 0;
+  cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => { if (b.fig) m[si + "." + bi] = ++f; else if (b.table) m[si + "." + bi] = ++t; }));
+  return cur._nums = m;
+}
+// 블록: 소제목 · 문단 · 표(행마다 근거) · 그림(논문 PDF 에서 잘라 온 것 + 설명 문장) · 번외(kind: extra)
+const blocksHtml = (sec, si) => sec.blocks.map((b, bi) => {
+  const key = si + "." + bi, ex = b.kind === "extra" ? " extra" : "";
+  if (b.h) return b.kind === "extra" ? "<h3 class='extra'>번외</h3>" : "<h3>" + esc(b.h) + "</h3>";
+  if (b.table) return "<table class='sttab" + ex + "'><caption><b>표 " + figNums()[key] + ".</b> " + esc(b.table.cap || "") + "</caption>" +
+    ((b.table.cols || []).length ? "<thead><tr>" + b.table.cols.map(c => "<th>" + esc(c) + "</th>").join("") + "<th></th></tr></thead>" : "") + "<tbody>" +
+    b.units.map((u, ui) => { const k = key + "." + ui, ns = citeNums(u); return "<tr class='u" + (k === selKey ? " on" : "") + (askedSet.has(k) ? " asked" : "") + "' data-u='" + k + "'>" + (u.cells || [u.t]).map(c => "<td>" + esc(c) + "</td>").join("") + "<td class='c'>" + (ns.length ? "[" + ns.join(",") + "]" : "") + "</td></tr>"; }).join("") + "</tbody></table>";
+  if (b.fig) { const f = b.fig, p = cur.papers[f.pi] || {}, u = b.units[0];
+    return "<figure class='stfig" + ex + "'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''>" +
+      "<figcaption><span class='fno'>그림 " + figNums()[key] + ".</span>" + unitHtml(u, key + ".0") + " <span class='src'>— " + esc(p.short || "") + (p.n ? " [" + p.n + "]" : "") + ", " + (f.kind === "fig" ? "Fig. " : "Table ") + f.n + ", p." + f.page + "</span>" +
+      (f.cap_en ? "<details><summary>원문 캡션</summary><div>" + esc(f.cap_en) + "</div>" + (f.cap_ko ? "<div class='ko'>" + esc(f.cap_ko) + "</div>" : "") + "</details>" : "") + "</figcaption></figure>"; }
+  return "<p" + (ex ? " class='extra'" : "") + ">" + b.units.map((u, ui) => unitHtml(u, key + "." + ui)).join(" ") + "</p>";
+}).join("");
 const crumb = (t, extra) => "<div class='crumb noprint'><a href='#' data-v='overview'>" + esc(cur.chapter.title) + "</a><span class='sp'>›</span><span>" + esc(t) + "</span>" + (extra || "") + "</div>";
 function secPapersHtml(sec) {   // 이 절에 쓰인 논문: [번호] 저자 연도 — 그 연구가 무엇을 어떤 재료·조건으로 했나 (논문을 읽을 때 Claude 가 적은 한 줄)
   const idx = [...new Set(sec.blocks.flatMap(b => (b.units || []).flatMap(u => (u.src || []).map(k => +k.split(":")[0]))))].map(i => cur.papers[i]).filter(p => p && p.n).sort((a, b) => a.n - b.n);
@@ -694,6 +730,7 @@ function infoPanel() {
     kv("읽은 논문", read.length + "편 (통째로 " + read.filter(p => p.mode === "full").length + " · 맞은 대목만 " + read.filter(p => p.mode !== "full").length + ")") +
     kv("뽑은 메모", (s.notes || 0) + "개") +
     kv("실은 문장", (s.units || 0) + "개 = 사실 " + (s.fact || 0) + " + 잇는 말 " + (s.bridge || 0)) +
+    (s.claims != null ? kv("짜임", "논지 " + (s.claims || 0) + " · 두 논문 이상이 받치는 문장 " + (s.multi || 0) + " · 표 " + (s.tables || 0) + " · 그림 " + (s.figs || 0) + " · 번외 문장 " + (s.extra || 0)) : "") +
     kv("근거 원문", (s.srcs || 0) + "문장 · 논문 " + (s.cited || 0) + "편") +
     kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
     kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
