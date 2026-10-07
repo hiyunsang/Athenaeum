@@ -2155,9 +2155,67 @@ def job_view(job):
     return v
 
 
+# ---------- 탐색 기록 (2026-10-07, 사용자: '기존에 탐색했던 거 기록 같은 거 해서 다시 열어볼 수 있게') ----------
+# 끝난 스마트 탐색은 서버 메모리(_jobs)에만 있어 재시작하면 사라지고 화면은 마지막 하나만 기억했다. 끝날 때마다 관련맵\탐색기록\<id>.json 으로 남기고(최근 80개), _목록.json 에 요약을 둔다.
+HIST_DIR = os.path.join(MAPS_DIR, "탐색기록")
+_HIST_LOCK = threading.Lock()
+
+
+def _hist_index():
+    return load_json(os.path.join(HIST_DIR, "_목록.json"), None) or {"items": []}
+
+
+def smart_history_save(q, year, result, replan=False, keep=80):
+    os.makedirs(HIST_DIR, exist_ok=True)
+    hid = time.strftime("%Y%m%d_%H%M%S") + "_" + hashlib.md5((q + "|" + str(year)).encode("utf-8")).hexdigest()[:6]
+    items = [it for g in result.get("groups", []) for it in g["items"]]
+    meta = {"id": hid, "q": q, "year": year, "t": time.time(), "intent": str(result.get("intent") or "")[:200], "n": len(items),
+            "owned": sum(1 for it in items if it.get("owned")), "excluded": result.get("excluded") or 0,
+            "journals": [(j.get("abbr") or j.get("name", "")[:16]) for j in (result.get("journals") or [])[:4]],
+            "groups": [str(g.get("name") or "")[:30] for g in result.get("groups", [])[:6]], "replan": bool(replan)}
+    with _HIST_LOCK:
+        save_json(os.path.join(HIST_DIR, hid + ".json"), {"meta": meta, "result": result})
+        idx = _hist_index()
+        idx["items"] = [meta] + [m for m in idx.get("items") or [] if m.get("id") != hid]
+        for old in idx["items"][keep:]:
+            try:
+                os.remove(os.path.join(HIST_DIR, old["id"] + ".json"))
+            except OSError:
+                pass
+        idx["items"] = idx["items"][:keep]
+        save_json(os.path.join(HIST_DIR, "_목록.json"), idx)
+    return hid
+
+
+def smart_history_get(hid):
+    hid = re.sub(r"[^A-Za-z0-9_]", "", str(hid or ""))
+    return load_json(os.path.join(HIST_DIR, hid + ".json"), None) if hid else None
+
+
+def smart_history_delete(hid):
+    hid = re.sub(r"[^A-Za-z0-9_]", "", str(hid or ""))
+    if not hid:
+        return False
+    with _HIST_LOCK:
+        try:
+            os.remove(os.path.join(HIST_DIR, hid + ".json"))
+        except OSError:
+            pass
+        idx = _hist_index()
+        idx["items"] = [m for m in idx.get("items") or [] if m.get("id") != hid]
+        save_json(os.path.join(HIST_DIR, "_목록.json"), idx)
+    return True
+
+
 def _run_smart_safe(q, year, key, plan=None):
     try:
         _run_smart(q, year, key, plan)
+        job = _jobs.get(key)
+        if job and job.get("status") == "done":
+            try:
+                smart_history_save(q, year, job["result"], replan=bool(plan))
+            except Exception:
+                pass
     except Exception as e:
         _jobs[key] = {"status": "error", "error": str(e)[:200]}
 
@@ -3471,6 +3529,16 @@ class Handler(BaseHTTPRequestHandler):
             results.sort(key=keyf, reverse=True)
             self._send(200, {"relaxed": relaxed, "results": results, "total": d.get("meta", {}).get("count", 0),
                              "words": words})
+        elif url.path == "/api/smart_history":   # 탐색 기록: 목록 · ?id= 로 하나 열기 · ?id=&delete=1
+            qs = parse_qs(url.query)
+            hid = qs.get("id", [""])[0]
+            if hid and qs.get("delete", [""])[0] == "1":
+                self._send(200, {"ok": smart_history_delete(hid), "items": _hist_index().get("items") or []})
+            elif hid:
+                d = smart_history_get(hid)
+                self._send(200 if d else 404, d or {"error": "그 기록이 없습니다"})
+            else:
+                self._send(200, {"items": _hist_index().get("items") or []})
         elif url.path == "/api/lab_recent":   # 연구 그룹의 최신 논문 (탐색의 「연구 그룹」 줄)
             aid = re.sub(r"[^A-Za-z0-9]", "", parse_qs(url.query).get("author", [""])[0])
             if not aid:

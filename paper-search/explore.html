@@ -66,8 +66,14 @@
   body.chat #chat { display: flex; }
   #chat .ch { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
   #chat .ch b { color: var(--text); }
-  #chatToggle { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--text); text-decoration: none; font-size: 12.5px; line-height: 1.3; }
-  #chatToggle:hover { background: var(--hover); }
+  #chatToggle, .hbtn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--text); text-decoration: none; font-size: 12.5px; line-height: 1.3; }
+  #chatToggle:hover, .hbtn:hover { background: var(--hover); }
+  #hist { margin: 6px 12px 0; padding: 4px 10px 6px; border: 1px solid var(--line); border-radius: var(--r); font-size: 12.5px; }
+  #hist .hh { display: flex; align-items: baseline; gap: 10px; padding: 4px 0 6px; color: var(--text-2); }
+  #hist .hi { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); cursor: pointer; }
+  #hist .hi:hover .q { color: var(--accent); }
+  #hist .hi .d { color: var(--text-3); flex: none; width: 92px; } #hist .hi .q { font-weight: 600; } #hist .hi .m { color: var(--text-3); }
+  #hist .hi .i { color: var(--text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #hist .hi .x { margin-left: auto; flex: none; }
   #chatToggle img { width: 16px; height: 16px; flex: none; image-rendering: pixelated; }   /* 사용자가 준 Claude 마스코트(logo/claude_mascot.png, git 제외) — 없으면 글자만 */
   body.chat #chatToggle { color: var(--accent); border-color: var(--accent); }
   #chatlog { flex: 1; overflow-y: auto; padding: 10px 12px; }
@@ -130,8 +136,10 @@
   <button id="go">검색</button>
   <label><input type="checkbox" id="smart" checked> 스마트 탐색</label>
   <a href="#" id="chatToggle" title="지금 보이는 검색 결과를 놓고 Claude(Opus)와 이야기"><img src="/logo/claude_mascot.png" alt="" onerror="this.remove()">Claude와 이야기</a>
+  <a href="#" id="histToggle" class="hbtn" title="지난 탐색을 다시 열기 (다시 검색하지 않습니다)">기록</a>
   <div id="info"></div>
 </header>
+<div id="hist" hidden></div>
 <div id="chat">
   <div class="ch"><b>Claude와 이야기</b><span id="chatctx">결과를 먼저 검색하세요</span><span style="margin-left:auto"></span><a href="#" id="chatFm" style="font-size:11px" title="글씨 작게">A−</a><a href="#" id="chatFp" style="font-size:11px" title="글씨 크게">A+</a><a href="#" id="chatClear" style="font-size:11px">대화 지우기</a><a href="#" id="chatClose" style="font-size:11px;margin-left:8px">닫기</a></div>
   <div id="chips"></div>
@@ -541,6 +549,33 @@ async function chatSend() {
   } catch (e) { st.msgs.push({ role: "claude", text: "⚠ 서버에 연결하지 못했습니다: " + e }); }
   chatBusy = false; document.getElementById("chatsend").disabled = false; chatSave(st); renderChat();
 }
+(function history() {   // 탐색 기록 (사용자 2026-10-07: '기존에 탐색했던 거 다시 열어볼 수 있게') — 서버가 끝난 검색마다 남긴 것을 다시 검색하지 않고 연다
+  const box = document.getElementById("hist"), tg = document.getElementById("histToggle");
+  const fmt = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  async function load() {
+    box.innerHTML = "<div class='hint'>기록을 읽는 중…</div>";
+    let d; try { d = await (await fetch("/api/smart_history")).json(); } catch (e) { box.innerHTML = "<div class='hint'>기록을 읽지 못했습니다.</div>"; return; }
+    const its = d.items || [];
+    box.innerHTML = "<div class='hh'><b>탐색 기록</b><span class='hint'>" + its.length + "개 · 누르면 그때의 결과를 그대로 엽니다 (다시 검색하지 않음)</span><a href='#' class='act' id='histClose' style='margin-left:auto'>닫기</a></div>" +
+      (its.length ? its.map(m => "<div class='hi' data-id='" + escH(m.id) + "'><span class='d'>" + fmt(m.t) + "</span><span class='q'>" + escH(m.q) + "</span>" + (m.year ? "<span class='m'>" + escH(m.year) + "년~</span>" : "") +
+        "<span class='m'>" + m.n + "편" + (m.owned ? " · 보유 " + m.owned : "") + (m.replan ? " · 계획 고침" : "") + "</span><span class='i' title='" + escH(m.intent || "") + "'>" + escH((m.groups || []).join(" · ")) + "</span>" +
+        "<a href='#' class='act x' data-del='" + escH(m.id) + "' title='이 기록 지우기'>지우기</a></div>").join("") : "<div class='hint'>아직 기록이 없습니다. 스마트 탐색이 끝나면 여기에 남습니다.</div>");
+    document.getElementById("histClose").onclick = e => { e.preventDefault(); box.hidden = true; };
+    box.querySelectorAll(".hi").forEach(el => el.onclick = async e => {
+      const del = e.target.closest("[data-del]");
+      if (del) { e.preventDefault(); if (!confirm("이 탐색 기록을 지울까요?")) return; await fetch("/api/smart_history?id=" + encodeURIComponent(del.dataset.del) + "&delete=1"); load(); return; }
+      e.preventDefault(); box.innerHTML = "<div class='hint'>여는 중…</div>";
+      let r; try { r = await (await fetch("/api/smart_history?id=" + encodeURIComponent(el.dataset.id))).json(); } catch (e2) { r = null; }
+      if (!r || !r.result) { box.innerHTML = "<div class='hint'>그 기록을 열지 못했습니다.</div>"; return; }
+      box.hidden = true;
+      document.getElementById("q").value = r.meta.q; if (r.meta.year !== undefined) document.getElementById("year").value = r.meta.year || "";
+      document.getElementById("smart").checked = true;
+      saveState({ q: r.meta.q, year: r.meta.year || "", smart: true, plain: null, smartKey: null, smartResult: r.result });
+      plainbox.innerHTML = ""; renderSmart(r.result); window.scrollTo(0, 0);
+    });
+  }
+  tg.onclick = e => { e.preventDefault(); box.hidden = !box.hidden; if (!box.hidden) load(); };
+})();
 (function chatFont() {   // 대화 글씨 크기 (사용자 2026-10-07)
   const apply = () => { const v = +(localStorage.getItem("ui_chat_font") || 13) || 13; document.getElementById("chatlog").style.fontSize = v + "px"; document.getElementById("chatq").style.fontSize = v + "px"; };
   const step = d => { const v = Math.min(20, Math.max(11, (+(localStorage.getItem("ui_chat_font") || 13) || 13) + d)); try { localStorage.setItem("ui_chat_font", String(v)); } catch (e) {} apply(); };
