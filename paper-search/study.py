@@ -795,31 +795,61 @@ def _claim_block(st, sec):
     return plist, "\n".join(lines), pset
 
 
-def _fig_list(st, pis):
-    """절의 논문들의 그림·표 캡션(PDF 에서 읽은 원문 + 번역이 있으면) → (목록 글, {(논문 순번, kind, n): 캡션}). 쓰는 Claude 는 이 목록의 그림만 고를 수 있다"""
+def _caps_of(f):
+    """논문 하나의 그림·표 캡션(PDF 에서 읽은 원문 + 캡션.json 의 번역이 있으면), 메모리 캐시"""
+    if f not in _CAP_CACHE:
+        try:
+            caps = figcrop.captions(os.path.join(cfg["ARCHIVE"], f))
+        except Exception:
+            caps = []
+        ko = {}
+        d = cfg["load_json"](os.path.join(cfg["GEN_DIR"], os.path.splitext(f)[0] + ".캡션.json"), None)
+        for c in ((d or {}).get("captions") or []) if isinstance(d, dict) else []:
+            if isinstance(c, dict) and c.get("ko"):
+                ko[(c.get("kind"), c.get("n"))] = str(c["ko"])
+        _CAP_CACHE[f] = [dict(c, ko=ko.get((c["kind"], c["n"]), "")) for c in caps]
+    return _CAP_CACHE[f]
+
+
+_FIGREF = re.compile(r"\b(Fig\.?|Figure|Table)\s*(\d{1,3})(?!\d)", re.I)
+
+
+def _fig_list(st, sec):
+    """논지마다 그 근거 문장(과 앞뒤 두 문장)이 실제로 가리키는 그림·표만 → (목록 글, {(논문 순번, kind, n): {cap, src: ['pi:sid', …]}}).
+    사용자(2026-10-07): '그림이 본문과 잘 맞지 않는다' — 처음엔 그 절 논문들의 캡션 목록 전체를 주었더니 16장 중 8장만 근거 문장이 가리키는 그림이었고
+    나머지는 '관련 있어 보이는' 그림(첫 절의 재료 소개에 TEM 손상 사진)이었다. 이제 그림은 근거 문장이 'Fig. N' 으로 가리키는 것뿐이고,
+    그 문장들이 그림 설명의 근거에도 들어간다(fsrc)."""
+    notes = _all_notes(st)
     lines, allow = [], {}
-    for pi in pis:
-        f = st["papers"][pi]["file"]
-        if f not in _CAP_CACHE:
-            try:
-                caps = figcrop.captions(os.path.join(cfg["ARCHIVE"], f))
-            except Exception:
-                caps = []
-            ko = {}
-            d = cfg["load_json"](os.path.join(cfg["GEN_DIR"], os.path.splitext(f)[0] + ".캡션.json"), None)
-            for c in ((d or {}).get("captions") or []) if isinstance(d, dict) else []:
-                if isinstance(c, dict) and c.get("ko"):
-                    ko[(c.get("kind"), c.get("n"))] = str(c["ko"])
-            _CAP_CACHE[f] = [dict(c, ko=ko.get((c["kind"], c["n"]), "")) for c in caps]
-        n = 0
-        for c in _CAP_CACHE[f]:
-            if n >= 14:
-                break
-            n += 1
-            label = "P%d %s %d" % (pi + 1, "Fig." if c["kind"] == "fig" else "Table", c["n"])
-            allow[(pi, c["kind"], c["n"])] = "%s: %s" % (label, c["text"][:400])
-            lines.append("%s (p.%d): %s%s" % (label, c["page"], c["text"][:200], (" — " + c["ko"][:160]) if c.get("ko") else ""))
-    return "\n".join(lines[:80]), allow
+    for ci, c in enumerate(sec.get("claims") or [], 1):
+        found = {}
+        for nid in c.get("notes") or []:
+            if nid not in notes:
+                continue
+            pi, n = notes[nid]
+            ss = _paper_sents(st["papers"][pi]["file"])
+            order = {s["sid"]: i for i, s in enumerate(ss)}
+            for sid in n["s"]:
+                if sid not in order:
+                    continue
+                i = order[sid]
+                for j in range(max(0, i - 2), min(len(ss), i + 3)):
+                    for m in _FIGREF.finditer(ss[j]["en"]):
+                        k = (pi, "table" if m.group(1).lower().startswith("t") else "fig", int(m.group(2)))
+                        if ss[j]["sid"] not in found.setdefault(k, []):
+                            found[k].append(ss[j]["sid"])
+        for k, sids in list(found.items())[:4]:
+            pi, kind, n = k
+            cap = next((x for x in _caps_of(st["papers"][pi]["file"]) if x["kind"] == kind and x["n"] == n), None)
+            if not cap:
+                continue
+            label = "P%d %s %d" % (pi + 1, "Fig." if kind == "fig" else "Table", n)
+            allow.setdefault(k, {"cap": "%s: %s" % (label, cap["text"][:400]), "src": ["%d:%s" % (pi, s) for s in sids[:4]]})
+            by = {s["sid"]: s for s in _paper_sents(st["papers"][pi]["file"])}
+            lines.append("논지 %d 의 근거 문장이 가리키는 그림 — %s (p.%d): %s%s" % (ci, label, cap["page"], cap["text"][:200], (" — " + cap["ko"][:160]) if cap.get("ko") else ""))
+            for s in sids[:3]:
+                lines.append("    %s: \"%s\"" % (s, by[s]["en"][:300]))
+    return "\n".join(lines[:60]), allow
 
 
 _WRITE_RULES = (
@@ -842,8 +872,8 @@ _WRITE_RULES = (
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
     "12. 표: 셋 이상의 연구가 견줄 만한 수치(값과 조건)를 주면 표로 묶는다 — '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
     "칸의 수치·단위·조건은 근거 그대로(표의 행도 본문 문장과 똑같이 원문과 대조된다). 표에 넣은 수치를 본문 문장에 되풀이하지 않는다. 절마다 많아야 둘.\n"
-    "13. 그림: [그림 목록]에 있는 논문의 그림 가운데 이 절의 논지를 눈으로 보여 주는 것을 절마다 0~2개 고른다 — 그 논지 문단 바로 뒤에 '그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦메모 번호⟧' 한 줄. "
-    "설명은 캡션과 메모가 말하는 것만. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
+    "13. 그림: [그림 목록]의 그림은 그 논지의 근거 문장이 가리키는 그림이다. 그 가운데 논지 문단의 내용을 눈으로 보여 주는 것만 그 논지 문단 바로 뒤에 '그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦메모 번호⟧' 한 줄로 싣는다(절마다 둘까지). "
+    "보여 주는 그림이 없으면 넣지 않는다 — 그림을 채우려고 고르지 않는다. 설명은 캡션과 그 그림을 가리키는 원문 문장이 말하는 것만. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
     "14. 번외: 절 끝 '### 번외' 아래에 [번외] 메모를 메모마다 한 문장으로(조건과 함께), 관련된 것끼리 한 문단. 논지와 어긋나는 메모는 어긋난다고 적는다. 번외 메모를 빠뜨리지 않는다.\n")
 
 
@@ -876,8 +906,9 @@ def _write_prompt(st, k):
     figs = {}
     if claimed:
         plist, nlist, pset = _claim_block(st, sec)
-        figtxt, figs = _fig_list(st, pset)
-        material = "[논지] 이 절은 아래 논지의 차례로 쓴다. 논지마다 한 문단(길면 둘). 논지 아래가 그것을 받치는 메모이고, 메모 아래는 그 근거인 논문의 원문 문장이다.\n%s\n\n[그림 목록] (논문의 그림·표 캡션 — 여기 있는 것만 고를 수 있다)\n%s" % (nlist, figtxt or "(없음)")
+        figtxt, figs = _fig_list(st, sec)
+        material = ("[논지] 이 절은 아래 논지의 차례로 쓴다. 논지마다 한 문단(길면 둘). 논지 아래가 그것을 받치는 메모이고, 메모 아래는 그 근거인 논문의 원문 문장이다.\n%s\n\n"
+                    "[그림 목록] (논지의 근거 문장이 'Fig. N' 으로 가리키는 논문의 그림·표와, 그 그림을 가리키는 원문 문장 — 여기 있는 것만 고를 수 있다. 비어 있으면 이 절에는 그림을 넣지 않는다)\n%s") % (nlist, figtxt or "(없음)")
     else:
         plist, nlist = _note_block(st, sec["notes"])
         material = "[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s" % nlist
@@ -965,7 +996,8 @@ def _parse_units(text, valid, figs=None):
             mm = _REF_END.search(mf.group(4))
             t = _REF_ANY.sub("", (mf.group(4)[:mm.start()] if mm else mf.group(4))).strip()
             if figs and (pi, fk, n) in figs and len(t) >= 4:
-                fb = {"fig": {"pi": pi, "kind": fk, "n": n}, "units": [{"t": t[:400], "notes": refs_of(mm)[:6], "cap": figs[(pi, fk, n)][:500]}]}
+                fg = figs[(pi, fk, n)]
+                fb = {"fig": {"pi": pi, "kind": fk, "n": n}, "units": [{"t": t[:400], "notes": refs_of(mm)[:6], "cap": fg["cap"][:500], "fsrc": list(fg.get("src") or [])[:4]}]}
                 if kind:
                     fb["kind"] = kind
                 blocks.append(fb)
@@ -1014,7 +1046,7 @@ _VERDICT = {"over": "근거보다 나아감", "none": "근거가 그 말을 하�
 
 
 def _unit_src(st, u):
-    """문장의 근거: 메모들의 근거 문장을 차례로(겹치면 한 번). → [(논문 순번, sid, own)]"""
+    """문장의 근거: 메모들의 근거 문장을 차례로(겹치면 한 번), 그림 설명이면 그 그림을 가리키는 원문 문장도. → [(논문 순번, sid, own)]"""
     notes, out, seen = _all_notes(st), [], set()
     for nid in u.get("notes") or []:
         if nid not in notes:
@@ -1024,7 +1056,16 @@ def _unit_src(st, u):
             if (pi, sid) not in seen:
                 seen.add((pi, sid))
                 out.append((pi, sid, bool(n.get("own"))))
-    return out[:8]
+    for key in u.get("fsrc") or []:
+        try:
+            pi, sid = key.split(":")
+            pi = int(pi)
+        except ValueError:
+            continue
+        if (pi, sid) not in seen and 0 <= pi < len(st["papers"]):
+            seen.add((pi, sid))
+            out.append((pi, sid, True))
+    return out[:10]
 
 
 def _src_text(st, src):
@@ -1044,7 +1085,7 @@ def _verify_prompt(st, units, terms):
     for i, u in units:
         src = _src_text(st, _unit_src(st, u))
         miss = u.get("nummiss") or []
-        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(그림 설명) " if u.get("cap") else ""
+        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(그림 설명 — 캡션과 그 그림을 가리키는 원문 문장이 말하는 것만) " if u.get("cap") else ""
         lines.append("u%d: %s%s%s" % (i, tag, u["t"], ("   (프로그램: 수치 %s 가 근거에 보이지 않음)" % ", ".join(miss)) if miss else ""))
         if not src and not u.get("cap"):
             lines.append("   (근거 표시 없음 — 이음 문장)")
