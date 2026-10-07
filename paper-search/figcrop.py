@@ -71,6 +71,29 @@ def _page_info(page):
     return texts, rects, W, H
 
 
+def _thin_lines(page):
+    """표의 괘선: 가늘고(높이 3pt 미만) 긴(40pt 이상) 가로 드로잉 → [(x0, y, x1)]"""
+    out = []
+    try:
+        for dr in page.get_drawings():
+            r = dr.get("rect")
+            if r is not None and (r.y1 - r.y0) < 3 and (r.x1 - r.x0) >= 40:
+                out.append((r.x0, (r.y0 + r.y1) / 2, r.x1))
+    except Exception:
+        pass
+    return out
+
+
+def _prose(s):
+    """산문인가: 문장 경계('. X')가 둘 이상이고 숫자가 적다 — 표의 칸 글이 한 블록으로 합쳐진 것(숫자·단위가 많고 문장 경계가 없다)과 가른다"""
+    n = len(s)
+    if n < 90:
+        return False
+    sents = len(re.findall(r"[.!?]\s+[A-Z(]", s))
+    digits = sum(c.isdigit() for c in s) / float(n)
+    return sents >= 2 and digits < 0.06
+
+
 def _hov(a, b):
     return max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
 
@@ -168,12 +191,38 @@ def crop(pdf_path, kind, n, out_png, dpi=150):
                 if rect is None or rect.height < 40:
                     rect = fitz.Rect(cb[0] - 4, max(floor + 2, cb[1] - 260), cb[2] + 4, cb[1] - 1) if cb[1] - floor > 60 else None
             else:
-                below = [t["bbox"][1] for t in body if t["bbox"][1] >= cb[3] - 2]
+                # 표가 놓인 단(column)의 가로 범위 — 캡션이 짧으면 캡션 폭만으로는 오른쪽 칸이 잘렸다(Liu 2018 Table 1)
+                if cw < W * 0.55:
+                    cx0, cx1 = (W * 0.04, W * 0.5 + 6) if cb[0] < W * 0.45 else (W * 0.5 - 6, W * 0.96)
+                else:
+                    cx0, cx1 = W * 0.04, W * 0.96
+                # 표 아래의 경계 = 그 단에서 캡션 아래에 오는 첫 '산문'(_prose: 문장 경계 둘 이상, 숫자 적음)이나 절 제목('3. Engineering …').
+                # 표의 칸 글이 한 블록으로 합쳐져 길어도 산문이 아니면 표의 일부다(Yan 2003 Table 1 이 첫 행에서, Sun 2019 Table 2 가 머리 행에서 잘렸다)
+                def _stop(t):
+                    s = t["t"]
+                    return _prose(s) or (len(s) < 90 and re.match(r"^\d+(\.\d+)*\.\s+[A-Z][a-z]+", s))      # 표의 행 '3.5 Cutting speed …' 는 번호 뒤에 마침표가 없다
+                below = [t["bbox"][1] for t in texts if t is not cap and t["bbox"][1] >= cb[3] - 2 and t["bbox"][0] >= cx0 - 4 and t["bbox"][2] <= cx1 + 4 and _stop(t)]
                 ceil_ = min(below) if below else H
-                cands = [r for r in rects if r[1] >= cb[3] - 6 and r[3] <= ceil_ + 4 and _hov(r, cb) > min(cw, r[2] - r[0]) * 0.3]
-                bottom = max(r[3] for r in cands) if cands else min(ceil_ - 2, cb[3] + 220)
+                # 표의 괘선(가는 가로선)을 캡션 아래에서 차례로 따라 내려간다 — 선 사이가 160pt 넘게 비면 다른 표·그림이다
+                ys = sorted(y for x0_, y, x1_ in _thin_lines(page) if y >= cb[3] - 4 and y <= ceil_ + 4 and x0_ < cx1 and x1_ > cx0)
+                last = cb[3]
+                for y in ys:
+                    if y - last > 320:          # 머리 괘선과 바닥 괘선 사이가 멀 수 있다(긴 표) — 산문(ceil_) 앞까지만 보므로 넉넉히
+                        break
+                    last = y
+                # 괘선이 없는 표(또는 바닥 괘선이 그려지지 않은 표)는 캡션 아래로 이어지는 칸 글 블록을 따라 내려간다
+                for t in sorted(texts, key=lambda t: t["bbox"][1]):
+                    tb = t["bbox"]
+                    if t is not cap and tb[1] >= cb[3] - 2 and tb[1] <= last + 40 and tb[3] <= ceil_ + 2 and tb[0] >= cx0 - 4 and tb[2] <= cx1 + 4 and not _prose(t["t"]):
+                        last = max(last, tb[3])
+                cands = [r for r in rects if r[1] >= cb[3] - 6 and r[3] <= ceil_ + 4 and _hov(r, (cx0, 0, cx1, H)) > (r[2] - r[0]) * 0.5]
+                bottom = max([r[3] for r in cands] + [last]) if (cands or last > cb[3]) else min(ceil_ - 2, cb[3] + 220)
                 x0 = min([r[0] for r in cands] + [cb[0]]) - 4
                 x1 = max([r[2] for r in cands] + [cb[2]]) + 4
+                for t in texts:      # 표의 칸 글이 캡션보다 넓으면 거기까지
+                    tb = t["bbox"]
+                    if t is not cap and len(t["t"]) < 90 and tb[1] >= cb[3] - 2 and tb[3] <= bottom + 2 and tb[0] >= cx0 - 4 and tb[2] <= cx1 + 4:
+                        x0, x1 = min(x0, tb[0] - 4), max(x1, tb[2] + 4)
                 rect = fitz.Rect(x0, cb[1] - 1, x1, bottom + 2)      # 표는 캡션까지 포함한다 (표 머리가 캡션 바로 아래)
             if rect is None:
                 return {"err": "그림 영역을 찾지 못함", "page": pi + 1}
