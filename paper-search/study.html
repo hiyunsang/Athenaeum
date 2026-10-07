@@ -11,7 +11,9 @@
   header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
   header .brand-mark { height: 24px; display: block; }
   header h1 { font-size: 14px; font-weight: 600; }
-  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 272px minmax(0, 1fr) 400px; }
+  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 272px minmax(0, 1fr) 6px var(--srcp-w, 400px); }
+  #srcsplit { cursor: col-resize; background: var(--line-2); }   /* 끌어서 오른쪽 Claude 칸의 폭을 바꾼다 (사용자 2026-10-08) */
+  #srcsplit:hover, #srcsplit.drag { background: var(--accent); }
   #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; padding-bottom: var(--s8); }
   #main { background: var(--surface); overflow-y: auto; min-width: 0; }
   #srcp { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-width: 0; padding: var(--s3) var(--s4) var(--s8); }
@@ -70,6 +72,12 @@
   .ch h2.first { margin-top: 0; }
   .ch h2 .no { color: var(--text-3); font-weight: 400; margin-right: .4em; }
   .ch .aim { font-family: var(--font); font-size: 12.5px; color: var(--text-3); margin: 0 0 .7em; }
+  /* Claude 의 생각 — 해설 층. 사실 층과 갈라 보인다(앰버 띠 + 마스코트). 사용자 2026-10-08 */
+  .cmt { margin: 1.1em 0 1.4em; padding: 10px 14px 4px; border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 7%, transparent); border-radius: 0 var(--r) var(--r) 0; font-family: var(--font); font-size: .94em; }
+  .cmt .ch2 { display: flex; align-items: center; gap: 7px; font-weight: 600; margin-bottom: 4px; } .cmt .ch2 img { width: 18px; height: 18px; image-rendering: pixelated; } .cmt .ch2 .hint { font-weight: 400; padding: 0; }
+  .cmt h4 { margin: .7em 0 .15em; font-size: 1em; font-weight: 600; color: var(--text-2); } .cmt p { margin: 0 0 .7em; text-align: left; line-height: 1.65; }
+  .cmt p a { color: var(--accent); text-decoration: none; } .cmt.pending { opacity: .7; }
+  .cv { padding: 10px 0; border-top: 1px solid var(--line); font-family: var(--font); font-size: 13px; line-height: 1.6; } .cv .cvq { color: var(--text-2); } .cv .cvu, .cv .cva { margin-top: 4px; white-space: pre-wrap; } .cv b { color: var(--text-2); font-weight: 600; margin-right: 4px; }
   .ch h3 { font-size: 1.02em; font-weight: 600; margin: 1.5em 0 .3em; }
   .ch p { margin: 0 0 .95em; text-align: justify; word-break: keep-all; }
   .ch ul { margin: .4em 0 1em; padding-left: 1.3em; } .ch li { margin-bottom: .45em; }
@@ -164,9 +172,9 @@
   .msg p.beyond { background: var(--amber-bg); color: var(--amber); padding: 4px 8px; border-radius: var(--r); }
   details.evd summary { cursor: pointer; padding: 6px 0; color: var(--text-3); font-size: 12px; } details.evd .srci:first-of-type { border-top: 1px solid var(--line); }
   .chl { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; cursor: pointer; } .chl:hover { background: var(--hover); } .chl .m { color: var(--text-3); font-size: 11.5px; }
-  @media (max-width: 1100px) { #app { grid-template-columns: 220px minmax(0, 1fr) 320px; } }
+  @media (max-width: 1100px) { #app { grid-template-columns: 220px minmax(0, 1fr) 6px var(--srcp-w, 320px); } }
   @media print {
-    header, #side, #srcp, .noprint { display: none !important; }
+    header, #side, #srcp, #srcsplit, .noprint { display: none !important; }
     body { overflow: visible; display: block; background: #fff; } #app { display: block; } #main { overflow: visible; }
     .page { max-width: none; padding: 0; } .u.on { background: none; box-shadow: none; }
   }
@@ -199,6 +207,7 @@
     <div id="outline"></div>
   </aside>
   <main id="main"></main>
+  <div id="srcsplit" title="끌어서 오른쪽 칸의 폭을 바꿉니다 · 두 번 누르면 기본 폭"></div>
   <aside id="srcp"></aside>
 </div>
 <script>
@@ -215,7 +224,7 @@ const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" 
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
-  ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"]];
+  ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["comment", "절마다 Claude 의 생각 달기"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
@@ -278,6 +287,7 @@ function renderOutline() {
     (summ ? item("summary", null, " sub", "", "핵심 정리", secUnits(summ) + "줄") : "") +
     ((ch.gaps || []).length ? item("gaps", null, " sub", "", "이 서재로는 답하지 못한 것", ch.gaps.length) : "") +
     ((ch.terms || []).length ? item("terms", null, " sub", "", "용어", ch.terms.length) : "") +
+    ((cur.chats || []).length ? item("chats", null, " sub", "", "Claude 에게 물은 것", cur.chats.length) : "") +
     item("refs", null, " sub", "", "참고문헌", (cur.stats || {}).cited || "") +
     item("all", null, " sub", "", "전체를 한 번에 (인쇄용)", "");
   el.querySelectorAll(".oi").forEach(o => o.onclick = () => gotoView(o.dataset.v, +o.dataset.si));
@@ -300,14 +310,14 @@ async function refresh(first) {
   if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); renderOutline(); return; }
   const was = cur && cur.id === st.id ? cur.status : "";
   cur = st; got = Date.now();
-  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "");
+  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "");
   if (first || st.status !== "done" || was !== "done") { renderMain(); renderPanel(); }
-  else if (ms !== mapStamp && view.kind === "map") renderMain();
+  else if (ms !== mapStamp) renderMain();
   if (ms !== mapStamp) { mapStamp = ms; renderOutline(); }
   if (first) { renderOutline(); newboxSet(lsGet("study_new_open", st.status === "done" ? "0" : "1") === "1"); }
   if (was && was !== st.status) loadList();
   clearTimeout(pollT);
-  if (st.status === "running" || st.map_pending) pollT = setTimeout(refresh, 4000);
+  if (st.status === "running" || st.map_pending || st.comment_pending) pollT = setTimeout(refresh, 4000);
   if (st.status === "done" && (st.chats || []).some(c => c.pending)) startChatPoll();
 }
 
@@ -324,7 +334,7 @@ function renderMain() {
 function indexHtml() {
   return "<div class='page ix'><div class='ixh'><h1>공부</h1><span class='hint'>" + items.length + "장 · 새 장은 왼쪽 「새 장 쓰기」</span></div>" +
     (items.length ? items.map(x => { const s = x.stats || {}; return "<article class='ixi' data-id='" + esc(x.id) + "'><h2>" + esc(x.title || x.topic) + "</h2>" +
-      "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") : " · " + stateText(x)) + "</div>" +
+      "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") + (s.comments ? " · Claude 의 생각" : "") : " · " + stateText(x)) + "</div>" +
       (x.topic && x.topic !== x.title ? "<div class='ixt'>주제: " + esc(x.topic) + "</div>" : "") + "</article>"; }).join("") : "<div class='hint'>아직 쓴 장이 없습니다. 왼쪽에서 주제를 적고 「쓰기 시작」.</div>") + "</div>";
 }
 function bindIndex() { $("main").querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id)); }
@@ -429,6 +439,7 @@ function viewHtml() {
   if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
   if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다.</div><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul></div>";
   if (k === "terms") return "<div class='page ch'>" + crumb("용어") + "<h2 class='first'>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div></div>";
+  if (k === "chats") return "<div class='page ch'>" + crumb("Claude 에게 물은 것") + "<h2 class='first'>Claude 에게 물은 것</h2>" + chatsViewHtml() + "</div>";
   if (k === "refs") return "<div class='page ch'>" + crumb("참고문헌") + "<h2 class='first'>참고문헌</h2>" + refsHtml() + "</div>";
   return "<div class='page ch'>" + overviewBody(false) + "</div>";
 }
@@ -437,7 +448,7 @@ function overviewBody(all) {
   const chars = ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((q, u) => q + u.t.length, 0), 0), 0);
   let h = "<h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
     "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) + (cur.stylus ? " · " + esc(cur.stylus) + " 로 씀" : "") +
-    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
+    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + "<button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
   if (!all) {
     h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
       "<li data-v='map' data-si='-1'><span class='no'>▦</span><span>마인드맵 — 장을 한 그림으로" + (cur.map ? "" : " <span class='q'>(아직 만들지 않음)</span>") + "</span></li>" +
@@ -448,7 +459,7 @@ function overviewBody(all) {
     return h;
   }
   let no = 0;
-  h += secs.map(x => "<h2 id='sec" + x.si + "'><span class='no'>" + (++no) + "</span>" + esc(x.sec.title) + "</h2>" + (x.sec.aim ? "<div class='aim'>" + esc(x.sec.aim) + "</div>" : "") + blocksHtml(x.sec, x.si)).join("");
+  h += secs.map(x => "<h2 id='sec" + x.si + "'><span class='no'>" + (++no) + "</span>" + esc(x.sec.title) + "</h2>" + (x.sec.aim ? "<div class='aim'>" + esc(x.sec.aim) + "</div>" : "") + blocksHtml(x.sec, x.si) + commentHtml(x.sec)).join("");
   if (summ) h += "<h2>핵심 정리</h2>" + summaryHtml(summ, ch.sections.indexOf(summ));
   if ((ch.gaps || []).length) h += "<h2>이 서재로는 답하지 못한 것</h2><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul>";
   if ((ch.terms || []).length) h += "<h2>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div>";
@@ -464,7 +475,7 @@ function sectionHtml(si) {
   const secs = bodySecs(), i = secs.findIndex(x => x.si === si); if (i < 0) return overviewBody(false);
   const sec = secs[i].sec, prev = secs[i - 1], next = secs[i + 1];
   return crumb((i + 1) + " / " + secs.length + " 절", "<span class='sp'>·</span><a href='#' data-v='map' data-si='" + si + "'>이 절을 그림으로</a>") +
-    "<h2 class='first'><span class='no'>" + (i + 1) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + secPapersHtml(sec) + blocksHtml(sec, si) +
+    "<h2 class='first'><span class='no'>" + (i + 1) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + secPapersHtml(sec) + blocksHtml(sec, si) + commentHtml(sec) +
     "<div class='pnav noprint'>" + (prev ? "<button class='act' data-v='sec' data-si='" + prev.si + "'>← " + i + ". " + esc(prev.sec.title) + "</button>" : "") +
     (next ? "<button class='act nx' data-v='sec' data-si='" + next.si + "'>" + (i + 2) + ". " + esc(next.sec.title) + " →</button>" : "<button class='act nx' data-v='summary' data-si='-1'>핵심 정리 →</button>") + "</div>";
 }
@@ -480,7 +491,32 @@ function gotoUnit(key) {   // 다른 보기(그림 등)에서 본문의 그 문�
   view = sec.kind === "summary" ? { kind: "summary", si: -1 } : { kind: "sec", si };
   renderMain(); selectUnit(key, true);
 }
+// Claude 의 생각(해설 층) — 절 끝에 사실 층과 갈라서. [번호] 는 참고문헌의 논문으로
+function citeLinks(t) { return esc(t).replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (m, s) => "[" + s.split(",").map(x => { const n = +x.trim(), i = cur.papers.findIndex(p => p.n === n); return i >= 0 ? "<a href='#' data-paper='" + i + "' title='이 논문이 언급된 문장'>" + n + "</a>" : esc(x.trim()); }).join(",") + "]"); }
+function commentHtml(sec) {
+  const c = sec.comment;
+  if (!c || !(c.parts || []).length) return cur.comment_pending ? "<aside class='cmt pending noprint'><div class='ch2'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude 의 생각을 쓰는 중…</div></aside>" : "";
+  return "<aside class='cmt'><div class='ch2'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude 의 생각<span class='hint'>— 서재의 문장으로 확인한 것이 아니라 Claude 의 풀이입니다</span></div>" +
+    c.parts.map(p => "<h4>" + esc(p.h) + "</h4><p>" + citeLinks(p.t) + "</p>").join("") + "</aside>";
+}
+function cmtBtnHtml() {
+  const n = bodySecs().filter(x => x.sec.comment && (x.sec.comment.parts || []).length).length;
+  if (cur.comment_pending) return "<span class='hint'>Claude 의 생각을 쓰는 중…</span>";
+  return "<button class='act' id='cmtBtn' title='절마다 Claude 의 풀이(큰 그림 · 바탕 원리 · 엇갈림의 까닭 · 근거의 강약 · 실무 요점)를 답니다 — 사실 층과 갈라 표시됩니다'>" + (n ? "Claude 의 생각 다시 쓰기 (" + n + "절)" : "Claude 의 생각 쓰기") + "</button>" +
+    (cur.comment_error ? "<span class='hint' style='color:var(--amber)'>" + esc(cur.comment_error) + "</span>" : "");
+}
+// Claude 에게 물은 것 — 장의 대화를 한눈에 (사용자 2026-10-08: '내가 질문한 게 어디 갔는지 찾을 수가 없다')
+function chatsViewHtml() {
+  const list = (cur.chats || []).slice().reverse();
+  if (!list.length) return "<div class='hint'>아직 Claude 에게 물은 것이 없습니다. 본문을 드래그하면 물을 수 있습니다.</div>";
+  return "<div class='aim'>이 장에서 Claude 에게 물은 대화 " + list.length + "개, 최근 것부터. 「대화 열기」 는 오른쪽 칸에서 이어 묻고, 「본문으로」 는 고른 대목으로 갑니다.</div>" + list.map(c => {
+    const q = (c.thread || []).find(m => m.role === "user"), a = (c.thread || []).filter(m => m.role === "claude").slice(-1)[0];
+    return "<div class='cv'><div class='cvq'>「" + esc(c.quote.slice(0, 160)) + (c.quote.length > 160 ? "…" : "") + "」<span class='hint'> · " + esc(c.sec || "") + " · " + fmtDate(c.t) + "</span></div>" +
+      "<div class='cvu'><b>물음</b>" + esc(q ? q.text : "") + "</div>" + (a ? "<div class='cva'><b>답</b>" + esc(a.text.slice(0, 700)) + (a.text.length > 700 ? " …" : "") + "</div>" : c.pending ? "<div class='hint'>Claude 생각 중</div>" : "") +
+      "<div class='noprint' style='margin-top:4px'><button class='act' onclick=\"openChat('" + esc(c.id) + "')\">대화 열기 · 이어 묻기</button>" + ((c.keys || []).length ? "<button class='act' onclick=\"gotoUnit('" + esc(c.keys[0]) + "')\">본문으로</button>" : "") + "</div></div>"; }).join("");
+}
 function bindChapter() {
+  const cb = $("cmtBtn"); if (cb) cb.onclick = async () => { const n = bodySecs().filter(x => x.sec.comment).length; if (n && !confirm("지금 있는 Claude 의 생각을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "comment", id: cur.id, force: !!n, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); };
   const m = $("main");
   m.querySelectorAll(".u").forEach(el => el.onclick = () => { const sl = document.getSelection(); if (sl && !sl.isCollapsed && String(sl).trim().length >= 2) return; selectUnit(el.dataset.u); });
   m.querySelectorAll("[data-v]").forEach(el => el.onclick = e => { e.preventDefault(); gotoView(el.dataset.v, +(el.dataset.si || -1)); });
@@ -800,6 +836,18 @@ $("go").onclick = async () => {
   $("topic").value = ""; await loadList(); openStudy(r.id);
 };
 $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) $("go").click(); });
+(function srcpResize() {   // 오른쪽 Claude 칸의 폭 — 가장자리를 끌어 바꾼다 (사용자 2026-10-08: 'Claude 창 글꼴이나 창 크기 조절')
+  const sp = $("srcsplit"); if (!sp) return;
+  const apply = w => document.documentElement.style.setProperty("--srcp-w", Math.round(w) + "px");
+  const saved = +lsGet("study_srcp_w", "0"); if (saved) apply(saved);
+  sp.addEventListener("pointerdown", e => {
+    e.preventDefault(); sp.classList.add("drag"); try { sp.setPointerCapture(e.pointerId); } catch (e2) {} let w = 0;
+    const move = ev => { w = Math.min(Math.max(window.innerWidth - ev.clientX, 260), Math.max(300, window.innerWidth - 500)); apply(w); };
+    const up = () => { sp.classList.remove("drag"); sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); if (w) lsSet("study_srcp_w", String(w)); };
+    sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up);
+  });
+  sp.ondblclick = () => { document.documentElement.style.removeProperty("--srcp-w"); lsSet("study_srcp_w", "0"); };
+})();
 (async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
   if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); } })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);

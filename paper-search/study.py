@@ -47,9 +47,9 @@ _SENT_CACHE = {}    # 파일 → ((정렬표 mtime, 번역 mtime), 문장들)
 _LIST_CACHE = {}    # 공부 파일 이름 → (mtime, 목록에 보일 것)
 _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text, ko}]
 
-VERSION = "공부 (2026-10-07)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 논지 층·번외·표·그림을 넣은 날. 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
+VERSION = "공부 (2026-10-08)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
-_STAGES = ["plan", "scan", "select", "read", "outline", "write", "join", "verify", "wrap"]
+_STAGES = ["plan", "scan", "select", "read", "outline", "write", "join", "verify", "wrap", "comment"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
 _HIT_CHARS = 16000      # 관련 논문: 맞은 대목만
 
@@ -1483,6 +1483,136 @@ def _join_all(st, model):
     _log(st, "절 사이의 잇는 문장 %d개를 손질했습니다 (경계 %d곳)" % (total_n, len(pairs)))
 
 
+# ---------- 7-1 Claude 의 생각 — 해설 층 (2026-10-08) ----------
+# 사용자: '탄탈럼 장을 쭉 읽었는데 도움이 안 되는 느낌' → 까닭은 사실만 있고 설명·판단이 없어서(이 기능의 약속이 교과서가 하는 일의 절반을 금지해 두었다).
+# 사실 층은 그대로 두고 절마다 Claude 의 풀이를 따로 단다: 큰 그림 · 바탕 원리(일반 지식) · 엇갈림의 까닭 · 근거의 강약 · 실무 요점. 화면은 마스코트 + 앰버로 '서재의 문장으로 확인한 것이 아니다' 하고 갈라 보인다.
+_CMT_HEADS = ["큰 그림", "바탕 원리", "엇갈림의 까닭", "근거의 강약", "실무 요점"]
+
+
+def _comment_prompt(st, k):
+    ch, P = st["chapter"], st.get("papers") or []
+    sec = ch["sections"][k]
+    num = lambda keys: sorted({P[int(x.split(":")[0])].get("n") for x in keys if P[int(x.split(":")[0])].get("n")})
+    cite = lambda u: (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else ""
+    body = "\n".join(line for b in sec.get("blocks") or [] for line in _block_text(st, b, cite))
+    pis = sorted({int(x.split(":")[0]) for b in sec.get("blocks") or [] for u in b.get("units") or [] for x in u.get("src") or []})
+    plist = "\n".join("[%d] %s — %s" % (P[i]["n"], P[i]["short"], str(P[i].get("about") or P[i]["title"])[:160]) for i in pis if P[i].get("n"))
+    toc = "\n".join("%s%d. %s" % ("▶ " if i == k else "  ", i + 1, s["title"]) for i, s in enumerate(ch["sections"]) if s.get("kind") != "summary")
+    return (
+        "아래는 연구자가 자기 서재의 논문만으로 쓴 전공 교과서 한 장의 한 절이다. 사실 문장은 모두 논문의 원문 문장에 묶여 있고 원문과 대조한 것이라, 이 절에는 설명·해석·판단이 없다. "
+        "연구자가 읽고 '사실만 있어 도움이 안 된다'고 했다.\n"
+        "당신은 이 분야(기계가공·재료)의 선배 연구자로서 이 절에 '생각'을 단다. 서재의 문장으로 확인된 것이 아니라 당신의 풀이라는 것을 읽는 이가 알고 읽으므로, 바탕 지식을 써도 된다.\n"
+        "JSON 으로만: {\"parts\": [{\"h\": \"큰 그림|바탕 원리|엇갈림의 까닭|근거의 강약|실무 요점 가운데 하나\", \"t\": \"한국어 한 문단\"}], \"ok\": true}\n"
+        "쓰는 법:\n"
+        "- 이 절에 실제로 할 말이 있는 갈래만 2~4개 고른다(없는 갈래는 억지로 쓰지 않는다). 갈래마다 한 문단, 결론부터, 짧은 문장. 모두 합쳐 이 절 본문의 1/3 을 넘기지 않는다.\n"
+        "- 큰 그림: 이 절의 사실들이 합쳐서 무엇을 말하는지, 이 분야에서 이 물음이 왜 중요한지. 절의 문장을 되풀이하지 않는다.\n"
+        "- 바탕 원리: 절의 현상을 이해하는 데 필요한 원리(재료·소성·절삭 역학)를 일반 지식으로 설명한다. 이 절의 논문이 말한 것이 아니면 '일반적으로' 처럼 서재 밖의 지식임이 드러나게 쓴다.\n"
+        "- 엇갈림의 까닭: 연구끼리 다르거나 조건이 좁은 곳을 짚고, 왜 그럴지 가설을 둘 이상 댄다(조건 차이·측정 방법·재료 상태·규모). 단정하지 않는다.\n"
+        "- 근거의 강약: 어느 주장이 한 논문·한 조건에만 기대는지, 어느 것은 여러 연구가 받치는지. 논문은 [번호]로.\n"
+        "- 실무 요점: 이 절을 읽은 연구자가 실험·가공을 설계할 때 바로 쓸 말 — 무엇을 고르고, 무엇을 재고, 무엇을 조심할지.\n"
+        "- 절이 말한 것과 다르게 보면 '절은 …라고 하지만' 하고 밝힌다. 수치는 절에 있는 것만 쓴다. '중요하다', '주목할 만하다', '흥미롭다' 같은 빈말과 인사말, 이 지시문의 낱말을 되풀이하는 말은 쓰지 않는다.\n\n"
+        "[장] %s — %s\n[절의 차례]\n%s\n\n[이 절] %d. %s\n%s\n\n[이 절이 인용한 논문]\n%s\n\n[이 서재로는 답하지 못한 것]\n%s") % (
+        ch.get("title") or "", ch.get("scope") or "", toc, k + 1, sec["title"], body, plist or "(없음)", "\n".join("- " + g for g in ch.get("gaps") or []) or "(없음)")
+
+
+def _comment_all(st, model, eff, force=False, sid=None):
+    """절마다 Claude 의 생각. sid 가 없으면(쓰는 흐름 안) st 에 바로 끼우고 저장, 있으면(요청으로 돌 때) 결과만 돌려 준다(부르는 쪽이 파일을 다시 읽어 끼운다 — 대화가 같이 바뀔 수 있다)"""
+    secs = (st.get("chapter") or {}).get("sections") or []
+    todo = [k for k, s in enumerate(secs) if s.get("kind") != "summary" and s.get("blocks") and (force or not s.get("comment"))]
+    if sid is None:
+        _stage(st, "comment", done=0, total=len(todo))
+    results = {}
+    if not todo:
+        return results
+
+    def one(k):
+        d = _ask_json(st, _comment_prompt(st, k), model, eff, 900, need="parts")
+        parts = []
+        for p in (d.get("parts") if d and isinstance(d.get("parts"), list) else [])[:5]:
+            if not isinstance(p, dict):
+                continue
+            h, t = str(p.get("h") or "").strip(), _clean(str(p.get("t") or "")).strip()
+            if h in _CMT_HEADS and 20 <= len(t) <= 1500 and h not in [x["h"] for x in parts]:
+                parts.append({"h": h, "t": t})
+        return parts
+    done = 0
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {ex.submit(one, k): k for k in todo}
+        for f in as_completed(futs):
+            k = futs[f]
+            try:
+                parts = f.result()
+            except _Stop:
+                continue
+            except Exception:
+                parts = []
+            done += 1
+            if parts:
+                results[k] = {"parts": parts, "t": time.time(), "model": model}
+            if sid is None:
+                with _LOCK:
+                    if parts:
+                        secs[k]["comment"] = results[k]
+                    st["prog"] = {"done": done, "total": len(todo)}
+                _save(st)
+    if sid is None:
+        with _LOCK:
+            st.setdefault("stats", {})["comments"] = sum(1 for s in secs if s.get("comment"))
+        _save(st)
+        _log(st, "절 %d개에 Claude 의 생각을 달았습니다" % len(results))
+    return results
+
+
+def comment_start(sid, body):
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만 달 수 있습니다"}
+        if st.get("comment_pending"):
+            return {"error": "이미 쓰는 중입니다"}
+        st["comment_pending"] = time.time()
+        st.pop("comment_error", None)
+        st["comment_opts"] = {"effort": effort, "force": bool(body.get("force"))}
+        _save(st)
+    threading.Thread(target=_comment_job, args=(sid,), name="study-comment", daemon=True).start()
+    return {"ok": True}
+
+
+def _comment_job(sid):
+    st = _load(sid)
+    if not st:
+        return
+    opts = st.get("comment_opts") or {}
+    model, eff = _CHAT_EFFORT.get(opts.get("effort"), _CHAT_EFFORT["xhigh"])
+    err = ""
+    try:
+        results = _comment_all(st, model, eff, force=bool(opts.get("force")), sid=sid)
+        if not results:
+            err = "Claude 가 생각을 주지 않았습니다" + _why()
+    except Exception as e:
+        results, err = {}, "Claude 호출 실패: " + str(e)[:200]
+    with _LOCK:
+        st2 = _load(sid)
+        if not st2:
+            return
+        secs = (st2.get("chapter") or {}).get("sections") or []
+        if opts.get("force") and results:
+            for s in secs:
+                s.pop("comment", None)
+        for k, c in results.items():
+            if k < len(secs):
+                secs[k]["comment"] = c
+        st2.setdefault("stats", {})["comments"] = sum(1 for s in secs if s.get("comment"))
+        st2.pop("comment_pending", None)
+        if err:
+            st2["comment_error"] = err
+        else:
+            st2.pop("comment_error", None)
+        st2["calls"], st2["tok"] = st.get("calls", st2.get("calls", 0)), st.get("tok", st2.get("tok"))
+        _save(st2)
+
+
 # ---------- 흐름 ----------
 def _run(st):
     model, eff = ms._SEL_EFFORT.get((st.get("opts") or {}).get("effort"), ms._SEL_EFFORT["xhigh"])
@@ -1579,6 +1709,10 @@ def _run(st):
             raise RuntimeError(err[0] + " — 「이어서」 로 남은 절부터 다시 대조합니다")
     _stage(st, "wrap")
     _wrap(st)
+    try:        # Claude 의 생각(해설 층) — 못 달아도 장은 완성이다
+        _comment_all(st, model, eff)
+    except Exception:
+        pass
 
 
 def _job(sid):
@@ -1703,6 +1837,8 @@ def to_md(st):
         out += ["## %d. %s" % (k, sec["title"]), ""]
         for b in sec["blocks"]:
             out += _block_text(st, b, cite) + [""]
+        if (sec.get("comment") or {}).get("parts"):
+            out += ["> **Claude 의 생각** — 서재의 문장으로 확인한 것이 아니라 Claude 의 풀이입니다."] + ["> **%s.** %s" % (p["h"], p["t"]) for p in sec["comment"]["parts"]] + [""]
     if ch.get("gaps"):
         out += ["## 이 서재로는 답하지 못한 것", ""] + ["- " + g for g in ch["gaps"]] + [""]
     if ch.get("terms"):
@@ -1726,8 +1862,8 @@ _CHAT_EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max")}
 _CHAT_RULE = (
     "답하는 법:\n"
     "- 답은 사람이 읽는 한국어 글이다. 두괄식으로: 첫 문장에 답, 그 다음에 까닭과 근거, 마지막에 연구자가 확인하거나 더 볼 것. 짧은 문장으로 한 번에 한 가지씩. 인사말·되묻는 말·잘된 점의 나열은 넣지 않는다.\n"
-    "- 근거는 [고른 대목의 근거 원문] 과 장의 글이 우선이다. 거기서 답할 수 있으면 그것으로 답하고, 논문은 장의 [번호] 로 가리킨다(예: Liu 등(2019)[2]). 원문 문장을 끌어 쓸 때는 그 문장의 번호(s12)도 적는다.\n"
-    "- 장과 근거에 없는 것을 당신의 지식으로 보태야 하면, 그 부분은 '서재 밖:' 으로 시작하는 문단에 따로 적어 갈라 둔다 — 연구자는 서재에서 확인한 것과 아닌 것을 구분해야 한다. 지어낸 수치·인용은 절대 쓰지 않는다.\n"
+    "- 근거는 [고른 대목의 근거 원문] 과 장의 글이 우선이고, 그 다음이 참고문헌의 요약과 읽을 때 뽑은 메모다(장에 실리지 않은 사실은 여기서 — 메모의 s번호로 원문 문장을 가리킬 수 있다). 거기서 답할 수 있으면 그것으로 답하고, 논문은 장의 [번호] 로 가리킨다(예: Liu 등(2019)[2]). 원문 문장을 끌어 쓸 때는 그 문장의 번호(s12)도 적는다.\n"
+    "- 장·근거·참고문헌의 요약과 메모에 없는 것을 당신의 지식으로 보태야 하면, 그 부분은 '서재 밖:' 으로 시작하는 문단에 따로 적어 갈라 둔다 — 연구자는 서재에서 확인한 것과 아닌 것을 구분해야 한다. 지어낸 수치·인용은 절대 쓰지 않는다.\n"
     "- 고른 대목이 근거를 넘어 말했거나 근거와 다르게 읽힌다고 보이면 그렇게 말한다(이 장은 Claude 가 쓴 것이라 틀릴 수 있다).\n"
     "- 내부 표시(메모 번호, 규칙 이름)는 쓰지 않는다. 마크다운 제목·굵게 표시 없이 문단으로 쓴다(필요하면 번호 목록).\n")
 
@@ -1748,6 +1884,8 @@ def _chapter_text(st):
             out.append("## %d. %s" % (k, sec["title"]))
         for b in sec.get("blocks") or []:
             out += _block_text(st, b, cite)
+        if (sec.get("comment") or {}).get("parts"):
+            out += ["> Claude 의 생각 (서재의 문장으로 확인한 것이 아니라 Claude 의 풀이다): " + " / ".join("[%s] %s" % (p["h"], p["t"]) for p in sec["comment"]["parts"])]
         out.append("")
     if ch.get("gaps"):
         out += ["## 이 서재로는 답하지 못한 것"] + ["- " + g for g in ch["gaps"]] + [""]
@@ -1756,9 +1894,42 @@ def _chapter_text(st):
     return "\n".join(out)
 
 
+def _chat_papers(st, cap_notes=60):
+    """참고문헌마다 요약 파일과 읽을 때 뽑은 메모 — 묻는 Claude 가 장뿐 아니라 그 논문들을 알고 답하게(사용자 2026-10-08: 'Claude 는 참고자료를 다 알고 있어야지, 보고서만 아는 것 같다').
+    시스템 프롬프트에 붙여 캐시에 올린다(요약 파일·메모는 바뀌지 않는다). 장 하나에 요약 16편 ≈ 7만 자 + 메모 300개 ≈ 3만 자."""
+    P = st.get("papers") or []
+    cited = sorted((p for p in P if p.get("n")), key=lambda p: p["n"])
+    # 배경(장 + 이 블록)이 Claude 의 창을 넘지 않게: 장 본문 길이를 뺀 나머지를 논문 수로 나눠 편마다 상한. 시험(탄탈럼 16편, 편당 6천 자): 첫 물음 18만 토큰(글자 수 ≈ 토큰 수)이라 전체를 14만 자로 묶는다
+    body = sum(len(u["t"]) for s in (st.get("chapter") or {}).get("sections") or [] for b in s.get("blocks") or [] for u in b.get("units") or [])
+    cap_total = max(40000, 140000 - body)
+    cap_each = max(1500, min(6000, cap_total // max(1, len(cited))))
+    out = ["# 참고문헌의 요약과 읽을 때 뽑은 메모 (장의 [번호] 순) — 요약은 그 논문의 요약 파일(길면 앞부분만), 메모는 장을 쓰기 전에 그 논문을 읽고 뽑은 사실(s번호 = 그 논문 원문의 문장 번호, '전한 말' = 그 논문이 남의 연구를 전한 문장)"]
+    total = 0
+    for p in cited:
+        summ = ""
+        try:
+            with io.open(os.path.join(cfg["GEN_DIR"], os.path.splitext(p["file"])[0] + ".요약.md"), encoding="utf-8") as f:
+                summ = _clean(f.read()).strip()
+        except Exception:
+            summ = ""
+        notes = "\n".join("- (s%s)%s %s" % (",".join(str(x) for x in n.get("s") or []), "" if n.get("own", True) else " [전한 말]", n["pt"]) for n in (p.get("notes") or [])[:cap_notes])
+        if len(notes) > cap_each // 2:
+            notes = notes[:cap_each // 2] + "\n- …(메모 뒷부분 생략)"
+        room = max(600, cap_each - len(notes))
+        if len(summ) > room:
+            summ = summ[:room] + " …(요약 뒷부분 생략)"
+        block = "## [%d] %s (%s %s) — %s\n%s\n### 읽을 때 뽑은 메모\n%s" % (p["n"], p["short"], p.get("journal") or "", p.get("year") or "", p.get("title") or "", summ or "(요약 파일 없음)", notes or "(없음)")
+        if total + len(block) > cap_total:
+            out.append("## … 나머지 논문의 요약은 길이 때문에 생략")
+            break
+        out.append(block)
+        total += len(block)
+    return "\n\n".join(out)
+
+
 def _chat_system(st):
     return ("아래는 연구자가 자기 서재(영어 논문들)의 논문만으로 쓴 전공 교과서의 한 장이다. 사실 문장은 모두 논문의 원문 문장에 묶여 있고 원문과 대조한 것이다. "
-            "연구자가 이 장의 한 대목을 골라 묻는다. [번호] 는 장 끝 참고문헌의 번호다.\n\n" + _chapter_text(st))
+            "연구자가 이 장의 한 대목을 골라 묻는다. [번호] 는 장 끝 참고문헌의 번호다. 장 뒤에는 참고문헌마다의 요약과 읽을 때 뽑은 메모가 있다 — 장에 실리지 않은 사실도 거기서 찾아 답한다.\n\n" + _chapter_text(st) + "\n\n" + _chat_papers(st))
 
 
 def _unit_at(st, key):
@@ -2084,6 +2255,8 @@ def handle_post(h, body):
             return h._send(200, chat_ask(sid, body))
         if op == "map":
             return h._send(200, map_start(sid, body))
+        if op == "comment":
+            return h._send(200, comment_start(sid, body))
         if op == "chat_delete":
             return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
         if op == "md":

@@ -61,9 +61,11 @@
   .ghead b { font-size: 13px; font-weight: 600; color: var(--text); }
   .ghead span { font-size: 12px; color: var(--text-2); margin-left: var(--s2); }
   /* Claude 대화 패널 (오른쪽 고정, 좁은 화면에서는 아래) */
-  body.chat #main { margin-right: 380px; }
-  #chat { display: none; position: fixed; right: 0; top: 44px; bottom: 0; width: 380px; background: var(--panel); border-left: 1px solid var(--line-2); flex-direction: column; z-index: 4; }
+  body.chat #main { margin-right: var(--chat-w, 380px); }
+  #chat { display: none; position: fixed; right: 0; top: 44px; bottom: 0; width: var(--chat-w, 380px); background: var(--panel); border-left: 1px solid var(--line-2); flex-direction: column; z-index: 4; }
   body.chat #chat { display: flex; }
+  #chatsplit { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; }   /* 끌어서 대화 창의 폭을 바꾼다 (사용자 2026-10-08) */
+  #chatsplit:hover, #chatsplit.drag { background: var(--accent); }
   #chat .ch { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
   #chat .ch b { color: var(--text); }
   #chatToggle, .hbtn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--text); text-decoration: none; font-size: 12.5px; line-height: 1.3; }
@@ -95,7 +97,7 @@
   .row .n { font-size: 11px; color: var(--text-3); margin-right: 6px; font-variant-numeric: tabular-nums; }
   @media (max-width: 900px) {
     body.chat #main { margin-right: 0; margin-bottom: 46vh; }
-    #chat { top: auto; left: 0; width: auto; height: 46vh; border-left: 0; border-top: 1px solid var(--line-2); }
+    #chat { top: auto; left: 0; width: auto; height: 46vh; border-left: 0; border-top: 1px solid var(--line-2); } #chatsplit { display: none; }
   }
   /* 저널별 편수 줄 — 누르면 그 저널만 */
   .jbar { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; font-size: 12.5px; margin: 4px 0 10px; }
@@ -141,6 +143,7 @@
 </header>
 <div id="hist" hidden></div>
 <div id="chat">
+  <div id="chatsplit" title="끌어서 대화 창의 폭을 바꿉니다 · 두 번 누르면 기본 폭"></div>
   <div class="ch"><b>Claude와 이야기</b><span id="chatctx">결과를 먼저 검색하세요</span><span style="margin-left:auto"></span><a href="#" id="chatFm" style="font-size:11px" title="글씨 작게">A−</a><a href="#" id="chatFp" style="font-size:11px" title="글씨 크게">A+</a><a href="#" id="chatClear" style="font-size:11px">대화 지우기</a><a href="#" id="chatClose" style="font-size:11px;margin-left:8px">닫기</a></div>
   <div id="chips"></div>
   <div id="chatlog"><div class="hint" style="padding:18px 6px">화면의 논문 목록을 Claude 가 함께 봅니다. 답에 나오는 [번호] 를 누르면 그 논문으로 이동합니다.<br>질문 예: 이 중 꼭 읽어야 할 다섯 편은? · 내가 아직 없는 핵심 논문은? · 이 주제의 연구 공백은? · 검색어를 더 제안해 줘</div></div>
@@ -575,6 +578,16 @@ async function chatSend() {
     });
   }
   tg.onclick = e => { e.preventDefault(); box.hidden = !box.hidden; if (!box.hidden) load(); };
+})();
+(function chatResize() {   // 대화 창의 폭 — 왼쪽 가장자리를 끌어 바꾼다 (사용자 2026-10-08)
+  const sp = document.getElementById("chatsplit"); if (!sp) return;
+  const apply = w => document.documentElement.style.setProperty("--chat-w", Math.round(w) + "px");
+  const saved = +(localStorage.getItem("explore_chat_w") || 0); if (saved) apply(saved);
+  sp.addEventListener("pointerdown", e => { e.preventDefault(); sp.classList.add("drag"); try { sp.setPointerCapture(e.pointerId); } catch (e2) {} let w = 0;
+    const move = ev => { w = Math.min(Math.max(window.innerWidth - ev.clientX, 300), Math.max(320, window.innerWidth - 420)); apply(w); };
+    const up = () => { sp.classList.remove("drag"); sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); if (w) { try { localStorage.setItem("explore_chat_w", String(w)); } catch (e3) {} } };
+    sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up); });
+  sp.ondblclick = () => { document.documentElement.style.removeProperty("--chat-w"); try { localStorage.removeItem("explore_chat_w"); } catch (e) {} };
 })();
 (function chatFont() {   // 대화 글씨 크기 (사용자 2026-10-07)
   const apply = () => { const v = +(localStorage.getItem("ui_chat_font") || 13) || 13; document.getElementById("chatlog").style.fontSize = v + "px"; document.getElementById("chatq").style.fontSize = v + "px"; };
