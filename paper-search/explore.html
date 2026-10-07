@@ -270,7 +270,7 @@ function renderSmart(r) {
   const plan = document.createElement("div"); plan.className = "plan";
   plan.innerHTML = "<b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + escH(r.intent) +
     "<div class='qs'><b>검색 " + r.queries.length + "번:</b> " +
-    r.queries.map(x => "<span title='" + escH(x.expr || x.q) + "'>" + escH(x.q) + "<span class='qn'>" + (x.total === "실패" ? "실패" : x.total + "편") + (x.new ? " · 새로 " + x.new : "") + (x.scopus ? " · Scopus " + (x.scopus.total === "실패" ? "실패" : x.scopus.got + "편") + (x.scopus.new ? " +" + x.scopus.new : "") : "") + "</span></span>").join("") + "</div>";
+    r.queries.map(x => "<span title='" + escH(x.expr || x.q) + "'>" + escH(x.q) + "<span class='qn'>" + (x.total === "실패" ? "실패" : x.total + "편") + (x.new ? " · 새로 " + x.new : "") + (x.scopus ? " · Scopus " + (x.scopus.total === "실패" ? "실패" : x.scopus.got + "편") + (x.scopus.new ? " +" + x.scopus.new : "") : "") + (x.top ? " · ★ " + (x.top.total === "실패" ? "실패" : x.top.got + "편") + (x.top.new ? " +" + x.top.new : "") : "") + (x.recent ? " · 최신 " + x.recent.got + "편" + (x.recent.new ? " +" + x.recent.new : "") : "") + (x.lib ? " · 이미 결과에 있던 보유 " + x.lib.seen + "편" : "") + "</span></span>").join("") + "</div>";
   if (r.plan && r.plan.concepts) {   // 검색 계획: 개념마다 필수/선택 · 검색어를 고쳐 다시 검색
     const box = document.createElement("div");
     box.innerHTML = "<div class='hint' style='margin-top:6px'>검색 계획 — 필수는 모두 들어가야 하고, 선택은 보기 중 하나면 됩니다. 검색어(쉼표로 구분)를 고쳐 다시 검색할 수 있습니다.</div>";

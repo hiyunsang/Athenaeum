@@ -625,7 +625,86 @@ def openalex_search(query, year="", per_page=30):
     return out, d.get("meta", {}).get("count", 0)
 
 
-def openalex_boolean(expr, year="", per_page=100, sources=None):
+def _boolean_node(it):
+    """OpenAlex 검색 결과 하나 → 탐색 결과 노드(인용 관계·초록·관련도 포함)"""
+    import mapper
+    n = mapper._node(it, set(), 0, None)
+    n.pop("_refs", None)
+    n["_refs"] = [mapper.wid(x) for x in (it.get("referenced_works") or [])]   # 결과 맵의 인용 관계용 (결과에 실을 때 뺀다)
+    inv = it.get("abstract_inverted_index") or {}
+    ws = sorted((p, w) for w, ps in inv.items() for p in ps)
+    n["abstract"] = " ".join(w for _, w in ws)[:2500]
+    n["rel"] = it.get("relevance_score") or 0
+    return n
+
+
+def _abbr_full(abbr):
+    """파일 이름의 저널 약어 → 정식 이름(수집설정의 저널약어·기본 우선 저널에서). 모르면 약어 그대로"""
+    a = str(abbr or "").upper()
+    try:
+        for k, v in (load_json(os.path.join(BASE, "수집설정.json"), {}).get("저널약어") or {}).items():
+            if str(v).upper() == a:
+                return k
+    except Exception:
+        pass
+    for name in _PREF_DEFAULT:    # 기본 우선 저널은 수집과 같은 이니셜 규칙으로 (CIRP Annals → CIRPA, Precision Engineering → PE)
+        try:
+            if intake.auto_abbrev(name).upper() == a:
+                return name
+        except Exception:
+            pass
+    return abbr
+
+
+def library_scan(plan, merged, limit=30):   # 20 으로 두니 Axinte 2022 리뷰가 22번째라 빠졌다(2026-10-07) — 조회는 결과에 없는 것만 하므로 요청 수는 limit 보다 적다
+    """내 서재를 검색 계획의 개념으로 훑어(공부의 훑기와 같은 것 — 번역한 논문의 문장 전체) 그 주제를 말하는 보유 논문을 결과에 더한다.
+    학술 DB 검색만으로는 초록이 없는 논문(Elsevier 는 OpenAlex 에 초록이 없다)이나 제목에 검색어가 없는 논문을 못 찾는다 — 사용자 2026-10-07:
+    '나노 메트릭·마이크로 메트릭 커팅을 검색했는데 이 분야 핵심인 Axinte 의 리뷰(What micro-mechanical testing can reveal…)와 측방향 칩 흐름 논문을 못 찾아온다'
+    (둘 다 서재에 있었다). 결과에 이미 있는 보유 논문은 그대로, 없는 것은 OpenAlex 에서 제목으로 찾아 인용 관계를 붙이고(한 편에 요청 하나), 거기도 없으면 서재 정보만으로(lib:파일).
+    → (훑은 논문 수, 더한 논문 수, 이미 결과에 있던 보유 논문 수)"""
+    import mapper, study
+    concepts = [{"en": c.get("terms") or [], "ko": [], "must": bool(c.get("required"))} for c in plan["concepts"]]
+    cands, nfiles, _nsent, _odd = study._scan(concepts)
+    with _lock:
+        tags = load_json(TAGS_PATH, {})
+    have = {mapper.norm_title(n.get("title")) for n in merged.values()}
+    tops = pref_file_abbrs()
+    added = seen = 0
+    for c in cands[:limit]:
+        f = c["file"]
+        pn = parse_name(f)
+        title = (tags.get(f) or {}).get("title") or pn["title"]
+        nt = mapper.norm_title(title)
+        if nt in have:
+            seen += 1
+            continue
+        node = None
+        try:
+            node = _boolean_node(mapper.find_seed(title))
+        except Exception:
+            node = None
+        if node is not None and node["id"] in merged:
+            seen += 1
+            merged[node["id"]]["owned"] = f
+            continue
+        if node is None:
+            try:
+                abstract = (extract_abstract_from_pdf(f) or "")[:2500]
+            except Exception:
+                abstract = ""
+            node = {"id": "lib:" + re.sub(r"[^A-Za-z0-9]", "", f)[:60], "doi": "", "title": title, "year": int(pn["year"]) if str(pn.get("year") or "").isdigit() else 0,
+                    "author": pn.get("author") or "", "venue": _abbr_full(pn.get("journal")), "cit": 0, "kw": [], "review": mapper.is_review_title(title),
+                    "abstract": abstract, "_refs": []}
+        node.update(owned=f, tier=0, rel=10 ** 6, lib=True)
+        if str(pn.get("journal") or "").upper() in tops:
+            node["top"] = True
+        merged[node["id"]] = node
+        have.add(nt)
+        added += 1
+    return nfiles, added, seen
+
+
+def openalex_boolean(expr, year="", per_page=100, sources=None, sort=None):
     """제목+초록 불리언 검색식(AND/OR/NOT/따옴표/괄호 — OpenAlex 가 지원, 와일드카드는 안 됨)으로 검색. (노드 목록, 전체 건수). sources = 저널(source id)로 좁히기"""
     import mapper
     filters = ["title_and_abstract.search:" + expr.replace(",", " ")]   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다
@@ -633,18 +712,11 @@ def openalex_boolean(expr, year="", per_page=100, sources=None):
         filters.append("publication_year:>" + str(int(year) - 1))
     if sources:
         filters.append("primary_location.source.id:" + "|".join(sources))
-    d = mapper._get(mapper.API + "/works", {"filter": ",".join(filters), "per-page": str(per_page),
-                                            "select": mapper.SELECT + ",abstract_inverted_index,relevance_score"})
-    out = []
-    for it in d.get("results", []):
-        n = mapper._node(it, set(), 0, None)
-        n.pop("_refs", None)
-        n["_refs"] = [mapper.wid(x) for x in (it.get("referenced_works") or [])]   # 결과 맵의 인용 관계용 (결과에 실을 때 뺀다)
-        inv = it.get("abstract_inverted_index") or {}
-        ws = sorted((p, w) for w, ps in inv.items() for p in ps)
-        n["abstract"] = " ".join(w for _, w in ws)[:2500]
-        n["rel"] = it.get("relevance_score") or 0
-        out.append(n)
+    params = {"filter": ",".join(filters), "per-page": str(per_page), "select": mapper.SELECT + ",abstract_inverted_index,relevance_score"}
+    if sort:
+        params["sort"] = sort
+    d = mapper._get(mapper.API + "/works", params)
+    out = [_boolean_node(it) for it in d.get("results", [])]
     return out, d.get("meta", {}).get("count", 0)
 
 
@@ -1062,11 +1134,29 @@ def _run_smart(q, year, key, plan=None):
                 qrec["top"] = {"total": ptotal, "got": len(pres), "new": pnew}
             except Exception as e:
                 qrec["top"] = {"total": "실패", "got": 0, "new": 0}
+            if i == (1 if opt else 0):   # 필수만 단계에서는 우선 저널의 최신 논문도 — 관련도 순은 피인용 많은 옛 논문이 앞서 150편 중 2024년 이후가 8편뿐이었다(2026-10-07)
+                try:
+                    rres, _rt = openalex_boolean(expr, year, per_page=60, sources=pref_ids, sort="publication_date:desc")
+                    rnew = 0
+                    for n in rres:
+                        n["top"] = True
+                        if n["id"] not in merged:
+                            n["tier"] = i; n["recent"] = True
+                            merged[n["id"]] = n; rnew += 1
+                    qrec["recent"] = {"got": len(rres), "new": rnew}
+                except Exception:
+                    qrec["recent"] = {"got": 0, "new": 0}
         if expr and _elsevier_key():   # Scopus 도 나란히 (키가 있을 때): OpenAlex 가 놓친 논문 보완, 초록·키워드 동봉
             sres, stotal, serr = scopus_search(build_scopus(concepts, plan["exclude"]), year, pages=2 if per_page >= 100 else 1)
             qrec["scopus"] = {"total": stotal if not serr else "실패", "got": len(sres), "new": merge_scopus_into(merged, sres, i) if sres else 0}
         queries.append(qrec)
         stage("2/3 검색 중 ({}/{})".format(i + 1, len(ladder)))
+    stage("2/3 내 서재 훑는 중")
+    try:
+        nfiles, nadd, nseen = library_scan(plan, merged)
+        queries.append({"q": "내 서재", "expr": "서재 논문의 본문을 검색 계획의 개념으로 훑어, 주제를 말하는 보유 논문을 결과에 더한다", "total": nfiles, "new": nadd, "lib": {"seen": nseen}})
+    except Exception as e:
+        queries.append({"q": "내 서재", "expr": str(e)[:200], "total": "실패", "new": 0})
     if not merged and last_err:
         raise RuntimeError(last_err)   # OpenAlex 한도 소진 등 — 빈 결과 대신 이유를 보여 준다
     with _lock:
@@ -1078,13 +1168,15 @@ def _run_smart(q, year, key, plan=None):
         if not n.get("top") and is_pref_venue(n.get("venue"), pref_norm):
             n["top"] = True
     items.sort(key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))   # 엄격한 검색에서 나온 것 → 우선 저널 → 관련도 → 피인용
-    tops = [n for n in items if n.get("top")][:100]            # 우선 저널이 전부를 메우지는 않게 — 150 가운데 많아야 100
+    tops_all = [n for n in items if n.get("top")]
+    recent = [n for n in tops_all if n.get("recent")][:20]     # 최신순 질의로 들어온 것은 관련도 점수가 없어 뒤로 밀린다 — 20편 자리를 남긴다
+    tops = [n for n in tops_all if not n.get("recent")][:100 - len(recent)] + recent   # 우선 저널이 전부를 메우지는 않게 — 150 가운데 많아야 100
     rest = [n for n in items if not n.get("top")][:150 - len(tops)]
     items = sorted(tops + rest, key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))
     fill_abstracts_scopus(items, stage)   # OpenAlex 에 초록이 없는 후보(Elsevier 등)는 Scopus 로 보강 — Claude 선별 정확도와 정보 패널용
 
     stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
-    listing = "\n".join("[{}] ({}{}) {} :: {}".format(i, n["year"], ", 리뷰" if n.get("review") else "", n["title"][:120], (n["abstract"] or "")[:220])
+    listing = "\n".join("[{}] ({}{}{}) {} :: {}".format(i, n["year"], ", 리뷰" if n.get("review") else "", ", 보유" if n.get("owned") else "", n["title"][:120], (n["abstract"] or "")[:220])
                         for i, n in enumerate(items))
     concept_txt = "\n".join("- {} ({}): {}".format(c["name"], "필수" if c["required"] else "선택", ", ".join(c["terms"])) for c in plan["concepts"])
     verdict = ask_claude_json(
@@ -1094,6 +1186,7 @@ def _run_smart(q, year, key, plan=None):
         "[제외] " + (", ".join(plan["exclude"]) or "없음") + "\n"
         "규칙:\n- '필수' 개념을 하나라도 실제로 다루지 않는 논문(제목·초록으로 판단), 의도와 무관한 논문, 제외 맥락의 논문은 excluded 에 번호로.\n"
         "- 판단 원칙: 필수 개념을 제목·초록에서 실제로 다루면 포함한다. 확실히 무관하거나 제외 맥락일 때만 excluded. 애매하면 포함하고 소주제 이름에 그 차이를 드러내라 (사용자가 목록에서 거를 수 있다).\n"
+        "- '보유' 는 사용자 서재의 논문으로, 본문을 훑어 이 주제를 말한다고 확인된 것이다 — 초록이 없거나 짧아도 excluded 에 넣지 않는다.\n"
         "- 관련 논문은 3~7개 소주제로 묶고, 소주제마다 한국어 이름과 한 줄 설명. 각 소주제 안에서는 중요도 순.\n"
         "- hits: 논문 번호마다 그 논문이 해당하는 '선택' 개념의 검색어(영어, 짧게, 예: LPBF, DSS)를 적어라. 선택 개념이 없으면 빈 객체.\n"
         "- JSON 한 줄만: {\"groups\": [{\"name\": \"...\", \"why\": \"...\", \"items\": [번호...]}], \"excluded\": [번호...], \"hits\": {\"번호\": [\"...\"]}}\n\n"
