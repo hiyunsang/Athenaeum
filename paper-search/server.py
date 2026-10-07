@@ -701,13 +701,161 @@ def library_scan(plan, merged, limit=30):   # 20 으로 두니 Axinte 2022 리�
         merged[node["id"]] = node
         have.add(nt)
         added += 1
-    return nfiles, added, seen
+    return nfiles, added, seen, [c["file"] for c in cands[:limit]]
 
 
-def openalex_boolean(expr, year="", per_page=100, sources=None, sort=None):
+# ---------- 서재 인용 이웃 색인 (2026-10-07) ----------
+# 사용자: '이 분야 핵심인 Axinte 의 리뷰를 못 찾아온다' → 그 리뷰는 제목·초록에 분야의 검색어가 없어(micro-mechanical testing 으로 자기를 소개) 낱말 검색으로는 못 잡는데,
+# 서재의 논문 넷과 인용으로 이어져 있었다. 서재 논문마다 OpenAlex 의 참고문헌·피인용 id 를 한 번 받아 두고(한 편에 요청 2~3번, 새 논문만), 탐색은 주제가 맞는 보유 논문과
+# 두 편 이상 이어진 밖의 논문을 후보에 더한다. /api/libnet 은 색인 상태와 '서재가 가장 많이 인용하는데 없는 논문'.
+LIBNET_PATH = os.path.join(MAPS_DIR, "서재인용.json")
+_libnet = {"building": False, "done": 0, "total": 0, "err": ""}
+
+
+def libnet_load():
+    with _lock:
+        return load_json(LIBNET_PATH, None) or {"papers": {}}
+
+
+def libnet_citers(wid, cap=400):
+    import mapper
+    out = []
+    for page in (1, 2):
+        d = mapper._get(mapper.API + "/works", {"filter": "cites:" + wid, "per-page": "200", "page": str(page), "select": "id"})
+        res = d.get("results") or []
+        out += [mapper.wid(x["id"]) for x in res]
+        if len(res) < 200 or len(out) >= cap:
+            break
+    return out[:cap]
+
+
+def libnet_build():
+    """서재의 새 논문마다 OpenAlex 에서 제목으로 찾아 참고문헌·피인용 id 를 적어 둔다. 배경 스레드(서버 시작·새 논문 수집 뒤). 못 찾은 논문도 적어 다시 묻지 않는다(id 빈 채, 30일 뒤 다시)."""
+    if _libnet["building"]:
+        return
+    _libnet["building"] = True
+    _libnet["err"] = ""
+    try:
+        import mapper
+        net = libnet_load()
+        papers = net.setdefault("papers", {})
+        with _lock:
+            tags = load_json(TAGS_PATH, {})
+        try:
+            files = sorted(f for f in os.listdir(ARCHIVE) if f.lower().endswith(".pdf"))
+        except OSError:
+            files = []
+        todo = [f for f in files if f not in papers or (not papers[f].get("id") and time.time() - papers[f].get("t", 0) > 30 * 86400)]
+        _libnet["total"] = len(files)
+        _libnet["done"] = len(files) - len(todo)
+        for k, f in enumerate(todo):
+            title = (tags.get(f) or {}).get("title") or parse_name(f)["title"]
+            rec = {"id": "", "refs": [], "citers": [], "t": time.time()}
+            try:
+                it = mapper.find_seed(title)
+                rec["id"] = mapper.wid(it["id"])
+                rec["refs"] = [mapper.wid(x) for x in (it.get("referenced_works") or [])]
+                rec["citers"] = libnet_citers(rec["id"])
+            except mapper.RateLimited as e:
+                _libnet["err"] = str(e)[:200]
+                break
+            except Exception:
+                pass
+            papers[f] = rec
+            _libnet["done"] += 1
+            if k % 10 == 9:
+                net["t"] = time.time()
+                with _lock:
+                    save_json(LIBNET_PATH, net)
+        net["t"] = time.time()
+        with _lock:
+            save_json(LIBNET_PATH, net)
+    except Exception as e:
+        _libnet["err"] = str(e)[:200]
+    finally:
+        _libnet["building"] = False
+
+
+def libnet_neighbors(seed_files, min_links=2, limit=40):
+    """시드(보유 논문 파일들)와 인용으로 이어진 서재 밖의 논문 → [(OpenAlex id, 이어진 시드 수)] 많이 이어진 순"""
+    net = libnet_load()
+    papers = net.get("papers") or {}
+    owned_ids = {r["id"] for r in papers.values() if r.get("id")}
+    cnt = {}
+    for f in seed_files:
+        r = papers.get(f)
+        if not r or not r.get("id"):
+            continue
+        for x in set(r.get("refs") or []) | set(r.get("citers") or []):
+            if x and x not in owned_ids:
+                cnt[x] = cnt.get(x, 0) + 1
+    return sorted(((x, c) for x, c in cnt.items() if c >= min_links), key=lambda t: (-t[1], t[0]))[:limit], len(papers)
+
+
+def fetch_nodes(ids):
+    """OpenAlex id 들 → 탐색 결과 노드(50편씩 한 요청)"""
+    import mapper
+    out = {}
+    ids = [i for i in ids if i]
+    for k in range(0, len(ids), 50):
+        chunk = ids[k:k + 50]
+        try:
+            d = mapper._get(mapper.API + "/works", {"filter": "openalex:" + "|".join(chunk), "per-page": "50", "select": mapper.SELECT + ",abstract_inverted_index"})
+            for it in d.get("results") or []:
+                n = _boolean_node(it)
+                out[n["id"]] = n
+        except Exception:
+            pass
+    return out
+
+
+def lab_counts(groups, limit=20):
+    """선별된 논문의 연구 그룹(교신·마지막 저자 + 기관)별 편수 → [{key, pi, pi_id, inst, n, y0, y1, top, recent}] 편수 순. 논문마다 lab 키를 붙인다"""
+    cnt = {}
+    for g in groups:
+        for it in g["items"]:
+            key = it.get("pi_id") or (("n:" + it["pi"]) if it.get("pi") else "")
+            it["lab"] = key
+            if not key:
+                continue
+            c = cnt.setdefault(key, {"key": key, "pi": it.get("pi") or "", "pi_id": it.get("pi_id") or "", "inst": "", "n": 0, "y0": 9999, "y1": 0, "top": 0, "recent": 0})
+            c["n"] += 1
+            if it.get("inst") and not c["inst"]:
+                c["inst"] = it["inst"]
+            y = int(it.get("year") or 0)
+            if y:
+                c["y0"] = min(c["y0"], y); c["y1"] = max(c["y1"], y)
+            c["top"] += 1 if it.get("top") else 0
+            c["recent"] += 1 if y >= 2023 else 0
+    rows = sorted(cnt.values(), key=lambda r: (-r["n"], -r["recent"], r["pi"]))
+    return [dict(r, y0=(r["y0"] if r["y0"] < 9999 else 0)) for r in rows if r["n"] >= 2][:limit]
+
+
+def lab_recent(author_id, limit=15):
+    """그 저자(교신·마지막 저자 id)의 최신 논문 — '이 연구실이 요즘 무엇을 하나'"""
+    import mapper
+    d = mapper._get(mapper.API + "/works", {"filter": "authorships.author.id:" + author_id, "per-page": str(limit), "sort": "publication_date:desc", "select": mapper.SELECT})
+    with _lock:
+        tags = load_json(TAGS_PATH, {})
+    owned_idx = archive_title_index(tags)
+    pref_norm = [_jnorm(x) for x in preferred_journals()]
+    out = []
+    for it in d.get("results") or []:
+        n = _boolean_node(it)
+        n.pop("_refs", None)
+        n["owned"] = owned_idx.get(mapper.norm_title(n["title"])) or ""
+        n["top"] = is_pref_venue(n.get("venue"), pref_norm)
+        n["abbr"] = journal_abbr(n.get("venue"))
+        out.append(n)
+    return out
+
+
+def openalex_boolean(expr, year="", per_page=100, sources=None, sort=None, author=None):
     """제목+초록 불리언 검색식(AND/OR/NOT/따옴표/괄호 — OpenAlex 가 지원, 와일드카드는 안 됨)으로 검색. (노드 목록, 전체 건수). sources = 저널(source id)로 좁히기"""
     import mapper
-    filters = ["title_and_abstract.search:" + expr.replace(",", " ")]   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다
+    filters = ["title_and_abstract.search:" + expr.replace(",", " ")] if expr else []   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다
+    if author:
+        filters.append("raw_author_name.search:" + re.sub(r"[,|:]", " ", str(author)))
     if str(year).isdigit():
         filters.append("publication_year:>" + str(int(year) - 1))
     if sources:
@@ -919,7 +1067,7 @@ def results_map(groups, with_cocitation=True):
             if key not in have:
                 have.add(key); edges.append([key[0], key[1], 0, s_])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
-              "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")), "top": bool(it.get("top")),
+              "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")), "top": bool(it.get("top")), "lab": it.get("lab", ""),
               "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:2500], "kw": (it.get("kw") or [])[:6]} for gi, it in sel]   # 초록·키워드는 맵의 정보 패널용
     return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups],
             "cocitation": cocit_ok, "citers": len({k for k in citers_of if citers_of[k]})}
@@ -1058,7 +1206,8 @@ def _clean_plan(plan, q):
     if not any(c["required"] for c in cs):
         cs[0]["required"] = True
     ex = [str(t).strip()[:40] for t in ((plan or {}).get("exclude") or []) if str(t).strip()][:6]
-    return {"intent": str((plan or {}).get("intent") or q)[:200], "concepts": cs, "exclude": ex}
+    au = [str(t).strip()[:60] for t in ((plan or {}).get("authors") or []) if isinstance((plan or {}).get("authors"), list) and str(t).strip() and re.search(r"[A-Za-z]", str(t))][:4]
+    return {"intent": str((plan or {}).get("intent") or q)[:200], "concepts": cs, "exclude": ex, "authors": au}
 
 
 def plan_search(q):
@@ -1071,7 +1220,8 @@ def plan_search(q):
         "- 사용자가 꼭 있어야 한다고 한 것(\"~인데\", \"~한 거\", \"반드시\")은 required=true. \"~든\", \"예를 들면\", \"같은\" 처럼 보기로 든 것들은 하나의 개념으로 묶어 required=false 로 두고 보기들을 그 개념의 검색어로 넣어라 (예: \"LPBF 든 DSS 든\" → 재료 개념, 선택, 검색어에 laser powder bed fusion·LPBF·selective laser melting·duplex stainless steel·DSS).\n"
         "- 너무 일반적인 말(study, analysis, effect)은 검색어로 쓰지 마라.\n"
         "- 제외할 맥락이 분명하면 exclude 에 영어 검색어로.\n"
-        "- JSON 한 줄만: {\"intent\": \"조사 의도 한 문장(한국어)\", \"concepts\": [{\"name\": \"개념 이름(한국어, 짧게)\", \"terms\": [\"...\"], \"required\": true}], \"exclude\": [\"...\"]}\n\n"
+        "- 사용자가 사람이나 연구실을 적었으면(\"Axinte 그룹\", \"드라구스 악신테\", \"Nottingham 의\") authors 에 그 사람의 영어 성(가능하면 이름까지)을 적어라. 사람을 적지 않았으면 빈 목록. 사람 이름은 개념의 검색어에 넣지 않는다.\n"
+        "- JSON 한 줄만: {\"intent\": \"조사 의도 한 문장(한국어)\", \"concepts\": [{\"name\": \"개념 이름(한국어, 짧게)\", \"terms\": [\"...\"], \"required\": true}], \"exclude\": [\"...\"], \"authors\": [\"Axinte\"]}\n\n"
         "[사용자 입력] " + q, timeout=180)
     return _clean_plan(r, q)
 
@@ -1152,11 +1302,46 @@ def _run_smart(q, year, key, plan=None):
         queries.append(qrec)
         stage("2/3 검색 중 ({}/{})".format(i + 1, len(ladder)))
     stage("2/3 내 서재 훑는 중")
+    seed_files = []
     try:
-        nfiles, nadd, nseen = library_scan(plan, merged)
+        nfiles, nadd, nseen, seed_files = library_scan(plan, merged)
         queries.append({"q": "내 서재", "expr": "서재 논문의 본문을 검색 계획의 개념으로 훑어, 주제를 말하는 보유 논문을 결과에 더한다", "total": nfiles, "new": nadd, "lib": {"seen": nseen}})
     except Exception as e:
         queries.append({"q": "내 서재", "expr": str(e)[:200], "total": "실패", "new": 0})
+    if seed_files:   # 서재의 인용 이웃: 주제가 맞는 보유 논문 둘 이상과 인용으로 이어진 서재 밖의 논문(낱말과 무관하게 분야의 핵심·리뷰가 잡힌다)
+        stage("2/3 서재의 인용 이웃 찾는 중")
+        try:
+            nb, nidx = libnet_neighbors(seed_files)
+            fresh = [x for x, _c in nb if x not in merged]
+            got = fetch_nodes(fresh) if fresh else {}
+            nadd = 0
+            for x, c in nb:
+                if x in merged:
+                    merged[x]["links"] = c
+                elif x in got:
+                    n = got[x]
+                    n.update(tier=1, rel=1000 + 10 * c, links=c, via="libnet")
+                    merged[x] = n; nadd += 1
+            queries.append({"q": "서재의 인용 이웃", "expr": "주제가 맞는 보유 논문 %d편과 두 편 이상 인용으로 이어진 논문 (색인한 서재 논문 %d편)" % (len(seed_files), nidx),
+                            "total": len(nb), "new": nadd, "libnet": {"indexed": nidx, "seeds": len(seed_files), "building": _libnet["building"]}})
+        except Exception as e:
+            queries.append({"q": "서재의 인용 이웃", "expr": str(e)[:200], "total": "실패", "new": 0})
+    for name in plan.get("authors") or []:   # 검색어에 적은 사람: 그 저자의 주제 논문 + 최신 논문
+        stage("2/3 저자 %s 의 논문" % name)
+        try:
+            expr_req = build_boolean(req, plan["exclude"])
+            ares, atotal = openalex_boolean(expr_req, year, per_page=40, author=name)
+            ares2, _t2 = openalex_boolean("", year, per_page=20, author=name, sort="publication_date:desc")
+            anew = 0
+            for n in ares + ares2:
+                if n["id"] not in merged:
+                    n.update(tier=0, rel=5000, hint=name)
+                    merged[n["id"]] = n; anew += 1
+                else:
+                    merged[n["id"]]["hint"] = name
+            queries.append({"q": "저자 " + name, "expr": "%s AND 저자 %s (주제 논문 %d편 + 최신 20편)" % (expr_req, name, atotal if isinstance(atotal, int) else 0), "total": atotal, "new": anew})
+        except Exception as e:
+            queries.append({"q": "저자 " + name, "expr": str(e)[:200], "total": "실패", "new": 0})
     if not merged and last_err:
         raise RuntimeError(last_err)   # OpenAlex 한도 소진 등 — 빈 결과 대신 이유를 보여 준다
     with _lock:
@@ -1168,11 +1353,14 @@ def _run_smart(q, year, key, plan=None):
         if not n.get("top") and is_pref_venue(n.get("venue"), pref_norm):
             n["top"] = True
     items.sort(key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))   # 엄격한 검색에서 나온 것 → 우선 저널 → 관련도 → 피인용
-    tops_all = [n for n in items if n.get("top")]
-    recent = [n for n in tops_all if n.get("recent")][:20]     # 최신순 질의로 들어온 것은 관련도 점수가 없어 뒤로 밀린다 — 20편 자리를 남긴다
-    tops = [n for n in tops_all if not n.get("recent")][:100 - len(recent)] + recent   # 우선 저널이 전부를 메우지는 않게 — 150 가운데 많아야 100
-    rest = [n for n in items if not n.get("top")][:150 - len(tops)]
-    items = sorted(tops + rest, key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))
+    keep = sorted([n for n in items if n.get("via") == "libnet"], key=lambda n: -n.get("links", 0))[:20]   # 서재의 인용 이웃은 관련도 점수가 없어 뒤로 밀린다 — 20편 자리를 따로(처음엔 33편이 모두 150 밖으로 잘렸다, 2026-10-07)
+    others = [n for n in items if n.get("via") != "libnet"]
+    budget = 150 - len(keep)
+    tops_all = [n for n in others if n.get("top")]
+    recent = [n for n in tops_all if n.get("recent")][:20]     # 최신순 질의로 들어온 것도 관련도 점수가 없다 — 20편 자리를 남긴다
+    tops = [n for n in tops_all if not n.get("recent")][:min(100, budget) - len(recent)] + recent   # 우선 저널이 전부를 메우지는 않게 — 150 가운데 많아야 100
+    rest = [n for n in others if not n.get("top")][:budget - len(tops)]
+    items = sorted(tops + rest + keep, key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))
     fill_abstracts_scopus(items, stage)   # OpenAlex 에 초록이 없는 후보(Elsevier 등)는 Scopus 로 보강 — Claude 선별 정확도와 정보 패널용
 
     stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
@@ -1210,7 +1398,7 @@ def _run_smart(q, year, key, plan=None):
                                "items": [items[i] for i in idxs]})
         exc_idx = [i for i in verdict.get("excluded", []) if isinstance(i, int) and 0 <= i < len(items) and i not in used]
         excluded = len(exc_idx)
-        excluded_items = [{k: items[i].get(k) for k in ("id", "doi", "title", "year", "author", "venue", "cit", "owned", "review")} for i in exc_idx]
+        excluded_items = [{k: items[i].get(k) for k in ("id", "doi", "title", "year", "author", "venue", "cit", "owned", "review", "via", "links", "hint")} for i in exc_idx]
         leftover = [items[i] for i in range(len(items))
                     if i not in used and i not in set(verdict.get("excluded", []))]
         if leftover:
@@ -1227,7 +1415,8 @@ def _run_smart(q, year, key, plan=None):
     _jobs[key] = {"status": "done", "result": {
         "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
         "queries": queries, "groups": groups, "excluded": excluded, "excluded_items": excluded_items, "candidates": len(items), "map": rmap,
-        "journals": journal_counts(groups), "pref_journals": preferred_journals(), "top_count": sum(1 for g in groups for it in g["items"] if it.get("top"))}}
+        "journals": journal_counts(groups), "pref_journals": preferred_journals(), "top_count": sum(1 for g in groups for it in g["items"] if it.get("top")),
+        "labs": lab_counts(groups), "libnet": {"indexed": len((libnet_load().get("papers") or {})), "building": _libnet["building"]}}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
@@ -3281,6 +3470,33 @@ class Handler(BaseHTTPRequestHandler):
             results.sort(key=keyf, reverse=True)
             self._send(200, {"relaxed": relaxed, "results": results, "total": d.get("meta", {}).get("count", 0),
                              "words": words})
+        elif url.path == "/api/lab_recent":   # 연구 그룹의 최신 논문 (탐색의 「연구 그룹」 줄)
+            aid = re.sub(r"[^A-Za-z0-9]", "", parse_qs(url.query).get("author", [""])[0])
+            if not aid:
+                self._send(400, {"error": "저자 id 가 없습니다"})
+                return
+            try:
+                self._send(200, {"items": lab_recent(aid)})
+            except Exception as e:
+                self._send(200, {"error": str(e)[:300], "items": []})
+        elif url.path == "/api/libnet":   # 서재 인용 이웃 색인의 상태 · ?build=1 이면 (다시) 만들기 · ?gaps=1 이면 서재가 가장 많이 인용하는데 없는 논문
+            qs = parse_qs(url.query)
+            if qs.get("build", [""])[0] == "1" and not _libnet["building"]:
+                threading.Thread(target=libnet_build, daemon=True).start()
+            net = libnet_load()
+            papers = net.get("papers") or {}
+            out = {"indexed": sum(1 for r in papers.values() if r.get("id")), "known": len(papers), "building": _libnet["building"], "done": _libnet["done"], "total": _libnet["total"], "err": _libnet["err"], "t": net.get("t")}
+            if qs.get("gaps", [""])[0] == "1":
+                nb, _n = libnet_neighbors(list(papers.keys()), min_links=3, limit=int(qs.get("n", ["30"])[0] or 30))
+                got = fetch_nodes([x for x, _c in nb])
+                rows = []
+                for x, c in nb:
+                    if x in got:
+                        n = got[x]; n.pop("_refs", None); n.pop("abstract", None)
+                        n["links"] = c; n["abbr"] = journal_abbr(n.get("venue")); n["top"] = is_pref_venue(n.get("venue"))
+                        rows.append(n)
+                out["gaps"] = rows
+            self._send(200, out)
         elif url.path == "/api/smart_status":
             k = parse_qs(url.query).get("key", [""])[0]
             job = _jobs.get((k, "smart"))
@@ -3637,6 +3853,7 @@ def main():
     for d in (ARCHIVE, GEN_DIR, MAPS_DIR, NOTES_DIR):   # 처음 실행(새 컴퓨터)이면 데이터 폴더를 만들어 둔다
         os.makedirs(d, exist_ok=True)
     threading.Thread(target=refresh_new_papers, daemon=True).start()
+    threading.Thread(target=libnet_build, daemon=True).start()   # 서재 인용 이웃 색인 (새 논문만, 배경)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 

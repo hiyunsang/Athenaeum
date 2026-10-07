@@ -209,6 +209,21 @@ def _node(it, refs, inter, owned_file):
         kw = [k["display_name"] for k in (it.get("keywords") or [])[:5]]
     except (KeyError, TypeError):
         pass
+    pi = pi_id = inst = ""      # 연구 그룹: 교신저자(없으면 마지막 저자)와 그 기관 — 탐색의 "연구 그룹" 줄(사용자 2026-10-07: '연구실 단위로도 볼 수 있지 않나')
+    try:
+        aus = it.get("authorships") or []
+        a = next((x for x in aus if x.get("is_corresponding")), None) or (aus[-1] if aus else None)
+        if a:
+            pi = (a.get("author") or {}).get("display_name") or ""
+            pi_id = wid((a.get("author") or {}).get("id") or "")
+            inst = ((a.get("institutions") or [{}])[0] or {}).get("display_name") or ""
+        if not inst:
+            for a2 in aus:
+                if a2.get("institutions"):
+                    inst = (a2["institutions"][0] or {}).get("display_name") or ""
+                    break
+    except (KeyError, IndexError, TypeError, AttributeError):
+        pass
     return {
         "id": wid(it["id"]),
         "doi": it.get("doi") or "",
@@ -221,6 +236,7 @@ def _node(it, refs, inter, owned_file):
         "review": it.get("type") == "review" or is_review_title(it.get("display_name") or ""),   # OpenAlex 분류 또는 제목
         "inter": inter,
         "owned": owned_file or "",
+        "pi": pi[:60], "pi_id": pi_id, "inst": inst[:80],
         "_refs": refs,
     }
 

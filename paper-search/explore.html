@@ -92,6 +92,12 @@
   .jbar .jc.top { color: var(--text); }
   .jbar .jc:hover { background: var(--hover); }
   .jbar .jc.on { background: var(--sel-bg); color: var(--accent); } .jbar .jc.on b { color: var(--accent); }
+  .jbar .jc small { color: var(--text-3); font-weight: 400; margin-left: 3px; }
+  .labrecent { margin: 0 0 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); font-size: 12.5px; line-height: 1.55; }
+  .labrecent .lr { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; border-top: 1px solid var(--line); }
+  .labrecent .lr:first-of-type { border-top: 0; } .labrecent .lr .y { color: var(--text-3); flex: none; width: 36px; } .labrecent .lr .v { color: var(--text-3); flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .labrecent .lr a { color: var(--text); text-decoration: none; } .labrecent .lr a:hover { color: var(--accent); }
+  .meta .lk { color: var(--text-3); }
 </style>
 <script src="/ui.js"></script>
 <script src="/map.js"></script>
@@ -270,7 +276,7 @@ function renderSmart(r) {
   const plan = document.createElement("div"); plan.className = "plan";
   plan.innerHTML = "<b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + escH(r.intent) +
     "<div class='qs'><b>검색 " + r.queries.length + "번:</b> " +
-    r.queries.map(x => "<span title='" + escH(x.expr || x.q) + "'>" + escH(x.q) + "<span class='qn'>" + (x.total === "실패" ? "실패" : x.total + "편") + (x.new ? " · 새로 " + x.new : "") + (x.scopus ? " · Scopus " + (x.scopus.total === "실패" ? "실패" : x.scopus.got + "편") + (x.scopus.new ? " +" + x.scopus.new : "") : "") + (x.top ? " · ★ " + (x.top.total === "실패" ? "실패" : x.top.got + "편") + (x.top.new ? " +" + x.top.new : "") : "") + (x.recent ? " · 최신 " + x.recent.got + "편" + (x.recent.new ? " +" + x.recent.new : "") : "") + (x.lib ? " · 이미 결과에 있던 보유 " + x.lib.seen + "편" : "") + "</span></span>").join("") + "</div>";
+    r.queries.map(x => "<span title='" + escH(x.expr || x.q) + "'>" + escH(x.q) + "<span class='qn'>" + (x.total === "실패" ? "실패" : x.total + "편") + (x.new ? " · 새로 " + x.new : "") + (x.scopus ? " · Scopus " + (x.scopus.total === "실패" ? "실패" : x.scopus.got + "편") + (x.scopus.new ? " +" + x.scopus.new : "") : "") + (x.top ? " · ★ " + (x.top.total === "실패" ? "실패" : x.top.got + "편") + (x.top.new ? " +" + x.top.new : "") : "") + (x.recent ? " · 최신 " + x.recent.got + "편" + (x.recent.new ? " +" + x.recent.new : "") : "") + (x.lib ? " · 이미 결과에 있던 보유 " + x.lib.seen + "편" : "") + (x.libnet ? " · 색인 " + x.libnet.indexed + "편" + (x.libnet.building ? " (만드는 중)" : "") : "") + "</span></span>").join("") + "</div>";
   if (r.plan && r.plan.concepts) {   // 검색 계획: 개념마다 필수/선택 · 검색어를 고쳐 다시 검색
     const box = document.createElement("div");
     box.innerHTML = "<div class='hint' style='margin-top:6px'>검색 계획 — 필수는 모두 들어가야 하고, 선택은 보기 중 하나면 됩니다. 검색어(쉼표로 구분)를 고쳐 다시 검색할 수 있습니다.</div>";
@@ -283,6 +289,9 @@ function renderSmart(r) {
     const ex = document.createElement("div"); ex.className = "pl";
     ex.innerHTML = "<span></span><span class='nm'>제외</span><input type='text' class='exclude' placeholder='제외할 말 (영어, 쉼표)'>";
     ex.querySelector(".exclude").value = (r.plan.exclude || []).join(", "); box.appendChild(ex);
+    const au = document.createElement("div"); au.className = "pl";   // 저자 힌트: 그 사람의 주제 논문과 최신 논문을 따로 받는다 (검색어에 'Axinte 그룹' 처럼 적어도 됨)
+    au.innerHTML = "<span></span><span class='nm'>저자</span><input type='text' class='authors' placeholder='사람·연구실 (영어 성, 쉼표) — 그 저자의 논문을 따로 받습니다'>";
+    au.querySelector(".authors").value = (r.plan.authors || []).join(", "); box.appendChild(au);
     const rerun = document.createElement("div"); rerun.className = "rerun";
     rerun.innerHTML = "<button id='rerunPlan'>이 검색 계획으로 다시 검색</button> <span class='hint'>(Claude 검색 계획 단계는 건너뛰고 검색·선별만 다시)</span>";
     rerun.querySelector("button").onclick = () => {
@@ -290,10 +299,11 @@ function renderSmart(r) {
         name: x.dataset.name, required: x.querySelector(".req").checked,
         terms: x.querySelector(".terms").value.split(",").map(t => t.trim()).filter(Boolean) })).filter(c => c.terms.length);
       const exclude = ex.querySelector(".exclude").value.split(",").map(t => t.trim()).filter(Boolean);
+      const authors = au.querySelector(".authors").value.split(",").map(t => t.trim()).filter(Boolean);
       if (!concepts.length) return;
       smartbox.innerHTML = ""; window.scrollTo(0, 0);
       info.textContent = "고친 검색 계획으로 다시 검색 중…";
-      smartSearch(document.getElementById("q").value.trim() || r.intent, { intent: r.intent, concepts, exclude });
+      smartSearch(document.getElementById("q").value.trim() || r.intent, { intent: r.intent, concepts, exclude, authors });
     };
     box.appendChild(rerun); plan.appendChild(box);
   }
@@ -312,13 +322,44 @@ function renderSmart(r) {
       "<span class='hint' style='margin-left:auto'>" + (r.top_count ? "★ 우선 저널 " + r.top_count + "편 · " : "") + "저널 가중치는 ⚙ 설정 → 연결</span>";
     smartbox.appendChild(jbar);
   }
+  // 연구 그룹(교신·마지막 저자 + 기관)별 편수 — 누르면 그 그룹만, 「최신」 을 누르면 그 저자의 최신 논문 15편 (사용자 2026-10-07: '연구실 단위로도 — 어느 연구실이 활발한지')
+  let labF = null;
+  const labs = r.labs || [], lshown = labs.slice(0, 12);
+  const lbar = document.createElement("div"); lbar.className = "jbar labs";
+  const lrec = document.createElement("div"); lrec.className = "labrecent"; lrec.hidden = true;
+  if (labs.length) {
+    lbar.innerHTML = "<span class='lab'>연구 그룹</span>" + lshown.map(l => "<a href='#' class='jc' data-l='" + escH(l.key) + "' title='" + escH(l.pi + (l.inst ? " · " + l.inst : "")) + " — 누르면 이 그룹만 (" + (l.y0 || "?") + "–" + (l.y1 || "?") + ", 우선 저널 " + l.top + "편)'>" + escH(l.pi.split(" ").slice(-1)[0] || l.pi) + (l.inst ? "<small>" + escH(l.inst.replace(/^(University of |The )/, "").slice(0, 22)) + "</small>" : "") + " <b>" + l.n + "</b>" + (l.pi_id ? " <small class='act' data-recent='" + escH(l.pi_id) + "' data-name='" + escH(l.pi) + "' title='이 저자의 최신 논문 15편'>최신</small>" : "") + "</a>").join("") +
+      (labs.length > lshown.length ? "<span class='hint'>외 " + (labs.length - lshown.length) + "개</span>" : "") +
+      "<span class='hint' style='margin-left:auto'>교신·마지막 저자 기준, 두 편 이상</span>";
+    smartbox.appendChild(lbar); smartbox.appendChild(lrec);
+  }
   const applyVenue = () => {
     jbar.querySelectorAll(".jc").forEach(a => a.classList.toggle("on", a.dataset.j === venueF));
-    list.querySelectorAll(".row").forEach(el => { const it = rowIndex[el.dataset.n]; el.hidden = !!venueF && (!it || (it.venue || "") !== venueF); });
-    list.querySelectorAll(".ghead[data-n]").forEach(h => { const n = +h.dataset.n; let shown = 0, el = h.nextElementSibling; while (el && !el.classList.contains("ghead")) { if (el.classList.contains("row") && !el.hidden) shown++; el = el.nextElementSibling; } h.querySelector(".gc").textContent = venueF ? shown + "/" + n + "편" : n + "편"; });
+    lbar.querySelectorAll(".jc").forEach(a => a.classList.toggle("on", a.dataset.l === labF));
+    list.querySelectorAll(".row").forEach(el => { const it = rowIndex[el.dataset.n]; el.hidden = !it || (!!venueF && (it.venue || "") !== venueF) || (!!labF && (it.lab || "") !== labF); });
+    list.querySelectorAll(".ghead[data-n]").forEach(h => { const n = +h.dataset.n; let shown = 0, el = h.nextElementSibling; while (el && !el.classList.contains("ghead")) { if (el.classList.contains("row") && !el.hidden) shown++; el = el.nextElementSibling; } h.querySelector(".gc").textContent = (venueF || labF) ? shown + "/" + n + "편" : n + "편"; });
     if (mapBox._setVenue) mapBox._setVenue(venueF);
+    if (mapBox._setLab) mapBox._setLab(labF);
   };
   jbar.querySelectorAll(".jc").forEach(a => a.onclick = e => { e.preventDefault(); venueF = venueF === a.dataset.j ? null : a.dataset.j; applyVenue(); });
+  lbar.querySelectorAll(".jc").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    const rc = e.target.closest("[data-recent]");
+    if (rc) { showLabRecent(rc.dataset.recent, rc.dataset.name); return; }
+    labF = labF === a.dataset.l ? null : a.dataset.l; applyVenue();
+  });
+  async function showLabRecent(aid, name) {
+    if (lrec.dataset.aid === aid && !lrec.hidden) { lrec.hidden = true; return; }
+    lrec.dataset.aid = aid; lrec.hidden = false; lrec.innerHTML = "<span class='hint'>" + escH(name) + " 의 최신 논문을 받는 중…</span>";
+    try {
+      const d = await (await fetch("/api/lab_recent?author=" + encodeURIComponent(aid))).json();
+      const its = d.items || [];
+      lrec.innerHTML = "<div style='display:flex;gap:10px;align-items:baseline'><b>" + escH(name) + "</b> <span class='hint'>최신 " + its.length + "편 (주제와 무관하게 — 이 연구실이 요즘 하는 일)</span><a href='#' class='act' style='margin-left:auto' id='lrClose'>닫기</a></div>" +
+        (d.error ? "<div class='hint'>" + escH(d.error) + "</div>" : "") +
+        its.map(it => "<div class='lr'><span class='y'>" + (it.year || "?") + "</span><span class='v' title='" + escH(it.venue || "") + "'>" + (it.top ? "★ " : "") + escH(it.abbr || it.venue || "") + "</span><a href='" + (it.doi || "#") + "' target='_blank'>" + escH(it.title) + "</a>" + (it.owned ? " <b style='color:var(--accent)'>보유</b>" : "") + (it.review ? " <b class='rv'>Review</b>" : "") + "</div>").join("");
+      lrec.querySelector("#lrClose").onclick = ev => { ev.preventDefault(); lrec.hidden = true; };
+    } catch (e) { lrec.innerHTML = "<span class='hint'>받지 못했습니다: " + escH(String(e)) + "</span>"; }
+  }
   const list = document.createElement("div"); list.id = "rlist";
   for (const g of r.groups) {
     const h = document.createElement("div"); h.className = "ghead"; h.dataset.n = g.items.length;
@@ -345,7 +386,7 @@ function renderSmart(r) {
     if (v === "map" && !mapReady && r.map) {
       mapReady = true;
       const abbrOf = {}; (r.journals || []).forEach(j => { if (j.abbr) abbrOf[j.name] = j.abbr; });
-      renderResultMap(r.map, mapBox, { openPaper, persist: persistMapField, venueFilter: () => venueF, abbr: v2 => abbrOf[v2] || "", onVenueFilter: v2 => { venueF = v2; applyVenue(); } });
+      renderResultMap(r.map, mapBox, { openPaper, persist: persistMapField, venueFilter: () => venueF, abbr: v2 => abbrOf[v2] || "", onVenueFilter: v2 => { venueF = v2; applyVenue(); }, labFilter: () => labF });
     }
   };
   vbar.querySelectorAll("[data-v]").forEach(a => a.onclick = (e) => { e.preventDefault(); setView(a.dataset.v); });
@@ -388,7 +429,10 @@ function renderRow(r) {
   m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · <span title='" + escH(r.venue) + "'>" + (r.top ? "★ " : "") + escH(r.abbr || r.venue) + "</span>" : "") +
     " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") +
     ((r.hits && r.hits.length) ? " · <span class='hit'>" + r.hits.map(escH).join(" · ") + "</span>" : "") +
-    (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");
+    (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "") +
+    (r.inst ? " · <span class='lk' title='교신·마지막 저자 " + escH(r.pi || "") + " 의 기관'>" + escH(r.inst.replace(/^(University of |The )/, "").slice(0, 28)) + "</span>" : "") +
+    (r.links ? " · <span class='lk' title='주제가 맞는 보유 논문 가운데 이 논문과 인용으로 이어진 수'>서재와 " + r.links + "가닥</span>" : "") +
+    (r.hint ? " · <span class='hit'>저자 " + escH(r.hint) + "</span>" : "");
   row.appendChild(m);
   if (r.abstract) {
     const a = document.createElement("div"); a.className = "abs"; a.textContent = r.abstract;
