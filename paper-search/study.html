@@ -34,6 +34,14 @@
   .oi.sub { color: var(--text-2); }
   .oi.fig .t::before { content: "▦ "; color: var(--text-3); }
   #outline { border-bottom: 1px solid var(--line); padding-bottom: var(--s2); }
+  /* 지금 보는 장 — 그 아래 차례와 '다른 장' 목록을 갈라 둔다 (사용자 2026-10-07: '다른 장과 장의 차례가 같이 왼쪽에 있으니 헷갈린다') */
+  .pick { padding: 10px var(--s3) 8px; border-bottom: 1px solid var(--line); }
+  .pick .pk { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; margin-bottom: 3px; }
+  .pick .pt { font-weight: 600; font-size: 13px; line-height: 1.35; }
+  .pick .pm { color: var(--text-3); font-size: 11.5px; margin-top: 2px; }
+  .pick .act { padding: 2px 0; margin-top: 5px; }
+  #list.closed { display: none; }
+  #list { border-bottom: 1px solid var(--line); background: var(--surface); }
   .sitem { padding: 8px var(--s3) 9px; border-bottom: 1px solid var(--line); cursor: pointer; }
   .sitem:hover { background: var(--hover); }
   .sitem .tt { font-weight: 600; line-height: 1.35; font-size: 12.5px; }
@@ -176,8 +184,9 @@
         <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
       </div>
     </div>
-    <div id="outline"></div>
+    <div id="chpick"></div>
     <div id="list"></div>
+    <div id="outline"></div>
   </aside>
   <main id="main"></main>
   <aside id="srcp"></aside>
@@ -200,6 +209,7 @@ const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
+let listOpen = false, infoOpen = false;   // 왼쪽 '다른 장' 목록을 펼쳤나 · 오른쪽 '이 장의 기록'을 펼쳐 보이나
 const URLP = new URLSearchParams(location.search);   // ?id=장 &view=sec&si=2&u=2.1.0 — 특정 장·절·문장으로 바로 열기 (튜토리얼 화면 찍기에도 씀)
 if (URLP.get("id")) curId = URLP.get("id");
 let view = { kind: "overview", si: -1 };                      // 가운데 칸에 무엇을 보이나: overview · sec(si) · summary · gaps · terms · refs · map · all
@@ -225,11 +235,22 @@ function stateText(x) {
   if (x.status === "error") return "<span class='bad'>멈춤 — 이어서 쓸 수 있음</span>";
   return "<span class='bad'>멈춤</span>";
 }
+// 왼쪽 맨 위: 지금 보는 장 + 「다른 장 ▾」 — 목록은 누를 때만 펼쳐진다 (장의 차례와 섞이지 않게)
+function renderPick() {
+  const el = $("chpick");
+  if (!cur) { el.innerHTML = ""; return; }
+  const title = (cur.chapter || {}).title || (cur.plan || {}).title || cur.topic, others = items.filter(x => x.id !== cur.id).length;
+  el.innerHTML = "<div class='pick'><div class='pk'>지금 장</div><div class='pt'>" + esc(title) + "</div><div class='pm'>" + fmtDate(cur.t) + (cur.status === "done" && cur.stats ? " · 논문 " + (cur.stats.cited || 0) + "편 · 문장 " + (cur.stats.units || 0) + "개" : "") + "</div>" +
+    (others ? "<button class='act' id='pickTg'>" + (listOpen ? "다른 장 닫기 ▴" : "다른 장 " + others + "개 ▾") + "</button>" : "") + "</div>";
+  const b = $("pickTg"); if (b) b.onclick = () => { listOpen = !listOpen; renderPick(); renderList(); };
+}
 function renderList() {
   const others = cur ? items.filter(x => x.id !== curId) : items;
+  $("list").classList.toggle("closed", !!cur && !listOpen);
   $("list").innerHTML = (cur ? "<div class='sideh'>" + (others.length ? "다른 장" : "") + "</div>" : "") + (items.length ? others.map(x => "<div class='sitem' data-id='" + esc(x.id) + "'><div class='tt'>" + esc(x.title || x.topic) + "</div>" +
     "<div class='mm'>" + fmtDate(x.t) + " · " + stateText(x) + "</div></div>").join("") : "<div class='hint' style='padding:var(--s3)'>아직 쓴 것이 없습니다.</div>");
-  $("list").querySelectorAll(".sitem").forEach(el => el.onclick = () => openStudy(el.dataset.id));
+  $("list").querySelectorAll(".sitem").forEach(el => el.onclick = () => { listOpen = false; openStudy(el.dataset.id); });
+  renderPick();
 }
 // 장의 차례 (왼쪽) — 원고의 개요처럼 절마다 하나씩, 누르면 가운데에 그 절만
 const bodySecs = () => (cur.chapter.sections || []).map((sec, si) => ({ sec, si })).filter(x => x.sec.kind !== "summary");
@@ -241,7 +262,7 @@ function renderOutline() {
   const item = (k, si, cls, no, title, n) => "<div class='oi" + cls + on(k, si) + "' data-v='" + k + "' data-si='" + (si == null ? -1 : si) + "'>" + (no ? "<span class='no'>" + no + "</span>" : "") + "<span class='t'>" + esc(title) + "</span>" + (n ? "<span class='n'>" + n + "</span>" : "") + "</div>";
   const summ = ch.sections.find(x => x.kind === "summary");
   el.innerHTML = "<div class='sideh'>장의 차례 <button class='act' id='olTitle' title='이 장의 개요로'>개요</button></div>" +
-    item("overview", null, "", "", ch.title, "") +
+    item("overview", null, "", "", "개요", "") +
     item("map", null, " fig", "", "마인드맵 (그림)", cur.map ? "" : cur.map_pending ? "만드는 중" : "아직 없음") +
     bodySecs().map((x, i) => item("sec", x.si, "", i + 1, x.sec.title, secUnits(x.sec) + "문장")).join("") +
     (summ ? item("summary", null, " sub", "", "핵심 정리", secUnits(summ) + "줄") : "") +
@@ -260,7 +281,7 @@ function gotoView(kind, si) {
 
 // ---------- 열기 · 살피기 ----------
 async function openStudy(id) {
-  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; askCtx = null; askOpen = null; askDraft = ""; view = { kind: "overview", si: -1 }; mapStamp = ""; mapSel = null; clearTimeout(pollT); clearTimeout(chatPollT);
+  curId = id; lsSet("study_last", id); selKey = ""; panel = "info"; infoOpen = false; askCtx = null; askOpen = null; askDraft = ""; view = { kind: "overview", si: -1 }; mapStamp = ""; mapSel = null; clearTimeout(pollT); clearTimeout(chatPollT);
   await refresh(true); renderList();
 }
 async function refresh(first) {
@@ -450,7 +471,7 @@ function bindChapter() {
   if ($("mdCopy")) $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
   if ($("mdSave")) $("mdSave").onclick = async () => { const r = await md(); if (!r) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([r.md], { type: "text/markdown;charset=utf-8" })); a.download = r.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
   if ($("printBtn")) $("printBtn").onclick = () => { if (view.kind !== "all") { view = { kind: "all", si: -1 }; renderMain(); } setTimeout(() => window.print(), 300); };
-  if ($("infoBtn")) $("infoBtn").onclick = () => { panel = "info"; selKey = ""; m.querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
+  if ($("infoBtn")) $("infoBtn").onclick = () => { panel = "info"; infoOpen = true; selKey = ""; m.querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
   if ($("delBtn")) $("delBtn").onclick = delStudy;
   if (view.kind === "map") bindMap();
 }
@@ -725,7 +746,9 @@ function infoPanel() {
   const s = cur.stats || {}, sc = cur.scan || {}, papers = cur.papers || [], rm = cur.removed || [], tok = cur.tok || {};
   const kv = (a, b) => "<div class='kv'><span>" + a + "</span><span>" + b + "</span></div>";
   const read = papers.filter(p => p.read);
-  let h = "<div class='sec'>이 장의 기록</div>" +
+  // 기본은 조용한 칸(사용자 2026-10-07: '읽은 논문·이 장의 기록이 계속 우측에 떠 있는 것도 조금') — 기록과 읽은 논문은 접어 두고, 「이 장의 기록」 단추로 열면 펼친다
+  let h = "<div class='sec'>근거</div><div class='hint' style='line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다. 표의 행과 그림 설명도 누를 수 있고, 글을 드래그하면 Claude 에게 물을 수 있습니다.</div>" +
+    "<details class='evd'" + (infoOpen || panel === "removed" ? " open" : "") + "><summary>이 장의 기록</summary>" +
     kv("훑은 서재", "논문 " + (sc.files || 0) + "편 · 문장 " + (sc.sents || 0).toLocaleString() + "개") +
     kv("읽은 논문", read.length + "편 (통째로 " + read.filter(p => p.mode === "full").length + " · 맞은 대목만 " + read.filter(p => p.mode !== "full").length + ")") +
     kv("뽑은 메모", (s.notes || 0) + "개") +
@@ -738,11 +761,11 @@ function infoPanel() {
   if (panel === "removed") h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
     rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
-  else h += "<div class='sec'>읽은 논문 <span style='font-weight:400;text-transform:none'>— 누르면 그 논문이 언급된 문장</span></div>" + papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
-      (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") +
-    "<div class='hint' style='padding-top:var(--s3);line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다. 글을 드래그하면 그 대목을 놓고 Claude 에게 물을 수 있습니다.</div>";
+  h += "</details>";
+  h += "<details class='evd'><summary>읽은 논문 " + read.length + "편 — 누르면 그 논문이 언급된 문장</summary>" + papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
+      (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") + "</details>";
   const chats = (cur.chats || []).slice().reverse();
-  if (chats.length) h += "<div class='sec'>Claude 와 나눈 대화 " + chats.length + "개</div>" + chatListHtml(chats);
+  if (chats.length) h += "<details class='evd' open><summary>Claude 와 나눈 대화 " + chats.length + "개</summary>" + chatListHtml(chats) + "</details>";
   return h;
 }
 
