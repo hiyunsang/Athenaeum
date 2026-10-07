@@ -84,6 +84,14 @@
     body.chat #main { margin-right: 0; margin-bottom: 46vh; }
     #chat { top: auto; left: 0; width: auto; height: 46vh; border-left: 0; border-top: 1px solid var(--line-2); }
   }
+  /* 저널별 편수 줄 — 누르면 그 저널만 */
+  .jbar { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; font-size: 12.5px; margin: 4px 0 10px; }
+  .jbar .lab { color: var(--text-3); }
+  .jbar .jc { color: var(--text-2); text-decoration: none; padding: 1px 5px; border-radius: var(--r); white-space: nowrap; }
+  .jbar .jc b { color: var(--text-3); font-weight: 500; margin-left: 1px; }
+  .jbar .jc.top { color: var(--text); }
+  .jbar .jc:hover { background: var(--hover); }
+  .jbar .jc.on { background: var(--sel-bg); color: var(--accent); } .jbar .jc.on b { color: var(--accent); }
 </style>
 <script src="/ui.js"></script>
 <script src="/map.js"></script>
@@ -294,10 +302,27 @@ function renderSmart(r) {
   const vbar = document.createElement("div"); vbar.className = "vbar";
   vbar.innerHTML = "<span>보기</span><a href='#' class='act' data-v='list'>목록</a><a href='#' class='act' data-v='map'>맵</a><span class='hint' id='vhint'></span>";
   smartbox.appendChild(vbar);
+  // 저널별 편수 — 누르면 그 저널만 (목록·맵 둘 다). ★ = 우선 저널(환경설정 → 연결) (사용자 2026-10-07)
+  let venueF = null;
+  const jr = r.journals || [], jshown = jr.slice(0, 14);
+  const jbar = document.createElement("div"); jbar.className = "jbar";
+  if (jr.length) {
+    jbar.innerHTML = "<span class='lab'>저널</span>" + jshown.map(j => "<a href='#' class='jc" + (j.top ? " top" : "") + "' data-j='" + escH(j.name) + "' title='" + escH(j.name) + " — 누르면 이 저널만'>" + (j.top ? "★ " : "") + escH(j.abbr || j.name.slice(0, 28)) + " <b>" + j.n + "</b></a>").join("") +
+      (jr.length > jshown.length ? "<span class='hint'>외 " + (jr.length - jshown.length) + "개</span>" : "") +
+      "<span class='hint' style='margin-left:auto'>" + (r.top_count ? "★ 우선 저널 " + r.top_count + "편 · " : "") + "저널 가중치는 ⚙ 설정 → 연결</span>";
+    smartbox.appendChild(jbar);
+  }
+  const applyVenue = () => {
+    jbar.querySelectorAll(".jc").forEach(a => a.classList.toggle("on", a.dataset.j === venueF));
+    list.querySelectorAll(".row").forEach(el => { const it = rowIndex[el.dataset.n]; el.hidden = !!venueF && (!it || (it.venue || "") !== venueF); });
+    list.querySelectorAll(".ghead[data-n]").forEach(h => { const n = +h.dataset.n; let shown = 0, el = h.nextElementSibling; while (el && !el.classList.contains("ghead")) { if (el.classList.contains("row") && !el.hidden) shown++; el = el.nextElementSibling; } h.querySelector(".gc").textContent = venueF ? shown + "/" + n + "편" : n + "편"; });
+    if (mapBox._setVenue) mapBox._setVenue(venueF);
+  };
+  jbar.querySelectorAll(".jc").forEach(a => a.onclick = e => { e.preventDefault(); venueF = venueF === a.dataset.j ? null : a.dataset.j; applyVenue(); });
   const list = document.createElement("div"); list.id = "rlist";
   for (const g of r.groups) {
-    const h = document.createElement("div"); h.className = "ghead";
-    h.innerHTML = "<b>" + g.name + "</b> <span>" + g.items.length + "편 · " + g.why + "</span>";
+    const h = document.createElement("div"); h.className = "ghead"; h.dataset.n = g.items.length;
+    h.innerHTML = "<b>" + g.name + "</b> <span><span class='gc'>" + g.items.length + "편</span> · " + g.why + "</span>";
     list.appendChild(h);
     for (const it of g.items) list.appendChild(renderRow(it));
   }
@@ -317,7 +342,11 @@ function renderSmart(r) {
     document.body.classList.toggle("mapwide", v === "map");
     vbar.querySelectorAll("[data-v]").forEach(a => a.classList.toggle("on", a.dataset.v === v));
     try { localStorage.setItem("explore_view", v); } catch (e) {}
-    if (v === "map" && !mapReady && r.map) { mapReady = true; renderResultMap(r.map, mapBox, { openPaper, persist: persistMapField }); }
+    if (v === "map" && !mapReady && r.map) {
+      mapReady = true;
+      const abbrOf = {}; (r.journals || []).forEach(j => { if (j.abbr) abbrOf[j.name] = j.abbr; });
+      renderResultMap(r.map, mapBox, { openPaper, persist: persistMapField, venueFilter: () => venueF, abbr: v2 => abbrOf[v2] || "", onVenueFilter: v2 => { venueF = v2; applyVenue(); } });
+    }
   };
   vbar.querySelectorAll("[data-v]").forEach(a => a.onclick = (e) => { e.preventDefault(); setView(a.dataset.v); });
   let pref = "list"; try { pref = localStorage.getItem("explore_view") || "list"; } catch (e) {}
@@ -356,7 +385,7 @@ function renderRow(r) {
   t.appendChild(document.createTextNode(r.title)); t.onclick = () => openPaper(r);
   row.appendChild(t);
   const m = document.createElement("div"); m.className = "meta";
-  m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · " + r.venue : "") +
+  m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · <span title='" + escH(r.venue) + "'>" + (r.top ? "★ " : "") + escH(r.abbr || r.venue) + "</span>" : "") +
     " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") +
     ((r.hits && r.hits.length) ? " · <span class='hit'>" + r.hits.map(escH).join(" · ") + "</span>" : "") +
     (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "");

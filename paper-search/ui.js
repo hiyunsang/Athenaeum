@@ -152,7 +152,9 @@ function openSettings(cat) {
     { id: "keys", name: "연결", groups: [
       { title: "논문 탐색 · 관련맵", rows: [
         row("OpenAlex API 키", key("oaKey", "oaKeyState"), "키가 없으면 같은 네트워크(학교)가 나눠 쓰는 무료 일일 한도에 걸릴 수 있습니다. 무료 키: <a href='https://help.openalex.org/api/authentication/' target='_blank'>help.openalex.org</a>", true),
-        row("Elsevier API 키", key("elsKey", "elsKeyState"), "초록이 없는 논문을 Scopus 로 채웁니다(모든 출판사, 주 1만 회). 무료 키: <a href='https://dev.elsevier.com/' target='_blank'>dev.elsevier.com</a>", true)] }] }];
+        row("Elsevier API 키", key("elsKey", "elsKeyState"), "초록이 없는 논문을 Scopus 로 채웁니다(모든 출판사, 주 1만 회). 무료 키: <a href='https://dev.elsevier.com/' target='_blank'>dev.elsevier.com</a>", true),
+        row("논문 탐색의 우선 저널", "<textarea id='prefJ' rows='4' style='width:100%;font-size:12px;line-height:1.45' placeholder='줄마다 저널 하나 (영어 정식 이름)'></textarea><span class='uout' id='prefJState'></span>",
+            "탐색이 이 저널 안에서 한 번 더 찾고, 같은 검색 단계에서는 이 저널을 앞에 둡니다(결과에 ★). 비우면 기본값: IJMTM · JMPT · CIRP Annals · Precision Engineering · JMSE", true)] }] }];
   const groupHtml = g => (g.title ? "<div class='ugt'>" + g.title + "</div>" : "") + "<div class='ugrp'>" + g.rows.join("") + "</div>";
   let cur = UI_CATS.some(c => c.id === cat) ? cat : (localStorage.getItem("ui_set_cat") || "general");
   if (!UI_CATS.some(c => c.id === cur)) cur = "general";
@@ -225,6 +227,17 @@ function openSettings(cat) {
       } catch (e) { st.textContent = "저장 실패"; }
     });
   });
+  // 탐색의 우선 저널 (서버 설정) — 줄마다 하나, 비우면 기본
+  const pj = document.getElementById("prefJ"), pjs = document.getElementById("prefJState");
+  if (pj) {
+    const showJ = s => { pj.value = (s.preferred_journals || []).join("\n"); pjs.textContent = s.preferred_journals_custom ? "저장됨" : "기본값"; };
+    fetch("/api/settings").then(r => r.json()).then(showJ).catch(() => {});
+    pj.addEventListener("change", async () => {
+      pjs.textContent = "저장 중…";
+      try { showJ(await (await fetch("/api/settings", { method: "POST", body: JSON.stringify({ preferred_journals: pj.value }) })).json()); }
+      catch (e) { pjs.textContent = "저장 실패"; }
+    });
+  }
   document.addEventListener("keydown", escClose);
 }
 function escClose(e) { if (e.key === "Escape") closeSettings(); }

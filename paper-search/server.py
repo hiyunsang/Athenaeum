@@ -625,12 +625,14 @@ def openalex_search(query, year="", per_page=30):
     return out, d.get("meta", {}).get("count", 0)
 
 
-def openalex_boolean(expr, year="", per_page=100):
-    """제목+초록 불리언 검색식(AND/OR/NOT/따옴표/괄호 — OpenAlex 가 지원, 와일드카드는 안 됨)으로 검색. (노드 목록, 전체 건수)"""
+def openalex_boolean(expr, year="", per_page=100, sources=None):
+    """제목+초록 불리언 검색식(AND/OR/NOT/따옴표/괄호 — OpenAlex 가 지원, 와일드카드는 안 됨)으로 검색. (노드 목록, 전체 건수). sources = 저널(source id)로 좁히기"""
     import mapper
     filters = ["title_and_abstract.search:" + expr.replace(",", " ")]   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다
     if str(year).isdigit():
         filters.append("publication_year:>" + str(int(year) - 1))
+    if sources:
+        filters.append("primary_location.source.id:" + "|".join(sources))
     d = mapper._get(mapper.API + "/works", {"filter": ",".join(filters), "per-page": str(per_page),
                                             "select": mapper.SELECT + ",abstract_inverted_index,relevance_score"})
     out = []
@@ -679,6 +681,119 @@ def cocitation_counts(ids, max_pages=3, batch=40):
     return pair, citers_of, True
 
 
+# ---------- 우선 저널 (2026-10-07, 사용자: '마이크로 가공을 검색했는데 MTM·JMPT 보다 AMT 가 너무 많다 — 탑 저널 위주로 찾거나 가중치를') ----------
+# OpenAlex 는 관련도 순이라 편수가 많은 저널(AMT)이 결과를 메운다. 우선 저널(설정.json preferred_journals, 없으면 기본 다섯)은
+# 사다리의 앞 두 단계에서 그 저널 안에서 따로 한 번 더 검색해 합치고(top), 같은 단계 안에서는 우선 저널을 앞에 둔다. 결과에는 저널별 편수와 약어를 실어 화면이 저널로 거를 수 있게 한다.
+_PREF_DEFAULT = ["International Journal of Machine Tools and Manufacture", "Journal of Materials Processing Technology", "CIRP Annals", "Precision Engineering",
+                 "Journal of Manufacturing Science and Engineering"]
+_ABBR_DEFAULT = {"international journal of machine tools and manufacture": "IJMTM", "journal of materials processing technology": "JMPT",
+                 "international journal of advanced manufacturing technology": "AMT", "cirp annals": "CIRP Ann.", "precision engineering": "Prec. Eng.",
+                 "journal of manufacturing science and engineering": "JMSE", "journal of manufacturing processes": "JMP", "wear": "Wear",
+                 "tribology international": "Trib. Int.", "international journal of mechanical sciences": "IJMS", "cirp journal of manufacturing science and technology": "CIRP JMST",
+                 "materials & design": "Mater. Des.", "journal of materials research and technology": "JMR&T", "applied surface science": "Appl. Surf. Sci.",
+                 "ceramics international": "Ceram. Int.", "journal of the mechanics and physics of solids": "JMPS", "international journal of plasticity": "IJP",
+                 "journal of manufacturing systems": "JMSys", "procedia cirp": "Procedia CIRP", "materials science and engineering a": "MSE A", "journal of cleaner production": "JCP"}
+_PREF_ID_PATH = os.path.join(os.path.dirname(ARCHIVE), "관련맵", "저널ID.json")
+
+
+def _jnorm(name):
+    """저널 이름 맞추기용: 소문자, 앞의 the, 구두점 제거, 'CIRP Annals - Manufacturing Technology' 의 꼬리 제거"""
+    t = re.sub(r"[^a-z0-9& ]+", " ", str(name or "").lower())
+    t = re.sub(r"^the\s+", "", re.sub(r"\s+", " ", t).strip())
+    return re.sub(r"\s+manufacturing technology$", "", t) if t.startswith("cirp annals") else t
+
+
+def preferred_journals():
+    import mapper
+    v = mapper.settings().get("preferred_journals")
+    if isinstance(v, list) and v:
+        return [str(x).strip() for x in v if str(x).strip()][:12]
+    return list(_PREF_DEFAULT)
+
+
+def journal_abbr_map():
+    """정규화한 저널 이름 → 약어 (수집설정의 저널약어 + 기본)"""
+    m = dict(_ABBR_DEFAULT)
+    try:
+        for k, v in (load_json(os.path.join(BASE, "수집설정.json"), {}).get("저널약어") or {}).items():
+            m[_jnorm(k)] = str(v)[:16]
+    except Exception:
+        pass
+    return m
+
+
+def journal_abbr(venue):
+    n = _jnorm(venue)
+    m = journal_abbr_map()
+    if n in m:
+        return m[n]
+    for k, v in m.items():
+        if n.startswith(k) or k.startswith(n):
+            return v
+    return ""
+
+
+def is_pref_venue(venue, prefs=None):
+    n = _jnorm(venue)
+    if not n:
+        return False
+    for p in (prefs if prefs is not None else [_jnorm(x) for x in preferred_journals()]):
+        if n == p or n.startswith(p) or p.startswith(n):
+            return True
+    return False
+
+
+def pref_source_ids():
+    """우선 저널 → OpenAlex source id (캐시 관련맵\저널ID.json). 못 찾은 저널은 건너뛴다"""
+    import mapper
+    cache = load_json(_PREF_ID_PATH, {}) or {}
+    out, changed = [], False
+    for name in preferred_journals():
+        key = _jnorm(name)
+        hit = cache.get(key)
+        if hit is None:
+            try:
+                d = mapper._get(mapper.API + "/sources", {"search": name, "per-page": "5", "select": "id,display_name,works_count,type"})
+                best = None
+                for it in d.get("results", []):
+                    dn = _jnorm(it.get("display_name"))
+                    if dn == key or dn.startswith(key) or key.startswith(dn):
+                        best = it
+                        break
+                if best is None and d.get("results"):
+                    best = d["results"][0]
+                hit = {"id": mapper.wid(best["id"]) if best else "", "name": (best or {}).get("display_name", "")}
+            except Exception:
+                hit = {"id": "", "name": "", "err": True}
+            if not hit.get("err"):
+                cache[key] = hit
+                changed = True
+        if hit.get("id"):
+            out.append(hit["id"])
+    if changed:
+        try:
+            save_json(_PREF_ID_PATH, cache)
+        except Exception:
+            pass
+    return out
+
+
+def journal_counts(groups):
+    """선별된 논문의 저널별 편수 → [{name, abbr, n, top}] 편수 순"""
+    prefs = [_jnorm(x) for x in preferred_journals()]
+    cnt = {}
+    for g in groups:
+        for it in g["items"]:
+            v = it.get("venue") or ""
+            if not v:
+                continue
+            c = cnt.setdefault(_jnorm(v), {"name": v, "n": 0})
+            c["n"] += 1
+    rows = [{"name": c["name"], "abbr": journal_abbr(c["name"]), "n": c["n"], "top": is_pref_venue(c["name"], prefs)} for c in cnt.values()]
+    rows.sort(key=lambda r: (-r["n"], r["name"]))
+    return rows
+
+
 def results_map(groups, with_cocitation=True):
     """선별된 논문들의 맵: 소주제(색)·피인용(크기)·인용 관계(선).
     유사도 = 서지결합(공통 참고문헌, 둘이 같은 곳을 인용) + 동시인용(남들이 둘을 함께 인용) + 직접 인용."""
@@ -715,7 +830,7 @@ def results_map(groups, with_cocitation=True):
             if key not in have:
                 have.add(key); edges.append([key[0], key[1], 0, s_])
     nodes = [{"g": gi, "id": it["id"], "doi": it.get("doi", ""), "title": it["title"], "year": it["year"], "author": it.get("author", ""),
-              "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")),
+              "venue": it.get("venue", ""), "cit": it.get("cit", 0), "owned": it.get("owned", ""), "review": bool(it.get("review")), "top": bool(it.get("top")),
               "hits": it.get("hits", []), "abstract": (it.get("abstract") or "")[:2500], "kw": (it.get("kw") or [])[:6]} for gi, it in sel]   # 초록·키워드는 맵의 정보 패널용
     return {"nodes": nodes, "edges": edges, "sims": sims, "groups": [g["name"] for g in groups],
             "cocitation": cocit_ok, "citers": len({k for k in citers_of if citers_of[k]})}
@@ -899,6 +1014,8 @@ def _run_smart(q, year, key, plan=None):
 
     stage("2/3 검색 중 (0/{})".format(len(ladder)))
     merged, queries, last_err = {}, [], ""
+    pref_ids = pref_source_ids()
+    pref_norm = [_jnorm(x) for x in preferred_journals()]
     for i, (label, concepts, per_page) in enumerate(ladder):
         expr = build_boolean(concepts, plan["exclude"])
         total, got = 0, 0
@@ -913,6 +1030,21 @@ def _run_smart(q, year, key, plan=None):
             except Exception as e:
                 total = "실패"; last_err = str(e)[:400]
         qrec = {"q": label, "expr": expr, "total": total, "new": got}
+        if expr and pref_ids and i < 2:   # 우선 저널 안에서 한 번 더 — 편수가 많은 저널에 밀려 빠진 IJMTM·JMPT 논문을 건진다
+            try:
+                pres, ptotal = openalex_boolean(expr, year, per_page=per_page, sources=pref_ids)
+                pnew = 0
+                for n in pres:
+                    n["top"] = True
+                    if n["id"] not in merged:
+                        n["tier"] = i
+                        merged[n["id"]] = n
+                        pnew += 1
+                    else:
+                        merged[n["id"]]["top"] = True
+                qrec["top"] = {"total": ptotal, "got": len(pres), "new": pnew}
+            except Exception as e:
+                qrec["top"] = {"total": "실패", "got": 0, "new": 0}
         if expr and _elsevier_key():   # Scopus 도 나란히 (키가 있을 때): OpenAlex 가 놓친 논문 보완, 초록·키워드 동봉
             sres, stotal, serr = scopus_search(build_scopus(concepts, plan["exclude"]), year, pages=2 if per_page >= 100 else 1)
             qrec["scopus"] = {"total": stotal if not serr else "실패", "got": len(sres), "new": merge_scopus_into(merged, sres, i) if sres else 0}
@@ -926,8 +1058,12 @@ def _run_smart(q, year, key, plan=None):
     items = list(merged.values())
     for n in items:
         n["owned"] = owned_idx.get(mapper.norm_title(n["title"])) or ""
-    items.sort(key=lambda n: (n["tier"], -n["rel"], -n["cit"]))   # 엄격한 검색에서 나온 것 → 관련도 → 피인용
-    items = items[:150]
+        if not n.get("top") and is_pref_venue(n.get("venue"), pref_norm):
+            n["top"] = True
+    items.sort(key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))   # 엄격한 검색에서 나온 것 → 우선 저널 → 관련도 → 피인용
+    tops = [n for n in items if n.get("top")][:100]            # 우선 저널이 전부를 메우지는 않게 — 150 가운데 많아야 100
+    rest = [n for n in items if not n.get("top")][:150 - len(tops)]
+    items = sorted(tops + rest, key=lambda n: (n["tier"], 0 if n.get("top") else 1, -n["rel"], -n["cit"]))
     fill_abstracts_scopus(items, stage)   # OpenAlex 에 초록이 없는 후보(Elsevier 등)는 Scopus 로 보강 — Claude 선별 정확도와 정보 패널용
 
     stage("3/3 Claude가 선별·분류 중 ({}편)".format(len(items)))
@@ -976,9 +1112,12 @@ def _run_smart(q, year, key, plan=None):
     rmap = results_map(groups)
     for n in items:
         n.pop("_refs", None)
+    for n in items:
+        n["abbr"] = journal_abbr(n.get("venue"))
     _jobs[key] = {"status": "done", "result": {
         "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
-        "queries": queries, "groups": groups, "excluded": excluded, "excluded_items": excluded_items, "candidates": len(items), "map": rmap}}
+        "queries": queries, "groups": groups, "excluded": excluded, "excluded_items": excluded_items, "candidates": len(items), "map": rmap,
+        "journals": journal_counts(groups), "pref_journals": preferred_journals(), "top_count": sum(1 for g in groups for it in g["items"] if it.get("top"))}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
@@ -3072,7 +3211,9 @@ class Handler(BaseHTTPRequestHandler):
             k = mapper.api_key()
             ek = (mapper.settings().get("elsevier_api_key") or "").strip()
             self._send(200, {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
-                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else ""})
+                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else "",
+                             "preferred_journals": preferred_journals(), "preferred_journals_default": _PREF_DEFAULT,
+                             "preferred_journals_custom": isinstance(mapper.settings().get("preferred_journals"), list)})
         elif url.path == "/api/fulltext":   # 홈 검색 Enter: PDF 본문까지. 낱말 단위로 모든 낱말이 든 논문만 ('ti' 가 cutting 에 걸리지 않게)
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})
@@ -3236,10 +3377,19 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     d.pop("elsevier_api_key", None)
                 mapper.save_settings(d)
+            if "preferred_journals" in body:   # 탐색의 우선 저널 — 줄·쉼표로 나눈 이름들. 비우면 기본 다섯으로
+                names = [x.strip() for x in re.split(r"[\n,;]+", str(body.get("preferred_journals") or "")) if x.strip()]
+                if names:
+                    d["preferred_journals"] = names[:12]
+                else:
+                    d.pop("preferred_journals", None)
+                mapper.save_settings(d)
             k = mapper.api_key()
             ek = (mapper.settings().get("elsevier_api_key") or "").strip()
             self._send(200, {"ok": True, "openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
-                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else ""})
+                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else "",
+                             "preferred_journals": preferred_journals(), "preferred_journals_default": _PREF_DEFAULT,
+                             "preferred_journals_custom": isinstance(mapper.settings().get("preferred_journals"), list)})
         elif self.path == "/api/smart_brief":   # 탐색 맵의 정보 패널: 초록 찾기(kind=abstract) · 한국어 2~3문장 요약(brief) · 초록 전체 번역(translate). 캐시
             title = (body.get("title") or "").strip()
             if not title:

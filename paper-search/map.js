@@ -52,6 +52,16 @@ function renderResultMap(m, host, opts) {
   const legend = document.createElement("div"); legend.className = "maplegend"; legend.style.left = (LIST_W ? LIST_W + 8 : 8) + "px";
   legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
     m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("");
+  // 저널별 편수(색 없이) — 누르면 그 저널만 보이게 (사용자 2026-10-07: '왼쪽 위에 저널들도 몇 개인지, 누르면 그 저널들만 뜨게'). ★ = 우선 저널(설정)
+  let venueF = (opts.venueFilter && opts.venueFilter()) || null;
+  const vcount = {}; nodes.forEach(n => { if (n.venue) vcount[n.venue] = (vcount[n.venue] || 0) + 1; });
+  const vlist = Object.entries(vcount).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  if (vlist.length) {
+    const jrow = document.createElement("div"); jrow.className = "jrow";
+    jrow.innerHTML = "<span class='jlab'>저널</span>" + vlist.map(([v, c]) => { const t = nodes.some(x => x.venue === v && x.top); return "<span class='lj" + (t ? " top" : "") + (v === venueF ? " on" : "") + "' data-v='" + mapEscH(v) + "' title='" + mapEscH(v) + " — 누르면 이 저널만'>" + (t ? "★ " : "") + mapEscH((opts.abbr && opts.abbr(v)) || v.slice(0, 28)) + " (" + c + ")</span>"; }).join("") +
+      (Object.keys(vcount).length > vlist.length ? "<span class='lj more'>외 " + (Object.keys(vcount).length - vlist.length) + "개 저널</span>" : "");
+    legend.appendChild(jrow);
+  }
   wrap.appendChild(legend);
   const legendHint = document.createElement("div"); legendHint.className = "maplegend-hint";
   legendHint.innerHTML = (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
@@ -171,7 +181,7 @@ function renderResultMap(m, host, opts) {
   if (host._pinnedG != null && host._pinnedG < G) { focusG = host._pinnedG; focusPinned = true; }   // 폭이 바뀌어 다시 그린 경우
   const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, narrow ? 6 : 12);
   const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, narrow ? 4 : 8);
-  const inFocus = (n) => focusG === null || n.g === focusG;
+  const inFocus = (n) => (focusG === null || n.g === focusG) && (venueF === null || n.venue === venueF);
   // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 (1편이면 원, 2편이면 캡슐). 오프스크린에 불투명하게 그린 뒤 한 번에 반투명 합성 → 겹침 띠 없음.
   // 관계대로 놓으면 껍질끼리 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
   function hull(pts) {
@@ -407,6 +417,16 @@ function renderResultMap(m, host, opts) {
       legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", focusPinned && +x.dataset.g === focusG)); draw(); };
   });
   if (focusPinned) legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", +x.dataset.g === focusG));
+  // 저널로 거르기: 범례의 저널을 누르면 그 저널만(다시 누르면 해제). 왼쪽 목록도 같이 거르고, 부르는 쪽(탐색의 목록)에 알린다
+  const setVenue = (v, tell) => {
+    venueF = v || null;
+    legend.querySelectorAll(".lj[data-v]").forEach(x => x.classList.toggle("on", x.dataset.v === venueF));
+    rowOf.forEach((a, n) => { a.hidden = !!venueF && n.venue !== venueF; });
+    draw();
+    if (tell && opts.onVenueFilter) { try { opts.onVenueFilter(venueF); } catch (e) {} }
+  };
+  host._setVenue = (v) => setVenue(v, false);
+  legend.querySelectorAll(".lj[data-v]").forEach(el => { el.onclick = () => setVenue(venueF === el.dataset.v ? null : el.dataset.v, true); });
   if (LIST_W) {   // 왼쪽 목록: 소주제별, 피인용 순. 줄을 누르면 선택, 올리면 맵의 원이 도드라짐
     m.groups.forEach((g, gi) => {
       const ns = nodes.filter(n => n.g === gi).sort((a, b) => b.cit - a.cit);
@@ -420,6 +440,7 @@ function renderResultMap(m, host, opts) {
         a.onmouseenter = () => { if (hovered !== n) { hovered = n; draw(); } };
         a.onmouseleave = () => { if (hovered === n) { hovered = null; draw(); } };
         list.appendChild(a); rowOf.set(n, a);
+        if (venueF && n.venue !== venueF) a.hidden = true;
       }
     });
   }
