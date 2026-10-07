@@ -601,7 +601,7 @@ $("main").addEventListener("mouseup", e => {
   const quote = (frag.textContent || "").replace(/\s+/g, " ").trim();
   const keys = [...ch.querySelectorAll(".u")].filter(el => range.intersectsNode(el)).map(el => el.dataset.u);
   if (quote.length < 2 || !keys.length) { selBarHide(); return; }
-  selBarShow(e, "<button class='primary' title='고른 대목을 놓고 Claude 에게 묻습니다 (Opus)'>Claude 에게</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openAsk({ quote, keys }); });
+  selBarShow(e, "<button class='primary' title='고른 대목을 놓고 Claude 에게 묻습니다 (Opus)'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()' style='width:14px;height:14px;vertical-align:-2px;margin-right:5px;image-rendering:pixelated'>Claude 에게</button>", bar => bar.querySelector("button").onclick = () => { selBarHide(); openAsk({ quote, keys }); });
 });
 function openAsk(ctx) { askCtx = ctx; askOpen = null; askDraft = ""; panel = "ask"; renderPanel(); const t = $("askIn"); if (t) t.focus(); }
 function openChat(cid) { askOpen = cid; askCtx = null; askDraft = ""; panel = "ask"; renderPanel(); }

@@ -2206,7 +2206,7 @@ document.addEventListener("mouseup", e => {
   const a = ta.selectionStart, b = ta.selectionEnd;
   if (b - a >= 2 && ta.value.slice(a, b).trim()) {   // 드래그: 메모·Claude 에게
     const ctx = Object.assign({ start: a, end: b, quote: ta.value.slice(a, b) }, tg);
-    selBarShow(e, "<button class='btn' data-a='memo' title='고른 글에 메모를 남깁니다'>메모</button><button class='btn pri' data-a='ask' title='고른 글을 놓고 Claude 에게 묻거나 고쳐 달라고 합니다 (Ctrl+K)'>Claude 에게</button>",
+    selBarShow(e, "<button class='btn' data-a='memo' title='고른 글에 메모를 남깁니다'>메모</button><button class='btn pri' data-a='ask' title='고른 글을 놓고 Claude 에게 묻거나 고쳐 달라고 합니다 (Ctrl+K)'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()' style='width:14px;height:14px;vertical-align:-2px;margin-right:5px;image-rendering:pixelated'>Claude 에게</button>",
       bar => bar.querySelectorAll("button").forEach(btn => btn.onclick = () => { selBarHide(); openSel(ctx, null, btn.dataset.a); }));
     return;
   }

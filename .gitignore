@@ -46,3 +46,6 @@ paper-search/설정.json
 
 # 사용자가 추가한 글꼴 파일 (환경설정 → 글꼴 추가)
 글꼴/
+
+# Anthropic 의 Claude 마스코트 (사용자가 준 그림 — 상표라 공개 저장소에 올리지 않는다, 배포 ZIP 과 이 PC 에만)
+paper-search/logo/claude_mascot.png
