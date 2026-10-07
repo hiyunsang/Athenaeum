@@ -77,7 +77,7 @@
   .u:hover { background: var(--hover); }
   .u.on { background: var(--sel-bg); box-shadow: inset 0 -2px 0 var(--accent); }
   .u .c { font-family: var(--font); font-size: .74em; color: var(--accent); margin-left: 1px; white-space: nowrap; }
-  .u.claim { font-weight: 600; }                       /* 논지 문장 — 문단의 첫 문장, 여러 논문이 함께 받친다 */
+  .u.claim { }                                         /* 옛 장의 논지 문장 표시 — 굵게 보이지 않는다(사용자 2026-10-07: 글은 교과서처럼 이어져야 한다) */
   /* 번외: 논지에 들지 않지만 서재가 말한 것 — 절 끝에 조금 작게 */
   .ch h3.extra { color: var(--text-2); font-size: .92em; margin-top: 1.8em; padding-top: .7em; border-top: 1px solid var(--line); }
   .ch h3.extra::after { content: " — 논지에 들지 않지만 서재가 말한 것"; font-weight: 400; color: var(--text-3); font-size: .9em; }
@@ -378,7 +378,7 @@ function unitHtml(u, key) {
 function figNums() {   // 장 전체에서 그림·표의 차례 번호 — 절 하나만 볼 때도 같은 번호
   if (cur._nums) return cur._nums;
   const m = {}; let f = 0, t = 0;
-  cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => { if (b.fig) m[si + "." + bi] = ++f; else if (b.table) m[si + "." + bi] = ++t; }));
+  cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => { if (b.fig) m[si + "." + bi] = b.fig.no || ++f; else if (b.table) m[si + "." + bi] = b.table.no || ++t; }));
   return cur._nums = m;
 }
 // 블록: 소제목 · 문단 · 표(행마다 근거) · 그림(논문 PDF 에서 잘라 온 것 + 설명 문장) · 번외(kind: extra)
