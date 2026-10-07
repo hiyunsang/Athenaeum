@@ -71,7 +71,8 @@
   #chatToggle img { width: 16px; height: 16px; flex: none; image-rendering: pixelated; }   /* 사용자가 준 Claude 마스코트(logo/claude_mascot.png, git 제외) — 없으면 글자만 */
   body.chat #chatToggle { color: var(--accent); border-color: var(--accent); }
   #chatlog { flex: 1; overflow-y: auto; padding: 10px 12px; }
-  .msg { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; font-size: calc(13px * var(--read-scale, 1)); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  #chatlog { font-size: 13px; }   /* A−/A+ 로 바꾼다 (ui_chat_font — 공부의 묻는 칸과 같은 값) */
+  .msg { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; font-size: calc(1em * var(--read-scale, 1)); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
   .msg.user { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
   .msg.claude { background: var(--accent-bg, #e9eefb); color: var(--text); }
   .msg.claude b { font-weight: 600; }
@@ -132,7 +133,7 @@
   <div id="info"></div>
 </header>
 <div id="chat">
-  <div class="ch"><b>Claude와 이야기</b><span id="chatctx">결과를 먼저 검색하세요</span><span style="margin-left:auto"></span><a href="#" id="chatClear" style="font-size:11px">대화 지우기</a><a href="#" id="chatClose" style="font-size:11px;margin-left:8px">닫기</a></div>
+  <div class="ch"><b>Claude와 이야기</b><span id="chatctx">결과를 먼저 검색하세요</span><span style="margin-left:auto"></span><a href="#" id="chatFm" style="font-size:11px" title="글씨 작게">A−</a><a href="#" id="chatFp" style="font-size:11px" title="글씨 크게">A+</a><a href="#" id="chatClear" style="font-size:11px">대화 지우기</a><a href="#" id="chatClose" style="font-size:11px;margin-left:8px">닫기</a></div>
   <div id="chips"></div>
   <div id="chatlog"><div class="hint" style="padding:18px 6px">화면의 논문 목록을 Claude 가 함께 봅니다. 답에 나오는 [번호] 를 누르면 그 논문으로 이동합니다.<br>질문 예: 이 중 꼭 읽어야 할 다섯 편은? · 내가 아직 없는 핵심 논문은? · 이 주제의 연구 공백은? · 검색어를 더 제안해 줘</div></div>
   <div id="chatform"><textarea id="chatq" placeholder="질문 (Enter 로 보내기, Shift+Enter 줄바꿈)"></textarea><button id="chatsend">보내기</button></div>
@@ -540,6 +541,13 @@ async function chatSend() {
   } catch (e) { st.msgs.push({ role: "claude", text: "⚠ 서버에 연결하지 못했습니다: " + e }); }
   chatBusy = false; document.getElementById("chatsend").disabled = false; chatSave(st); renderChat();
 }
+(function chatFont() {   // 대화 글씨 크기 (사용자 2026-10-07)
+  const apply = () => { const v = +(localStorage.getItem("ui_chat_font") || 13) || 13; document.getElementById("chatlog").style.fontSize = v + "px"; document.getElementById("chatq").style.fontSize = v + "px"; };
+  const step = d => { const v = Math.min(20, Math.max(11, (+(localStorage.getItem("ui_chat_font") || 13) || 13) + d)); try { localStorage.setItem("ui_chat_font", String(v)); } catch (e) {} apply(); };
+  document.getElementById("chatFm").onclick = e => { e.preventDefault(); step(-1); };
+  document.getElementById("chatFp").onclick = e => { e.preventDefault(); step(1); };
+  try { apply(); } catch (e) {}
+})();
 document.getElementById("chatToggle").onclick = e => { e.preventDefault(); document.body.classList.toggle("chat"); saveState({ chat: document.body.classList.contains("chat") }); if (document.body.classList.contains("chat")) { chatCtx(); renderChat(); document.getElementById("chatq").focus(); } };
 document.getElementById("chatClose").onclick = e => { e.preventDefault(); document.body.classList.remove("chat"); saveState({ chat: false }); };
 document.getElementById("chatClear").onclick = e => { e.preventDefault(); if (confirm("이 주제의 대화를 지울까요?")) { chatSave({ q: (loadState() || {}).q || "", msgs: [] }); renderChat(); } };

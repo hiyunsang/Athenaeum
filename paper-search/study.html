@@ -40,6 +40,16 @@
   .pick .pt { font-weight: 600; font-size: 13px; line-height: 1.35; }
   .pick .pm { color: var(--text-3); font-size: 11.5px; margin-top: 2px; }
   .pick .act { padding: 2px 0; margin-top: 5px; }
+  .ix h1 { font-family: var(--font-serif); font-size: 24px; font-weight: 600; margin: 0; }
+  .ix .ixh { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; }
+  .ix .ixi { padding: 14px 0 15px; border-top: 1px solid var(--line); cursor: pointer; }
+  .ix .ixi:last-child { border-bottom: 1px solid var(--line); }
+  .ix .ixi h2 { font-family: var(--font-serif); font-size: 17px; font-weight: 600; line-height: 1.35; margin: 0 0 4px; }
+  .ix .ixi:hover h2 { color: var(--accent); }
+  .ix .ixi .ixm { color: var(--text-3); font-size: 12px; } .ix .ixi .ixm .now { color: var(--accent); }
+  .ix .ixi .ixt { color: var(--text-2); font-size: 12.5px; margin-top: 4px; line-height: 1.5; }
+  .askwrap .fsz { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; } .askwrap .fsz .act { padding: 0 4px; }
+  .askwrap .msg, .askwrap .spq, .askwrap textarea, .askwrap .srci { font-size: inherit; }
   #list.closed { display: none; }
   #list { border-bottom: 1px solid var(--line); background: var(--surface); }
   .sitem { padding: 8px var(--s3) 9px; border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -205,7 +215,7 @@ const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" 
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
-  ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"]];
+  ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
@@ -241,12 +251,12 @@ function renderPick() {
   if (!cur) { el.innerHTML = ""; return; }
   const title = (cur.chapter || {}).title || (cur.plan || {}).title || cur.topic, others = items.filter(x => x.id !== cur.id).length;
   el.innerHTML = "<div class='pick'><div class='pk'>지금 장</div><div class='pt'>" + esc(title) + "</div><div class='pm'>" + fmtDate(cur.t) + (cur.status === "done" && cur.stats ? " · 논문 " + (cur.stats.cited || 0) + "편 · 문장 " + (cur.stats.units || 0) + "개" : "") + "</div>" +
-    (others ? "<button class='act' id='pickTg'>" + (listOpen ? "다른 장 닫기 ▴" : "다른 장 " + others + "개 ▾") + "</button>" : "") + "</div>";
-  const b = $("pickTg"); if (b) b.onclick = () => { listOpen = !listOpen; renderPick(); renderList(); };
+    "<button class='act' id='pickIx' title='쓴 장을 모두 보고 고르기'>" + (view.kind === "index" ? "장 목록 보는 중" : "장 목록 " + items.length + "개 ▸") + "</button></div>";
+  const b = $("pickIx"); if (b) b.onclick = () => gotoView("index");
 }
 function renderList() {
   const others = cur ? items.filter(x => x.id !== curId) : items;
-  $("list").classList.toggle("closed", !!cur && !listOpen);
+  $("list").classList.toggle("closed", true);   // 옛 목록은 쓰지 않는다 — 가운데의 「장 목록」 보기로(사용자 2026-10-07)
   $("list").innerHTML = (cur ? "<div class='sideh'>" + (others.length ? "다른 장" : "") + "</div>" : "") + (items.length ? others.map(x => "<div class='sitem' data-id='" + esc(x.id) + "'><div class='tt'>" + esc(x.title || x.topic) + "</div>" +
     "<div class='mm'>" + fmtDate(x.t) + " · " + stateText(x) + "</div></div>").join("") : "<div class='hint' style='padding:var(--s3)'>아직 쓴 것이 없습니다.</div>");
   $("list").querySelectorAll(".sitem").forEach(el => el.onclick = () => { listOpen = false; openStudy(el.dataset.id); });
@@ -304,11 +314,20 @@ async function refresh(first) {
 // ---------- 가운데 ----------
 function renderMain() {
   const m = $("main"); clearInterval(tickT); clearInterval(mapTick);
+  if (view.kind === "index") { m.innerHTML = indexHtml(); bindIndex(); renderOutline(); renderPick(); return; }
   if (!cur) { m.innerHTML = emptyHtml(); renderOutline(); return; }
   if (cur.status === "done" && cur.chapter) { m.innerHTML = viewHtml(); bindChapter(); renderOutline(); return; }
   m.innerHTML = runHtml(); bindRun(); renderOutline();
   if (cur.status === "running") tickT = setInterval(tick, 1000);
 }
+// 장 목록 — 블로그 글 고르듯 (제목 · 날짜 · 편수·문장·그림·표 · 주제). 누르면 그 장의 개요로
+function indexHtml() {
+  return "<div class='page ix'><div class='ixh'><h1>공부</h1><span class='hint'>" + items.length + "장 · 새 장은 왼쪽 「새 장 쓰기」</span></div>" +
+    (items.length ? items.map(x => { const s = x.stats || {}; return "<article class='ixi' data-id='" + esc(x.id) + "'><h2>" + esc(x.title || x.topic) + "</h2>" +
+      "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") : " · " + stateText(x)) + "</div>" +
+      (x.topic && x.topic !== x.title ? "<div class='ixt'>주제: " + esc(x.topic) + "</div>" : "") + "</article>"; }).join("") : "<div class='hint'>아직 쓴 장이 없습니다. 왼쪽에서 주제를 적고 「쓰기 시작」.</div>") + "</div>";
+}
+function bindIndex() { $("main").querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id)); }
 function emptyHtml() {
   return "<div class='empty'><h2>내 서재로 공부하기</h2>" +
     "<p>왼쪽에 주제를 적으면, 서재에 있는 논문을 읽어 전공책의 한 장처럼 정리합니다.</p>" +
@@ -639,7 +658,7 @@ function askPanel() {
   const ctx = chat || askCtx; if (!ctx) { panel = "info"; return infoPanel(); }
   const keys = ctx.keys || [], srcKeys = [...new Set(keys.flatMap(k => { try { return unitAt(k).src || []; } catch (e) { return []; } }))];
   const src = srcKeys.map(k => [k, cur.src[k]]).filter(x => x[1]);
-  let h = "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "</div><div class='spq'>" + esc(ctx.quote) + "</div>" +
+  let h = "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span></div><div class='spq'>" + esc(ctx.quote) + "</div>" +
     "<details class='evd'" + (chat ? "" : " open") + "><summary>이 대목의 근거 원문 " + src.length + "개 — Claude 에게 같이 갑니다</summary>" + (src.length ? srcItemsHtml(src) : "<div class='hint'>근거 표시가 없는 이음 문장입니다.</div>") + "</details>";
   if (chat) h += (chat.thread || []).map(msgHtml).join("");
   if (chat && chat.pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 대화에 남습니다.</div>";
@@ -652,9 +671,10 @@ function askPanel() {
       "<button class='primary' id='askGo'>묻기</button></div><div class='hint' id='askMsg'></div></div>";
   }
   h += "<div class='row noprint' style='display:flex;gap:var(--s2);padding-top:var(--s3)'><button class='act' id='askClose'>닫기</button>" + (chat ? "<button class='act warn' id='askDel'>이 대화 지우기</button>" : "") + "</div>";
-  return h;
+  return "<div class='askwrap' style='font-size:" + (+lsGet("ui_chat_font", "13") || 13) + "px'>" + h + "</div>";   // 글씨 크기는 탐색의 대화와 같은 값(ui_chat_font)
 }
 function bindAsk() {
+  $("srcp").querySelectorAll(".fsz button").forEach(b => b.onclick = () => { const v = Math.min(20, Math.max(11, (+lsGet("ui_chat_font", "13") || 13) + (+b.dataset.f))); lsSet("ui_chat_font", String(v)); renderPanel(); });
   const t = $("askIn");
   if (t) {
     t.oninput = () => { askDraft = t.value; };
@@ -756,7 +776,7 @@ function infoPanel() {
     (s.claims != null ? kv("짜임", "논지 " + (s.claims || 0) + " · 두 논문 이상이 받치는 문장 " + (s.multi || 0) + " · 표 " + (s.tables || 0) + " · 그림 " + (s.figs || 0) + " · 번외 문장 " + (s.extra || 0)) : "") +
     ((s.journals || []).length ? kv("출처 저널", s.journals.map(j => (j.top ? "★ " : "") + esc(j.abbr) + " " + j.n).join(" · ") + " <span class='hint'>(★ 우선 저널 — ⚙ 설정 → 연결)</span>") : "") +
     kv("근거 원문", (s.srcs || 0) + "문장 · 논문 " + (s.cited || 0) + "편") +
-    kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
+    kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + (s.joined ? " · 절 사이 잇는 문장 손질 " + s.joined : "") + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
     kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
     kv("읽은 토큰", fmtTok(tok.in || 0) + (tok.cached ? " (그중 캐시 " + fmtTok(tok.cached) + ")" : "") + " · 호출 " + (cur.calls || 0) + "번");
   if (panel === "removed") h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
@@ -780,7 +800,7 @@ $("go").onclick = async () => {
   $("topic").value = ""; await loadList(); openStudy(r.id);
 };
 $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) $("go").click(); });
-(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList();
+(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
   if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); } })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
 </script>

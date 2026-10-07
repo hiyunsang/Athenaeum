@@ -49,7 +49,7 @@ _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text
 
 VERSION = "공부 (2026-10-07)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 논지 층·번외·표·그림을 넣은 날. 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
-_STAGES = ["plan", "scan", "select", "read", "outline", "write", "verify", "wrap"]
+_STAGES = ["plan", "scan", "select", "read", "outline", "write", "join", "verify", "wrap"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
 _HIT_CHARS = 16000      # 관련 논문: 맞은 대목만
 
@@ -913,12 +913,13 @@ _WRITE_RULES = (
     "문단은 앞 문단이 끝낸 데서 시작하고(앞 문단의 마지막 생각을 받는 말이나 그 대상을 주어로), 끝에서 다음 문단으로 넘긴다. 생각(논지)을 머리 문장으로 세우지 않고 설명하면서 드러나게 한다. "
     "연구는 설명의 근거로 문장 안에 녹인다 — '…조건에서는 …가 관찰된다' 처럼 사실과 조건을 주어로. 누구의 연구인지는 줄 끝의 메모 번호(인용)가 알려 주므로 연구자 이름을 문장에 넣지 않아도 된다. "
     "논문을 하나씩 소개하는 글('A 는 …했다. B 는 …했다.')도, 주장 한 문장 뒤에 연구를 줄 세우는 글도 아니다. "
-    "받치는 연구는 메모 하나에 한 문장을 넘기지 않는다(두 메모를 한 문장에 묶어도 된다) — 메모의 근거 원문을 문장 단위로 되풀이해 옮기지 않는다.\n"
+    "메모는 글의 재료이지 문장의 단위가 아니다 — 메모를 하나씩 문장으로 옮겨 늘어놓으면 정보의 나열이 된다. 서로 이어진 사실(같은 대상의 성질들, 조건과 결과, 원인과 결과, 견줌)은 한 문장이나 한 호흡의 두 문장으로 묶고 "
+    "그 관계를 말로 드러낸다('…이면서도', '…이어서', '다만', '그래서'). 메모의 근거 원문을 문장 단위로 되풀이해 옮기지 않는다.\n"
     "1-1. 잇는 문장을 쓴다: 사실이 없는 이음 문장 — 앞을 받아 다음을 여는 말, 개념과 개념을 잇는 말, 왜 이것을 보는지 말하는 말 — 을 ⟦-⟧ 로 자유롭게 쓴다. "
     "모든 문장이 논문에서 오면 글이 되지 않는다. 다만 잇는 문장에 새 사실·수치·원인을 담지 않는다(그런 것은 메모가 있어야 한다). "
     "잇는 문장은 평서문이 기본이다 — 앞 문단의 결론을 받아 다음 대상을 주어로 세운다. 물음 꼴('…인가?', '남는 물음은 …이다', '…따져 보아야 한다')은 절에 한둘까지, 문단마다 되풀이하지 않는다.\n"
     "2. 사실 문장은 메모와 그 근거 문장이 말하는 데까지만. 조건(재료·결정 방위·공구·절삭 깊이·속도·온도·스케일, 실험인지 시뮬레이션인지)을 떼어 일반 법칙처럼 쓰지 않는다 — "
-    "'…에서 …가 관찰되었다', '… 조건에서는 …' 처럼 조건과 함께 쓴다. 한 연구의 결과를 '일반적으로'·'항상' 으로 넓히지 않고, 근거가 조심스럽게 말한 것(may, suggest)을 단정으로 바꾸지 않는다.\n"
+    "'…에서 …가 관찰되었다', '… 조건에서는 …' 처럼 조건과 함께 쓴다. 한 연구의 결과를 '일반적으로'·'항상' 으로 넓히지 않고, 근거가 조심스럽게 말한 것(may, suggest)을 단정으로 바꾸지 않는다. 뜻만 지키면 표현은 자유다 — 원문이나 메모의 문장 구조를 따라 옮겨 쓰지 않고, 원문이 '곧 …' 하고 풀어 준 뜻은 같이 옮긴다.\n"
     "3. 수치·단위·기호는 근거 문장에 적힌 그대로. 근거가 말로 적은 양(twice, half)은 말로(두 배, 절반). 메모에 없는 수치를 만들지 않는다.\n"
     "4. 메모에 없는 내용은 쓰지 않는다 — 당신이 아는 교과서적 상식이라도. 설명에 빈 곳이 있으면 비워 둔다(이 책은 서재가 말하는 것만 싣는다).\n"
     "5. '재인용' 메모(그 논문이 남의 연구를 전한 말)는 그 논문의 저자가 한 일처럼 쓰지 않는다 — 그 논문의 저자를 주어로 세우지 않고 사실을 주어로 쓴다. "
@@ -928,9 +929,9 @@ _WRITE_RULES = (
     "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다. 연구들이 같은 것을 보았는지, 어디서 갈리는지는 설명의 흐름 속에서 말하고, 그 문장에는 관계된 메모를 모두 ⟦ ⟧ 에 적는다 — "
     "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 두지 않는다.\n"
     "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
-    "9. 문장의 크기: 한 문장에 사실 하나. 메모 하나는 보통 한 문장이지만, 사실과 그 조건·해석이 한 문장에 다 들어가지 않으면 두 문장으로 나눈다(둘 다 같은 메모 번호; 세 문장은 넘기지 않는다). "
-    "실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 문장에 두고 나머지는 빼거나 다음 문장으로. "
-    "괄호 삽입은 처음 나온 영어 용어에만 쓴다 — 해석·관찰 방법·조건을 괄호로 끼우지 않는다. 겹치는 메모는 한 문장에 함께. 잇는 문장은 필요한 만큼. 설계도의 메모를 빠뜨리지 않는다.\n"
+    "9. 문장의 크기: 문장은 생각의 단위다. 한 생각을 받치는 사실이 여럿이면 한 문장에 묶고(메모 번호를 모두 적는다), 한 메모가 조건·해석을 길게 담으면 둘로 나눈다. "
+    "다만 실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 두고 나머지는 뺀다. 괄호 삽입은 처음 나온 영어 용어에만. "
+    "읽는 사람은 메모가 몇 개였는지 모른다 — 문단을 읽고 나면 사실의 목록이 아니라 하나의 설명이어야 한다. 잇는 문장은 필요한 만큼. 설계도의 메모를 빠뜨리지 않는다.\n"
     "10. 절의 첫 문단은 [앞 절]이 끝낸 생각을 받아 시작한다(잇는 문장 한둘로 — '이 절은 …를 다룬다' 같은 안내문이 아니라 내용을 잇는 말). 절의 끝은 [다음 절]의 물음으로 자연스럽게 넘긴다(한 문장, 예고가 아니라 이음). "
     "소제목(###)은 절이 길 때만 둘에서 넷, 문단마다 달지 않는다.\n"
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
@@ -994,7 +995,7 @@ def _write_prompt(st, k):
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n핵심 사실 하나를 조건과 함께 적은 문장. ⟦N3.2⟧\n핵심 사실 하나. ⟦N3.4, N7.1⟧\n<<<END>>>\n"
                 "- 이 절은 장 끝의 '핵심 정리'다. 6~10줄, 줄마다 이 장의 핵심 사실 하나를 한 문장으로. 줄 끝의 ⟦ ⟧ 안에 근거인 메모 번호. 소제목·이음 문장·문단 나눔 없이.\n\n")
     elif claimed:
-        form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n앞 절을 받아 이 절을 여는 문장(사실 없음). ⟦-⟧\n사실을 말하는 문장(조건과 함께). ⟦N3.2⟧\n같은 메모의 조건이나 해석을 말하는 둘째 문장. ⟦N3.2⟧\n사실을 말하는 문장. ⟦N5.1, N3.2⟧\n다음 문단으로 넘기는 문장(사실 없음). ⟦-⟧\n¶\n"
+        form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n앞 절을 받아 이 절을 여는 문장(사실 없음). ⟦-⟧\n사실을 말하는 문장(조건과 함께). ⟦N3.2⟧\n이어진 두 사실을 관계를 드러내며 한 문장에. ⟦N5.1, N3.2⟧\n그 사실들이 뜻하는 것을 받아 다음 사실로 넘어가는 문장. ⟦N7.1⟧\n다음 문단으로 넘기는 문장(사실 없음). ⟦-⟧\n¶\n"
                 "앞 문단을 받아 이어 가는 문장. ⟦N7.1⟧\n…가 ⟨그림⟩에 보인다 하고 그림을 가리키는 문장. ⟦N5.1⟧\n그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦N5.1⟧\n¶\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
                 "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄.\n"
                 "- ⟦-⟧ = 사실이 없는 잇는 문장(앞을 받아 다음을 여는 말, 개념을 잇는 말, 왜 이것을 보는지 말하는 말). 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 메모 번호를 적는다.\n\n")
@@ -1395,7 +1396,91 @@ def _wrap(st):
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
-                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "extra": nextra, "journals": _journal_stats(st, order)}
+                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "extra": nextra, "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
+
+
+# ---------- 6-1 절 사이 잇기 (2026-10-07) ----------
+# 절은 셋씩 동시에 쓰므로 여는 문장이 앞 절의 설계도만 보고 쓰인다. 재 보니 경계 14곳 중 9곳은 그래도 맞았고 2곳은 어긋났다(앞 절이 긴 사실 문장 묶음으로 끝난 자리).
+# 절을 차례로 쓰면 +30분이라, 쓴 뒤에 경계마다 작은 호출 하나로 잇는 문장(근거 없는 문장)만 고쳐 쓴다 — 사실 문장은 한 글자도 바꾸지 않고, 고친 잇는 문장은 뒤의 대조가 다시 본다(fact).
+def _para_blocks(sec):
+    return [b for b in (sec.get("blocks") or []) if b.get("units") and "h" not in b and not b.get("fig") and not b.get("table") and b.get("kind") != "extra"]
+
+
+def _join_pair(st, a, k, model):
+    """절 a 의 실제 마지막 문단과 절 k 의 첫 문단을 놓고 잇는 문장만 고쳐 쓴다 → 고친 문장 수"""
+    secs = st["sections"]
+    pb, cb = _para_blocks(secs[a]), _para_blocks(secs[k])
+    if not pb or not cb:
+        return 0
+    tail, head = pb[-1], cb[0]
+
+    def lines(block, tag):
+        return "\n".join("%s%d %s %s" % (tag, i + 1, "[잇는 문장]" if not u.get("notes") else "[사실 — 고치지 않는다]", u["t"]) for i, u in enumerate(block["units"]))
+    orig_tail, orig_head = [u["t"] for u in tail["units"]], [u["t"] for u in head["units"]]
+    prompt = (
+        "전공 교과서의 두 절이 만나는 자리를 다듬는다. 두 절은 따로 쓰였기 때문에, 다음 절의 여는 문장이 앞 절의 실제 마지막 문장을 받지 못했거나 앞 절의 닫는 문장이 다음 절의 실제 첫 문장으로 넘어가지 못했을 수 있다.\n"
+        "할 일: '[잇는 문장]' 으로 표시된 문장만 고쳐 쓴다 — 다음 절의 여는 잇는 문장은 앞 절의 마지막 문장들이 실제로 말한 것을 받아 이 절의 첫 사실 문장으로 자연스럽게 넘어가게, 앞 절의 닫는 잇는 문장은 다음 절의 첫 사실 문장으로 넘어가게. "
+        "'[사실 — 고치지 않는다]' 문장은 한 글자도 바꾸지 않는다.\n"
+        "규칙: 고치지 않는 것이 기본이다 — 여는 문장이 앞 절의 실제 마지막 문장들과 어긋날 때(앞 절이 말하지 않은 것을 받거나, 앞 절의 끝과 상관없는 말로 열 때), 또는 닫는 문장이 다음 절의 실제 첫 사실과 어긋날 때만 고친다. "
+        "잇는 문장에는 근거가 없다 — 사실을 말하지 않는다. 앞 문단의 결과·수치·재료·방법을 되풀이해 요약하지 말고(그 문장들은 이미 있다), 앞의 무엇이 다음의 무엇으로 넘어가는지를 대상의 이름 정도로만 짚는다. "
+        "고칠 때는 원래 문장의 말투·길이·결을 지키고 그 자리만 바꾼다 — 경계마다 같은 꼴의 문장을 만들지 않는다. '이 절은 …를 다룬다·살펴본다' 같은 안내문, 물음 꼴('…인가?', '남는 물음은 …'), '앞 절에서 보았듯이' 같은 상투어는 쓰지 않는다. "
+        "다음 절의 첫 문단에 잇는 문장이 없는데 앞 절과 끊겨 보이면 add_head 에 여는 문장 하나를 새로 적어도 된다(아니면 빈 문자열).\n"
+        "JSON 으로만: {\"fits\": 이미 잘 이어져 있으면 true(그러면 나머지는 비운다), \"tail\": {\"T4\": \"고친 문장\"}, \"head\": {\"H1\": \"고친 문장\"}, \"add_head\": \"\", \"ok\": true}\n\n"
+        "[장] %s\n[앞 절] %d. %s\n[앞 절의 마지막 문단]\n%s\n\n[다음 절] %d. %s\n[다음 절의 첫 문단]\n%s") % (
+        st["outline"]["title"], a + 1, secs[a]["title"], lines(tail, "T"), k + 1, secs[k]["title"], lines(head, "H"))
+    d = _ask_json(st, prompt, model, "high", 300, need="ok")
+    if not d or d.get("fits") is True:   # 잘 이어져 있으면 손대지 않는다 — 처음엔 모든 경계를 고쳐 '…로 이어진다' 꼴로 통일해 버렸다(2026-10-07)
+        return 0
+
+    def clean(t):   # 잇는 문장의 검사: 수치가 들었거나(사실을 끌어옴), 안내문이거나, 길면 버린다 — 시험에서 '노치 마모·코팅 박리가 남았다' 같은 결과 요약이 잇는 문장으로 들어왔다(2026-10-07)
+        t = _clean(str(t or "")).strip()
+        if not (8 <= len(t) <= 160) or _REF_ANY.search(t) or re.search(r"\d", t) or re.search(r"이 절(은|에서는)\s|살펴본다[.]?$|다룬다[.]?$|보았듯이", t):
+            return ""
+        return t
+    n = 0
+    with _LOCK:
+        for tag, block, orig in (("tail", tail, orig_tail), ("head", head, orig_head)):
+            for lab, t in (d.get(tag).items() if isinstance(d.get(tag), dict) else []):
+                m = re.match(r"^[TH](\d+)$", str(lab).strip())
+                t = clean(t)
+                if not m or not t:
+                    continue
+                i = int(m.group(1)) - 1
+                if 0 <= i < len(block["units"]) and not block["units"][i].get("notes") and block["units"][i]["t"] == orig[i] and t != orig[i]:
+                    block["units"][i]["t"] = t
+                    n += 1
+        ah = clean(d.get("add_head"))
+        if ah and not any(not u.get("notes") for u in head["units"]) and head["units"] and head["units"][0]["t"] == orig_head[0]:
+            head["units"].insert(0, {"t": ah, "notes": []})
+            n += 1
+    return n
+
+
+def _join_all(st, model):
+    body = [k for k, s in enumerate(st["sections"]) if s.get("kind") != "summary" and s.get("blocks")]
+    pairs = [(body[i - 1], body[i]) for i in range(1, len(body))]
+    _stage(st, "join", done=0, total=len(pairs))
+    done = total_n = 0
+    if pairs:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = {ex.submit(_join_pair, st, a, b, model): (a, b) for a, b in pairs}
+            for f in as_completed(futs):
+                try:
+                    total_n += f.result() or 0
+                except _Stop:
+                    continue
+                except Exception:
+                    pass
+                done += 1
+                with _LOCK:
+                    st["prog"] = {"done": done, "total": len(pairs)}
+                _save(st)
+    _check_stop(st)
+    with _LOCK:
+        st["joined"] = True
+        st["joined_n"] = total_n
+    _save(st)
+    _log(st, "절 사이의 잇는 문장 %d개를 손질했습니다 (경계 %d곳)" % (total_n, len(pairs)))
 
 
 # ---------- 흐름 ----------
@@ -1467,6 +1552,8 @@ def _run(st):
         _check_stop(st)
         if any(s.get("blocks") is None for s in st["sections"]):
             raise RuntimeError("절 %d개를 쓰지 못했습니다%s — 「이어서」 로 남은 절부터 다시 씁니다" % (sum(1 for s in st["sections"] if s.get("blocks") is None), _why()))
+    if not st.get("joined"):      # 절 사이 잇기 — 쓴 뒤, 대조 전에(고친 잇는 문장도 대조가 본다)
+        _join_all(st, model)
     todo = [k for k, s in enumerate(st["sections"]) if not s.get("checked")]
     _stage(st, "verify", done=nsec - len(todo), total=nsec)
     if todo:
