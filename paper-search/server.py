@@ -743,6 +743,23 @@ def is_pref_venue(venue, prefs=None):
     return False
 
 
+def pref_file_abbrs():
+    """우선 저널의 파일 이름 약어(수집이 붙이는 '연도_약어_저자_제목' 의 약어) — 공부가 논문을 고르고 쓸 때 ★ 로 무게를 둔다.
+    수집설정의 저널약어가 있으면 그것, 없으면 수집과 같은 이니셜 규칙(intake.auto_abbrev). 'CIRP Annals - Manufacturing Technology' 처럼 꼬리가 붙은 이름은 꼬리를 뗀 것도 같이."""
+    try:
+        m = {intake.normalize_journal(k): str(v) for k, v in (load_json(os.path.join(BASE, "수집설정.json"), {}).get("저널약어") or {}).items()}
+    except Exception:
+        m = {}
+    out = set()
+    for name in preferred_journals():
+        for v in {name, re.sub(r"\s*[-–:]\s*manufacturing technology\s*$", "", name, flags=re.I)}:
+            try:
+                out.add((m.get(intake.normalize_journal(v)) or intake.auto_abbrev(v)).upper())
+            except Exception:
+                pass
+    return out
+
+
 def pref_source_ids():
     """우선 저널 → OpenAlex source id (캐시 관련맵\저널ID.json). 못 찾은 저널은 건너뛴다"""
     import mapper
@@ -2763,7 +2780,7 @@ vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, loa
 
 # ---------- 공부 (내 서재의 논문만으로 쓰는 교과서 한 장 — 문장마다 논문의 원문 문장에 묶는다) ----------
 import study
-study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error)
+study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, pref_abbrs=pref_file_abbrs)
 
 
 class Handler(BaseHTTPRequestHandler):

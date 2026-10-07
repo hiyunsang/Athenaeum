@@ -438,7 +438,7 @@ function overviewBody(all) {
 const summaryHtml = (summ, si) => "<ul>" + summ.blocks.map((b, bi) => (b.units || []).map((u, ui) => "<li>" + unitHtml(u, si + "." + bi + "." + ui) + "</li>").join("")).join("") + "</ul>";
 function refsHtml() {
   const cited = cur.papers.filter(p => p.n).sort((a, b) => a.n - b.n);
-  return "<div class='refs'>" + cited.map(p => "<div class='r' id='ref" + p.n + "'><a href='#' class='n' data-paper='" + cur.papers.indexOf(p) + "' title='이 논문이 언급된 문장 보기'>[" + p.n + "]</a><span class='b'>" + esc(p.ref || p.title) +
+  return "<div class='refs'>" + cited.map(p => "<div class='r' id='ref" + p.n + "'><a href='#' class='n' data-paper='" + cur.papers.indexOf(p) + "' title='이 논문이 언급된 문장 보기'>[" + p.n + "]</a><span class='b'>" + (p.top ? "<span title='우선 저널'>★</span> " : "") + esc(p.ref || p.title) +
     " <span class='noprint'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></span></span></div>").join("") + "</div>";
 }
 function sectionHtml(si) {
@@ -710,7 +710,7 @@ function paperPanel() {
   cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => (b.units || []).forEach((u, ui) => { if ((u.src || []).some(k => +k.split(":")[0] === pi)) hits.push({ key: si + "." + bi + "." + ui, u, si }); })));
   const num = k => +(k.split(":")[1].replace(/\D/g, "") || 0);
   const srcKeys = Object.keys(cur.src || {}).filter(k => +k.split(":")[0] === pi).sort((a, b) => num(a) - num(b));
-  let h = "<div class='sec'>논문</div><div class='spq'><b>" + (p.n ? "[" + p.n + "] " : "") + esc(p.short) + "</b> · " + esc(p.journal) + " " + esc(p.year) + "<div class='hint' style='margin-top:4px;line-height:1.5'>" + esc(p.title) + "</div>" +
+  let h = "<div class='sec'>논문</div><div class='spq'><b>" + (p.n ? "[" + p.n + "] " : "") + esc(p.short) + "</b> · " + (p.top ? "★ " : "") + esc(p.journal) + " " + esc(p.year) + "<div class='hint' style='margin-top:4px;line-height:1.5'>" + esc(p.title) + "</div>" +
     (p.about ? "<div style='margin-top:6px;line-height:1.55;font-size:13px'>" + esc(p.about) + "</div>" : "") +
     "<div class='noprint' style='margin-top:4px'><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=summary'>요약</a><a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(p.file) + "&kind=translation'>번역</a></div></div>";
   h += "<div class='sec'>이 논문이 받치는 장의 문장 " + hits.length + "개 <span style='font-weight:400;text-transform:none'>— 누르면 본문으로</span></div>";
@@ -754,6 +754,7 @@ function infoPanel() {
     kv("뽑은 메모", (s.notes || 0) + "개") +
     kv("실은 문장", (s.units || 0) + "개 = 사실 " + (s.fact || 0) + " + 잇는 말 " + (s.bridge || 0)) +
     (s.claims != null ? kv("짜임", "논지 " + (s.claims || 0) + " · 두 논문 이상이 받치는 문장 " + (s.multi || 0) + " · 표 " + (s.tables || 0) + " · 그림 " + (s.figs || 0) + " · 번외 문장 " + (s.extra || 0)) : "") +
+    ((s.journals || []).length ? kv("출처 저널", s.journals.map(j => (j.top ? "★ " : "") + esc(j.abbr) + " " + j.n).join(" · ") + " <span class='hint'>(★ 우선 저널 — ⚙ 설정 → 연결)</span>") : "") +
     kv("근거 원문", (s.srcs || 0) + "문장 · 논문 " + (s.cited || 0) + "편") +
     kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
     kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
@@ -762,7 +763,7 @@ function infoPanel() {
     rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
   h += "</details>";
-  h += "<details class='evd'><summary>읽은 논문 " + read.length + "편 — 누르면 그 논문이 언급된 문장</summary>" + papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" +
+  h += "<details class='evd'><summary>읽은 논문 " + read.length + "편 — 누르면 그 논문이 언급된 문장</summary>" + papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" + (p.top ? "★ " : "") + esc(p.journal || "") + " · " +
       (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") + "</details>";
   const chats = (cur.chats || []).slice().reverse();
   if (chats.length) h += "<details class='evd' open><summary>Claude 와 나눈 대화 " + chats.length + "개</summary>" + chatListHtml(chats) + "</details>";

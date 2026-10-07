@@ -240,6 +240,43 @@ def _hits(sents, rx, must):
     return hit, idx
 
 
+_REVIEW_RX = re.compile(r"\b(review|survey|overview|advances in|state[- ]of[- ]the[- ]art|perspectives?|progress in)\b", re.I)
+
+
+def _looks_review(title):
+    return bool(_REVIEW_RX.search(str(title or "")))
+
+
+# 우선 저널(사용자 2026-10-07: '출처가 AMT 가 너무 많다 — 안에서 우선순위나 가중치를. AMT 의 리뷰·서론은 괜찮은데 결론이 좀, 수치는 쓸모 있다').
+# 서버가 탐색과 같은 우선 저널(설정 → 연결)의 파일 약어를 준다(pref_abbrs). ★ 논문 = 고를 때 먼저, 읽을 때 결론 메모를 덜 뽑지 않는 쪽, 논지·설명의 기둥.
+def _top_set():
+    try:
+        fn = cfg.get("pref_abbrs")
+        return set(str(x).upper() for x in (fn() if fn else ()))
+    except Exception:
+        return set()
+
+
+def _is_top(journal, tops=None):
+    return str(journal or "").upper() in (tops if tops is not None else _top_set())
+
+
+def _pname(st, pi):
+    """물음에 적는 논문 이름: 'P5 ★ Fang 2005 (IJMTM)' — ★ 는 우선 저널"""
+    p = st["papers"][pi]
+    return "P%d %s%s (%s)" % (pi + 1, "★ " if p.get("top") else "", p["short"], p.get("journal") or "")
+
+
+def _journal_stats(st, order):
+    """장에 인용된 논문의 저널별 편수 → [{abbr, n, top}] 편수 순(화면의 「이 장의 기록」)"""
+    cnt = {}
+    for pi in order:
+        p = st["papers"][pi]
+        j = p.get("journal") or "?"
+        cnt.setdefault(j, {"abbr": j, "n": 0, "top": bool(p.get("top"))})["n"] += 1
+    return sorted(cnt.values(), key=lambda x: (-x["n"], x["abbr"]))
+
+
 def _scan(concepts):
     """서재의 모든 논문을 훑어 주제 문장이 있는 논문을 점수와 함께. → (후보들, 훑은 논문 수, 문장 수, 뺀 문서)"""
     rx, must = _concept_rx(concepts)
@@ -250,6 +287,7 @@ def _scan(concepts):
     except OSError:
         files = []
     out, nfiles, nsent, odd = [], 0, 0, []
+    tops = _top_set()
     for f in files:
         sents = _readable(_paper_sents(f))
         if len(sents) < 8:
@@ -260,11 +298,12 @@ def _scan(concepts):
         nfiles += 1
         nsent += len(sents)
         hit, idx = _hits(sents, rx, must)
-        title = str(ms.paper_meta(f).get("title") or "").lower()
+        meta = ms.paper_meta(f)
+        title = str(meta.get("title") or "").lower()
         tit = sum(1 for i in must if rx[i][0] and rx[i][0].search(title))
         if len(idx) >= 2 or tit == len(must):
-            out.append({"file": f, "co": len(idx), "tit": tit, "n": len(sents), "score": len(idx) + (10 if tit == len(must) else 2 * tit)})
-    out.sort(key=lambda x: -x["score"])
+            out.append({"file": f, "co": len(idx), "tit": tit, "n": len(sents), "score": len(idx) + (10 if tit == len(must) else 2 * tit), "top": _is_top(meta.get("journal", ""), tops)})
+    out.sort(key=lambda x: -(x["score"] * (1.25 if x["top"] else 1.0)))   # 우선 저널은 같은 점수대에서 앞에(후보 70편 안에 들게)
     return out, nfiles, nsent, odd
 
 
@@ -454,22 +493,25 @@ def _plan(st, nlib):
 def _select(st, cands, caps):
     ncore, nall = caps
     cands = cands[:70]
-    rows = []
+    rows, tops = [], _top_set()
+    limit = max(2, ncore // 3)     # 통째로 읽는 자리에 두는 ★ 아닌 연구 논문의 상한(아래 자리 바꾸기와 같은 값)
     for k, c in enumerate(cands):
         m = ms.paper_meta(c["file"])
         line = ms._paper_line(c["file"])
-        rows.append("K%d | %s · %s | %s | 주제 문장 %d개%s%s" % (k + 1, ms.paper_short(c["file"]), m.get("journal", ""), str(m.get("title") or "")[:150], c["co"],
+        rows.append("K%d | %s · %s | %s | 주제 문장 %d개%s%s" % (k + 1, ms.paper_short(c["file"]), ("★ " if _is_top(m.get("journal", ""), tops) else "") + m.get("journal", ""), str(m.get("title") or "")[:150], c["co"],
                                                            " · 제목에 주제" if c["tit"] else "", (" | " + line[:220]) if line else ""))
     p = st["plan"]
     prompt = (
-        "연구자의 서재에서 아래 [주제]의 교과서 한 장을 쓰는 데 읽을 논문을 고른다. 낱말로 추린 후보를 준다(K번호 | 저자 연도 · 저널 | 제목 | 주제 문장 수 | 그 논문의 한줄 요약).\n"
+        "연구자의 서재에서 아래 [주제]의 교과서 한 장을 쓰는 데 읽을 논문을 고른다. 낱말로 추린 후보를 준다(K번호 | 저자 연도 · 저널 | 제목 | 주제 문장 수 | 그 논문의 한줄 요약). 저널 앞의 ★ = 연구자가 정한 우선 저널.\n"
         "JSON 으로만: {\"papers\": [{\"k\": 3, \"role\": \"core|related\", \"why\": \"이 장에서 이 논문이 맡을 것 한 구절(한국어)\"}]}\n"
         "규칙:\n"
         "- core = 이 주제를 자기 실험·모델·시뮬레이션·리뷰로 직접 다룬 논문. 통째로 읽는다. 많아야 %d편.\n"
         "- related = 주제의 일부만 다루거나, 비교·배경으로 쓸 만한 논문. 주제 문장의 앞뒤만 읽는다.\n"
         "- 낱말만 걸렸을 뿐 주제를 다루지 않는 논문은 넣지 않는다. 전체 많아야 %d편. 이 장에 중요한 순서로 적는다.\n"
-        "- 리뷰 논문과 기초가 되는 옛 논문, 서로 다른 방법(실험·시뮬레이션·모델)의 논문이 고루 들어가게 한다.\n\n"
-        "[주제] %s\n[장의 범위] %s\n[답할 물음]\n%s\n\n[후보]\n%s") % (ncore, nall, st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]), "\n".join(rows))
+        "- 리뷰 논문과 기초가 되는 옛 논문, 서로 다른 방법(실험·시뮬레이션·모델)의 논문이 고루 들어가게 한다.\n"
+        "- 저널의 무게: 주제를 다루는 정도가 비슷하면 ★ 논문을 core 로 먼저 고른다. ★ 가 아닌 저널의 연구 논문은 이 주제를 자기 실험·모델로 직접 다룬 것만 core 로 하되 많아야 %d편(나머지는 related — "
+        "그 논문의 수치·조건은 related 로도 교과서에 들어간다). 리뷰 논문과 기초가 되는 옛 논문은 저널과 무관하게 core 여도 된다.\n\n"
+        "[주제] %s\n[장의 범위] %s\n[답할 물음]\n%s\n\n[후보]\n%s") % (ncore, nall, limit, st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]), "\n".join(rows))
     d = _ask_json(st, prompt, "sonnet", None, 300, need="papers")
     picked, seen = [], set()
     for x in ((d or {}).get("papers") or []):
@@ -491,7 +533,14 @@ def _select(st, cands, caps):
                 role = "related"
         m = ms.paper_meta(c["file"])
         out.append({"file": c["file"], "short": ms.paper_short(c["file"]), "title": str(m.get("title") or ""), "year": m.get("year", ""), "journal": m.get("journal", ""),
-                    "role": role, "why": why, "co": c["co"], "nsent": c["n"], "notes": [], "read": False})
+                    "top": _is_top(m.get("journal", ""), tops), "role": role, "why": why, "co": c["co"], "nsent": c["n"], "notes": [], "read": False})
+    # 우선 저널이 아닌 연구 논문이 통째로 읽는 자리의 1/3 을 넘으면, ★ 논문 가운데 related 로 밀린 것과 자리를 바꾼다(★ 후보가 없으면 그대로 — 서재에 ★ 가 없는 주제도 있다).
+    # 시험(실리콘, 2026-10-07): 절반으로 두니 Sonnet 이 AMT 5편을 core 에 두고 ★ Fang 1998(CIRP)을 related 로 밀었는데 바뀌는 것이 없었다
+    weak_core = [p for p in out if p["role"] == "core" and not p["top"] and not _looks_review(p["title"])]
+    top_rel = [p for p in out if p["role"] == "related" and p["top"]]
+    while len(weak_core) > limit and top_rel:
+        weak_core.pop()["role"] = "related"
+        top_rel.pop(0)["role"] = "core"
     seen = {}
     for p in out:      # 같은 저자·연도가 둘이면 a, b 를 붙인다 (글에서 'Liu 등(2018)' 이 어느 논문인지 갈리게)
         seen.setdefault(p["short"], []).append(p)
@@ -525,11 +574,13 @@ def _read_prompt(st, paper, text, part, nparts, nmax, mode):
         "- own: 이 논문이 자기 실험·해석·모델로 말한 것이면 true. 남의 연구를 전한 것(서론·리뷰의 문헌 소개, 인용 번호가 달린 문장)이면 false.\n"
         "- kind: def 정의·개념 / bg 배경·필요성 / method 실험·측정·해석 방법 / result 관찰·측정 결과 / mech 기전·원인 설명 / factor 영향 인자와 그 방향 / model 모델·식·예측 / limit 한계·성립 조건 / open 아직 모르는 것·논쟁\n"
         "- 주제에 관한 것만, 교과서에 실을 만한 것부터 많아야 %d개. 같은 말을 되풀이하는 메모는 하나로 합친다. 그림·표를 가리키기만 하는 말, 논문의 구성 안내, 감사·서지 정보는 뺀다.\n"
-        "- 이 글이 주제를 다루지 않으면 notes 를 비운다.\n"
+        "- 이 글이 주제를 다루지 않으면 notes 를 비운다.\n%s"
         "- 전문 용어는 한국어로 쓰고 처음 나올 때 영어를 괄호에: 연성 영역 절삭(ductile-regime cutting).\n\n"
         "[주제] %s\n[장의 범위] %s\n[이 장이 답할 물음]\n%s\n\n"
         "[논문] %s — %s (%s %s)%s%s\n\n%s") % (
-            nmax, st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]),
+            nmax, ("" if paper.get("top") or _looks_review(paper.get("title")) else
+                   "- 이 논문은 연구자가 정한 우선 저널의 것이 아니다. 배경·정의·방법·수치가 든 결과는 그대로 뽑되, 결론·해석·일반화(mech·factor·model·limit 의 단정)는 이 주제에 꼭 필요한 것만 뽑는다 — 교과서의 기둥은 우선 저널의 논문이 세운다.\n"),
+            st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]),
             paper["short"], paper["title"][:200], paper["journal"], paper["year"],
             (" · 전체 %d부분 가운데 %d번째" % (nparts, part + 1)) if nparts > 1 else "",
             (" · 주제 문장의 앞뒤만 발췌한 것이다((…) = 건너뜀)" if mode == "hits" else "") +
@@ -550,6 +601,8 @@ def _read_paper(st, pi, model, effort):
     else:
         chunks = _parts(sents)
     nmax = (32 if len(chunks) == 1 else 20) if mode == "full" else 10
+    if mode == "full" and not paper.get("top") and not _looks_review(paper.get("title")):   # 우선 저널이 아닌 연구 논문 — 결론·해석 메모를 덜 뽑는다(수치·배경은 그대로)
+        nmax = max(8, int(nmax * 0.75))
     about, typ, notes, dropped, fail = "", "", [], 0, 0
     for k, ch in enumerate(chunks):
         by = {s["sid"]: s for s in ch}
@@ -624,7 +677,7 @@ def _all_notes(st):
 def _outline(st, model, effort):
     notes = _all_notes(st)
     p = st["plan"]
-    plist = "\n".join("P%d %s (%s) — %s" % (i + 1, x["short"], {"review": "리뷰", "model": "모델", "simulation": "시뮬레이션"}.get(x.get("type"), "연구"), x.get("about") or x["title"][:120])
+    plist = "\n".join("%s (%s) — %s" % (_pname(st, i), {"review": "리뷰", "model": "모델", "simulation": "시뮬레이션"}.get(x.get("type"), "연구"), x.get("about") or x["title"][:120])
                       for i, x in enumerate(st["papers"]) if x.get("read") and x.get("notes"))
     nlist = "\n".join("%s [%s%s] %s" % (nid, _KINDS.get(n["kind"], ""), "" if n.get("own") else " · 재인용", n["pt"]) for nid, (_i, n) in notes.items())
     prompt = (
@@ -640,7 +693,7 @@ def _outline(st, model, effort):
         "다만 메모가 실제로 있는 것으로만 절을 세운다 — 메모가 셋이 안 되는 절은 만들지 말고 가까운 절에 합친다. 절은 4~8개.\n"
         "- 절 안의 notes 는 그 절에서 쓸 차례대로. 한 메모는 한 절에만 넣는다. 주제에서 벗어났거나 겹치는 메모는 어느 절에도 넣지 않아도 된다.\n"
         "- 절 제목은 내용을 말하는 명사구로(예: '임계 절삭 깊이와 취성–연성 전이'). '서론'·'결론'·'기타' 같은 제목은 쓰지 않는다.\n"
-        "- summary 는 장 끝의 '핵심 정리'에 쓸 메모 6~10개(이 장에서 가장 중요한 사실).\n"
+        "- summary 는 장 끝의 '핵심 정리'에 쓸 메모 6~10개(이 장에서 가장 중요한 사실). [논문]의 ★ 는 연구자가 정한 우선 저널 — summary 는 ★ 논문과 리뷰의 메모를 먼저, ★ 가 아닌 저널의 연구 논문 결론은 그것뿐일 때만.\n"
         "- terms 는 메모에 나온 전문 용어 15~40개의 영어와 한국어. 같은 영어 용어에 메모마다 다른 한국어가 쓰였으면 이 분야에서 가장 굳은 것 하나로 정한다. 굳은 한국어가 없는 말은 ko 를 영어 그대로 둔다.\n"
         "- 메모에 없는 것을 지어내지 않는다.\n\n"
         "[주제] %s\n[장의 범위] %s\n[이 장이 답할 물음]\n%s\n\n[논문]\n%s\n\n[메모]\n%s") % (st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]), plist, nlist)
@@ -693,7 +746,7 @@ def _claims(st, k, model, effort):
     plist, nlist = _note_block(st, sec["notes"], with_src=False)
     toc = "\n".join("%s %d. %s%s" % ("▶" if i == k else "  ", i + 1, s["title"], (" — " + s["aim"]) if s.get("aim") else "") for i, s in enumerate(ol["sections"]))
     prompt = (
-        "전공 교과서의 한 절을 쓰기 전에 그 절의 논지를 세운다. 절의 재료는 연구자의 서재 논문에서 뽑은 [메모]뿐이다(N번호의 앞 숫자 = 논문 P번호).\n"
+        "전공 교과서의 한 절을 쓰기 전에 그 절의 논지를 세운다. 절의 재료는 연구자의 서재 논문에서 뽑은 [메모]뿐이다(N번호의 앞 숫자 = 논문 P번호, ★ = 우선 저널).\n"
         "JSON 으로만 답하라:\n"
         "{\"claims\": [{\"t\": \"논지 한 문장(한국어)\", \"notes\": [\"N3.2\", \"N5.1\"], \"rel\": \"agree|cond|conflict|extend|single\", \"how\": \"메모들 사이의 관계 한 구절 — 무엇이 같고 무엇이(어떤 조건이) 다른지\"}],\n"
         " \"extra\": [\"어느 논지에도 들지 않는 메모 번호\"]}\n"
@@ -703,6 +756,8 @@ def _claims(st, k, model, effort):
         "- rel: agree 여러 연구가 같은 것을 본다 / cond 조건(재료·방위·공구·깊이·속도·방법)이 달라 값이나 양상이 다르다 — how 에 무엇이 다른지 / "
         "conflict 연구끼리 엇갈린다 — 양쪽을 다 둔다(엇갈리는 것은 배우는 사람에게 가장 중요한 정보다) / extend 한 연구가 다른 연구를 넓히거나 기전을 더한다 / single.\n"
         "- 논지 문장은 메모들이 말하는 것을 묶은 것이다. 메모에 없는 사실·수치·원인을 넣지 않고, 조건을 떼고 일반 법칙처럼 넓히지 않는다. 수치는 메모 그대로. 교과서적 상식을 보태지 않는다.\n"
+        "- 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 논지의 받침은 ★ 논문과 리뷰의 결과·기전 메모로 먼저 세운다. ★ 가 아닌 저널의 연구 논문이 혼자 받치는 결과·기전·일반화는 논지로 세우지 않는다 — "
+        "그 수치와 조건은 ★ 논문의 논지를 받치는 보기(agree·cond)나 표의 행으로 쓰고, 붙을 데가 없으면 extra 로. ★ 가 아닌 논문의 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
         "- 어느 논지에도 들지 않는 메모는 모두 extra 에 적는다 — 버리지 않는다(절 끝의 '번외'에 실린다).\n\n"
         "[장] %s — %s\n[절의 차례] (▶ = 이 절)\n%s\n\n[이 절] %s%s\n\n[논문]\n%s\n\n[메모]\n%s") % (
             ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "", plist, nlist)
@@ -761,7 +816,7 @@ def _note_block(st, ids, with_src=True):
             for sid in n["s"]:
                 if sid in by:
                     lines.append("   %s: \"%s\"" % (sid, by[sid]["en"][:700]))
-    plist = "\n".join("P%d %s — %s" % (pi + 1, st["papers"][pi]["short"], st["papers"][pi].get("about") or st["papers"][pi]["title"][:120]) for pi in sorted(pset))
+    plist = "\n".join("%s — %s" % (_pname(st, pi), st["papers"][pi].get("about") or st["papers"][pi]["title"][:120]) for pi in sorted(pset))
     return plist, "\n".join(lines)
 
 
@@ -791,7 +846,7 @@ def _claim_block(st, sec):
         lines.append("[번외] 어느 논지에도 들지 않지만 이 절에 속하는 메모 — 절 끝의 '### 번외' 아래에 메모마다 한 문장으로 싣는다")
         for nid in extra:
             lines += memo(nid)
-    plist = "\n".join("P%d %s — %s" % (pi + 1, st["papers"][pi]["short"], st["papers"][pi].get("about") or st["papers"][pi]["title"][:120]) for pi in sorted(pset))
+    plist = "\n".join("%s — %s" % (_pname(st, pi), st["papers"][pi].get("about") or st["papers"][pi]["title"][:120]) for pi in sorted(pset))
     return plist, "\n".join(lines), pset
 
 
@@ -856,21 +911,26 @@ _WRITE_RULES = (
     "쓰는 법:\n"
     "1. 교과서답게 쓴다 — 한 절은 한 편의 글이다(유체역학·고체역학 교과서의 한 절처럼). [설계도]는 이 절이 펴는 생각의 차례와 그 받침일 뿐, 문단의 틀이 아니다. "
     "문단은 앞 문단이 끝낸 데서 시작하고(앞 문단의 마지막 생각을 받는 말이나 그 대상을 주어로), 끝에서 다음 문단으로 넘긴다. 생각(논지)을 머리 문장으로 세우지 않고 설명하면서 드러나게 한다. "
-    "연구는 설명의 근거로 문장 안에 녹인다('…에서는 …가 관찰된다') — 논문을 하나씩 소개하는 글('A 는 …했다. B 는 …했다.')도, 주장 한 문장 뒤에 연구를 줄 세우는 글도 아니다. "
+    "연구는 설명의 근거로 문장 안에 녹인다 — '…조건에서는 …가 관찰된다' 처럼 사실과 조건을 주어로. 누구의 연구인지는 줄 끝의 메모 번호(인용)가 알려 주므로 연구자 이름을 문장에 넣지 않아도 된다. "
+    "논문을 하나씩 소개하는 글('A 는 …했다. B 는 …했다.')도, 주장 한 문장 뒤에 연구를 줄 세우는 글도 아니다. "
     "받치는 연구는 메모 하나에 한 문장을 넘기지 않는다(두 메모를 한 문장에 묶어도 된다) — 메모의 근거 원문을 문장 단위로 되풀이해 옮기지 않는다.\n"
     "1-1. 잇는 문장을 쓴다: 사실이 없는 이음 문장 — 앞을 받아 다음을 여는 말, 개념과 개념을 잇는 말, 왜 이것을 보는지 말하는 말 — 을 ⟦-⟧ 로 자유롭게 쓴다. "
-    "모든 문장이 논문에서 오면 글이 되지 않는다. 다만 잇는 문장에 새 사실·수치·원인을 담지 않는다(그런 것은 메모가 있어야 한다).\n"
+    "모든 문장이 논문에서 오면 글이 되지 않는다. 다만 잇는 문장에 새 사실·수치·원인을 담지 않는다(그런 것은 메모가 있어야 한다). "
+    "잇는 문장은 평서문이 기본이다 — 앞 문단의 결론을 받아 다음 대상을 주어로 세운다. 물음 꼴('…인가?', '남는 물음은 …이다', '…따져 보아야 한다')은 절에 한둘까지, 문단마다 되풀이하지 않는다.\n"
     "2. 사실 문장은 메모와 그 근거 문장이 말하는 데까지만. 조건(재료·결정 방위·공구·절삭 깊이·속도·온도·스케일, 실험인지 시뮬레이션인지)을 떼어 일반 법칙처럼 쓰지 않는다 — "
     "'…에서 …가 관찰되었다', '… 조건에서는 …' 처럼 조건과 함께 쓴다. 한 연구의 결과를 '일반적으로'·'항상' 으로 넓히지 않고, 근거가 조심스럽게 말한 것(may, suggest)을 단정으로 바꾸지 않는다.\n"
     "3. 수치·단위·기호는 근거 문장에 적힌 그대로. 근거가 말로 적은 양(twice, half)은 말로(두 배, 절반). 메모에 없는 수치를 만들지 않는다.\n"
     "4. 메모에 없는 내용은 쓰지 않는다 — 당신이 아는 교과서적 상식이라도. 설명에 빈 곳이 있으면 비워 둔다(이 책은 서재가 말하는 것만 싣는다).\n"
     "5. '재인용' 메모(그 논문이 남의 연구를 전한 말)는 그 논문의 저자가 한 일처럼 쓰지 않는다 — 그 논문의 저자를 주어로 세우지 않고 사실을 주어로 쓴다. "
     "문장마다 '…로 알려져 있다'·'…라고 보고되어 있다'를 붙이지는 않는다(교과서는 사실을 평서문으로 말하고, 누가 한 말인지는 인용이 알려 준다). 근거 문장에 원래 연구자의 이름이 있으면 그 이름은 써도 된다.\n"
-    "6. 연구자를 주어로 세우는 문장은 그 연구만의 실험·관찰·모델을 말할 때만 쓰고, 그때는 [논문]에 적힌 이름과 연도만 쓴다: 'Yan 등(2003)은 …'. 정의·개념·여러 연구가 함께 받치는 설명은 사실을 주어로 쓴다. 인용 번호는 쓰지 않는다(프로그램이 붙인다).\n"
+    "6. 연구자 이름은 문장의 주어가 아니라 인용이다. 사실·현상·기전·수치는 사실을 주어로 쓴다('절삭 깊이가 커지면 가공면은 … 을 차례로 거친다'). 연구자를 주어로 세우는 문장('Yan 등(2003)은 …')과 이름을 조건 자리에 끼운 꼴('Liu 등(2019)의 테이퍼 절삭에서는')은 "
+    "그 연구만의 장치·방법을 말해야 할 때만, 절에 두셋까지. 그때는 [논문]에 적힌 이름과 연도만 쓴다. 인용 번호는 쓰지 않는다(프로그램이 붙인다).\n"
     "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다. 연구들이 같은 것을 보았는지, 어디서 갈리는지는 설명의 흐름 속에서 말하고, 그 문장에는 관계된 메모를 모두 ⟦ ⟧ 에 적는다 — "
     "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 두지 않는다.\n"
     "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
-    "9. 분량: 메모 하나에 한 문장(겹치는 메모는 한 문장에 함께). 잇는 문장은 필요한 만큼. 설계도의 메모를 빠뜨리지 않되, 메모 하나를 여러 문장으로 늘이지 않는다.\n"
+    "9. 문장의 크기: 한 문장에 사실 하나. 메모 하나는 보통 한 문장이지만, 사실과 그 조건·해석이 한 문장에 다 들어가지 않으면 두 문장으로 나눈다(둘 다 같은 메모 번호; 세 문장은 넘기지 않는다). "
+    "실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 문장에 두고 나머지는 빼거나 다음 문장으로. "
+    "괄호 삽입은 처음 나온 영어 용어에만 쓴다 — 해석·관찰 방법·조건을 괄호로 끼우지 않는다. 겹치는 메모는 한 문장에 함께. 잇는 문장은 필요한 만큼. 설계도의 메모를 빠뜨리지 않는다.\n"
     "10. 절의 첫 문단은 [앞 절]이 끝낸 생각을 받아 시작한다(잇는 문장 한둘로 — '이 절은 …를 다룬다' 같은 안내문이 아니라 내용을 잇는 말). 절의 끝은 [다음 절]의 물음으로 자연스럽게 넘긴다(한 문장, 예고가 아니라 이음). "
     "소제목(###)은 절이 길 때만 둘에서 넷, 문단마다 달지 않는다.\n"
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
@@ -879,7 +939,9 @@ _WRITE_RULES = (
     "13. 그림: [그림 목록]의 그림은 설계도의 근거 문장이 가리키는 그림이다. 그 가운데 그 대목의 내용을 눈으로 보여 주는 것만 그 문단 바로 뒤에 '그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦메모 번호⟧' 한 줄로 싣는다(절마다 둘까지). "
     "그림을 넣기로 했으면 그 앞 문단의 한 문장이 ⟨그림⟩ 으로 그것을 가리킨다('…가 ⟨그림⟩에 보인다' — 번호는 프로그램이 붙인다). 표도 같은 식으로 ⟨표⟩. "
     "보여 주는 그림이 없으면 넣지 않는다 — 그림을 채우려고 고르지 않는다. 설명은 캡션과 그 그림을 가리키는 원문 문장이 말하는 것만. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
-    "14. 번외: 절 끝 '### 번외' 아래에 [번외] 메모를 메모마다 한 문장으로(조건과 함께), 관련된 것끼리 한 문단. 논지와 어긋나는 메모는 어긋난다고 적는다. 번외 메모를 빠뜨리지 않는다.\n")
+    "14. 번외: 절 끝 '### 번외' 아래에 [번외] 메모를 메모마다 한 문장으로(조건과 함께), 관련된 것끼리 한 문단. 논지와 어긋나는 메모는 어긋난다고 적는다. 번외 메모를 빠뜨리지 않는다.\n"
+    "15. 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 설명의 기둥(현상·기전·법칙을 말하는 문장)은 ★ 논문과 리뷰의 메모로 세운다. ★ 가 아닌 저널의 연구 논문의 결과는 그 조건과 수치를 보기로 덧붙이는 자리('…에서도 …가 관찰되었다', 표의 행)에 두고, "
+    "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n")
 
 
 # Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
@@ -932,7 +994,7 @@ def _write_prompt(st, k):
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n핵심 사실 하나를 조건과 함께 적은 문장. ⟦N3.2⟧\n핵심 사실 하나. ⟦N3.4, N7.1⟧\n<<<END>>>\n"
                 "- 이 절은 장 끝의 '핵심 정리'다. 6~10줄, 줄마다 이 장의 핵심 사실 하나를 한 문장으로. 줄 끝의 ⟦ ⟧ 안에 근거인 메모 번호. 소제목·이음 문장·문단 나눔 없이.\n\n")
     elif claimed:
-        form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n앞 절을 받아 이 절을 여는 문장(사실 없음). ⟦-⟧\n사실을 말하는 문장(조건과 함께). ⟦N3.2⟧\n사실을 말하는 문장. ⟦N5.1, N3.2⟧\n다음 문단으로 넘기는 문장(사실 없음). ⟦-⟧\n¶\n"
+        form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n앞 절을 받아 이 절을 여는 문장(사실 없음). ⟦-⟧\n사실을 말하는 문장(조건과 함께). ⟦N3.2⟧\n같은 메모의 조건이나 해석을 말하는 둘째 문장. ⟦N3.2⟧\n사실을 말하는 문장. ⟦N5.1, N3.2⟧\n다음 문단으로 넘기는 문장(사실 없음). ⟦-⟧\n¶\n"
                 "앞 문단을 받아 이어 가는 문장. ⟦N7.1⟧\n…가 ⟨그림⟩에 보인다 하고 그림을 가리키는 문장. ⟦N5.1⟧\n그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦N5.1⟧\n¶\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
                 "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄.\n"
                 "- ⟦-⟧ = 사실이 없는 잇는 문장(앞을 받아 다음을 여는 말, 개념을 잇는 말, 왜 이것을 보는지 말하는 말). 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 메모 번호를 적는다.\n\n")
@@ -1333,7 +1395,7 @@ def _wrap(st):
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
-                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "extra": nextra}
+                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "extra": nextra, "journals": _journal_stats(st, order)}
 
 
 # ---------- 흐름 ----------
@@ -1361,6 +1423,10 @@ def _run(st):
         _log(st, "읽을 논문 %d편을 골랐습니다 (통째로 %d편 · 맞은 대목만 %d편)" % (len(st["papers"]), sum(1 for p in st["papers"] if p["role"] == "core"), sum(1 for p in st["papers"] if p["role"] != "core")))
         _save(st)
     _check_stop(st)
+    tops = _top_set()
+    for p in st["papers"]:
+        if "top" not in p:
+            p["top"] = _is_top(p.get("journal", ""), tops)
     _read_all(st, model)
     notes = _all_notes(st)
     if len(notes) < 6:
