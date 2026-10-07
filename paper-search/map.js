@@ -63,6 +63,15 @@ function renderResultMap(m, host, opts) {
       (Object.keys(vcount).length > vlist.length ? "<span class='lj more'>외 " + (Object.keys(vcount).length - vlist.length) + "개 저널</span>" : "");
     legend.appendChild(jrow);
   }
+  // 연구 그룹(교신·마지막 저자)별 편수 — 탐색의 「연구 그룹」 줄과 같은 거르기, 맵에서는 여기서(사용자 2026-10-07: 맵이 너무 아래에 — 위의 칩 줄은 맵 보기에서 숨기고 범례로)
+  const labsInfo = {}; (opts.labs || []).forEach(l => { labsInfo[l.key] = l; });
+  const lcount = {}; nodes.forEach(n => { if (n.lab) lcount[n.lab] = (lcount[n.lab] || 0) + 1; });
+  const llist = Object.entries(lcount).filter(([k, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  if (llist.length) {
+    const lrow = document.createElement("div"); lrow.className = "jrow";
+    lrow.innerHTML = "<span class='jlab'>연구 그룹</span>" + llist.map(([k, c]) => { const l = labsInfo[k] || {}; const nm = (l.pi || k).split(" ").slice(-1)[0]; return "<span class='lj" + (k === labF ? " on" : "") + "' data-l='" + mapEscH(k) + "' title='" + mapEscH((l.pi || "") + (l.inst ? " · " + l.inst : "")) + " — 누르면 이 그룹만'>" + mapEscH(nm) + (l.inst ? " <small>" + mapEscH(l.inst.replace(/^(University of |The )/, "").slice(0, 18)) + "</small>" : "") + " (" + c + ")</span>"; }).join("");
+    legend.appendChild(lrow);
+  }
   wrap.appendChild(legend);
   const legendHint = document.createElement("div"); legendHint.className = "maplegend-hint";
   legendHint.innerHTML = (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
@@ -427,7 +436,15 @@ function renderResultMap(m, host, opts) {
     if (tell && opts.onVenueFilter) { try { opts.onVenueFilter(venueF); } catch (e) {} }
   };
   host._setVenue = (v) => setVenue(v, false);
-  host._setLab = (v) => { labF = v || null; rowOf.forEach((a, n) => { a.hidden = (!!venueF && n.venue !== venueF) || (!!labF && n.lab !== labF); }); draw(); };
+  const setLab = (v, tell) => {
+    labF = v || null;
+    legend.querySelectorAll(".lj[data-l]").forEach(x => x.classList.toggle("on", x.dataset.l === labF));
+    rowOf.forEach((a, n) => { a.hidden = (!!venueF && n.venue !== venueF) || (!!labF && n.lab !== labF); });
+    draw();
+    if (tell && opts.onLabFilter) { try { opts.onLabFilter(labF); } catch (e) {} }
+  };
+  host._setLab = (v) => setLab(v, false);
+  legend.querySelectorAll(".lj[data-l]").forEach(el => { el.onclick = () => setLab(labF === el.dataset.l ? null : el.dataset.l, true); });
   legend.querySelectorAll(".lj[data-v]").forEach(el => { el.onclick = () => setVenue(venueF === el.dataset.v ? null : el.dataset.v, true); });
   if (LIST_W) {   // 왼쪽 목록: 소주제별, 피인용 순. 줄을 누르면 선택, 올리면 맵의 원이 도드라짐
     m.groups.forEach((g, gi) => {

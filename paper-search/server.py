@@ -1407,6 +1407,7 @@ def _run_smart(q, year, key, plan=None):
         groups = [{"name": "검색 결과 (분류 실패)", "why": "Claude 분류에 실패해 검색 순서대로 표시", "items": items}]
         excluded = 0; excluded_items = []
     stage("마무리: 인용 관계 조사 중")
+    labs = lab_counts(groups)    # 맵 노드에 lab 키가 붙으려면 맵을 만들기 전에 — 뒤에 두었더니 맵에서 그룹을 누르면 아무것도 안 남았다(2026-10-07)
     rmap = results_map(groups)
     for n in items:
         n.pop("_refs", None)
@@ -1416,7 +1417,7 @@ def _run_smart(q, year, key, plan=None):
         "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
         "queries": queries, "groups": groups, "excluded": excluded, "excluded_items": excluded_items, "candidates": len(items), "map": rmap,
         "journals": journal_counts(groups), "pref_journals": preferred_journals(), "top_count": sum(1 for g in groups for it in g["items"] if it.get("top")),
-        "labs": lab_counts(groups), "libnet": {"indexed": len((libnet_load().get("papers") or {})), "building": _libnet["building"]}}}
+        "labs": labs, "libnet": {"indexed": len((libnet_load().get("papers") or {})), "building": _libnet["building"]}}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")

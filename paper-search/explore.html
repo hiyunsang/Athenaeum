@@ -47,6 +47,8 @@
   .plan .pl input[type=text]:focus { outline: 0; border-bottom-color: var(--accent); }
   .plan .qs span[title] { cursor: help; }
   .plan .rerun { margin-top: var(--s1); }
+  .plan .fold { margin-left: 8px; font-size: 12px; }
+  .plan.folded .qs, .plan.folded .pbox { display: none; }
   .meta .hit { color: var(--accent); }   /* 선택 개념 중 이 논문이 해당하는 것 (LPBF, DSS …) */
   .vbar { display: flex; align-items: center; gap: var(--s2); margin: var(--s2) 12px 0; font-size: 12px; color: var(--text-2); }
   .vbar .act { padding: 2px 6px; }
@@ -64,6 +66,10 @@
   body.chat #chat { display: flex; }
   #chat .ch { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
   #chat .ch b { color: var(--text); }
+  #chatToggle { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border: 1px solid var(--line-2); border-radius: var(--r); color: var(--text); text-decoration: none; font-size: 12.5px; line-height: 1.3; }
+  #chatToggle:hover { background: var(--hover); }
+  #chatToggle svg { width: 15px; height: 15px; flex: none; }
+  body.chat #chatToggle { color: var(--accent); border-color: var(--accent); }
   #chatlog { flex: 1; overflow-y: auto; padding: 10px 12px; }
   .msg { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; font-size: calc(13px * var(--read-scale, 1)); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
   .msg.user { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
@@ -86,6 +92,7 @@
   }
   /* 저널별 편수 줄 — 누르면 그 저널만 */
   .jbar { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; font-size: 12.5px; margin: 4px 0 10px; }
+  .jbar[hidden] { display: none; }   /* display:flex 가 hidden 속성을 이긴다 — 맵 보기에서 칩 줄을 숨길 때 */
   .jbar .lab { color: var(--text-3); }
   .jbar .jc { color: var(--text-2); text-decoration: none; padding: 1px 5px; border-radius: var(--r); white-space: nowrap; }
   .jbar .jc b { color: var(--text-3); font-weight: 500; margin-left: 1px; }
@@ -121,7 +128,7 @@
   </select>
   <button id="go">검색</button>
   <label><input type="checkbox" id="smart" checked> 스마트 탐색</label>
-  <a href="#" id="chatToggle" title="지금 보이는 검색 결과를 놓고 Claude(Opus)와 이야기">Claude와 이야기</a>
+  <a href="#" id="chatToggle" title="지금 보이는 검색 결과를 놓고 Claude(Opus)와 이야기"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/><path d="M8 5.2v3.6M6.2 7h3.6" stroke-width="1.2"/></svg>Claude와 이야기</a>
   <div id="info"></div>
 </header>
 <div id="chat">
@@ -274,11 +281,11 @@ function renderSmart(r) {
   const owned = r.groups.reduce((a, g) => a + g.items.filter(x => x.owned).length, 0);
   info.textContent = "관련 논문 " + total + "편 (후보 " + r.candidates + "편 중 " + r.excluded + "편 제외) · 보유 " + owned + "편";
   const plan = document.createElement("div"); plan.className = "plan";
-  plan.innerHTML = "<b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + escH(r.intent) +
+  plan.innerHTML = "<b>스마트 탐색 결과</b> — <b>조사 의도:</b> " + escH(r.intent) + " <a href='#' class='act fold' title='검색 계획과 검색 요약 펴기·접기'>검색 계획 ▾</a>" +
     "<div class='qs'><b>검색 " + r.queries.length + "번:</b> " +
     r.queries.map(x => "<span title='" + escH(x.expr || x.q) + "'>" + escH(x.q) + "<span class='qn'>" + (x.total === "실패" ? "실패" : x.total + "편") + (x.new ? " · 새로 " + x.new : "") + (x.scopus ? " · Scopus " + (x.scopus.total === "실패" ? "실패" : x.scopus.got + "편") + (x.scopus.new ? " +" + x.scopus.new : "") : "") + (x.top ? " · ★ " + (x.top.total === "실패" ? "실패" : x.top.got + "편") + (x.top.new ? " +" + x.top.new : "") : "") + (x.recent ? " · 최신 " + x.recent.got + "편" + (x.recent.new ? " +" + x.recent.new : "") : "") + (x.lib ? " · 이미 결과에 있던 보유 " + x.lib.seen + "편" : "") + (x.libnet ? " · 색인 " + x.libnet.indexed + "편" + (x.libnet.building ? " (만드는 중)" : "") : "") + "</span></span>").join("") + "</div>";
   if (r.plan && r.plan.concepts) {   // 검색 계획: 개념마다 필수/선택 · 검색어를 고쳐 다시 검색
-    const box = document.createElement("div");
+    const box = document.createElement("div"); box.className = "pbox";
     box.innerHTML = "<div class='hint' style='margin-top:6px'>검색 계획 — 필수는 모두 들어가야 하고, 선택은 보기 중 하나면 됩니다. 검색어(쉼표로 구분)를 고쳐 다시 검색할 수 있습니다.</div>";
     for (const c of r.plan.concepts) {
       const row = document.createElement("div"); row.className = "pl";
@@ -307,6 +314,10 @@ function renderSmart(r) {
     };
     box.appendChild(rerun); plan.appendChild(box);
   }
+  let folded = true; try { folded = localStorage.getItem("explore_plan_open") !== "1"; } catch (e) {}
+  plan.classList.toggle("folded", folded);
+  plan.querySelector(".fold").onclick = e => { e.preventDefault(); folded = !folded; plan.classList.toggle("folded", folded); e.target.textContent = folded ? "검색 계획 ▾" : "검색 계획 ▴"; try { localStorage.setItem("explore_plan_open", folded ? "0" : "1"); } catch (e2) {} };
+  if (!folded) plan.querySelector(".fold").textContent = "검색 계획 ▴";
   smartbox.appendChild(plan);
   // 보기 전환: 목록 / 맵 (맵 = 소주제 색, 피인용 크기, 인용·공통참고문헌 선)
   const vbar = document.createElement("div"); vbar.className = "vbar";
@@ -380,13 +391,16 @@ function renderSmart(r) {
   const setView = (v) => {
     if (v === "map" && !r.map) { document.getElementById("vhint").textContent = "이 결과에는 맵이 없습니다 (예전 검색) — 다시 검색하면 만들어집니다"; v = "list"; }
     list.hidden = v === "map"; mapBox.hidden = v !== "map";
+    jbar.hidden = lbar.hidden = v === "map"; if (v === "map") lrec.hidden = true;   // 맵에는 범례에 저널·연구 그룹이 있다 — 맵을 위로
     document.body.classList.toggle("mapwide", v === "map");
     vbar.querySelectorAll("[data-v]").forEach(a => a.classList.toggle("on", a.dataset.v === v));
     try { localStorage.setItem("explore_view", v); } catch (e) {}
     if (v === "map" && !mapReady && r.map) {
       mapReady = true;
       const abbrOf = {}; (r.journals || []).forEach(j => { if (j.abbr) abbrOf[j.name] = j.abbr; });
-      renderResultMap(r.map, mapBox, { openPaper, persist: persistMapField, venueFilter: () => venueF, abbr: v2 => abbrOf[v2] || "", onVenueFilter: v2 => { venueF = v2; applyVenue(); }, labFilter: () => labF });
+      const labOf = {}; r.groups.forEach(g => g.items.forEach(it => { if (it.lab) labOf[it.id] = it.lab; }));   // 맵 노드에 그룹 키 (옛 결과에는 없다)
+      (r.map.nodes || []).forEach(n => { if (!n.lab) n.lab = labOf[n.id] || ""; });
+      renderResultMap(r.map, mapBox, { openPaper, persist: persistMapField, venueFilter: () => venueF, abbr: v2 => abbrOf[v2] || "", onVenueFilter: v2 => { venueF = v2; applyVenue(); }, labFilter: () => labF, labs: r.labs || [], onLabFilter: v2 => { labF = v2; applyVenue(); } });
     }
   };
   vbar.querySelectorAll("[data-v]").forEach(a => a.onclick = (e) => { e.preventDefault(); setView(a.dataset.v); });
@@ -430,7 +444,7 @@ function renderRow(r) {
     " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") +
     ((r.hits && r.hits.length) ? " · <span class='hit'>" + r.hits.map(escH).join(" · ") + "</span>" : "") +
     (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "") +
-    (r.inst ? " · <span class='lk' title='교신·마지막 저자 " + escH(r.pi || "") + " 의 기관'>" + escH(r.inst.replace(/^(University of |The )/, "").slice(0, 28)) + "</span>" : "") +
+    (r.pi ? " · <span class='lk' title='교신·마지막 저자 " + escH(r.pi) + (r.inst ? " · " + escH(r.inst) : "") + " — 「연구 그룹」 줄은 이 이름으로 묶는다'>그룹 " + escH(r.pi.split(" ").slice(-1)[0]) + (r.inst ? " (" + escH(r.inst.replace(/^(University of |The )/, "").slice(0, 24)) + ")" : "") + "</span>" : "") +
     (r.links ? " · <span class='lk' title='주제가 맞는 보유 논문 가운데 이 논문과 인용으로 이어진 수'>서재와 " + r.links + "가닥</span>" : "") +
     (r.hint ? " · <span class='hit'>저자 " + escH(r.hint) + "</span>" : "");
   row.appendChild(m);
