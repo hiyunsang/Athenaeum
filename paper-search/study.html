@@ -322,6 +322,12 @@ async function refresh(first) {
 }
 
 // ---------- 가운데 ----------
+// 「이 서재로는 답하지 못한 것」 → 연구 노트의 새 주제로 (사용자 2026-10-08: '이런 연구 주제는 어때? 하고 같이 토의')
+function noteFromGap(i) {
+  const g = ((cur.chapter || {}).gaps || [])[i]; if (!g) return; const t = (cur.chapter || {}).title || cur.topic || "";
+  window.open("/notes?new=1&from=study&fid=" + encodeURIComponent(cur.id) + "&ftitle=" + encodeURIComponent(t) + "&title=" + encodeURIComponent(g.slice(0, 80)) +
+    "&text=" + encodeURIComponent("공부 장 「" + t + "」 의 '이 서재로는 답하지 못한 것':\n" + g) + "&ask=1", "athenaeum_notes", "width=1280,height=900");
+}
 function renderMain() {
   const m = $("main"); clearInterval(tickT); clearInterval(mapTick);
   if (view.kind === "index") { m.innerHTML = indexHtml(); bindIndex(); renderOutline(); renderPick(); return; }
@@ -437,7 +443,7 @@ function viewHtml() {
   if (k === "all") return "<div class='page ch'>" + crumb("전체를 한 번에") + overviewBody(true) + "</div>";
   if (k === "sec") return "<div class='page ch'>" + sectionHtml(view.si) + "</div>";
   if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
-  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다.</div><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul></div>";
+  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다. 「토의」 를 누르면 그 물음을 연구 노트의 새 주제로 열어 Claude 와 따집니다.</div><ul>" + ch.gaps.map((g, i) => "<li>" + esc(g) + " <button class='act noprint' onclick='noteFromGap(" + i + ")' title='이 물음을 연구 노트의 새 주제로 열어 Claude 와 토의합니다 (서재 전체를 알고 답합니다)'>토의 ↗</button></li>").join("") + "</ul></div>";
   if (k === "terms") return "<div class='page ch'>" + crumb("용어") + "<h2 class='first'>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div></div>";
   if (k === "chats") return "<div class='page ch'>" + crumb("Claude 에게 물은 것") + "<h2 class='first'>Claude 에게 물은 것</h2>" + chatsViewHtml() + "</div>";
   if (k === "refs") return "<div class='page ch'>" + crumb("참고문헌") + "<h2 class='first'>참고문헌</h2>" + refsHtml() + "</div>";
@@ -848,7 +854,7 @@ $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey
   });
   sp.ondblclick = () => { document.documentElement.style.removeProperty("--srcp-w"); lsSet("study_srcp_w", "0"); };
 })();
-(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
+(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); if (URLP.get("topic")) { $("topic").value = URLP.get("topic"); newboxSet(true); }   // 연구 노트의 「이 주제로 공부」 await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
   if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); } })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
 </script>

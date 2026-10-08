@@ -809,6 +809,20 @@ def fetch_nodes(ids):
     return out
 
 
+def libnet_gaps(n=30, min_links=3):
+    """서재가 가장 많이 인용하는데 서재에 없는 논문 n편 — 인용 이웃 색인에서 세어 OpenAlex 로 제목·저널을 받는다 → 노드 목록(links = 서재와 이어진 가닥 수). /api/libnet?gaps=1 과 연구 노트의 배경이 쓴다"""
+    papers = libnet_load().get("papers") or {}
+    nb, _n = libnet_neighbors(list(papers.keys()), min_links=min_links, limit=n)
+    got = fetch_nodes([x for x, _c in nb])
+    rows = []
+    for x, c in nb:
+        if x in got:
+            nd = got[x]; nd.pop("_refs", None); nd.pop("abstract", None)
+            nd["links"] = c; nd["abbr"] = journal_abbr(nd.get("venue")); nd["top"] = is_pref_venue(nd.get("venue"))
+            rows.append(nd)
+    return rows
+
+
 def lab_counts(groups, limit=20):
     """선별된 논문의 연구 그룹(교신·마지막 저자 + 기관)별 편수 → [{key, pi, pi_id, inst, n, y0, y1, top, recent}] 편수 순. 논문마다 lab 키를 붙인다"""
     cnt = {}
@@ -3123,6 +3137,11 @@ vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, loa
 import study
 study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, pref_abbrs=pref_file_abbrs)
 
+# ---------- 연구 노트 (연구 주제를 놓고 Claude 와 토의 — 서재 전체·공부 장·탐색 기록·인용 이웃·원고를 알고 답한다. 사용자 2026-10-08) ----------
+import notes
+notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error,
+           paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
+
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
@@ -3147,6 +3166,8 @@ class Handler(BaseHTTPRequestHandler):
             return vocab.handle_get(self, url)
         if url.path == "/study" or url.path.startswith("/api/study"):
             return study.handle_get(self, url)
+        if url.path == "/notes" or url.path.startswith("/api/notes"):
+            return notes.handle_get(self, url)
         if url.path == "/api/intake":
             return self._send(200, intake.view())
         if url.path in ("/", "/index.html"):
@@ -3556,15 +3577,7 @@ class Handler(BaseHTTPRequestHandler):
             papers = net.get("papers") or {}
             out = {"indexed": sum(1 for r in papers.values() if r.get("id")), "known": len(papers), "building": _libnet["building"], "done": _libnet["done"], "total": _libnet["total"], "err": _libnet["err"], "t": net.get("t")}
             if qs.get("gaps", [""])[0] == "1":
-                nb, _n = libnet_neighbors(list(papers.keys()), min_links=3, limit=int(qs.get("n", ["30"])[0] or 30))
-                got = fetch_nodes([x for x, _c in nb])
-                rows = []
-                for x, c in nb:
-                    if x in got:
-                        n = got[x]; n.pop("_refs", None); n.pop("abstract", None)
-                        n["links"] = c; n["abbr"] = journal_abbr(n.get("venue")); n["top"] = is_pref_venue(n.get("venue"))
-                        rows.append(n)
-                out["gaps"] = rows
+                out["gaps"] = libnet_gaps(int(qs.get("n", ["30"])[0] or 30))
             self._send(200, out)
         elif url.path == "/api/smart_status":
             k = parse_qs(url.query).get("key", [""])[0]
@@ -3636,6 +3649,8 @@ class Handler(BaseHTTPRequestHandler):
             return vocab.handle_post(self, body)
         if self.path.startswith("/api/study"):
             return study.handle_post(self, body)
+        if self.path.startswith("/api/notes"):
+            return notes.handle_post(self, body)
         if self.path == "/api/intake":
             return self._send(200, intake.control(body))
         if self.path == "/api/read_ping":

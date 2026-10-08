@@ -142,6 +142,7 @@
   <h1><a class="brand" href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
   <a href="/explore" id="exploreBtn" class="toggle act" title="주제를 말로 적어 세상의 논문 찾기 — 따로 큰 창으로 열립니다">논문 탐색</a>
   <a href="/study" id="studyBtn" class="toggle act" title="공부: 주제를 적으면 내 서재의 논문만으로 교과서의 한 장을 씁니다 — 문장마다 논문의 원문 문장이 근거로 붙습니다. 따로 큰 창으로 열립니다">공부</a>
+  <a href="/notes" id="notesBtn" class="toggle act" title="연구 노트: 연구 주제를 놓고 Claude 와 토의합니다 — 서재의 논문 전부·공부 장·지난 탐색·원고를 알고 답합니다. 따로 큰 창으로 열립니다">연구 노트</a>
   <a href="/ms" class="toggle act" title="원고 작성: 근거 카드 → 개요 → 초안 → 영문 → Word">원고</a>
   <a href="/vocab" class="toggle act" title="단어장: 논문에서 담은 말과 시험 단어를 모아 Anki 로 내보냅니다">단어장</a>
   <a href="#" id="intakeBtn" class="toggle act" title="다운로드 폴더를 지켜보다가 새 논문 PDF 를 이름 바꿔 보관합니다">수집</a>
@@ -857,6 +858,8 @@ function openExplore() { openBig("/explore", "athenaeum_explore", "width=1280,he
 document.getElementById("exploreBtn").onclick = (e) => { e.preventDefault(); openExplore(); };
 // 공부도 따로 큰 창으로 (쓰는 데 15~30분 걸린다 — 홈을 쓰는 동안 그 창에서 계속 쓴다)
 document.getElementById("studyBtn").onclick = (e) => { e.preventDefault(); openBig("/study", "athenaeum_study", "width=1440,height=920"); };
+// 연구 노트도 따로 큰 창 (주제 토의 — 서재 전체를 배경으로, 2026-10-08)
+document.getElementById("notesBtn").onclick = (e) => { e.preventDefault(); openBig("/notes", "athenaeum_notes", "width=1280,height=900"); };
 
 loadData();
 checkOpenAlex();

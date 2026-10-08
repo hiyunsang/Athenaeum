@@ -139,6 +139,7 @@
   <label><input type="checkbox" id="smart" checked> 스마트 탐색</label>
   <a href="#" id="chatToggle" title="지금 보이는 검색 결과를 놓고 Claude(Opus)와 이야기"><img src="/logo/claude_mascot.png" alt="" onerror="this.remove()">Claude와 이야기</a>
   <a href="#" id="histToggle" class="hbtn" title="지난 탐색을 다시 열기 (다시 검색하지 않습니다)">기록</a>
+  <a href="#" id="noteToggle" class="hbtn" title="지금 검색 결과(검색어·조사 의도·소주제·연구 그룹)를 놓고 연구 노트에서 Claude 와 주제 토의">연구 노트</a>
   <div id="info"></div>
 </header>
 <div id="hist" hidden></div>
@@ -588,6 +589,15 @@ async function chatSend() {
     const up = () => { sp.classList.remove("drag"); sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); if (w) { try { localStorage.setItem("explore_chat_w", String(w)); } catch (e3) {} } };
     sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up); });
   sp.ondblclick = () => { document.documentElement.style.removeProperty("--chat-w"); try { localStorage.removeItem("explore_chat_w"); } catch (e) {} };
+})();
+(function noteBtn() {   // 탐색 결과 → 연구 노트의 새 주제 (사용자 2026-10-08: '이런 연구 주제는 어때? 하고 같이 토의')
+  const b = document.getElementById("noteToggle"); if (!b) return;
+  b.onclick = e => { e.preventDefault(); const s = loadState() || {}, r = s.smartResult || null, q = s.q || "";
+    const groups = r ? (r.groups || []).map(g => g.name).filter(Boolean).slice(0, 8).join(", ") : "";
+    const text = q ? ("논문 탐색 「" + q + "」" + (r && r.intent ? "\n조사 의도: " + r.intent : "") + (groups ? "\n소주제: " + groups : "") +
+      (r && (r.journals || []).length ? "\n저널: " + r.journals.slice(0, 6).map(j => j.abbr || j.name).join(", ") : "") +
+      (r && (r.labs || []).length ? "\n연구 그룹: " + r.labs.slice(0, 6).map(l => l.pi + (l.inst ? " (" + l.inst + ")" : "") + " " + l.n + "편").join(", ") : "")) : "";
+    window.open("/notes?new=1&from=explore&ftitle=" + encodeURIComponent(q) + "&title=" + encodeURIComponent(q || "새 주제") + "&text=" + encodeURIComponent(text) + "&ask=1", "athenaeum_notes", "width=1280,height=900"); };
 })();
 (function chatFont() {   // 대화 글씨 크기 (사용자 2026-10-07)
   const apply = () => { const v = +(localStorage.getItem("ui_chat_font") || 13) || 13; document.getElementById("chatlog").style.fontSize = v + "px"; document.getElementById("chatq").style.fontSize = v + "px"; };

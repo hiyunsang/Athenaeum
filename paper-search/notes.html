@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>연구 노트 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  header .brand-mark { height: 24px; display: block; }
+  header h1 { font-size: 14px; font-weight: 600; }
+  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 268px minmax(0, 1fr) 6px var(--card-w, 380px); }
+  #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; padding-bottom: var(--s8); }
+  #main { background: var(--surface); min-width: 0; display: flex; flex-direction: column; }
+  #cardsplit { cursor: col-resize; background: var(--line-2); }   /* 끌어서 오른쪽 칸의 폭을 바꾼다 (공부·탐색과 같은 방식) */
+  #cardsplit:hover, #cardsplit.drag { background: var(--accent); }
+  #cardp { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-width: 0; padding: var(--s3) var(--s4) var(--s8); }
+  /* 왼쪽: 새 주제 · 주제 목록(상태별) */
+  .sideh { display: flex; align-items: center; gap: var(--s2); padding: 10px var(--s3) 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; }
+  .sideh .n { color: var(--text-3); font-weight: 400; }
+  .newbox { padding: 0 var(--s3) var(--s3); border-bottom: 1px solid var(--line); }
+  .newbox textarea { width: 100%; resize: vertical; min-height: 64px; }
+  .newbox .primary { width: 100%; margin-top: var(--s2); }
+  .newbox .hint { margin-top: var(--s2); line-height: 1.5; }
+  .oi { display: block; padding: 7px var(--s3) 7px 10px; cursor: pointer; font-size: 12.5px; line-height: 1.4; color: var(--text); border-left: 3px solid transparent; border-bottom: 1px solid var(--line); }
+  .oi:hover { background: var(--hover); }
+  .oi.on { background: var(--sel-bg); border-left-color: var(--accent); }
+  .oi .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .oi .m { color: var(--text-3); font-size: 11px; margin-top: 2px; } .oi .m .run { color: var(--accent); }
+  .empty { padding: var(--s4) var(--s3); color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
+  /* 가운데: 토의 */
+  #thwrap { flex: 1; min-height: 0; overflow-y: auto; }
+  .page { max-width: var(--read-width); margin: 0 auto; padding: var(--s5) var(--s6) var(--s6); }
+  .th { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
+  .th textarea.tt { flex: 1; min-width: 240px; font-family: var(--font-serif); font-size: 20px; font-weight: 600; line-height: 1.3; border: 0; padding: 2px 0; background: transparent; resize: none; overflow: hidden; }   /* 긴 물음도 제목이 된다 — 줄바꿈해 다 보이게 */
+  .th textarea.tt:focus { outline: none; border-bottom: 1px solid var(--accent); background: transparent; }
+  .th select { padding: 3px 6px; font-size: 12px; }
+  .th .m { width: 100%; color: var(--text-3); font-size: 12px; }
+  .seed { margin: var(--s3) 0 0; padding: var(--s2) var(--s3); background: var(--panel); border-radius: var(--r); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .seed .k { color: var(--text-3); font-size: 11.5px; margin-bottom: 2px; white-space: normal; }
+  #thread { padding-top: var(--s2); }
+  .msg { padding: var(--s3) 0; border-bottom: 1px solid var(--line); line-height: 1.7; }
+  .msg .who { font-size: 11px; color: var(--text-3); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; } .msg .who img { width: 16px; height: 16px; image-rendering: pixelated; }
+  .msg.me { color: var(--text-2); } .msg.me .body { white-space: pre-wrap; }
+  .msg p { margin: 0 0 .7em; white-space: pre-wrap; word-break: keep-all; } .msg p:last-child { margin-bottom: 0; }
+  .msg p.beyond { background: var(--amber-bg); color: var(--amber); padding: 4px 8px; border-radius: var(--r); }
+  .msg .go { display: block; margin: 2px 0; padding: 3px 0; color: var(--accent); text-align: left; }
+  .msg .go::before { content: "↗ "; color: var(--text-3); }
+  .waitbox { padding: var(--s3) 0; }
+  .waitbox .hint { margin-top: 4px; }
+  .warnbox { background: var(--amber-bg); color: var(--amber); border-radius: var(--r); padding: var(--s2) var(--s3); margin: var(--s3) 0; line-height: 1.55; }
+  #askbox { flex: none; border-top: 1px solid var(--line); background: var(--surface); }
+  #askbox .in { max-width: var(--read-width); margin: 0 auto; padding: var(--s3) var(--s6) var(--s4); }
+  #askbox textarea { width: 100%; resize: vertical; min-height: 68px; max-height: 40vh; }
+  #askbox .row { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s2); flex-wrap: wrap; }
+  #askbox .row select { padding: 3px 6px; font-size: 12px; } #askbox .row label { font-size: 12px; color: var(--text-2); display: inline-flex; gap: 4px; align-items: center; }
+  #askbox .row .primary { margin-left: auto; }
+  #askbox .fsz .act { padding: 0 4px; }
+  .welcome { padding: var(--s8) var(--s6); max-width: 560px; margin: 0 auto; color: var(--text-2); line-height: 1.7; font-size: 13.5px; }
+  .welcome h2 { font-family: var(--font-serif); font-size: 22px; font-weight: 600; color: var(--text); margin: 0 0 var(--s3); }
+  .welcome ul { padding-left: 1.2em; } .welcome li { margin-bottom: .35em; }
+  /* 오른쪽: 주제 카드 */
+  .cf { padding: 6px 0 2px; }
+  .cf .k { font-size: 11px; font-weight: 600; letter-spacing: .03em; color: var(--text-2); text-transform: uppercase; margin-bottom: 3px; }
+  .cf textarea { width: 100%; resize: none; min-height: 40px; overflow: hidden; line-height: 1.55; font-size: 12.5px; background: var(--surface); }
+  .cf textarea:focus { background: var(--surface); }
+  .cm { color: var(--text-3); font-size: 11.5px; margin: var(--s2) 0; line-height: 1.5; }
+  .links .act { display: block; text-align: left; padding: 5px 0; }
+  .kv { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; } .kv span:first-child { color: var(--text-3); min-width: 6.5em; }
+  @media (max-width: 1100px) { #app { grid-template-columns: 220px minmax(0, 1fr) 6px var(--card-w, 320px); } }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
+  <h1>연구 노트</h1>
+  <span class="hint">연구 주제를 놓고 Claude 와 토의합니다 — Claude 는 서재의 논문 전부·공부 장·지난 탐색·원고를 알고 답합니다. 정해진 것은 오른쪽 주제 카드로.</span>
+  <span style="margin-left:auto"></span>
+</header>
+<div id="app">
+  <aside id="side">
+    <div class="newbox">
+      <div class="sideh">새 주제</div>
+      <textarea id="newT" placeholder="연구 주제나 물음 (예: AM 금속의 이방성을 직교 절삭의 칩 생성으로 볼 수 있을까?)"></textarea>
+      <button class="primary" id="newGo">주제 열기</button>
+      <div class="hint">주제를 열고 첫 물음을 적으면 토의가 시작됩니다. 공부의 「답하지 못한 것」·탐색 결과에서도 열 수 있습니다.</div>
+    </div>
+    <div id="list"></div>
+  </aside>
+  <main id="main">
+    <div id="thwrap"></div>
+    <div id="askbox" hidden></div>
+  </main>
+  <div id="cardsplit" title="끌어서 오른쪽 칸의 폭을 바꿉니다 · 두 번 누르면 기본 폭"></div>
+  <aside id="cardp"></aside>
+</div>
+<script>
+mountUiControls("header");
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+async function api(path, body) { const r = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : undefined); return r.json(); }
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const fmtDate = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" + (Math.round(s % 60) ? " " + Math.round(s % 60) + "초" : "");
+const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
+const EFFORT = { xhigh: "Opus · 엑스트라", max: "Opus · 최대", high: "Opus · 보통", fast: "Sonnet · 빠름" };
+let META = { status: ["idea", "review", "adopt", "hold"], status_ko: { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" }, card_keys: [], card_ko: {} };
+let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null;
+const URLP = new URLSearchParams(location.search);
+
+// ---------- 목록 ----------
+async function loadList() {
+  let r; try { r = await api("/api/notes"); } catch (e) { return; }
+  items = r.items || []; if (r.status) META = r; renderList();
+}
+function renderList() {
+  const el = $("list");
+  if (!items.length) { el.innerHTML = "<div class='empty'>아직 주제가 없습니다. 위에 연구 주제나 물음을 적어 열어 보세요.</div>"; return; }
+  let h = "";
+  META.status.forEach(s => {
+    const xs = items.filter(x => x.status === s); if (!xs.length) return;
+    h += "<div class='sideh'>" + esc(META.status_ko[s] || s) + " <span class='n'>" + xs.length + "</span></div>";
+    h += xs.map(x => "<a class='oi" + (cur && x.id === cur.id ? " on" : "") + "' data-id='" + esc(x.id) + "'><div class='t'>" + esc(x.title) + "</div><div class='m'>" + fmtDate(x.updated || x.t) +
+      (x.pending ? " · <span class='run'>Claude 생각 중</span>" : x.answers ? " · 답 " + x.answers : " · 아직 묻지 않음") + (x.card ? " · 카드" : "") + "</div></a>").join("");
+  });
+  el.innerHTML = h;
+  el.querySelectorAll(".oi").forEach(a => a.onclick = () => open(a.dataset.id));
+}
+
+// ---------- 주제 열기 ----------
+async function open(id) {
+  let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(id)); } catch (e) { return; }
+  if (r.error || !r.note) { alert(r.error || "찾지 못했습니다"); return; }
+  cur = r.note; curId = cur.id; lsSet("notes_last", curId); draft = "";
+  try { history.replaceState(null, "", "/notes?id=" + encodeURIComponent(curId)); } catch (e) {}
+  renderList(); renderMain(); renderCard(); schedulePoll();
+  const w = $("thwrap"); w.scrollTop = w.scrollHeight;
+}
+async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 글은 지킨다)
+  if (!cur) return;
+  let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(cur.id)); } catch (e) { return; }
+  if (!cur || r.error || !r.note || r.note.id !== cur.id) return;
+  const before = JSON.stringify([cur.thread, cur.pending, cur.error, cur.card, cur.card_pending, cur.card_error]);
+  const after = JSON.stringify([r.note.thread, r.note.pending, r.note.error, r.note.card, r.note.card_pending, r.note.card_error]);
+  const wasPending = !!cur.pending;
+  cur = r.note;
+  if (before === after) return;
+  (cur.thread || []).forEach(m => { if (m.role === "claude" && m.sec && (cur.opts || {}).effort) remember(cur.opts.effort, m.sec); });
+  const w = $("thwrap"), atEnd = w.scrollHeight - w.scrollTop - w.clientHeight < 80;
+  renderThread(); renderAsk(); renderCard(); renderListSoon();
+  if (wasPending && !cur.pending || atEnd) w.scrollTop = w.scrollHeight;
+}
+let listT = null;
+function renderListSoon() { clearTimeout(listT); listT = setTimeout(loadList, 300); }
+function schedulePoll() {
+  clearTimeout(pollT);
+  const loop = async () => { await refresh(); if (cur && (cur.pending || cur.card_pending)) pollT = setTimeout(loop, 4000); };
+  if (cur && (cur.pending || cur.card_pending)) pollT = setTimeout(loop, 4000);
+}
+
+// ---------- 가운데: 토의 ----------
+function renderMain() {
+  if (!cur) {
+    $("thwrap").innerHTML = "<div class='welcome'><h2>연구 노트</h2><p>'이런 연구 주제는 어떨까?' 를 놓고 Claude 와 따져 보는 곳입니다. Claude 는 묻는 순간 다음을 모두 알고 답합니다.</p><ul>" +
+      "<li>서재의 논문 전부 — 편마다 연도·저널·저자·제목과 요약의 한 줄</li><li>공부로 쓴 장들 — 범위·물음·「이 서재로는 답하지 못한 것」·Claude 의 생각</li><li>지난 논문 탐색 — 검색어·소주제·저널·연구 그룹</li><li>서재가 많이 인용하는데 서재에 없는 논문</li><li>쓰고 있는 원고의 초록과 절</li></ul>" +
+      "<p>왼쪽에서 주제를 열고 첫 물음을 적으세요. 정해진 것은 오른쪽 「주제 카드」 로 정리하고, 거기서 논문 탐색·공부로 이어집니다.</p><p class='hint'>첫 물음은 배경을 읽느라 1~2분 걸리고 토큰을 많이 읽습니다(그 뒤 한 시간은 캐시).</p></div>";
+    $("askbox").hidden = true; return;
+  }
+  const st = META.status.map(s => "<option value='" + s + "'" + (cur.status === s ? " selected" : "") + ">" + esc(META.status_ko[s] || s) + "</option>").join("");
+  let h = "<div class='page'><div class='th'><textarea class='tt' id='title' rows='1' title='주제 이름 — 고치면 바로 저장됩니다'>" + esc(cur.title) + "</textarea><select id='status' title='이 주제의 상태'>" + st + "</select>" +
+    "<button class='act' id='mdBtn' title='카드와 토의를 md 글로 복사'>md 복사</button><button class='act warn' id='delBtn'>지우기</button>" +
+    "<div class='m'>" + fmtDate(cur.t) + " 에 열음" + ((cur.seed || {}).from && cur.seed.from.title ? " · " + ({ study: "공부 장", explore: "논문 탐색", ms: "원고" }[cur.seed.from.kind] || "") + " 「" + esc(cur.seed.from.title) + "」 에서" : "") + "</div></div>";
+  if ((cur.seed || {}).text) h += "<div class='seed'><div class='k'>출발점 — Claude 에게 같이 갑니다</div>" + esc(cur.seed.text) + "</div>";
+  h += "<div id='thread'></div></div>";
+  $("thwrap").innerHTML = h;
+  const ti = $("title"); fit(ti, 28); ti.oninput = () => fit(ti, 28); ti.onchange = () => saveFields({ title: ti.value.replace(/\s+/g, " ").trim() });
+  ti.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ti.blur(); } });
+  $("status").onchange = () => saveFields({ status: $("status").value });
+  $("delBtn").onclick = async () => { if (!confirm("이 주제와 토의를 지울까요?")) return; await api("/api/notes", { op: "delete", id: cur.id }); cur = null; curId = ""; lsSet("notes_last", ""); await loadList(); renderMain(); renderCard(); };
+  $("mdBtn").onclick = async () => { const r = await api("/api/notes", { op: "md", id: cur.id }); if (r.error) { alert(r.error); return; } try { await navigator.clipboard.writeText(r.md); $("mdBtn").textContent = "복사됨"; setTimeout(() => $("mdBtn").textContent = "md 복사", 1500); } catch (e) { prompt("복사:", r.md); } };
+  renderThread(); renderAsk();
+}
+async function saveFields(f) {
+  const r = await api("/api/notes", Object.assign({ op: "save", id: cur.id }, f));
+  if (r.note) { const keep = cur; cur = r.note; if (keep.pending && !cur.pending) refresh(); }
+  renderListSoon();
+}
+function lineHtml(p) {
+  const m = p.match(/^(탐색|공부)\s*[:：]\s*(.+)$/);
+  if (m && p.length < 200) {
+    const q = m[2].trim();
+    if (m[1] === "탐색") return "<a class='act go' data-q=\"" + esc(q) + "\" title='이 주제로 논문 탐색 창을 엽니다'>탐색: " + esc(q) + "</a>";
+    return "<a class='act go' data-study=\"" + esc(q) + "\" title='이 주제로 공부 창을 엽니다'>공부: " + esc(q) + "</a>";
+  }
+  return null;
+}
+function claudeHtml(text) {
+  const paras = String(text || "").split(/\n{2,}/).map(x => x.trim()).filter(Boolean);
+  return paras.map(p => {
+    const ls = p.split("\n"), gos = ls.map(lineHtml);
+    if (gos.every(Boolean)) return gos.join("");
+    if (gos.some(Boolean)) return "<p>" + ls.map((l, i) => gos[i] ? gos[i] : esc(l)).join("\n") + "</p>";
+    return "<p" + (/^서재 밖\s*[:：]/.test(p) ? " class='beyond' title='서재와 배경에 없어 Claude 가 제 지식으로 보탠 부분입니다 — 확인이 필요합니다'" : "") + ">" + esc(p) + "</p>";
+  }).join("");
+}
+function msgHtml(m) {
+  if (m.role === "user") return "<div class='msg me'><div class='who'>나 · " + fmtDate(m.t) + "</div><div class='body'>" + esc(m.text) + "</div></div>";
+  return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
+    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + "</div>" + claudeHtml(m.text) + "</div>";
+}
+function renderThread() {
+  const el = $("thread"); if (!el || !cur) return;
+  let h = (cur.thread || []).map(msgHtml).join("");
+  if (!(cur.thread || []).length) h += "<div class='hint' style='padding:var(--s4) 0;line-height:1.7'>아래에 첫 물음을 적으세요 — '이 주제가 설 만한가', '서재에 이미 한 연구가 있나', '어떤 실험으로 보일 수 있나' 같은 것. Claude 는 약점과 반론을 먼저 말하도록 되어 있습니다.</div>";
+  if (cur.pending) h += "<div class='waitbox'><div class='prog'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 주제에 남습니다.</div></div>";
+  if (cur.error) h += "<div class='warnbox'>" + esc(cur.error) + " — 아래에서 다시 물으세요.</div>";
+  el.innerHTML = h;
+  el.querySelectorAll(".go[data-q]").forEach(a => a.onclick = () => openBig("/explore?q=" + encodeURIComponent(a.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
+  el.querySelectorAll(".go[data-study]").forEach(a => a.onclick = () => openBig("/study?topic=" + encodeURIComponent(a.dataset.study), "athenaeum_study", "width=1440,height=920"));
+  clearInterval(tick);
+  if (cur.pending) {
+    const eff = (cur.opts || {}).effort || "xhigh", T = expect(eff);
+    const tk = () => { const el2 = Date.now() / 1000 - cur.pending, b = $("askBar"), e2 = $("askEta"); if (!b) { clearInterval(tick); return; }
+      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
+    tk(); tick = setInterval(tk, 1000);
+  }
+}
+const durKey = eff => "notes_ask_dur|" + eff;
+function expect(eff) { const v = +lsGet(durKey(eff), 0); return v || (eff === "max" ? 200 : eff === "fast" ? 40 : 110); }
+const seen = new Set();
+function remember(eff, sec) { const k = eff + "|" + sec; if (seen.has(k)) return; seen.add(k); const v = +lsGet(durKey(eff), 0); lsSet(durKey(eff), Math.round(v ? v * 0.6 + sec * 0.4 : sec)); }
+function renderAsk() {
+  const box = $("askbox"); if (!cur) { box.hidden = true; return; }
+  box.hidden = false;
+  if (cur.pending) { box.innerHTML = "<div class='in'><div class='hint'>답을 기다리는 중입니다. 답이 오면 이어서 물을 수 있습니다.</div></div>"; return; }
+  const eff = lsGet("notes_effort", "xhigh"), lib = lsGet("notes_lib", "0") === "1", first = !(cur.thread || []).length;
+  const val = cur.error ? ((cur.thread || []).slice(-1)[0] || {}).text || draft : draft;
+  box.innerHTML = "<div class='in'><textarea id='askIn' placeholder='" + (first ? (cur.seed && cur.seed.text ? "출발점을 놓고 물어 보세요 — 예: 이걸 연구 주제로 세울 수 있을까? (Ctrl+Enter)" : "첫 물음 (Ctrl+Enter) — 예: 이 주제, 서재에 이미 한 연구가 있나? 새로움이 어디에 있을까?") : "이어서 묻기 (Ctrl+Enter)") + "'>" + esc(val) + "</textarea>" +
+    "<div class='row'><select id='askEff' title='답하는 모델'>" + Object.keys(EFFORT).map(k => "<option value='" + k + "'" + (eff === k ? " selected" : "") + ">" + EFFORT[k] + "</option>").join("") + "</select>" +
+    "<label title='배경의 한 줄 요약만으로 모자랄 때 서재의 요약·번역 파일을 직접 찾아봅니다 (읽은 토큰이 크게 늘 수 있습니다)'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
+    "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
+    "<button class='primary' id='askGo'>묻기</button></div><div class='hint' id='askMsg'></div></div>";
+  const t = $("askIn"); t.oninput = () => { draft = t.value; }; t.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); send(); } });
+  $("askGo").onclick = send;
+  box.querySelectorAll(".fsz button").forEach(b => b.onclick = () => { const v = Math.min(20, Math.max(11, (+lsGet("ui_chat_font", "13") || 13) + (+b.dataset.f))); lsSet("ui_chat_font", String(v)); applyFont(); });
+  if (first && !draft && URLP.get("ask") === "1" && cur.seed && cur.seed.text) { t.value = draft = cur.seed.text.length > 300 ? "이것을 연구 주제로 세울 수 있을까? 서재에 이미 한 연구가 있는지, 새로움이 어디에 있는지, 어떤 실험으로 보일 수 있는지 따져 줘." : cur.seed.text; }
+}
+function applyFont() { $("thwrap").style.fontSize = (+lsGet("ui_chat_font", "13") || 13) + "px"; }
+async function send() {
+  const t = $("askIn"), q = (t ? t.value : "").trim(); if (!q) { if (t) t.focus(); return; }
+  const eff = $("askEff").value, lib = $("askLib").checked;
+  lsSet("notes_effort", eff); lsSet("notes_lib", lib ? "1" : "0");
+  $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
+  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; return; }
+  draft = ""; cur = r.note; renderThread(); renderAsk(); renderListSoon(); schedulePoll();
+  const w = $("thwrap"); w.scrollTop = w.scrollHeight;
+}
+
+// ---------- 오른쪽: 주제 카드 ----------
+function renderCard() {
+  const el = $("cardp");
+  if (!cur) { el.innerHTML = "<div class='sec'>주제 카드</div><div class='hint' style='line-height:1.6'>주제를 열면 여기에 토의에서 정해진 것을 카드로 정리합니다 — 연구 물음 · 가설 · 설계 · 예상 결과 · 위험 · 관련 논문 · 연구 그룹 · 저널 · 다음 할 일.</div>" + bgHtml(); bindBg(); return; }
+  const c = cur.card, answered = (cur.thread || []).some(m => m.role === "claude");
+  let h = "<div class='sec' style='display:flex;align-items:center;gap:6px'>주제 카드<span style='margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0'>" +
+    (cur.card_pending ? "<span style='color:var(--accent)'>정리하는 중…</span>" : "<button class='act' id='cardGo'" + (answered ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + ">" + (c ? "대화로 다시 정리" : "대화에서 정리") + "</button>") + "</span></div>";
+  if (cur.card_error) h += "<div class='warnbox'>" + esc(cur.card_error) + "</div>";
+  if (c) {
+    h += "<div class='cm'>" + (cur.card_t ? fmtDate(cur.card_t) + " 에 " + esc(cur.card_model || "Claude") + " 가 정리" : "") + (cur.card_edited ? " · 손으로 고침" : "") + " · 칸을 고치면 바로 저장됩니다</div>";
+    META.card_keys.forEach(k => { const v = c[k]; const txt = Array.isArray(v) ? v.join("\n") : (v || ""); h += "<div class='cf'><div class='k'>" + esc(META.card_ko[k] || k) + "</div><textarea data-k='" + k + "' placeholder='" + (Array.isArray(v) || /papers|groups|journals|next/.test(k) ? "한 줄에 하나" : "") + "'>" + esc(txt) + "</textarea></div>"; });
+  } else if (!cur.card_pending) {
+    h += "<div class='hint' style='line-height:1.6'>토의가 한 번 이상 오가면 「대화에서 정리」 로 카드를 만듭니다. 그 뒤로는 칸을 직접 고치고, 토의가 더 쌓이면 다시 정리합니다.</div>";
+  }
+  h += "<div class='sec'>이어서</div><div class='links'><button class='act' id='goExplore' title='이 주제 이름으로 논문 탐색 창을 엽니다 — 세상의 문헌'>이 주제로 논문 탐색 ↗</button>" +
+    "<button class='act' id='goStudy' title='이 주제 이름으로 공부 창을 엽니다 — 서재의 논문만으로 교과서 한 장'>이 주제로 공부 ↗</button><a class='act' href='/ms' target='athenaeum_ms' title='원고 창'>원고로 ↗</a></div>";
+  h += bgHtml();
+  el.innerHTML = h;
+  const g = $("cardGo"); if (g) g.onclick = async () => { g.disabled = true; const r = await api("/api/notes", { op: "card", id: cur.id, effort: lsGet("notes_effort", "xhigh") === "fast" ? "fast" : "xhigh" }); if (r.error) { alert(r.error); g.disabled = false; return; } cur.card_pending = Date.now() / 1000; renderCard(); schedulePoll(); };
+  el.querySelectorAll(".cf textarea").forEach(t => { fit(t); t.oninput = () => { fit(t); clearTimeout(cardSaveT); cardSaveT = setTimeout(saveCard, 800); }; });
+  $("goExplore").onclick = () => openBig("/explore?q=" + encodeURIComponent(cur.title) + "&go=1", "athenaeum_explore", "width=1280,height=900");
+  $("goStudy").onclick = () => openBig("/study?topic=" + encodeURIComponent(cur.title), "athenaeum_study", "width=1440,height=920");
+  bindBg();
+}
+function fit(t, min) { if (t.clientWidth < 80) return; t.style.height = "auto"; t.style.height = Math.max(min || 40, t.scrollHeight + 2) + "px"; }   // 숨은 탭에서는 폭이 0 이라 건너뛴다
+async function saveCard() {
+  if (!cur) return;
+  const card = {}; $("cardp").querySelectorAll(".cf textarea").forEach(t => card[t.dataset.k] = t.value);
+  const r = await api("/api/notes", { op: "save", id: cur.id, card });
+  if (r.note) { cur.card = r.note.card; cur.card_edited = r.note.card_edited; }
+}
+function bgHtml() {
+  let h = "<div class='sec'>Claude 가 아는 것</div>";
+  if (!bgStats) return h + "<div class='hint'><button class='act' id='bgLoad'>세어 보기</button> — 묻는 순간 Claude 에게 가는 배경의 크기</div>";
+  h += "<div class='kv'><span>서재</span><span>논문 " + (bgStats.papers || 0) + "편 (요약 " + (bgStats.summaries || 0) + "편)</span></div><div class='kv'><span>공부 장</span><span>" + (bgStats.studies || 0) + "개</span></div>" +
+    "<div class='kv'><span>탐색 기록</span><span>" + (bgStats.searches || 0) + "건</span></div><div class='kv'><span>인용 이웃</span><span>서재에 없는 논문 " + (bgStats.gaps || 0) + "편</span></div><div class='kv'><span>원고</span><span>" + (bgStats.manuscripts || 0) + "편</span></div>" +
+    "<div class='kv'><span>배경 글</span><span>" + fmtTok(bgStats.chars || 0) + " 자 <a class='act' href='/api/notes/bg?text=1' target='_blank' title='Claude 에게 가는 배경 글 그대로'>보기</a></span></div>" +
+    "<div class='hint' style='margin-top:6px;line-height:1.5'>첫 물음에 이만큼을 읽고, 한 시간 안의 다음 물음은 캐시에서 읽습니다. 서재·공부·탐색이 바뀌면 다시 읽습니다.</div>";
+  return h;
+}
+function bindBg() { const b = $("bgLoad"); if (b) b.onclick = async () => { b.disabled = true; b.textContent = "세는 중…"; try { bgStats = await api("/api/notes/bg"); } catch (e) { bgStats = null; } renderCard(); }; }
+
+// ---------- 창 ----------
+function openBig(path, name, feat) {
+  let w = null;
+  try { w = window.open("", name, feat); } catch (e) {}
+  if (!w) { window.open(path, name, feat); return; }
+  let fresh = true;
+  try { fresh = !w.location || w.location.href === "about:blank" || w.location.pathname.indexOf(path.split("?")[0]) !== 0 || path.indexOf("?") > 0; } catch (e) {}
+  if (fresh) w.location.href = path;
+  try { w.focus(); } catch (e) {}
+}
+(function cardResize() {
+  const sp = $("cardsplit"); if (!sp) return;
+  const apply = w => document.documentElement.style.setProperty("--card-w", Math.round(w) + "px");
+  const saved = +lsGet("notes_card_w", "0"); if (saved) apply(saved);
+  sp.addEventListener("pointerdown", e => {
+    e.preventDefault(); sp.classList.add("drag"); try { sp.setPointerCapture(e.pointerId); } catch (e2) {} let w = 0;
+    const move = ev => { w = Math.min(Math.max(window.innerWidth - ev.clientX, 260), Math.max(300, window.innerWidth - 520)); apply(w); };
+    const up = () => { sp.classList.remove("drag"); sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); if (w) lsSet("notes_card_w", String(w)); $("cardp").querySelectorAll(".cf textarea").forEach(fit); };
+    sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up);
+  });
+  sp.ondblclick = () => { document.documentElement.style.removeProperty("--card-w"); lsSet("notes_card_w", "0"); };
+})();
+$("newGo").onclick = async () => {
+  const t = $("newT").value.trim(); if (!t) { $("newT").focus(); return; }
+  const r = await api("/api/notes", { op: "new", title: t.split("\n")[0].slice(0, 100), seed: t.length > 100 || t.indexOf("\n") > 0 ? t : "" });
+  if (r.error) { alert(r.error); return; }
+  $("newT").value = ""; await loadList(); await open(r.note.id); const a = $("askIn"); if (a) a.focus();
+};
+$("newT").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); $("newGo").click(); } });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && cur) refresh(); });
+applyFont();
+(async () => {
+  await loadList();
+  if (URLP.get("new") === "1") {   // 공부의 「답하지 못한 것」·탐색 결과에서: ?new=1&title=…&text=…&from=study&fid=…&ftitle=…
+    const r = await api("/api/notes", { op: "new", title: URLP.get("title") || "", seed: URLP.get("text") || "", from: { kind: URLP.get("from") || "", id: URLP.get("fid") || "", title: URLP.get("ftitle") || "" } });
+    if (r.note) { await loadList(); await open(r.note.id); const a = $("askIn"); if (a) a.focus(); return; }
+  }
+  const want = URLP.get("id") || curId;
+  if (want && items.some(x => x.id === want)) await open(want); else { cur = null; renderMain(); renderCard(); }
+})();
+</script>
+</body>
+</html>
