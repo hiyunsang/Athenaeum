@@ -98,6 +98,7 @@ POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/label
 - **한글 경로를 Git Bash 인자로 넘기면 깨진다** → 파이썬 스크립트나 Read/Glob 도구로
 - Bash heredoc 은 백슬래시를 뭉갠다(`\b` → 백스페이스, `\v` → 세로탭). **백슬래시·따옴표 많은 패치는 Write 도구로 .py 파일을 만들어 실행.** 파이썬 heredoc 첫 줄에 `# -*- coding: utf-8 -*-`
 - 이 함정에 실제로 두 번 당했다(탐색의 AND/OR/NOT 낱말 경계, 원고의 키워드 정규식 — 백슬래시-b 자리에 백스페이스 문자가 들어가 정규식이 조용히 안 맞음). 패치 뒤 파일에 `chr(8)` 이 0 개인지 확인할 것
+- **패치로 기존 줄 가운데에 코드를 끼울 때 `//` 한 줄 주석을 붙이지 말 것** — 그 줄의 뒤쪽 코드가 통째로 주석이 된다. 2026-10-08 공부 창의 초기화 줄에 `?topic=` 처리를 끼우며 `// …` 를 붙여 뒤의 `refresh(true)` 가 지워졌고, 공부 창이 장을 불러오지 않았다(반나절). 블록 주석 `/* */` 이나 새 줄로
 - Git Bash 의 `tasklist /FI` 는 `/FI` 가 경로로 바뀌어 깨짐. 프로세스 조회는 파이썬에서 `powershell -NoProfile -Command "Get-CimInstance Win32_Process ..."`
 - Git Bash 에서 cmd 를 부르면 GNU `timeout` 이 Windows `timeout.exe` 를 가린다 → 대기는 `python -c "import time;time.sleep(1)"`
 - 상시 프로세스는 `subprocess.Popen(creationflags=0x8|0x200|0x08000000)` 로 띄워야 세션이 끝나도 산다

@@ -857,7 +857,7 @@ $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey
   });
   sp.ondblclick = () => { document.documentElement.style.removeProperty("--srcp-w"); lsSet("study_srcp_w", "0"); };
 })();
-(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); if (URLP.get("topic")) { $("topic").value = URLP.get("topic"); newboxSet(true); }   // 연구 노트의 「이 주제로 공부」 await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
+(async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); if (URLP.get("topic")) { $("topic").value = URLP.get("topic"); newboxSet(true); }   /* 연구 노트의 「이 주제로 공부」 — 한 줄 주석(//)을 쓰면 이 줄 뒤의 refresh(true) 가 지워진다(2026-10-08 저녁에 그렇게 돼 장이 비어 보였다) */ await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
   if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); } })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
 </script>

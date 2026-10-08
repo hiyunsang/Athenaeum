@@ -618,7 +618,7 @@ async function ownedSync(force) {
     row.classList.add("owned"); const t = row.querySelector(".title"), nn = t && t.querySelector(".n");
     if (nn && !t.querySelector(".own")) { const o = document.createElement("span"); o.className = "own"; o.textContent = "보유"; o.title = "내 서재에 있는 논문 — 누르면 PDF"; nn.after(o); }
   });
-  if (mapBox._setOwned) mapBox._setOwned(got);
+  const rm = document.getElementById("rmap"); if (rm && rm._setOwned) rm._setOwned(got);   // 맵 호스트는 renderSmart 안의 지역 변수라 id 로 찾는다 (ReferenceError 였다, 2026-10-08)
   const tot = (s.smartResult ? (s.smartResult.groups || []).reduce((a, g) => a + (g.items || []).filter(x => x.owned).length, 0) : (s.plain ? (s.plain.results || []).filter(x => x.owned).length : 0));
   info.textContent = info.textContent.replace(/보유 \d+편/, "보유 " + tot + "편");
 }
