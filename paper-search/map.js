@@ -51,6 +51,7 @@ function renderResultMap(m, host, opts) {
   // 범례는 맵 위에 떠 있는 상자로 (소주제 색·연도) — 아래에 두니 보기 불편하다는 사용자 말(2026-10-06). 긴 설명 줄은 맵 아래 .maplegend-hint 에
   const legend = document.createElement("div"); legend.className = "maplegend"; legend.style.left = (LIST_W ? LIST_W + 8 : 8) + "px";
   legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
+    (nodes.some(n => n.owned) ? "<span class='lo' title='내 서재에 있는 논문 — 과녁 테두리'><i></i>보유 (" + nodes.filter(n => n.owned).length + ")</span>" : "") +
     m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("");
   // 저널별 편수(색 없이) — 누르면 그 저널만 보이게 (사용자 2026-10-07: '왼쪽 위에 저널들도 몇 개인지, 누르면 그 저널들만 뜨게'). ★ = 우선 저널(설정)
   let venueF = (opts.venueFilter && opts.venueFilter()) || null;
@@ -74,7 +75,7 @@ function renderResultMap(m, host, opts) {
   }
   wrap.appendChild(legend);
   const legendHint = document.createElement("div"); legendHint.className = "maplegend-hint";
-  legendHint.innerHTML = (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 파란 테두리 = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
+  legendHint.innerHTML = (opts.legendHint ? "<span class='hint'>" + opts.legendHint + "</span>" : "<span class='hint'>색 바탕 = 소주제 군집 · 원 크기 = 피인용 · 선 = 관계(진할수록 강함): 직접 인용 " + m.edges.filter(e => e[2] === 2).length + " · 동시인용(점선, 남들이 둘을 함께 인용" + (m.cocitation ? ", 인용 논문 " + (m.citers || 0) + "편 표본" : " — 이번엔 조회 실패") + ") " + m.edges.filter(e => e[2] === 3).length + " · 공통 참고문헌 " + m.edges.filter(e => e[2] === 1).length + " · 가장 비슷한 이웃(연한 선) " + m.edges.filter(e => e[2] === 0).length + " · 과녁 테두리(검은 테 + 흰 테) = 보유 · 점선 테두리 = Review · 클릭 = 열기" + (nodes.length > 40 ? " · 논문이 많아 선은 논문마다 가장 강한 " + (nodes.length > 80 ? 2 : 3) + "개만, 이름표는 겹치지 않는 것만 보입니다 — 확대하거나 마우스를 올리면 다 보입니다" : "") + "</span>");
   host.appendChild(legendHint);
   if (!nodes.length) { host.innerHTML = "<div class='hint'>맵에 올릴 논문이 없습니다</div>"; return; }
   const G = m.groups.length || 1, sims = m.sims, DMIN = 60, DMAX = 560;
@@ -297,8 +298,13 @@ function renderResultMap(m, host, opts) {
       if (lift) { ctx.save(); ctx.shadowColor = dark ? "rgba(0,0,0,0.7)" : "rgba(0,0,0,0.38)"; ctx.shadowBlur = 18 * dpr; ctx.shadowOffsetY = 3 * dpr; ctx.fillStyle = n.col; ctx.fill(); ctx.restore(); }
       ctx.fillStyle = n.col; ctx.fill();
       if (n.seed) { ctx.lineWidth = lw * 3; ctx.strokeStyle = textCol; ctx.stroke(); }                                 // 시드(기준) 논문 = 굵은 검은 테두리
-      if (lift || n.owned) { ctx.lineWidth = lw * (lift ? 2.5 : 1.5); ctx.strokeStyle = accent; ctx.stroke(); }                 // 파란 테두리 = 보유(가늘게) · 올리거나 누른 논문(굵게)
-      else if (n.review) { ctx.setLineDash([3 * lw, 3 * lw]); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = bg; ctx.stroke(); ctx.setLineDash([]); }   // 바탕색 점선 = Review. 그 밖엔 테두리 없음
+      if (n.owned) {   // 보유 = 과녁(어두운 바깥 테 + 바탕색 안쪽 테) — 어떤 색 위에서도 보인다. 사용자 2026-10-08: '파란 테두리 원은 눈에 안 띈다'
+        ctx.lineWidth = lw * 2.2; ctx.strokeStyle = textCol; ctx.stroke();
+        if (r > lw * 5) { ctx.beginPath(); ctx.arc(n.x, n.y, Math.max(1, r - lw * 2.5), 0, 7); ctx.lineWidth = lw * 1.7; ctx.strokeStyle = bg; ctx.stroke(); }
+        ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7);
+      }
+      if (lift) { ctx.lineWidth = lw * 2.5; ctx.strokeStyle = accent; ctx.stroke(); }                                        // 파란 굵은 테두리 = 올리거나 누른 논문
+      else if (n.review && !n.owned) { ctx.setLineDash([3 * lw, 3 * lw]); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = bg; ctx.stroke(); ctx.setLineDash([]); }   // 바탕색 점선 = Review. 그 밖엔 테두리 없음
       ctx.globalAlpha = 1;
     }
     drawNodeLabels();
@@ -444,6 +450,13 @@ function renderResultMap(m, host, opts) {
     if (tell && opts.onLabFilter) { try { opts.onLabFilter(labF); } catch (e) {} }
   };
   host._setLab = (v) => setLab(v, false);
+  host._setOwned = (got) => {   // 서재에 새로 들어온 논문을 보유로 — 탐색 창의 ownedSync 가 부른다 (다시 그리기만, 배치는 그대로)
+    let k = 0; nodes.forEach(x => { if (got[x.id] && !x.owned) { x.owned = got[x.id]; k++; } });
+    if (!k) return;
+    const lo = legend.querySelector(".lo"), cnt = nodes.filter(x => x.owned).length;
+    if (lo) lo.innerHTML = "<i></i>보유 (" + cnt + ")"; else { const sp = document.createElement("span"); sp.className = "lo"; sp.title = "내 서재에 있는 논문 — 과녁 테두리"; sp.innerHTML = "<i></i>보유 (" + cnt + ")"; const yr = legend.querySelector(".yr"); if (yr) yr.after(sp); else legend.prepend(sp); }
+    draw();
+  };
   legend.querySelectorAll(".lj[data-l]").forEach(el => { el.onclick = () => setLab(labF === el.dataset.l ? null : el.dataset.l, true); });
   legend.querySelectorAll(".lj[data-v]").forEach(el => { el.onclick = () => setVenue(venueF === el.dataset.v ? null : el.dataset.v, true); });
   if (LIST_W) {   // 왼쪽 목록: 소주제별, 피인용 순. 줄을 누르면 선택, 올리면 맵의 원이 도드라짐

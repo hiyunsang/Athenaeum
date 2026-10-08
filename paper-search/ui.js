@@ -143,7 +143,12 @@ function openSettings(cat) {
         row("서재 찾아보기", sw("ms_sel_lib"), "내 논문모음을 직접 찾아 읽고 답합니다. 문헌이 필요 없는 물음에는 끄는 것이 가장 큰 절약입니다")] },
       { title: "그 밖에", rows: [
         row("쓰다 멈추면 자동 검토", sw("ms_autorev"), "30초 멈추면 그 문단을 검토합니다. 사용량이 듭니다"),
-        row("도식 코드 모델", sel("fig_model", [["opus", "Opus (꼼꼼함, 5~7분)"], ["sonnet", "Sonnet (빠름, 약 2분)"]]), "말로 만드는 도식의 그리기 코드를 쓰는 모델")] }] },
+        row("도식 코드 모델", sel("fig_model", [["opus", "Opus (꼼꼼함, 5~7분)"], ["sonnet", "Sonnet (빠름, 약 2분)"]]), "말로 만드는 도식의 그리기 코드를 쓰는 모델")] },
+      { title: "계정", rows: [
+        row("Athenaeum 전용 Claude 계정", "<label class='usw'><input type='checkbox' id='claudeOwn'><i></i></label><span class='uout' id='claudeOwnState'></span>",
+            "켜면 요약·번역·공부·연구 노트가 터미널의 claude 와 다른 계정으로 돕니다(로그인 폴더를 따로 둠). 켠 뒤 아래 「로그인 창 열기」 에서 그 계정으로 한 번 로그인. 두 계정 모두 Pro 나 Max 여야 합니다", true),
+        row("로그인", "<button class='ureset' id='claudeLoginBtn'>로그인 창 열기</button> <button class='ureset' id='claudeOwnCheck'>다시 확인</button>",
+            "검은 창이 뜨면 거기서 테마를 고르고 로그인(안 물으면 /login). 브라우저가 주 계정으로 열리면 시크릿 창에서. 끝나면 /exit 로 닫습니다", true)] }] },
     { id: "fonts", name: "글꼴", groups: [
       { title: "글꼴 추가", rows: [
         row("글꼴 파일 넣기", "<button class='ureset' id='fontFileBtn'>파일 고르기…</button><input type='file' id='fontFile' accept='.ttf,.otf,.woff,.woff2' style='display:none'>", ".ttf · .otf · .woff2"),
@@ -237,6 +242,19 @@ function openSettings(cat) {
       try { showJ(await (await fetch("/api/settings", { method: "POST", body: JSON.stringify({ preferred_journals: pj.value }) })).json()); }
       catch (e) { pjs.textContent = "저장 실패"; }
     });
+  }
+  // Athenaeum 전용 Claude 계정 (서버 설정 claude_config_dir = CLAUDE_CONFIG_DIR) — 사용자 2026-10-08: 'Athenaeum 만 따로 다른 계정으로'
+  const co = document.getElementById("claudeOwn"), cos = document.getElementById("claudeOwnState");
+  if (co) {
+    const showC = s => { co.checked = !!s.claude_own_account; cos.textContent = s.claude_own_account ? (s.claude_logged_in ? "켜짐 · 로그인됨 — " + s.claude_config_dir : "켜짐 · 아직 로그인 안 됨 — 아래 「로그인 창 열기」") : "꺼짐 — 이 PC 의 기본 claude 로그인을 씁니다"; };
+    const loadC = () => fetch("/api/settings").then(r => r.json()).then(showC).catch(() => {});
+    loadC();
+    co.addEventListener("change", async () => { cos.textContent = "저장 중…"; try { showC(await (await fetch("/api/settings", { method: "POST", body: JSON.stringify({ claude_own_account: co.checked }) })).json()); } catch (e) { cos.textContent = "저장 실패"; } });
+    document.getElementById("claudeLoginBtn").onclick = async () => {
+      if (!co.checked) { cos.textContent = "먼저 위의 전용 계정을 켜세요"; return; }
+      try { const r = await (await fetch("/api/claude_login", { method: "POST", body: "{}" })).json(); cos.textContent = r.error ? "⚠ " + r.error : "검은 창이 열렸습니다 — 거기서 로그인한 뒤 「다시 확인」"; } catch (e) { cos.textContent = "창을 열지 못했습니다"; }
+    };
+    document.getElementById("claudeOwnCheck").onclick = loadC;
   }
   document.addEventListener("keydown", escClose);
 }

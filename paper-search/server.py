@@ -528,6 +528,33 @@ def _no_window():
     return kw
 
 
+CLAUDE_OWN_DIR = os.path.join(os.path.expanduser("~"), ".claude-athenaeum")   # 「Athenaeum 전용 계정」 을 켜면 쓰는 로그인·설정 폴더
+
+
+def claude_config_dir():
+    """Athenaeum 전용 Claude 계정 폴더(설정.json 의 claude_config_dir). 비어 있으면 '' = 이 PC 의 기본 claude 로그인(%USERPROFILE%\\.claude)을 쓴다.
+    사용자(2026-10-08): '주로 쓰는 계정에 연동하니 토큰이 빨리 단다 — Athenaeum 만 따로 다른 계정으로'. Claude Code 는 환경 변수 CLAUDE_CONFIG_DIR 로 로그인·설정 폴더를 바꿀 수 있다 —
+    Athenaeum 이 claude 를 부를 때만 그 폴더를 주면 터미널의 claude 는 주 계정 그대로다. 로그인은 ⚙ 환경설정 → Claude 「로그인 창 열기」(/api/claude_login) 에서 한 번."""
+    import mapper
+    return str(mapper.settings().get("claude_config_dir") or "").strip()
+
+
+def claude_env():
+    """claude 를 부를 때의 환경 변수 — 전용 계정 폴더가 있으면 CLAUDE_CONFIG_DIR 을 얹는다. 없으면 None(그대로 상속)."""
+    d = claude_config_dir()
+    if not d:
+        return None
+    env = dict(os.environ)
+    env["CLAUDE_CONFIG_DIR"] = d
+    return env
+
+
+def claude_logged_in(d=None):
+    """전용 폴더에 로그인되어 있나(.credentials.json 이 있나). 기본 로그인은 보지 않는다."""
+    d = d or claude_config_dir()
+    return bool(d) and os.path.isfile(os.path.join(d, ".credentials.json"))
+
+
 def claude_cwd():
     """Claude 를 부를 때의 작업 폴더 — 프로그램 밖의 빈 폴더.
     저장소 안(paper-search)에서 부르면 Claude Code 가 위쪽 폴더의 CLAUDE.md(개발 안내)와 그 폴더의 메모리를 호출마다 같이 읽는다.
@@ -541,8 +568,12 @@ def claude_cwd():
 
 
 def _claude_kw():
-    """claude 를 부르는 subprocess 옵션: 창 없이 + 빈 작업 폴더에서."""
-    return dict(_no_window(), cwd=claude_cwd())
+    """claude 를 부르는 subprocess 옵션: 창 없이 + 빈 작업 폴더에서 (+ 전용 계정 폴더가 있으면 CLAUDE_CONFIG_DIR)."""
+    kw = dict(_no_window(), cwd=claude_cwd())
+    env = claude_env()
+    if env:
+        kw["env"] = env
+    return kw
 
 
 # 오해하기 쉬운 라벨의 정의·금지 조건 (분류 정확도의 핵심)
@@ -572,7 +603,8 @@ def _note_claude(rc, out, err=""):
         CLAUDE_STATE.update(err="", t=time.time())
         return
     if "authenticate" in low or "oauth" in low or "/login" in low or "not logged in" in low:
-        msg = "Claude Code 로그인이 만료됐습니다 — 터미널에서 claude 를 실행하고 /login 으로 다시 로그인하세요"
+        msg = ("Athenaeum 전용 Claude 계정 폴더에 로그인되어 있지 않거나 만료됐습니다 — ⚙ 환경설정 → Claude 「로그인 창 열기」 에서 /login" if claude_config_dir()
+               else "Claude Code 로그인이 만료됐습니다 — 터미널에서 claude 를 실행하고 /login 으로 다시 로그인하세요")
     elif "usage limit" in low or "rate limit" in low or "limit reached" in low:
         msg = "Claude 구독 사용량 한도에 걸렸습니다 — 잠시 뒤 다시 시도하세요"
     else:
@@ -1548,6 +1580,9 @@ def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=N
     args = [exe, "-p", "--model", model, "--output-format", "json"] + (["--effort", effort] if effort else [])
     extra = (["--tools", tools] if tools is not None else []) + [x for d in add_dirs for x in ("--add-dir", d)]
     kw = dict(_no_window(), cwd=cwd or claude_cwd())
+    env = claude_env()
+    if env:
+        kw["env"] = env   # 전용 계정 폴더
     sysf = None
     try:
         if system:
@@ -3126,7 +3161,7 @@ import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search,
         claude_text=claude_text, claude_run=claude_run, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
-        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error, claude_cwd=claude_cwd())
+        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error, claude_cwd=claude_cwd(), claude_env=claude_env)
 
 # ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------
 import vocab
@@ -3141,6 +3176,20 @@ study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sav
 import notes
 notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error,
            paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
+
+
+def settings_view():
+    """⚙ 환경설정에 보이는 서버 쪽 설정 — 키 값은 끝 4자만, 우선 저널, 전용 Claude 계정(폴더·로그인 여부)"""
+    import mapper
+    s = mapper.settings()
+    k = mapper.api_key()
+    ek = (s.get("elsevier_api_key") or "").strip()
+    cd = claude_config_dir()
+    return {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
+            "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else "",
+            "preferred_journals": preferred_journals(), "preferred_journals_default": _PREF_DEFAULT,
+            "preferred_journals_custom": isinstance(s.get("preferred_journals"), list),
+            "claude_own_account": bool(cd), "claude_config_dir": cd, "claude_logged_in": claude_logged_in(cd)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -3614,14 +3663,15 @@ class Handler(BaseHTTPRequestHandler):
             result["key"] = bool(key)
             self._send(200, result)
         elif url.path == "/api/settings":
-            # 서버 쪽 설정 (지금은 OpenAlex API 키). 키 값은 돌려주지 않고 끝 4자만
-            import mapper
-            k = mapper.api_key()
-            ek = (mapper.settings().get("elsevier_api_key") or "").strip()
-            self._send(200, {"openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
-                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else "",
-                             "preferred_journals": preferred_journals(), "preferred_journals_default": _PREF_DEFAULT,
-                             "preferred_journals_custom": isinstance(mapper.settings().get("preferred_journals"), list)})
+            # 서버 쪽 설정 (API 키 · 우선 저널 · 전용 Claude 계정). 키 값은 돌려주지 않고 끝 4자만
+            self._send(200, settings_view())
+        elif url.path == "/api/archive_stamp":   # 서재가 바뀌었나(편수 · 가장 새 파일의 시각) — 탐색 창이 보유 표시를 바로 맞추는 데 쓴다 (사용자 2026-10-08)
+            files = archive_pdfs()
+            try:
+                t = max((os.path.getmtime(os.path.join(ARCHIVE, f)) for f in files), default=0)
+            except OSError:
+                t = 0
+            self._send(200, {"n": len(files), "t": int(t)})
         elif url.path == "/api/fulltext":   # 홈 검색 Enter: PDF 본문까지. 낱말 단위로 모든 낱말이 든 논문만 ('ti' 가 cutting 에 걸리지 않게)
             q = parse_qs(url.query).get("q", [""])[0].lower().strip()
             texts = _texts_cache or load_json(TEXTS_PATH, {})
@@ -3769,6 +3819,41 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(FONT_DIR, name), "wb") as f:
                 f.write(raw)
             self._send(200, {"ok": True, "fonts": user_fonts(), "added": os.path.splitext(name)[0]})
+        elif self.path == "/api/claude_login":   # 전용 계정 폴더로 claude 를 보이는 콘솔 창에 연다 — 사용자가 그 창에서 /login (한 번)
+            d = claude_config_dir()
+            exe = find_claude()
+            if not d:
+                return self._send(200, {"error": "먼저 「Athenaeum 전용 Claude 계정」 을 켜세요"})
+            if not exe:
+                return self._send(200, {"error": CLAUDE_MISSING_MSG})
+            try:
+                os.makedirs(d, exist_ok=True)
+                env = dict(os.environ)
+                env["CLAUDE_CONFIG_DIR"] = d
+                # 내용은 ASCII 로 (cmd 창은 시스템 코드페이지). 전용 폴더는 비어 있어 claude 가 첫 설정(테마 → 로그인)부터 묻는다
+                line = ("title Athenaeum Claude login && echo [Athenaeum] This window uses the Athenaeum-only Claude account folder: && echo    %s && "
+                        "echo Sign in here with the OTHER account (type /login if it does not ask). When done, type /exit and close this window. && echo. && \"%s\"") % (d, exe)
+                subprocess.Popen("cmd /k " + line, env=env, cwd=claude_cwd(), creationflags=0x10 | 0x200)   # CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP — 서버가 꺼져도 창은 남는다
+            except Exception as e:
+                return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
+            self._send(200, {"ok": True, "dir": d})
+        elif self.path == "/api/owned_check":   # 탐색 결과의 논문들이 지금 서재에 있나 → {id: 파일}. tags 의 제목 정규화 일치 + 막 수집돼 tags 에 아직 없는 파일은 이름의 제목(80자로 잘림) 앞부분 일치
+            import mapper
+            with _lock:
+                tags = load_json(TAGS_PATH, {})
+            idx = archive_title_index(tags)
+            # 앞부분 일치용: tags 의 제목(없으면 파일 이름의 제목 — 80자로 잘린다). OpenAlex 제목과 부제의 구두점·꼬리가 조금 달라도 잡히게, 30자 넘게 같으면 같은 논문으로
+            short = [(mapper.norm_title((tags.get(f) or {}).get("title") or parse_name(f)["title"]), f) for f in archive_pdfs()]
+            short = [(k, f) for k, f in short if len(k) >= 30]
+            out = {}
+            for it in (body.get("items") or [])[:400]:
+                k = mapper.norm_title(it.get("title") or "")
+                if len(k) < 12:
+                    continue
+                f = idx.get(k) or (next((f for p, f in short if k.startswith(p) or p.startswith(k)), "") if len(k) >= 30 else "")
+                if f:
+                    out[str(it.get("id") or "")] = f
+            self._send(200, {"owned": out})
         elif self.path == "/api/settings":
             import mapper
             d = mapper.settings()
@@ -3787,6 +3872,17 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     d.pop("elsevier_api_key", None)
                 mapper.save_settings(d)
+            if "claude_own_account" in body:   # Athenaeum 만 따로 다른 Claude 계정으로(CLAUDE_CONFIG_DIR). 켜면 ~/.claude-athenaeum(또는 적어 준 폴더), 끄면 기본 로그인
+                if body.get("claude_own_account"):
+                    d["claude_config_dir"] = str(body.get("claude_config_dir") or d.get("claude_config_dir") or CLAUDE_OWN_DIR).strip()
+                    try:
+                        os.makedirs(d["claude_config_dir"], exist_ok=True)
+                    except OSError:
+                        pass
+                else:
+                    d.pop("claude_config_dir", None)
+                mapper.save_settings(d)
+                CLAUDE_STATE.update(err="", t=0)   # 계정을 바꿨으니 옛 로그인 오류 알림은 지운다
             if "preferred_journals" in body:   # 탐색의 우선 저널 — 줄·쉼표로 나눈 이름들. 비우면 기본 다섯으로
                 names = [x.strip() for x in re.split(r"[\n,;]+", str(body.get("preferred_journals") or "")) if x.strip()]
                 if names:
@@ -3794,12 +3890,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     d.pop("preferred_journals", None)
                 mapper.save_settings(d)
-            k = mapper.api_key()
-            ek = (mapper.settings().get("elsevier_api_key") or "").strip()
-            self._send(200, {"ok": True, "openalex_api_key_set": bool(k), "openalex_api_key_tail": k[-4:] if k else "",
-                             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else "",
-                             "preferred_journals": preferred_journals(), "preferred_journals_default": _PREF_DEFAULT,
-                             "preferred_journals_custom": isinstance(mapper.settings().get("preferred_journals"), list)})
+            self._send(200, dict(settings_view(), ok=True))
         elif self.path == "/api/smart_brief":   # 탐색 맵의 정보 패널: 초록 찾기(kind=abstract) · 한국어 2~3문장 요약(brief) · 초록 전체 번역(translate). 캐시
             title = (body.get("title") or "").strip()
             if not title:

@@ -2786,6 +2786,7 @@ def _gen():
     from schematic import generate as gen
     gen.cfg["no_window"] = cfg["no_window"]
     gen.cfg["claude_cwd"] = cfg.get("claude_cwd")
+    gen.cfg["claude_env"] = cfg.get("claude_env")   # 전용 Claude 계정 폴더(CLAUDE_CONFIG_DIR)가 있으면 그 환경으로
     gen.cfg["claude_exe"] = cfg.get("claude_exe") or shutil.which("claude") or shutil.which("claude.cmd") or shutil.which("claude.exe")
     return gen
 

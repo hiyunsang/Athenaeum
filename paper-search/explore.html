@@ -95,6 +95,8 @@
   #chatsend:disabled { opacity: .5; cursor: default; }
   .row.hl { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-bg, #e9eefb); }
   .row .n { font-size: 11px; color: var(--text-3); margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .own { display: inline-block; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 600; line-height: 1.5; padding: 0 6px; border-radius: var(--r); margin-right: 6px; vertical-align: 1px; }   /* 보유 = 채운 칩 (사용자 2026-10-08: 파란 테두리 원은 눈에 안 띈다) */
+  .row.owned { border-left: 3px solid var(--accent); padding-left: 9px; }
   @media (max-width: 900px) {
     body.chat #main { margin-right: 0; margin-bottom: 46vh; }
     #chat { top: auto; left: 0; width: auto; height: 46vh; border-left: 0; border-top: 1px solid var(--line-2); } #chatsplit { display: none; }
@@ -153,7 +155,7 @@
 <div id="main">
   <div id="smartbox"></div>
   <div id="plainbox"><div class="hint">OpenAlex 전체 학술 DB(2억 5천만 편)에서 주제로 논문을 찾습니다.<br>
-  파란 줄 = 이미 보유한 논문 · 제목 클릭 = 논문 페이지(보유 시 PDF) · [관련맵] = 그 논문 주변 지도</div></div>
+  「보유」 칩 = 이미 보유한 논문(내려받아 수집되면 바로 붙습니다) · 제목 클릭 = 논문 페이지(보유 시 PDF) · [관련맵] = 그 논문 주변 지도</div></div>
 </div>
 <script>
 const main = document.getElementById("main"), info = document.getElementById("info");
@@ -380,7 +382,7 @@ function renderSmart(r) {
       const its = d.items || [];
       lrec.innerHTML = "<div style='display:flex;gap:10px;align-items:baseline'><b>" + escH(name) + "</b> <span class='hint'>최신 " + its.length + "편 (주제와 무관하게 — 이 연구실이 요즘 하는 일)</span><a href='#' class='act' style='margin-left:auto' id='lrClose'>닫기</a></div>" +
         (d.error ? "<div class='hint'>" + escH(d.error) + "</div>" : "") +
-        its.map(it => "<div class='lr'><span class='y'>" + (it.year || "?") + "</span><span class='v' title='" + escH(it.venue || "") + "'>" + (it.top ? "★ " : "") + escH(it.abbr || it.venue || "") + "</span><a href='" + (it.doi || "#") + "' target='_blank'>" + escH(it.title) + "</a>" + (it.owned ? " <b style='color:var(--accent)'>보유</b>" : "") + (it.review ? " <b class='rv'>Review</b>" : "") + "</div>").join("");
+        its.map(it => "<div class='lr'><span class='y'>" + (it.year || "?") + "</span><span class='v' title='" + escH(it.venue || "") + "'>" + (it.top ? "★ " : "") + escH(it.abbr || it.venue || "") + "</span><a href='" + (it.doi || "#") + "' target='_blank'>" + escH(it.title) + "</a>" + (it.owned ? " <span class='own'>보유</span>" : "") + (it.review ? " <b class='rv'>Review</b>" : "") + "</div>").join("");
       lrec.querySelector("#lrClose").onclick = ev => { ev.preventDefault(); lrec.hidden = true; };
     } catch (e) { lrec.innerHTML = "<span class='hint'>받지 못했습니다: " + escH(String(e)) + "</span>"; }
   }
@@ -450,13 +452,13 @@ function renderRow(r) {
   r._n = ++rowSeq; rowIndex[r._n] = r; row.dataset.n = r._n;
   const t = document.createElement("div"); t.className = "title";
   const nn = document.createElement("span"); nn.className = "n"; nn.textContent = r._n; t.appendChild(nn);
+  if (r.owned) { const o = document.createElement("span"); o.className = "own"; o.textContent = "보유"; o.title = "내 서재에 있는 논문 — 누르면 PDF"; t.appendChild(o); }
   t.appendChild(document.createTextNode(r.title)); t.onclick = () => openPaper(r);
   row.appendChild(t);
   const m = document.createElement("div"); m.className = "meta";
   m.innerHTML = (r.author || "?") + " · <b>" + (r.year || "?") + "</b>" + (r.venue ? " · <span title='" + escH(r.venue) + "'>" + (r.top ? "★ " : "") + escH(r.abbr || r.venue) + "</span>" : "") +
     " · 피인용 <b>" + r.cit + "</b>" + (r.review ? " · <b class='rv'>Review</b>" : "") +
     ((r.hits && r.hits.length) ? " · <span class='hit'>" + r.hits.map(escH).join(" · ") + "</span>" : "") +
-    (r.owned ? " · <b style='color:var(--accent)'>보유</b>" : "") +
     (r.pi ? " · <span class='lk' title='교신·마지막 저자 " + escH(r.pi) + (r.inst ? " · " + escH(r.inst) : "") + " — 「연구 그룹」 줄은 이 이름으로 묶는다'>그룹 " + escH(r.pi.split(" ").slice(-1)[0]) + (r.inst ? " (" + escH(r.inst.replace(/^(University of |The )/, "").slice(0, 24)) + ")" : "") + "</span>" : "") +
     (r.links ? " · <span class='lk' title='주제가 맞는 보유 논문 가운데 이 논문과 인용으로 이어진 수'>서재와 " + r.links + "가닥</span>" : "") +
     (r.hint ? " · <span class='hit'>저자 " + escH(r.hint) + "</span>" : "");
@@ -590,6 +592,40 @@ async function chatSend() {
     sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up); });
   sp.ondblclick = () => { document.documentElement.style.removeProperty("--chat-w"); try { localStorage.removeItem("explore_chat_w"); } catch (e) {} };
 })();
+// 서재가 바뀌면(수집이 논문을 넣으면) 결과의 보유 표시를 바로 맞춘다 — 15초마다·창에 돌아올 때 서재 도장(편수·시각)만 묻고, 바뀌었을 때만 제목으로 대조 (사용자 2026-10-08: '다운받은 게 바로바로 적용됐으면')
+let archStamp = "";
+async function ownedSync(force) {
+  let st; try { st = await (await fetch("/api/archive_stamp")).json(); } catch (e) { return; }
+  const stamp = st.n + ":" + st.t, changed = archStamp && stamp !== archStamp; archStamp = stamp;
+  if (!force && !changed) return;
+  const s = loadState() || {}, items = [], seen = new Set();
+  const add = it => { if (it && it.id && it.title && !it.owned && !seen.has(it.id)) { seen.add(it.id); items.push({ id: it.id, title: it.title }); } };
+  (s.smartResult ? s.smartResult.groups || [] : []).forEach(g => (g.items || []).forEach(add));
+  (s.plain ? s.plain.results || [] : []).forEach(add);
+  if (!items.length) return;
+  let r; try { r = await (await fetch("/api/owned_check", { method: "POST", body: JSON.stringify({ items }) })).json(); } catch (e) { return; }
+  const got = r.owned || {}; if (!Object.keys(got).length) return;
+  const mark = it => { if (it && got[it.id] && !it.owned) { it.owned = got[it.id]; return true; } return false; };
+  let n = 0;
+  (s.smartResult ? s.smartResult.groups || [] : []).forEach(g => (g.items || []).forEach(it => { if (mark(it)) n++; }));
+  (s.plain ? s.plain.results || [] : []).forEach(it => { if (mark(it)) n++; });
+  if (s.smartResult && s.smartResult.map) (s.smartResult.map.nodes || []).forEach(mark);
+  if (!n) return;
+  saveState({ smartResult: s.smartResult, plain: s.plain });
+  Object.values(rowIndex).forEach(mark);   // 화면의 행 객체(상태와 다른 객체)도
+  document.querySelectorAll(".row[data-n]").forEach(row => {
+    const it = rowIndex[row.dataset.n]; if (!it || !it.owned || row.classList.contains("owned")) return;
+    row.classList.add("owned"); const t = row.querySelector(".title"), nn = t && t.querySelector(".n");
+    if (nn && !t.querySelector(".own")) { const o = document.createElement("span"); o.className = "own"; o.textContent = "보유"; o.title = "내 서재에 있는 논문 — 누르면 PDF"; nn.after(o); }
+  });
+  if (mapBox._setOwned) mapBox._setOwned(got);
+  const tot = (s.smartResult ? (s.smartResult.groups || []).reduce((a, g) => a + (g.items || []).filter(x => x.owned).length, 0) : (s.plain ? (s.plain.results || []).filter(x => x.owned).length : 0));
+  info.textContent = info.textContent.replace(/보유 \d+편/, "보유 " + tot + "편");
+}
+setTimeout(() => ownedSync(true), 1500);                                       // 열 때 한 번은 전부 대조 (창을 닫아 둔 사이에 들어온 논문)
+setInterval(() => ownedSync(false), 15000);
+window.addEventListener("focus", () => ownedSync(false));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) ownedSync(false); });
 (function noteBtn() {   // 탐색 결과 → 연구 노트의 새 주제 (사용자 2026-10-08: '이런 연구 주제는 어때? 하고 같이 토의')
   const b = document.getElementById("noteToggle"); if (!b) return;
   b.onclick = e => { e.preventDefault(); const s = loadState() || {}, r = s.smartResult || null, q = s.q || "";

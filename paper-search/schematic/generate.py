@@ -82,7 +82,8 @@ def _claude(prompt, ref_dirs=(), timeout=600, model="opus"):
         args += ["--allowedTools", "Read"]
         for d in sorted(set(ref_dirs)):
             args += ["--add-dir", d]
-    r = subprocess.run(args, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, cwd=cfg.get("claude_cwd"), **cfg["no_window"]())   # 빈 작업 폴더에서 (저장소의 CLAUDE.md 가 딸려 들어가지 않게)
+    env = cfg["claude_env"]() if cfg.get("claude_env") else None   # 전용 Claude 계정 폴더(CLAUDE_CONFIG_DIR)
+    r = subprocess.run(args, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, cwd=cfg.get("claude_cwd"), env=env, **cfg["no_window"]())   # 빈 작업 폴더에서 (저장소의 CLAUDE.md 가 딸려 들어가지 않게)
     out = r.stdout.decode("utf-8", "replace")
     if r.returncode != 0 and not out.strip():
         err = r.stderr.decode("utf-8", "replace")[:300]
