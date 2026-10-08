@@ -113,6 +113,7 @@
   .stfig figcaption { font-family: var(--font); font-size: .84em; color: var(--text-2); line-height: 1.55; margin-top: .45em; }
   .stfig .fno { font-weight: 600; color: var(--text); margin-right: .25em; } .stfig .src { color: var(--text-3); }
   .stfig details { margin-top: 2px; } .stfig summary { cursor: pointer; color: var(--text-3); font-size: .92em; } .stfig details .ko { color: var(--text-3); margin-top: 2px; }
+  .stfig .ftag { display: inline-block; border: 1px solid var(--line-2); border-radius: var(--r); padding: 0 5px; font-size: .78em; color: var(--text-2); margin-left: 5px; vertical-align: 1px; }   /* 도식·장치 = 근거 문장이 가리키지 않아도 넣는 그림 */
   .ch .refs { font-family: var(--font); font-size: 13px; line-height: 1.55; }
   .ch .refs .r { display: flex; gap: var(--s2); padding: 5px 0; border-bottom: 1px solid var(--line); }
   .ch .refs .r .n { color: var(--text-3); min-width: 2.2em; } .ch .refs .r .b { flex: 1; min-width: 0; }
@@ -224,7 +225,7 @@ const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" 
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
-  ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["comment", "절마다 Claude 의 생각 달기"]];
+  ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["comment", "절마다 Claude 의 생각 달기"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
@@ -426,7 +427,9 @@ const blocksHtml = (sec, si) => sec.blocks.map((b, bi) => {
   if (b.fig) { const f = b.fig, p = cur.papers[f.pi] || {}, u = b.units[0];
     return "<figure class='stfig" + ex + "'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''>" +
       "<figcaption><span class='fno'>그림 " + figNums()[key] + ".</span>" + unitHtml(u, key + ".0") + " <span class='src'>— " + esc(p.short || "") + (p.n ? " [" + p.n + "]" : "") + ", " + (f.kind === "fig" ? "Fig. " : "Table ") + f.n + ", p." + f.page + "</span>" +
-      (f.cap_en ? "<details><summary>원문 캡션</summary><div>" + esc(f.cap_en) + "</div>" + (f.cap_ko ? "<div class='ko'>" + esc(f.cap_ko) + "</div>" : "") + "</details>" : "") + "</figcaption></figure>"; }
+      (f.ftype === "schematic" ? "<span class='ftag' title='개념·기전을 그린 도식 — 그림을 본 Claude 가 분류'>도식</span>" : f.ftype === "setup" ? "<span class='ftag' title='실험 장치 — 그림을 본 Claude 가 분류'>장치</span>" : "") +
+      (f.cap_en || f.desc ? "<details><summary>원문 캡션" + (f.desc ? " · 그림 읽기" : "") + "</summary>" + (f.cap_en ? "<div>" + esc(f.cap_en) + "</div>" : "") + (f.cap_ko ? "<div class='ko'>" + esc(f.cap_ko) + "</div>" : "") +
+        (f.desc ? "<div class='ko'>그림 읽기(그림을 본 Claude 가 적은 것): " + esc(f.desc) + "</div>" : "") + "</details>" : "") + "</figcaption></figure>"; }
   return "<p" + (ex ? " class='extra'" : "") + ">" + b.units.map((u, ui) => unitHtml(u, key + "." + ui)).join(" ") + "</p>";
 }).join("");
 const crumb = (t, extra) => "<div class='crumb noprint'><a href='#' data-v='overview'>" + esc(cur.chapter.title) + "</a><span class='sp'>›</span><span>" + esc(t) + "</span>" + (extra || "") + "</div>";

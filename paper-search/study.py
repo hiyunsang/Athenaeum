@@ -47,9 +47,9 @@ _SENT_CACHE = {}    # 파일 → ((정렬표 mtime, 번역 mtime), 문장들)
 _LIST_CACHE = {}    # 공부 파일 이름 → (mtime, 목록에 보일 것)
 _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text, ko}]
 
-VERSION = "공부 (2026-10-08)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
+VERSION = "공부 (2026-10-08)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 그림 색인·도식 후보·교과서식 배치(저녁)와 Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
-_STAGES = ["plan", "scan", "select", "read", "outline", "write", "join", "verify", "wrap", "comment"]
+_STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "verify", "wrap", "comment"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
 _HIT_CHARS = 16000      # 관련 논문: 맞은 대목만
 
@@ -850,6 +850,41 @@ def _claim_block(st, sec):
     return plist, "\n".join(lines), pset
 
 
+def _fi():
+    """그림 색인 모듈(figindex) — 공부의 cfg 로 한 번 초기화(서버든 시험 틀이든). 사용자(2026-10-08): '기존 연구들이 그려 놓은 스케메틱을 잘 써야 이해가 된다'"""
+    import figindex
+    if not figindex.cfg.get("DIR"):
+        figindex.init(GEN_DIR=cfg["GEN_DIR"], ARCHIVE=cfg["ARCHIVE"], load_json=cfg["load_json"], save_json=cfg["save_json"], claude_run=cfg.get("claude_run"))
+    return figindex
+
+
+def _fig_index_all(st):
+    """읽은 논문마다 그림 색인(없는 것만, Sonnet 4편 동시) — 쓰기가 도식을 고르고 풀어 쓰는 재료. 결과는 st.figidx 통계."""
+    fi = _fi()
+    items = [(p["file"], p.get("title") or "") for p in st["papers"] if p.get("read")]
+    t0, done = time.time(), {"n": 0}
+    with _LOCK:
+        st["prog"] = {"done": 0, "total": len(items)}
+
+    def tick(f, d):
+        done["n"] += 1
+        with _LOCK:
+            st["prog"] = {"done": done["n"], "total": len(items)}
+            tok = (d or {}).get("tok") or {}
+            if tok and isinstance(st.get("tok"), dict):
+                st["tok"]["in"] = st["tok"].get("in", 0) + int(tok.get("in") or 0)
+                st["tok"]["cached"] = st["tok"].get("cached", 0) + int(tok.get("cached") or 0)
+                st["calls"] = (st.get("calls") or 0) + 1
+    res = fi.ensure(items, model="sonnet", workers=4, on_done=tick)
+    nfig = nsch = 0
+    for d in res.values():
+        a, b = fi.summary(d)
+        nfig += a
+        nsch += b
+    st["figidx"] = {"papers": len(items), "figs": nfig, "schem": nsch, "sec": round(time.time() - t0), "fail": sum(1 for d in res.values() if not (d or {}).get("ok"))}
+    _log(st, "논문 %d편의 그림 %d장을 읽어 두었습니다 (도식·장치 %d장, %d초)" % (len(items), nfig, nsch, round(time.time() - t0)))
+
+
 def _caps_of(f):
     """논문 하나의 그림·표 캡션(PDF 에서 읽은 원문 + 캡션.json 의 번역이 있으면), 메모리 캐시"""
     if f not in _CAP_CACHE:
@@ -870,18 +905,36 @@ _FIGREF = re.compile(r"\b(Fig\.?|Figure|Table)\s*(\d{1,3})(?!\d)", re.I)
 
 
 def _fig_list(st, sec):
-    """논지마다 그 근거 문장(과 앞뒤 두 문장)이 실제로 가리키는 그림·표만 → (목록 글, {(논문 순번, kind, n): {cap, src: ['pi:sid', …]}}).
-    사용자(2026-10-07): '그림이 본문과 잘 맞지 않는다' — 처음엔 그 절 논문들의 캡션 목록 전체를 주었더니 16장 중 8장만 근거 문장이 가리키는 그림이었고
-    나머지는 '관련 있어 보이는' 그림(첫 절의 재료 소개에 TEM 손상 사진)이었다. 이제 그림은 근거 문장이 'Fig. N' 으로 가리키는 것뿐이고,
-    그 문장들이 그림 설명의 근거에도 들어간다(fsrc)."""
+    """[그림 목록] — 두 갈래: (가) 논지의 근거 문장(±2문장)이 'Fig. N' 으로 가리키는 그림·표(사진·그래프·도식), (나) 그 절 논문들의 도식·장치 그림(그림 색인의 type schematic·setup — 근거 문장이 가리키지 않아도 후보).
+    → (목록 글, {(논문 순번, kind, n): {cap, src: ['pi:sid', …], desc, ftype}}). 모든 후보에 '그림 읽기'(figindex: 그림을 본 Sonnet 의 설명)를 붙여 쓰는 Claude 가 그림을 보지 않고도 고르게 한다.
+    사용자(2026-10-07): '그림이 본문과 잘 맞지 않는다' → 근거 문장이 가리키는 것만으로 좁혔더니(16장 중 8장) 기전을 그린 도식이 거의 못 들었다(결과 문장은 도식을 가리키지 않는다).
+    사용자(2026-10-08): '기존 연구들이 그려 놓은 스케메틱을 잘 써야 이해가 된다' → 도식·장치 그림은 (나) 로 더한다(절에 12장까지, ★·통째로 읽은 논문부터)."""
+    fi = _fi()
     notes = _all_notes(st)
-    lines, allow = [], {}
+    lines, allow, pset, idx = [], {}, [], {}
+
+    def index(pi):
+        if pi not in idx:
+            try:
+                idx[pi] = fi.load(st["papers"][pi]["file"])
+            except Exception:
+                idx[pi] = None
+        return idx[pi]
+
+    def desc_of(pi, kind, n):
+        d = index(pi) if kind == "fig" else None
+        return (next((x for x in (d or {}).get("figs") or [] if x.get("n") == n), None) if d else None) or {}
+
+    def reading(x):
+        return ("    그림 읽기: %s%s" % (x["what"][:300], (" — " + x["shows"][:160]) if x.get("shows") else "")) if x.get("what") else ""
     for ci, c in enumerate(sec.get("claims") or [], 1):
         found = {}
         for nid in c.get("notes") or []:
             if nid not in notes:
                 continue
             pi, n = notes[nid]
+            if pi not in pset:
+                pset.append(pi)
             ss = _paper_sents(st["papers"][pi]["file"])
             order = {s["sid"]: i for i, s in enumerate(ss)}
             for sid in n["s"]:
@@ -899,12 +952,31 @@ def _fig_list(st, sec):
             if not cap:
                 continue
             label = "P%d %s %d" % (pi + 1, "Fig." if kind == "fig" else "Table", n)
-            allow.setdefault(k, {"cap": "%s: %s" % (label, cap["text"][:400]), "src": ["%d:%s" % (pi, s) for s in sids[:4]]})
+            x = desc_of(pi, kind, n)
+            allow.setdefault(k, {"cap": "%s: %s" % (label, cap["text"][:400]), "src": ["%d:%s" % (pi, s) for s in sids[:4]], "desc": x.get("what", ""), "ftype": x.get("type", "")})
             by = {s["sid"]: s for s in _paper_sents(st["papers"][pi]["file"])}
-            lines.append("논지 %d 의 근거 문장이 가리키는 그림 — %s (p.%d): %s%s" % (ci, label, cap["page"], cap["text"][:200], (" — " + cap["ko"][:160]) if cap.get("ko") else ""))
+            lines.append("논지 %d 의 근거 문장이 가리키는 그림 — %s (p.%d)%s: %s%s" % (ci, label, cap["page"], (" [%s]" % fi.TYPES.get(x["type"], x["type"])) if x.get("type") else "", cap["text"][:200], (" — " + cap["ko"][:160]) if cap.get("ko") else ""))
+            if reading(x):
+                lines.append(reading(x))
             for s in sids[:3]:
                 lines.append("    %s: \"%s\"" % (s, by[s]["en"][:300]))
-    return "\n".join(lines[:60]), allow
+    for nid in sec.get("extra") or []:        # 번외 메모의 논문도 이 절의 논문이다
+        if nid in notes and notes[nid][0] not in pset:
+            pset.append(notes[nid][0])
+    # (나) 도식·장치 그림: 이 절 논문들의 그림 색인에서 — 근거 문장이 가리키지 않아도 후보. ★·통째로 읽은 논문부터, 절에 12장까지
+    schem = []
+    for pi in sorted(pset, key=lambda i: (0 if st["papers"][i].get("top") else 1, 0 if st["papers"][i].get("role") == "core" else 1, i)):
+        for x in (index(pi) or {}).get("figs") or []:
+            k = (pi, "fig", x.get("n"))
+            if x.get("type") in ("schematic", "setup") and x.get("quality") != "poor" and x.get("what") and k not in allow:
+                schem.append((pi, x))
+    for pi, x in schem[:12]:
+        k = (pi, "fig", x["n"])
+        label = "P%d Fig. %d" % (pi + 1, x["n"])
+        allow[k] = {"cap": "%s: %s" % (label, x["cap"][:400]), "src": [], "desc": x.get("what", ""), "ftype": x.get("type", "")}
+        lines.append("[%s — 근거 문장이 가리키지 않는 그림: 개념·기전·장치를 처음 설명하는 자리에만] %s (p.%s): %s" % (fi.TYPES.get(x["type"], "도식"), label, x.get("page", "?"), x["cap"][:200]))
+        lines.append(reading(x))
+    return "\n".join(lines[:110]), allow
 
 
 _WRITE_RULES = (
@@ -937,9 +1009,11 @@ _WRITE_RULES = (
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
     "12. 표: 셋 이상의 연구가 견줄 만한 수치(값과 조건)를 주면 표로 묶는다 — '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
     "칸의 수치·단위·조건은 근거 그대로(표의 행도 본문 문장과 똑같이 원문과 대조된다). 표에 넣은 수치를 본문 문장에 되풀이하지 않는다. 절마다 많아야 둘.\n"
-    "13. 그림: [그림 목록]의 그림은 설계도의 근거 문장이 가리키는 그림이다. 그 가운데 그 대목의 내용을 눈으로 보여 주는 것만 그 문단 바로 뒤에 '그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦메모 번호⟧' 한 줄로 싣는다(절마다 둘까지). "
-    "그림을 넣기로 했으면 그 앞 문단의 한 문장이 ⟨그림⟩ 으로 그것을 가리킨다('…가 ⟨그림⟩에 보인다' — 번호는 프로그램이 붙인다). 표도 같은 식으로 ⟨표⟩. "
-    "보여 주는 그림이 없으면 넣지 않는다 — 그림을 채우려고 고르지 않는다. 설명은 캡션과 그 그림을 가리키는 원문 문장이 말하는 것만. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
+    "13. 그림: [그림 목록]에는 두 갈래가 있다 — (가) 설계도의 근거 문장이 가리키는 그림(사진·그래프·도식) (나) 이 절 논문들의 도식·장치 그림(근거 문장이 가리키지 않아도 된다). 교과서처럼 놓는다: "
+    "개념·기전·장치를 처음 설명하는 문단에는 그것을 그린 도식 하나(나), 관찰을 말하는 대목 옆에 사진, 경향·수치를 말하는 대목 옆에 그래프(가). 절에 둘에서 넷, 같은 그림을 두 번 싣지 않는다. 그림을 채우려고 고르지 않는다 — 그 그림 없이도 설명이 서면 넣지 않는다. "
+    "그림을 넣을 때는 그 그림을 걸고 풀어 쓴다: 앞 문단의 한 문장이 ⟨그림⟩ 으로 가리키고('…가 ⟨그림⟩에 보인다' — 번호는 프로그램이 붙인다), 바로 뒤에 '그림: P5 Fig. 4 — 설명. ⟦메모 번호⟧' 한 줄. "
+    "설명은 한두 문장으로 무엇이 무엇인지(부분·화살표·영역·축이 가리키는 것)와 독자가 봐야 할 곳을 말한다 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만, 그 밖의 수치·결론은 보태지 않는다. "
+    "도식(나)의 설명은 메모 번호가 없어도 된다(⟦-⟧ — 근거는 캡션과 그림 읽기). 표도 같은 식으로 ⟨표⟩. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
     "14. 번외: 절 끝 '### 번외' 아래에 [번외] 메모를 메모마다 한 문장으로(조건과 함께), 관련된 것끼리 한 문단. 논지와 어긋나는 메모는 어긋난다고 적는다. 번외 메모를 빠뜨리지 않는다.\n"
     "15. 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 설명의 기둥(현상·기전·법칙을 말하는 문장)은 ★ 논문과 리뷰의 메모로 세운다. ★ 가 아닌 저널의 연구 논문의 결과는 그 조건과 수치를 보기로 덧붙이는 자리('…에서도 …가 관찰되었다', 표의 행)에 두고, "
     "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n")
@@ -983,7 +1057,7 @@ def _write_prompt(st, k):
         near = ("[앞 절] %s — 끝낸 생각: %s\n" % (prev_s["title"], " / ".join(c["t"] for c in (prev_s.get("claims") or [])[-2:]) or prev_s.get("aim", "")) if prev_s else "[앞 절] 없음 — 이 절이 장의 첫 절이다. 장의 범위를 여는 잇는 문장으로 시작한다.\n") + \
                ("[다음 절] %s — %s\n" % (next_s["title"], next_s.get("aim", "")) if next_s else "[다음 절] 없음 — 이 절이 본문의 마지막 절이다.\n")
         material = ("[설계도] 이 절이 펴는 생각의 차례와 그 받침 — 문단의 틀이 아니라 설계도다. 생각 아래가 그것을 받치는 메모이고, 메모 아래는 그 근거인 논문의 원문 문장이다. 글은 이 차례를 따라 한 편으로 이어 쓴다.\n%s\n\n%s\n"
-                    "[그림 목록] (설계도의 근거 문장이 'Fig. N' 으로 가리키는 논문의 그림·표와, 그 그림을 가리키는 원문 문장 — 여기 있는 것만 고를 수 있다. 비어 있으면 이 절에는 그림을 넣지 않는다)\n%s") % (nlist, near, figtxt or "(없음)")
+                    "[그림 목록] (두 갈래 — 설계도의 근거 문장이 'Fig. N' 으로 가리키는 논문의 그림·표(그 그림을 가리키는 원문 문장과 함께), 그리고 이 절 논문들의 도식·장치 그림. '그림 읽기' 는 그림을 본 Claude 가 적은 것 — 어느 그림이 무엇을 보여 주는지 그것으로 안다. 여기 있는 것만 고를 수 있다. 비어 있으면 이 절에는 그림을 넣지 않는다)\n%s") % (nlist, near, figtxt or "(없음)")
     else:
         plist, nlist = _note_block(st, sec["notes"])
         material = "[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s" % nlist
@@ -996,8 +1070,8 @@ def _write_prompt(st, k):
                 "- 이 절은 장 끝의 '핵심 정리'다. 6~10줄, 줄마다 이 장의 핵심 사실 하나를 한 문장으로. 줄 끝의 ⟦ ⟧ 안에 근거인 메모 번호. 소제목·이음 문장·문단 나눔 없이.\n\n")
     elif claimed:
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n앞 절을 받아 이 절을 여는 문장(사실 없음). ⟦-⟧\n사실을 말하는 문장(조건과 함께). ⟦N3.2⟧\n이어진 두 사실을 관계를 드러내며 한 문장에. ⟦N5.1, N3.2⟧\n그 사실들이 뜻하는 것을 받아 다음 사실로 넘어가는 문장. ⟦N7.1⟧\n다음 문단으로 넘기는 문장(사실 없음). ⟦-⟧\n¶\n"
-                "앞 문단을 받아 이어 가는 문장. ⟦N7.1⟧\n…가 ⟨그림⟩에 보인다 하고 그림을 가리키는 문장. ⟦N5.1⟧\n그림: P5 Fig. 4 — 이 그림이 보여 주는 것 한 문장. ⟦N5.1⟧\n¶\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
-                "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄.\n"
+                "앞 문단을 받아 이어 가는 문장. ⟦N7.1⟧\n…가 ⟨그림⟩에 보인다 하고 그림을 가리키는 문장. ⟦N5.1⟧\n그림: P5 Fig. 4 — 그림을 풀어 쓰는 한두 문장(무엇이 무엇이고 독자가 어디를 봐야 하는지). ⟦N5.1⟧\n¶\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
+                "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄(그 줄의 설명은 한두 문장이어도 된다).\n"
                 "- ⟦-⟧ = 사실이 없는 잇는 문장(앞을 받아 다음을 여는 말, 개념을 잇는 말, 왜 이것을 보는지 말하는 말). 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 메모 번호를 적는다.\n\n")
     else:
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n문장 하나. ⟦N3.2⟧\n문장 하나. ⟦N3.4, N7.1⟧\n¶\n### 소제목 (필요할 때만)\n앞의 사실들을 묶는 문장. ⟦-⟧\n<<<END>>>\n"
@@ -1072,7 +1146,7 @@ def _parse_units(text, valid, figs=None):
             t = _REF_ANY.sub("", (mf.group(4)[:mm.start()] if mm else mf.group(4))).strip()
             if figs and (pi, fk, n) in figs and len(t) >= 4:
                 fg = figs[(pi, fk, n)]
-                fb = {"fig": {"pi": pi, "kind": fk, "n": n}, "units": [{"t": t[:400], "notes": refs_of(mm)[:6], "cap": fg["cap"][:500], "fsrc": list(fg.get("src") or [])[:4]}]}
+                fb = {"fig": {"pi": pi, "kind": fk, "n": n, "ftype": fg.get("ftype") or ""}, "units": [{"t": t[:700], "notes": refs_of(mm)[:6], "cap": fg["cap"][:500], "fsrc": list(fg.get("src") or [])[:4], "fdesc": (fg.get("desc") or "")[:400]}]}
                 if kind:
                     fb["kind"] = kind
                 blocks.append(fb)
@@ -1160,12 +1234,14 @@ def _verify_prompt(st, units, terms):
     for i, u in units:
         src = _src_text(st, _unit_src(st, u))
         miss = u.get("nummiss") or []
-        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(그림 설명 — 캡션과 그 그림을 가리키는 원문 문장이 말하는 것만) " if u.get("cap") else ""
+        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(그림 설명 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만) " if u.get("cap") else ""
         lines.append("u%d: %s%s%s" % (i, tag, u["t"], ("   (프로그램: 수치 %s 가 근거에 보이지 않음)" % ", ".join(miss)) if miss else ""))
         if not src and not u.get("cap"):
             lines.append("   (근거 표시 없음 — 이음 문장)")
         if u.get("cap"):
             lines.append("   캡션 — %s" % u["cap"][:500])
+        if u.get("fdesc"):
+            lines.append("   그림 읽기(그림을 본 Claude 가 적은 것) — %s" % u["fdesc"][:400])
         for pi, sid, own, s in src:
             p = st["papers"][pi]
             lines.append("   근거 — %s (%s %s)%s %s: \"%s\"" % (p["short"], p["journal"], p["year"], "" if own else " · 이 논문이 남의 연구를 전한 문장", sid, s["en"][:900]))
@@ -1175,7 +1251,7 @@ def _verify_prompt(st, units, terms):
         "판정:\n"
         "- ok: 문장의 모든 사실(대상·조건·방향·수치·원인)을 근거 문장이 말한다. 한국어로 옮겨 적었거나 여러 근거를 묶은 것은 ok.\n"
         "  논지 문장(여러 근거를 묶어 말한 것)은 각 부분이 근거 가운데 어느 하나에든 있으면 ok. 근거들이 보이지 않는 관계(같다·다르다·더 크다·엇갈린다)를 말하거나 조건을 떼고 일반 법칙으로 넓혔으면 over.\n"
-        "  표의 행은 칸마다 값·조건이 근거에 있는지 본다. 그림 설명은 캡션과 근거가 말하는 것만 담았으면 ok.\n"
+        "  표의 행은 칸마다 값·조건이 근거에 있는지 본다. 그림 설명은 캡션·그림 읽기·근거가 말하는 것만 담았으면 ok(그림 읽기는 그림에 보이는 것을 적은 글이다 — 거기 적힌 부분·화살표·축·글자는 근거로 친다).\n"
         "- over: 근거보다 나아갔다 — 조건을 떼고 일반화했다, 근거에 없는 원인·결론을 보탰다, 조심스러운 말(may, suggest)을 단정으로 높였다.\n"
         "- none: 근거 문장이 그 말을 하지 않는다(다른 이야기다).\n"
         "- attr: 누가 한 말인지가 틀렸다 — 그 논문이 남의 연구를 전한 문장인데 '그 논문의 저자가 그것을 했다·보였다'고 썼다, 또는 문장 속 저자 이름·연도가 근거의 논문과 다르다. "
@@ -1211,6 +1287,8 @@ def _mark_nums(st, u):
     src = [s["en"] for _pi, _sid, _own, s in _src_text(st, _unit_src(st, u))]
     if u.get("cap"):
         src.append(u["cap"])      # 그림 설명의 수치는 캡션에 있어도 된다
+    if u.get("fdesc"):
+        src.append(u["fdesc"])
     u["nummiss"] = _nums_missing(u["t"], src)
     return u["nummiss"]
 
@@ -1294,13 +1372,20 @@ def _fig_file(st, fig):
     if "err" in r:
         return None
     cap = next((c for c in _CAP_CACHE.get(p["file"]) or [] if c["kind"] == fig["kind"] and c["n"] == fig["n"]), None)
-    return {"img": name, "page": r["page"], "w": r["w"], "h": r["h"], "cap_en": (r.get("cap") or "")[:600], "cap_ko": ((cap or {}).get("ko") or "")[:400]}
+    x = {}
+    if fig["kind"] == "fig":
+        try:
+            x = _fi().fig(p["file"], fig["n"]) or {}
+        except Exception:
+            x = {}
+    return {"img": name, "page": r["page"], "w": r["w"], "h": r["h"], "cap_en": (r.get("cap") or "")[:600], "cap_ko": ((cap or {}).get("ko") or "")[:400],
+            "ftype": x.get("type") or fig.get("ftype") or "", "desc": (x.get("what") or "")[:400]}
 
 
 def _wrap(st):
     """남은 문장으로 장을 묶는다: 인용 번호(처음 나온 순서), 근거 문장 모음, 참고문헌, 그림 자르기."""
-    order, src, secs = [], {}, []
-    nunit = nfact = nfixed = nclaim = nmulti = ntab = nfig = nextra = 0
+    order, src, secs, seen_figs = [], {}, [], {}
+    nunit = nfact = nfixed = nclaim = nmulti = ntab = nfig = nextra = nschem = 0
     by = {}
     for sec in st["sections"]:
         blocks = []
@@ -1310,6 +1395,10 @@ def _wrap(st):
                 continue
             nb = {k2: v for k2, v in b.items() if k2 != "units"}
             if nb.get("fig"):
+                fkey = (nb["fig"]["pi"], nb["fig"]["kind"], nb["fig"]["n"])
+                if fkey in seen_figs:      # 같은 그림이 다른 절에 또 — 두 번 싣지 않고, 본문의 ⟨그림⟩ 은 먼저 실린 번호를 가리킨다
+                    blocks.append({"figref": seen_figs[fkey]})
+                    continue
                 info = _fig_file(st, nb["fig"])
                 if not info:          # 논문에서 그 그림을 잘라 내지 못하면 그림도 설명도 싣지 않는다
                     continue
@@ -1358,14 +1447,18 @@ def _wrap(st):
                 if nb.get("fig"):
                     nfig += 1
                     nb["fig"]["no"] = nfig
+                    seen_figs[(nb["fig"]["pi"], nb["fig"]["kind"], nb["fig"]["n"])] = nfig
+                    nschem += 1 if nb["fig"].get("ftype") in ("schematic", "setup") else 0
         # 본문의 ⟨그림⟩·⟨표⟩ 는 그 뒤에 오는 그림·표의 번호로 (교과서처럼 '그림 3에 보인다'). 뒤에 그림이 없으면 표시만 뗀다
         for i, b in enumerate(blocks):
-            if "h" in b or b.get("fig") or b.get("table"):
+            if "h" in b or b.get("fig") or b.get("table") or b.get("figref"):
                 continue
             nxt = {"fig": None, "table": None}
             for b2 in blocks[i + 1:]:
                 if b2.get("fig") and nxt["fig"] is None:
                     nxt["fig"] = b2["fig"]["no"]
+                if b2.get("figref") and nxt["fig"] is None:
+                    nxt["fig"] = b2["figref"]
                 if b2.get("table") and nxt["table"] is None:
                     nxt["table"] = b2["table"]["no"]
             for u in b["units"]:
@@ -1374,6 +1467,7 @@ def _wrap(st):
                 t = re.sub(r"(?<=[가-힣A-Za-z0-9,.])(그림|표) (\d+)", r" \1 \2", t)      # 낱말에 붙었으면 띄우고
                 t = re.sub(r"\(\s+(그림|표) ", r"(\1 ", t)                               # 괄호 안에서는 붙인다
                 u["t"] = re.sub(r"\s{2,}", " ", t).strip()
+        blocks = [b for b in blocks if not b.get("figref")]
         if blocks:
             secs.append({"title": sec["title"], "aim": sec.get("aim", ""), "kind": sec.get("kind", ""), "blocks": blocks})
     nclaim = sum(len(s.get("claims") or []) for s in st["outline"].get("sections") or [])   # 설계도의 생각 수
@@ -1396,7 +1490,7 @@ def _wrap(st):
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
-                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "extra": nextra, "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
+                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "schem": nschem, "extra": nextra, "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
 
 
 # ---------- 6-1 절 사이 잇기 (2026-10-07) ----------
@@ -1643,6 +1737,16 @@ def _run(st):
         if "top" not in p:
             p["top"] = _is_top(p.get("journal", ""), tops)
     _read_all(st, model)
+    if not st.get("figidx"):       # 읽은 논문의 그림 색인(Sonnet 이 그림을 보고 종류·설명) — 쓰기가 도식을 고르고 풀어 쓰는 재료. 못 만들어도 장은 쓴다
+        _stage(st, "figs")
+        try:
+            _fig_index_all(st)
+        except _Stop:
+            raise
+        except Exception as e:
+            st["figidx"] = {"err": str(e)[:200]}
+        _save(st)
+    _check_stop(st)
     notes = _all_notes(st)
     if len(notes) < 6:
         raise RuntimeError("서재의 논문에서 이 주제에 관한 내용을 충분히 찾지 못했습니다 (메모 %d개)" % len(notes))
