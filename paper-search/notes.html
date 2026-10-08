@@ -13,7 +13,7 @@
   header h1 { font-size: 14px; font-weight: 600; }
   #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 268px minmax(0, 1fr) 6px var(--card-w, 380px); }
   #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; padding-bottom: var(--s8); }
-  #main { background: var(--surface); min-width: 0; display: flex; flex-direction: column; }
+  #main { background: var(--surface); min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }   /* min-height·overflow 가 없으면 긴 답에서 가운데 칸이 창보다 길어져 묻는 칸이 화면 밖으로 밀린다 (사용자 2026-10-08: '왜 이어서 대화를 못하냐') */
   #cardsplit { cursor: col-resize; background: var(--line-2); }   /* 끌어서 오른쪽 칸의 폭을 바꾼다 (공부·탐색과 같은 방식) */
   #cardsplit:hover, #cardsplit.drag { background: var(--accent); }
   #cardp { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-width: 0; padding: var(--s3) var(--s4) var(--s8); }
