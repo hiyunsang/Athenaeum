@@ -540,18 +540,22 @@ function fmtMsg(t) {
 function renderChat() {
   const st = chatState(), log = document.getElementById("chatlog");
   if (!st.msgs.length) { log.innerHTML = "<div class='hint' style='padding:18px 6px'>화면의 논문 목록을 Claude 가 함께 봅니다. 답에 나오는 [번호] 를 누르면 그 논문으로 이동합니다.</div>"; return; }
-  log.innerHTML = st.msgs.map(m => "<div class='msg " + m.role + "'>" + (m.role === "user" ? escC(m.text) : fmtMsg(m.text)) + "</div>").join("") + (chatBusy ? "<div class='msg claude'><span class='hint' style='padding:0'>생각 중… (Opus, 20~60초)</span></div>" : "");
+  log.innerHTML = st.msgs.map(m => "<div class='msg " + m.role + "'>" + (m.role === "user" ? escC(m.text) : fmtMsg(m.text)) + "</div>").join("") + (chatBusy ? "<div class='msg claude'><span class='hint' style='padding:0'>생각 중… (Opus, 20~60초) <a href='#' class='act' id='chatCancel' title='잘못 물었으면 — 끊고 물음을 입력 칸에 되돌립니다'>취소</a></span></div>" : "");
   log.querySelectorAll(".ref").forEach(x => x.onclick = () => { const row = document.querySelector(".row[data-n='" + x.dataset.n + "']"); if (!row) return; document.querySelectorAll(".row.hl").forEach(y => y.classList.remove("hl")); row.classList.add("hl"); row.scrollIntoView({ block: "center", behavior: "smooth" }); });
   log.querySelectorAll(".qline").forEach(x => x.onclick = () => { document.getElementById("q").value = x.dataset.q; search(); });
+  const cc = document.getElementById("chatCancel"); if (cc) cc.onclick = e => { e.preventDefault(); cc.textContent = "끊는 중…"; chatCancel(); };
   log.scrollTop = log.scrollHeight;
 }
+let chatRid = "";   /* 지금 묻는 물음의 이름 — 「취소」 가 서버의 호출을 이 이름으로 끊는다 (사용자 2026-10-09) */
+async function chatCancel() { if (!chatBusy || !chatRid) return; try { await fetch("/api/claude_cancel", { method: "POST", body: JSON.stringify({ job: "explore:" + chatRid }) }); } catch (e) {} }
 async function chatSend() {
   const ta = document.getElementById("chatq"), q = ta.value.trim(); if (!q || chatBusy) return;
   const s = loadState() || {}, st = chatState(); st.q = s.q || ""; st.msgs.push({ role: "user", text: q }); chatSave(st); ta.value = "";
-  chatBusy = true; document.getElementById("chatsend").disabled = true; renderChat();
+  chatBusy = true; chatRid = Math.random().toString(36).slice(2, 12); document.getElementById("chatsend").disabled = true; renderChat();
   try {
-    const r = await (await fetch("/api/explore_chat", { method: "POST", body: JSON.stringify({ q: s.q || "", intent: s.smartResult ? s.smartResult.intent : "", items: chatItems(), history: st.msgs.slice(0, -1).slice(-8), question: q }) })).json();
-    st.msgs.push({ role: "claude", text: r.error ? "⚠ " + r.error : r.answer });
+    const r = await (await fetch("/api/explore_chat", { method: "POST", body: JSON.stringify({ q: s.q || "", intent: s.smartResult ? s.smartResult.intent : "", items: chatItems(), history: st.msgs.slice(0, -1).slice(-8), question: q, rid: chatRid }) })).json();
+    if (r.cancelled) { const last = st.msgs[st.msgs.length - 1]; if (last && last.role === "user" && last.text === q) st.msgs.pop(); ta.value = q; }   /* 취소 — 그 물음을 빼고 입력 칸에 되돌린다 */
+    else st.msgs.push({ role: "claude", text: r.error ? "⚠ " + r.error : r.answer });
   } catch (e) { st.msgs.push({ role: "claude", text: "⚠ 서버에 연결하지 못했습니다: " + e }); }
   chatBusy = false; document.getElementById("chatsend").disabled = false; chatSave(st); renderChat();
 }

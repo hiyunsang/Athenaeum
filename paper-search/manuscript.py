@@ -3722,7 +3722,12 @@ def ask_selection(doc, body):
 
         def apply(m):
             m.pop("pending", None)
-            if res.get("error"):
+            if res.get("cancelled"):   # 「취소」 — 그 물음을 메모에서 뺀다 (화면도 돌려받은 메모로 맞춘다)
+                th2 = m.get("thread") or []
+                if th2 and th2[-1].get("role") == "user":
+                    th2.pop()
+                m.pop("error", None)
+            elif res.get("error"):
                 m["error"] = res["error"]
             else:
                 m.pop("error", None)
@@ -3737,7 +3742,7 @@ def ask_selection(doc, body):
                 return {"error": "그 사이 메모가 지워졌습니다"}
             apply(m)
             save_ms(fresh)
-        return {"memo": m}
+        return {"memo": m, "cancelled": bool(res.get("cancelled"))}
     return _ask_selection(doc, body)
 
 
@@ -4320,7 +4325,10 @@ def _ask_selection(doc, body):
     run = cfg.get("claude_run")
     meta = {"model": "", "turns": 1}
     if run:
-        res = run(full, timeout=1500 if pieces else 900, model=model, effort=effort, tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system or None)
+        res = run(full, timeout=1500 if pieces else 900, model=model, effort=effort, tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system or None,
+                  job=("ms:" + str(body.get("rid"))) if body.get("rid") else None)   # rid = 화면이 물음마다 붙인 이름 — 「취소」 가 이 이름으로 호출을 끊는다 (2026-10-09)
+        if (res or {}).get("cancelled"):
+            return {"cancelled": True, "error": "취소했습니다"}
         raw = (res or {}).get("text", "")
         meta = {"model": (res or {}).get("model", ""), "turns": (res or {}).get("turns", 1), "tok": (res or {}).get("tok")}
     else:

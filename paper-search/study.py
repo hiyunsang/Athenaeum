@@ -90,6 +90,14 @@ def _status(st):
     return "stopped" if s == "running" and not _live(st.get("id")) else s
 
 
+def _chat_brief(c):
+    """장 목록에 싣는 대화 요약 — 「대화 찾기」(사용자 2026-10-09: '기존에 했던 대화 찾기가 너무 빡세다') 가 장을 열지 않고 모든 장의 대화를 뒤지게."""
+    th = c.get("thread") or []
+    qs = [m.get("text") or "" for m in th if m.get("role") == "user"]
+    return {"id": c.get("id"), "t": c.get("t"), "sec": c.get("sec") or "", "quote": (c.get("quote") or "")[:120], "q": " / ".join(q[:120] for q in qs)[:400],
+            "n": sum(1 for m in th if m.get("role") == "claude"), "pending": bool(c.get("pending")), "key": (c.get("keys") or [""])[0]}
+
+
 def list_studies():
     out = []
     try:
@@ -109,7 +117,8 @@ def list_studies():
                 continue
             c = (mt, {"id": st["id"], "topic": st.get("topic", ""), "title": (st.get("chapter") or {}).get("title") or (st.get("plan") or {}).get("title") or "",
                       "t": st.get("t", 0), "status": st.get("status") or "", "stage": st.get("stage", ""), "error": st.get("error", ""),
-                      "papers": len([p for p in st.get("papers") or [] if p.get("read")]), "stats": st.get("stats")})
+                      "papers": len([p for p in st.get("papers") or [] if p.get("read")]), "stats": st.get("stats"),
+                      "chats": [_chat_brief(c) for c in st.get("chats") or []]})
             _LIST_CACHE[f] = c
         out.append(dict(c[1], status=_status(c[1])))
     for f in [f for f in _LIST_CACHE if f not in files]:
@@ -2261,11 +2270,13 @@ def _chat_job(sid, cid):
     lib = bool((chat.get("opts") or {}).get("lib"))
     t0 = time.time()
     res, err = None, ""
+    cancelled = False
     try:
         run = cfg.get("claude_run")
         res = run(_chat_prompt(st, chat, question, lib), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
-                  add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=_chat_system(st)) if run else None
-        if not res or not (res.get("text") or "").strip():
+                  add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=_chat_system(st), job=_chat_jobkey(sid, chat)) if run else None
+        cancelled = bool((res or {}).get("cancelled"))
+        if not cancelled and (not res or not (res.get("text") or "").strip()):
             err = "Claude 응답이 없습니다" + _why()
     except Exception as e:
         err = "Claude 호출 실패: " + str(e)[:200]
@@ -2275,6 +2286,15 @@ def _chat_job(sid, cid):
         if not chat:
             return
         chat.pop("pending", None)
+        if cancelled:   # 「취소」 — 그 물음을 대화에서 빼고, 첫 물음이었으면 대화 자체를 없앤다 (오류로 적지 않는다)
+            th = chat.get("thread") or []
+            if th and th[-1].get("role") == "user":
+                th.pop()
+            chat.pop("error", None)
+            if not th:
+                st["chats"] = [x for x in st.get("chats") or [] if x.get("id") != cid]
+            _save(st)
+            return
         if err:
             chat["error"] = err
         else:
@@ -2282,6 +2302,29 @@ def _chat_job(sid, cid):
             chat["thread"].append({"role": "claude", "text": res["text"].strip(), "t": time.time(), "sec": round(time.time() - t0),
                                    "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib})
         _save(st)
+
+
+def _chat_jobkey(sid, chat):
+    """돌고 있는 claude 호출의 이름 — 물음마다 다르게(pending 시각) 해서 지난 물음의 취소가 다음 물음에 걸리지 않게."""
+    return "study:%s:%s:%d" % (sid, chat.get("id"), int(chat.get("pending") or 0))
+
+
+def chat_cancel(sid, cid):
+    """답을 기다리는 물음을 취소 — 돌고 있는 claude 를 끊는다 (사용자 2026-10-09: '잘못 물어도 끝까지 기다려야 한다').
+    물음을 대화에서 빼는 것은 _chat_job 의 마무리(끊긴 호출이 cancelled 로 돌아오면)."""
+    with _LOCK:
+        st = _load(sid)
+        chat = _chat_find(st, cid) if st else None
+        if not chat:
+            return {"error": "대화를 찾지 못했습니다"}
+        if not chat.get("pending"):
+            return {"error": "이미 답이 왔습니다"}
+        job = _chat_jobkey(sid, chat)
+    cancel = cfg.get("claude_cancel")
+    if not cancel:
+        return {"error": "이 서버는 취소를 지원하지 않습니다"}
+    cancel(job)
+    return {"ok": True}
 
 
 def chats_of(sid):
@@ -2497,6 +2540,8 @@ def handle_post(h, body):
             return h._send(200, comment_start(sid, body))
         if op == "chat_delete":
             return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
+        if op == "cancel":
+            return h._send(200, chat_cancel(sid, str(body.get("chat") or "")))
         if op == "md":
             st = _load(sid)
             if not st or not st.get("chapter"):

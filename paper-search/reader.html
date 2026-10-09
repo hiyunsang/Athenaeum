@@ -305,7 +305,9 @@ function renderMd(md) {
   const sentParam = new URLSearchParams(location.search).get("sent");
   if (sentParam && kind === "translation" && !sentJumped) {
     const sp = read.querySelector('.sent[data-s="' + sentParam.replace(/^s/, "") + '"]');
-    if (sp) { sentJumped = true; setTimeout(() => { sp.scrollIntoView({ block: "center" }); sp.style.background = "var(--sel-bg)"; sp.style.boxShadow = "inset 3px 0 0 var(--accent)"; }, 150); }
+    if (sp) { sentJumped = true; setTimeout(() => { sp.scrollIntoView({ block: "center" }); sp.style.background = "var(--sel-bg)"; sp.style.boxShadow = "inset 3px 0 0 var(--accent)"; }, 150);
+      const sid = sentParam.replace(/^s/, ""), toPdf = n => { let h = null; try { h = alignData ? sentHit(sid) : null; } catch (e) {} if (h && h.exact) { locateBySentId(sid); return; } if (n < 30) setTimeout(() => toPdf(n + 1), 400); else if (h) locateBySentId(sid); };
+      setTimeout(() => toPdf(0), 500); }   /* 원문(PDF) 쪽도 그 문장으로 — 정렬표와 PDF 쪽이 준비되면 (공부의 「논문에서 이 문장 보기」, 2026-10-09) */
   }
 }
 

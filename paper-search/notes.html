@@ -216,9 +216,16 @@ function renderThread() {
   const el = $("thread"); if (!el || !cur) return;
   let h = (cur.thread || []).map(msgHtml).join("");
   if (!(cur.thread || []).length) h += "<div class='hint' style='padding:var(--s4) 0;line-height:1.7'>아래에 첫 물음을 적으세요 — '이 주제가 설 만한가', '서재에 이미 한 연구가 있나', '어떤 실험으로 보일 수 있나' 같은 것. Claude 는 약점과 반론을 먼저 말하도록 되어 있습니다.</div>";
-  if (cur.pending) h += "<div class='waitbox'><div class='prog'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 주제에 남습니다.</div></div>";
+  if (cur.pending) h += "<div class='waitbox'><div class='prog'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 주제에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div></div>";
   if (cur.error) h += "<div class='warnbox'>" + esc(cur.error) + " — 아래에서 다시 물으세요.</div>";
   el.innerHTML = h;
+  const cc = $("askCancel"); if (cc) cc.onclick = async () => {   /* 취소 (사용자 2026-10-09) — 서버가 호출을 끊고 그 물음을 빼면, 물음은 입력 칸에 되돌린다 */
+    cc.disabled = true; cc.textContent = "끊는 중…";
+    const lastQ = ((cur.thread || []).filter(m => m.role === "user").slice(-1)[0] || {}).text || "";
+    const r = await api("/api/notes", { op: "cancel", id: cur.id }); if (r.error) { alert(r.error); cc.disabled = false; cc.textContent = "이 물음 취소"; return; }
+    for (let i = 0; i < 24; i++) { await new Promise(res => setTimeout(res, 500)); await refresh(); if (!cur || !cur.pending) break; }
+    draft = lastQ; renderAsk(); const t = $("askIn"); if (t) t.focus();
+  };
   el.querySelectorAll(".go[data-q]").forEach(a => a.onclick = () => openBig("/explore?q=" + encodeURIComponent(a.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
   el.querySelectorAll(".go[data-study]").forEach(a => a.onclick = () => openBig("/study?topic=" + encodeURIComponent(a.dataset.study), "athenaeum_study", "width=1440,height=920"));
   clearInterval(tick);

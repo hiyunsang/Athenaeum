@@ -1567,13 +1567,79 @@ def claude_text(prompt, timeout=240, model="opus", effort=None):
         return None
 
 
-def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=(), system=None):
+_CLAUDE_PROCS = {}        # job 이름 → 돌고 있는 claude 프로세스 (대화의 「취소」 가 끊는다)
+_CLAUDE_CANCELLED = {}    # job 이름 → 취소한 시각 (끊긴 호출이 '취소됨'을 알고 오류로 적지 않게; 프로세스가 뜨기 전에 취소해도 걸리게)
+_PROC_LOCK = threading.Lock()
+
+
+def _kill_tree(p):
+    """claude 프로세스와 그 자식(도구 프로세스)을 끊는다."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, timeout=15, **_no_window())
+        else:
+            p.kill()
+    except Exception:
+        try:
+            p.kill()
+        except Exception:
+            pass
+
+
+def _claude_proc(args, data, timeout, kw, job=None):
+    """subprocess.run 과 같지만, job 이름을 주면 도는 동안 claude_cancel(job) 으로 끊을 수 있다 → (returncode, stdout, stderr: 글)."""
+    if job:
+        with _PROC_LOCK:
+            if job in _CLAUDE_CANCELLED:        # 프로세스가 뜨기 전에 취소됐다 (물음을 만드는 1~2초 사이)
+                return -1, "", "cancelled"
+    p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
+    if job:
+        with _PROC_LOCK:
+            _CLAUDE_PROCS[job] = p
+    try:
+        out, err = p.communicate(data, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_tree(p)
+        p.communicate()
+        raise
+    finally:
+        if job:
+            with _PROC_LOCK:
+                if _CLAUDE_PROCS.get(job) is p:
+                    _CLAUDE_PROCS.pop(job, None)
+    return p.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
+
+
+def claude_cancel(job):
+    """돌고 있는 claude 호출을 이름으로 끊는다 (대화의 「취소」, 2026-10-09). 끊었으면 True, 아직 안 떴거나 이미 끝났으면 False
+    (안 뜬 것은 _claude_proc 이 뜨기 전에 보고 바로 취소로 끝낸다)."""
+    if not job:
+        return False
+    with _PROC_LOCK:
+        _CLAUDE_CANCELLED[job] = time.time()
+        for k in [k for k, t in _CLAUDE_CANCELLED.items() if time.time() - t > 3600]:   # 오래된 흔적은 치운다
+            _CLAUDE_CANCELLED.pop(k, None)
+        p = _CLAUDE_PROCS.get(job)
+    if not p:
+        return False
+    _kill_tree(p)
+    return True
+
+
+def claude_cancelled(job):
+    """방금 끝난 호출이 취소로 끝났나 (한 번 물으면 지운다)."""
+    with _PROC_LOCK:
+        return _CLAUDE_CANCELLED.pop(job, None) is not None
+
+
+def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=(), system=None, job=None):
     """claude -p 를 JSON 출력으로 불러 {text, model, turns, tok} 를 돌려준다 (실패하면 None, 이유는 claude_error()).
     tools: None = CLI 기본, "" = 도구 없이 글만, "Read,Grep,Glob" = 읽기만(작업 폴더 cwd 와 add_dirs 안에서만 — 미리 허락을 주지 않으므로 그 밖은 거절된다).
     system: 시스템 프롬프트로 줄 글(Claude Code 의 기본 시스템 프롬프트를 대신한다). 글자 하나까지 같은 시스템 프롬프트는 마지막으로 쓴 뒤 1시간 동안
       캐시에서 읽혀 그 부분의 값이 1/10 이 된다 — 물음마다 같은 긴 배경(원고·자료)은 여기에, 달라지는 물음은 prompt 에.
       (prompt 앞에 붙이면 캐시에 쓰기만 하고 다시 읽히지 않는다: 쓰는 값은 2배다. 재어 봄 2026-10-01)
-    model 은 CLI 가 실제로 쓴 모델 이름 — 별칭 'opus' 가 어느 판을 가리키는지는 CLI 판에 달렸다. tok = {in: 읽은 토큰, cached: 그중 캐시에서 읽은 것}"""
+    model 은 CLI 가 실제로 쓴 모델 이름 — 별칭 'opus' 가 어느 판을 가리키는지는 CLI 판에 달렸다. tok = {in: 읽은 토큰, cached: 그중 캐시에서 읽은 것}
+    job: 이름을 주면 도는 동안 claude_cancel(job) 으로 끊을 수 있고, 끊기면 {cancelled: True, text: ""} 를 돌려준다(오류로 적지 않는다)."""
     exe = find_claude()
     if not exe:
         return None
@@ -1592,17 +1658,19 @@ def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=N
             with io.open(sysf, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(system)
             extra += ["--system-prompt-file", sysf]
-        r = subprocess.run(args + extra, input=prompt.encode("utf-8"), capture_output=True, timeout=timeout, **kw)
-        out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
-        if r.returncode != 0 and extra and re.search(r"unknown option|unrecognized", (err + out).lower()) and "unrecognized_model" not in out:
-            r = subprocess.run(args, input=((system or "") + prompt).encode("utf-8"), capture_output=True, timeout=timeout, **kw)   # 옛 CLI: 옵션 없이, 배경은 물음 앞에
-            out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+        rc, out, err = _claude_proc(args + extra, prompt.encode("utf-8"), timeout, kw, job)
+        if job and claude_cancelled(job):
+            return {"cancelled": True, "text": ""}   # 「취소」 로 끊긴 호출
+        if rc != 0 and extra and re.search(r"unknown option|unrecognized", (err + out).lower()) and "unrecognized_model" not in out:
+            rc, out, err = _claude_proc(args, ((system or "") + prompt).encode("utf-8"), timeout, kw, job)   # 옛 CLI: 옵션 없이, 배경은 물음 앞에
+            if job and claude_cancelled(job):
+                return {"cancelled": True, "text": ""}
         try:
             d = json.loads(out[out.index("{"):out.rindex("}") + 1])
         except ValueError:
             d = {}
         text = str(d.get("result") or "").strip()
-        _note_claude(r.returncode if not d.get("is_error") else 1, text or out, err)
+        _note_claude(rc if not d.get("is_error") else 1, text or out, err)
         if not text or d.get("is_error"):
             return None
         usage = d.get("modelUsage") or {}
@@ -3170,11 +3238,11 @@ vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, loa
 
 # ---------- 공부 (내 서재의 논문만으로 쓰는 교과서 한 장 — 문장마다 논문의 원문 문장에 묶는다) ----------
 import study
-study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, pref_abbrs=pref_file_abbrs)
+study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel, pref_abbrs=pref_file_abbrs)
 
 # ---------- 연구 노트 (연구 주제를 놓고 Claude 와 토의 — 서재 전체·공부 장·탐색 기록·인용 이웃·원고를 알고 답한다. 사용자 2026-10-08) ----------
 import notes
-notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error,
+notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
            paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
 
 
@@ -3215,8 +3283,8 @@ class Handler(BaseHTTPRequestHandler):
             return vocab.handle_get(self, url)
         if url.path == "/study" or url.path.startswith("/api/study"):
             return study.handle_get(self, url)
-        if url.path == "/notes" or url.path.startswith("/api/notes"):
-            return notes.handle_get(self, url)
+        if url.path == "/notes" or url.path.startswith("/api/notes/") or (url.path == "/api/notes" and "file" not in parse_qs(url.query)):
+            return notes.handle_get(self, url)   # 읽기 화면의 논문 메모 /api/notes?file= 는 아래 옛 라우트로 — 접두사로 넘기다 가로채 읽기 창이 '불러오는 중'에서 멈췄다(2026-10-08~09)
         if url.path == "/api/intake":
             return self._send(200, intake.view())
         if url.path in ("/", "/index.html"):
@@ -3699,8 +3767,8 @@ class Handler(BaseHTTPRequestHandler):
             return vocab.handle_post(self, body)
         if self.path.startswith("/api/study"):
             return study.handle_post(self, body)
-        if self.path.startswith("/api/notes"):
-            return notes.handle_post(self, body)
+        if self.path.startswith("/api/notes/") or (self.path == "/api/notes" and not body.get("file")):
+            return notes.handle_post(self, body)   # 읽기 화면의 논문 메모(POST /api/notes {file, op}) 는 아래 옛 라우트로
         if self.path == "/api/intake":
             return self._send(200, intake.control(body))
         if self.path == "/api/read_ping":
@@ -3778,6 +3846,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             res = locate_in_pdf(name, passage)
             self._send(200, res or {"error": "원문 위치를 찾지 못했습니다"})
+        elif self.path == "/api/claude_cancel":   # 대화의 「취소」 — 돌고 있는 claude 호출을 이름으로 끊는다 (원고·탐색은 화면이 물음마다 이름을 붙여 보낸다)
+            self._send(200, {"ok": claude_cancel(str(body.get("job") or ""))})
         elif self.path == "/api/explore_chat":
             # 탐색 화면의 Claude 대화: 지금 화면의 검색 결과(번호 매긴 목록)를 맥락으로 질문에 답한다 (Opus)
             question = (body.get("question") or "").strip()
@@ -3797,10 +3867,14 @@ class Handler(BaseHTTPRequestHandler):
                       "[검색어] %s\n[조사 의도] %s\n\n[화면의 논문 목록: 번호 (연도) 제목 — 저자 · 저널 · 피인용 :: 초록]\n%s\n\n%s[질문]\n%s"
                       % (body.get("q") or "", body.get("intent") or "(스마트 탐색 없음)", listing or "(결과 없음)",
                          ("[지금까지의 대화]\n" + hist + "\n\n") if hist else "", question))
-            try:
-                answer = _claude(prompt, timeout=300).strip()
-            except Exception as e:
-                self._send(200, {"error": str(e)[:300]})
+            rid = str(body.get("rid") or "")
+            res = claude_run(prompt, timeout=300, model="opus", job=("explore:" + rid) if rid else None)   # rid = 화면이 물음마다 붙인 이름 — 「취소」 용
+            if (res or {}).get("cancelled"):
+                self._send(200, {"cancelled": True})
+                return
+            answer = ((res or {}).get("text") or "").strip()
+            if not answer:
+                self._send(200, {"error": "Claude 응답이 없습니다" + ((" — " + claude_error()) if claude_error() else "")})
                 return
             self._send(200, {"answer": answer})
         elif self.path == "/api/fonts":   # 글꼴 파일 올리기 {name, b64}

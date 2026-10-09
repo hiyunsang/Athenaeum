@@ -2402,6 +2402,7 @@ function chatCardHtml(m) {
   }
   h += "<div class='chbody'>" + (scopeWide(m.scope) ? "" : "<div class='rvtext cq'>" + esc(m.quote) + "</div>") + (m.note ? "<div class='fbmsg user'><b>메모:</b> " + esc(m.note) + "</div>" : "") + chatThreadHtml(m);
   if (st === "wait") h += waitHtml("Claude 가 생각하는 중", (m.pending || Date.now() / 1000) * 1000, durGet(chatDurKey(m), chatDurGuess(m)), m.lib ? "<div class='hint'>필요하면 서재의 논문을 찾아 읽고 답합니다 — 그럴 때는 1~2분 더 걸립니다.</div>" : "");
+  if (st === "wait" && m.rid) h += "<div class='hint'><a href='#' class='act' data-cancel='1' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</a></div>";
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)", m.scope) +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
@@ -2515,6 +2516,7 @@ function chatBind(card) {
   if (cq("[data-newx]")) cq("[data-newx]").onclick = () => chatNewDrop();;
   if (!m) return;
   if (cq("[data-retry]")) cq("[data-retry]").onclick = e => { e.preventDefault(); chatAsk(id, null, true); };
+  if (cq("[data-cancel]")) cq("[data-cancel]").onclick = e => { e.preventDefault(); e.target.textContent = "끊는 중…"; chatCancel(id); };
   if (cq("[data-dec]")) cq("[data-dec]").onclick = () => openDecision({ thread: m.thread || [], quote: m.quote, where: selHeading(m.node), note: [m.note, (chatDraft[id] || "").trim()].filter(Boolean).join("\n") });
   if (cq("[data-mgo]")) cq("[data-mgo]").onclick = () => selGoto(m);
   if (cq("[data-mdel]")) cq("[data-mdel]").onclick = () => { if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
@@ -2633,15 +2635,29 @@ async function chatAsk(id, text, retry) {   // 묻는다. 답을 기다리지 �
   if (!m) return;
   const mid = doc.id, effort = chatEffort();
   const lib = chatLib(), whole = chatWhole(), ev = chatEv();
-  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; m.lib = lib; m.whole = whole; memoLive.add(m.id); chatOpen.add(m.id);
+  delete m.error; m.unread = false; m.pending = Date.now() / 1000; m.effort = effort; m.lib = lib; m.whole = whole; m.rid = Math.random().toString(36).slice(2, 12); memoLive.add(m.id); chatOpen.add(m.id);   /* rid: 이 물음의 이름 — 「취소」 가 서버의 호출을 이 이름으로 끊는다 */
   memoUi(id === "new" ? null : m.id);
   if (id === "new") chatFocus(m.id);
   await saveNow();   // 물음까지 든 대화가 서버에 있어야 한다
-  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort, lib, whole, ev }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/ms/ask_sel", { id: mid, memo: m.id, effort, lib, whole, ev, rid: m.rid }); } catch (e) { r = { error: "서버 연결 실패" }; }
   memoLive.delete(m.id);
   if (!doc || doc.id !== mid) return;
   const mm = memoById(m.id);
-  if (mm) memoTake(mm, r.memo, r.error);
+  if (!mm) return;
+  if (r.cancelled) { memoCancelDone(mm, r.memo); return; }
+  memoTake(mm, r.memo, r.error);
+}
+function memoCancelDone(mm, sm) {   // 「취소」 로 끊긴 물음 (사용자 2026-10-09) — 서버가 뺀 대로 맞추고(없으면 마지막 물음을 뺀다), 그 글은 입력 칸에 되돌린다
+  const q = (mm.thread || []).filter(x => x.role === "user").slice(-1)[0];
+  if (sm && sm.thread) mm.thread = sm.thread; else if (q) mm.thread = mm.thread.filter(x => x !== q);
+  delete mm.pending; delete mm.error; delete mm.rid;
+  if (q && !chatDraft[mm.id]) chatDraft[mm.id] = q.text;
+  save(true); memoUi(mm.id);
+}
+async function chatCancel(id) {
+  const m = memoById(id); if (!m || !m.pending || !m.rid) return;
+  try { await api("/api/claude_cancel", { job: "ms:" + m.rid }); } catch (e) {}
+  if (!memoLive.has(m.id)) memoPoll();   // 창을 닫았다 연 대화는 서버가 뺀 결과를 폴링으로 받는다
 }
 function memoTake(mm, sm, err) {   // 서버가 답을 얹은 대화를 내 문서에 (본문 등 다른 것은 건드리지 않는다)
   if (sm) { mm.thread = sm.thread || mm.thread; if (sm.error) mm.error = sm.error; else delete mm.error; }

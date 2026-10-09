@@ -50,6 +50,9 @@
   .ix .ixi:hover h2 { color: var(--accent); }
   .ix .ixi .ixm { color: var(--text-3); font-size: 12px; } .ix .ixi .ixm .now { color: var(--accent); }
   .ix .ixi .ixt { color: var(--text-2); font-size: 12.5px; margin-top: 4px; line-height: 1.5; }
+  .ix .ixq { margin: 2px 0 12px; } .ix .ixq input, .ch .cvf input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
+  .ix .ixc { padding: 7px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; line-height: 1.5; } .ix .ixc:last-child { border-bottom: 1px solid var(--line); } .ix #ixChats { margin-bottom: 18px; } .ix .ixc:hover .q { color: var(--accent); } .ix .ixc .q { font-weight: 500; } .ix .ixc .m { color: var(--text-3); font-size: 12px; }
+  .ch .cvf { margin: 0 0 10px; }
   .askwrap .fsz { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; } .askwrap .fsz .act { padding: 0 4px; }
   .askwrap .msg, .askwrap .spq, .askwrap textarea, .askwrap .srci { font-size: inherit; }
   #list.closed { display: none; }
@@ -284,11 +287,11 @@ function renderOutline() {
   el.innerHTML = "<div class='sideh'>장의 차례 <button class='act' id='olTitle' title='이 장의 개요로'>개요</button></div>" +
     item("overview", null, "", "", "개요", "") +
     item("map", null, " fig", "", "마인드맵 (그림)", cur.map ? "" : cur.map_pending ? "만드는 중" : "아직 없음") +
+    ((cur.chats || []).length ? item("chats", null, " sub", "", "Claude 에게 물은 것", cur.chats.length) : "") +
     bodySecs().map((x, i) => item("sec", x.si, "", i + 1, x.sec.title, secUnits(x.sec) + "문장")).join("") +
     (summ ? item("summary", null, " sub", "", "핵심 정리", secUnits(summ) + "줄") : "") +
     ((ch.gaps || []).length ? item("gaps", null, " sub", "", "이 서재로는 답하지 못한 것", ch.gaps.length) : "") +
     ((ch.terms || []).length ? item("terms", null, " sub", "", "용어", ch.terms.length) : "") +
-    ((cur.chats || []).length ? item("chats", null, " sub", "", "Claude 에게 물은 것", cur.chats.length) : "") +
     item("refs", null, " sub", "", "참고문헌", (cur.stats || {}).cited || "") +
     item("all", null, " sub", "", "전체를 한 번에 (인쇄용)", "");
   el.querySelectorAll(".oi").forEach(o => o.onclick = () => gotoView(o.dataset.v, +o.dataset.si));
@@ -339,12 +342,38 @@ function renderMain() {
 }
 // 장 목록 — 블로그 글 고르듯 (제목 · 날짜 · 편수·문장·그림·표 · 주제). 누르면 그 장의 개요로
 function indexHtml() {
+  const chats = allChats();
   return "<div class='page ix'><div class='ixh'><h1>공부</h1><span class='hint'>" + items.length + "장 · 새 장은 왼쪽 「새 장 쓰기」</span></div>" +
+    (chats.length ? "<div class='ixq noprint'><input id='ixFind' placeholder='Claude 에게 물은 것 찾기 — 모든 장의 대화 " + chats.length + "개에서, 물음·고른 대목·절 이름의 낱말로' autocomplete='off'></div><div id='ixChats'>" + ixChatsHtml(chats, ixQuery) + "</div>" : "") +
     (items.length ? items.map(x => { const s = x.stats || {}; return "<article class='ixi' data-id='" + esc(x.id) + "'><h2>" + esc(x.title || x.topic) + "</h2>" +
-      "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") + (s.comments ? " · Claude 의 생각" : "") : " · " + stateText(x)) + "</div>" +
+      "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") + (s.comments ? " · Claude 의 생각" : "") + ((x.chats || []).length ? " · 대화 " + x.chats.length : "") : " · " + stateText(x)) + "</div>" +
       (x.topic && x.topic !== x.title ? "<div class='ixt'>주제: " + esc(x.topic) + "</div>" : "") + "</article>"; }).join("") : "<div class='hint'>아직 쓴 장이 없습니다. 왼쪽에서 주제를 적고 「쓰기 시작」.</div>") + "</div>";
 }
-function bindIndex() { $("main").querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id)); }
+function bindIndex() {
+  const m = $("main");
+  m.querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id));
+  const rows = () => m.querySelectorAll(".ixc").forEach(a => a.onclick = () => openStudyChat(a.dataset.sid, a.dataset.cid));
+  rows();
+  const f = $("ixFind"); if (f) f.oninput = () => { ixQuery = f.value; $("ixChats").innerHTML = ixChatsHtml(allChats(), ixQuery); rows(); };
+}
+/* 대화 찾기 (사용자 2026-10-09: '기존에 했던 대화 찾기가 너무 빡세다') — 장 목록에서 모든 장의 대화를 낱말로 찾고, 누르면 그 장의 그 대목으로 가서 대화를 편다 */
+let ixQuery = "", cvQuery = "";
+const allChats = () => items.flatMap(x => (x.chats || []).map(c => Object.assign({ sid: x.id, stitle: x.title || x.topic }, c))).sort((a, b) => (b.t || 0) - (a.t || 0));
+const words = q => (q || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+function ixChatsHtml(all, q) {
+  const w = words(q);
+  const hit = w.length ? all.filter(c => { const t = ((c.q || "") + " " + (c.quote || "") + " " + (c.sec || "") + " " + c.stitle).toLowerCase(); return w.every(x => t.includes(x)); }) : all.slice(0, 6);
+  if (!hit.length) return "<div class='hint'>맞는 대화가 없습니다.</div>";
+  return "<div class='hint'>" + (w.length ? "맞는 대화 " + hit.length + "개" : "최근에 물은 것 " + hit.length + "개 — 위 칸에 낱말을 적으면 모든 장에서 찾습니다") + "</div>" +
+    hit.map(c => "<div class='ixc' data-sid='" + esc(c.sid) + "' data-cid='" + esc(c.id) + "'><div class='q'>" + esc(c.q || "(물음 없음)") + "</div><div class='m'>" + esc(c.stitle) + (c.sec ? " · " + esc(c.sec) : "") + " · " + fmtDate(c.t) +
+      (c.pending ? " · <span style='color:var(--accent)'>Claude 생각 중</span>" : " · 답 " + (c.n || 0)) + (c.quote ? " · 「" + esc(c.quote.slice(0, 60)) + (c.quote.length > 60 ? "…" : "") + "」" : "") + "</div></div>").join("");
+}
+async function openStudyChat(sid, cid) {
+  if (!cur || cur.id !== sid) await openStudy(sid);
+  const c = ((cur || {}).chats || []).find(x => x.id === cid); if (!c) return;
+  if ((c.keys || []).length) { try { gotoUnit(c.keys[0]); } catch (e) {} }
+  openChat(cid);
+}
 function emptyHtml() {
   return "<div class='empty'><h2>내 서재로 공부하기</h2>" +
     "<p>왼쪽에 주제를 적으면, 서재에 있는 논문을 읽어 전공책의 한 장처럼 정리합니다.</p>" +
@@ -518,15 +547,24 @@ function cmtBtnHtml() {
 function chatsViewHtml() {
   const list = (cur.chats || []).slice().reverse();
   if (!list.length) return "<div class='hint'>아직 Claude 에게 물은 것이 없습니다. 본문을 드래그하면 물을 수 있습니다.</div>";
-  return "<div class='aim'>이 장에서 Claude 에게 물은 대화 " + list.length + "개, 최근 것부터. 「대화 열기」 는 오른쪽 칸에서 이어 묻고, 「본문으로」 는 고른 대목으로 갑니다.</div>" + list.map(c => {
-    const q = (c.thread || []).find(m => m.role === "user"), a = (c.thread || []).filter(m => m.role === "claude").slice(-1)[0];
-    return "<div class='cv'><div class='cvq'>「" + esc(c.quote.slice(0, 160)) + (c.quote.length > 160 ? "…" : "") + "」<span class='hint'> · " + esc(c.sec || "") + " · " + fmtDate(c.t) + "</span></div>" +
-      "<div class='cvu'><b>물음</b>" + esc(q ? q.text : "") + "</div>" + (a ? "<div class='cva'><b>답</b>" + esc(a.text.slice(0, 700)) + (a.text.length > 700 ? " …" : "") + "</div>" : c.pending ? "<div class='hint'>Claude 생각 중</div>" : "") +
+  return "<div class='aim'>이 장에서 Claude 에게 물은 대화 " + list.length + "개, 최근 것부터. 「대화 열기」 는 오른쪽 칸에서 이어 묻고, 「본문으로」 는 고른 대목으로 갑니다. 다른 장의 대화는 「장 목록」 의 찾기 칸에서.</div>" +
+    "<div class='cvf noprint'><input id='cvFind' placeholder='이 장의 대화에서 찾기 — 물음·답·고른 대목의 낱말로' autocomplete='off'></div><div id='cvList'>" + chatsListHtml(list, cvQuery) + "</div>";
+}
+function chatsListHtml(list, q) {
+  const w = words(q);
+  const hit = w.length ? list.filter(c => { const t = ((c.thread || []).map(m => m.text || "").join(" ") + " " + (c.quote || "") + " " + (c.sec || "")).toLowerCase(); return w.every(x => t.includes(x)); }) : list;
+  if (!hit.length) return "<div class='hint'>맞는 대화가 없습니다.</div>";
+  return hit.map(c => {
+    const qs = (c.thread || []).filter(m => m.role === "user"), a = (c.thread || []).filter(m => m.role === "claude").slice(-1)[0];
+    return "<div class='cv'><div class='cvq'>「" + esc(c.quote.slice(0, 160)) + (c.quote.length > 160 ? "…" : "") + "」<span class='hint'> · " + esc(c.sec || "") + " · " + fmtDate(c.t) + (qs.length > 1 ? " · 물음 " + qs.length + "개" : "") + "</span></div>" +
+      qs.map(m => "<div class='cvu'><b>물음</b>" + esc(m.text || "") + "</div>").join("") + (a ? "<div class='cva'><b>답</b>" + esc(a.text.slice(0, 700)) + (a.text.length > 700 ? " …" : "") + "</div>" : c.pending ? "<div class='hint'>Claude 생각 중</div>" : "") +
       "<div class='noprint' style='margin-top:4px'><button class='act' onclick=\"openChat('" + esc(c.id) + "')\">대화 열기 · 이어 묻기</button>" + ((c.keys || []).length ? "<button class='act' onclick=\"gotoUnit('" + esc(c.keys[0]) + "')\">본문으로</button>" : "") + "</div></div>"; }).join("");
 }
 function bindChapter() {
   const cb = $("cmtBtn"); if (cb) cb.onclick = async () => { const n = bodySecs().filter(x => x.sec.comment).length; if (n && !confirm("지금 있는 Claude 의 생각을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "comment", id: cur.id, force: !!n, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); };
   const m = $("main");
+  const cf = $("cvFind"); if (cf) { cf.value = cvQuery; cf.oninput = () => { cvQuery = cf.value; $("cvList").innerHTML = chatsListHtml((cur.chats || []).slice().reverse(), cvQuery); }; }
+  bindReaderLinks(m);
   m.querySelectorAll(".u").forEach(el => el.onclick = () => { const sl = document.getSelection(); if (sl && !sl.isCollapsed && String(sl).trim().length >= 2) return; selectUnit(el.dataset.u); });
   m.querySelectorAll("[data-v]").forEach(el => el.onclick = e => { e.preventDefault(); gotoView(el.dataset.v, +(el.dataset.si || -1)); });
   m.querySelectorAll("[data-paper]").forEach(el => el.onclick = e => { e.preventDefault(); openPaper(+el.dataset.paper); });
@@ -708,7 +746,7 @@ function askPanel() {
   let h = "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span></div><div class='spq'>" + esc(ctx.quote) + "</div>" +
     "<details class='evd'" + (chat ? "" : " open") + "><summary>이 대목의 근거 원문 " + src.length + "개 — Claude 에게 같이 갑니다</summary>" + (src.length ? srcItemsHtml(src) : "<div class='hint'>근거 표시가 없는 이음 문장입니다.</div>") + "</details>";
   if (chat) h += (chat.thread || []).map(msgHtml).join("");
-  if (chat && chat.pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 대화에 남습니다.</div>";
+  if (chat && chat.pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 대화에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div>";
   if (chat && chat.error) h += "<div class='warnbox'>" + esc(chat.error) + " — 아래에서 다시 물으세요.</div>";
   if (!(chat && chat.pending)) {
     const eff = lsGet("study_ask_effort", "xhigh"), lib = lsGet("study_ask_lib", "0") === "1";
@@ -729,6 +767,15 @@ function bindAsk() {
   }
   const g = $("askGo"); if (g) g.onclick = askSend;
   const c = $("askClose"); if (c) c.onclick = () => { panel = selKey ? "unit" : "info"; askCtx = null; askOpen = null; renderPanel(); };
+  const cc = $("askCancel"); if (cc) cc.onclick = async () => {   /* 취소 (사용자 2026-10-09: '잘못 물어도 끝까지 기다려야 한다') — 서버가 호출을 끊고 그 물음을 빼면, 물음은 입력 칸에 되돌린다 */
+    const ch = (cur.chats || []).find(x => x.id === askOpen); if (!ch) return;
+    cc.disabled = true; cc.textContent = "끊는 중…";
+    const r = await api("/api/study", { op: "cancel", id: cur.id, chat: askOpen }); if (r.error) { alert(r.error); cc.disabled = false; cc.textContent = "이 물음 취소"; return; }
+    const lastQ = ((ch.thread || []).filter(m => m.role === "user").slice(-1)[0] || {}).text || "";
+    for (let i = 0; i < 24; i++) { await new Promise(res => setTimeout(res, 500)); await pollChats(); const c2 = (cur.chats || []).find(x => x.id === askOpen); if (!c2 || !c2.pending) break; }
+    if (!(cur.chats || []).some(x => x.id === askOpen)) { askCtx = { quote: ch.quote, keys: ch.keys || [], sec: ch.sec }; askOpen = null; }   /* 첫 물음이었으면 대화가 없어진다 — 고른 대목은 그대로 두고 */
+    askDraft = lastQ; renderPanel(); const t = $("askIn"); if (t) t.focus();
+  };
   const d = $("askDel"); if (d) d.onclick = async () => { if (!confirm("이 대화를 지울까요?")) return; const r = await api("/api/study", { op: "chat_delete", id: cur.id, chat: askOpen }); if (r.error) { alert(r.error); return; } cur.chats = (cur.chats || []).filter(x => x.id !== askOpen); askOpen = null; askCtx = null; panel = "info"; markAsked(); renderPanel(); };
   const chat = askOpen ? (cur.chats || []).find(c => c.id === askOpen) : null;
   clearInterval(askTick);
@@ -764,7 +811,11 @@ function renderPanel() {
   bindChatLinks(el);
   const rb = $("rmBtn"); if (rb) rb.onclick = () => { panel = panel === "removed" ? "info" : "removed"; renderPanel(); };
 }
+function bindReaderLinks(el) {   /* 읽기 창으로 가는 링크 — 이미 열린 읽기 창은 앞으로 (target 링크만으로는 뒤에 숨은 채 바뀐다; 사용자 2026-10-09 '논문 원문으로 안 가짐') */
+  el.querySelectorAll("a[target='athenaeum_reader']").forEach(a => a.onclick = ev => { ev.preventDefault(); const w = window.open(a.href, "athenaeum_reader"); if (w) { try { w.focus(); } catch (e) {} } });
+}
 function bindChatLinks(el) {
+  bindReaderLinks(el);
   el.querySelectorAll("[data-chat]").forEach(a => a.onclick = ev => { ev.preventDefault(); openChat(a.dataset.chat); });
   el.querySelectorAll("[data-paper]").forEach(a => a.onclick = ev => { ev.preventDefault(); openPaper(+a.dataset.paper); });
   el.querySelectorAll("[data-unit]").forEach(a => a.onclick = ev => { ev.preventDefault(); gotoUnit(a.dataset.unit); });
@@ -876,7 +927,8 @@ $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey
   sp.ondblclick = () => { document.documentElement.style.removeProperty("--srcp-w"); lsSet("study_srcp_w", "0"); };
 })();
 (async () => { await loadList(); if (curId && !items.some(x => x.id === curId)) curId = ""; if (!curId && items.length) curId = items[0].id; newboxSet(lsGet("study_new_open", items.length ? "0" : "1") === "1"); if (URLP.get("topic")) { $("topic").value = URLP.get("topic"); newboxSet(true); }   /* 연구 노트의 「이 주제로 공부」 — 한 줄 주석(//)을 쓰면 이 줄 뒤의 refresh(true) 가 지워진다(2026-10-08 저녁에 그렇게 돼 장이 비어 보였다) */ await refresh(true); renderList(); if (!URLP.get("id")) gotoView("index");
-  if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); } })();
+  if (URLP.get("view") && cur && cur.status === "done") { gotoView(URLP.get("view"), +(URLP.get("si") || -1)); if (URLP.get("u")) selectUnit(URLP.get("u"), true); }
+  if (URLP.get("chat") && cur && cur.status === "done") openStudyChat(cur.id, URLP.get("chat")); })();
 setInterval(() => { if (!cur || cur.status !== "running") loadList(); }, 30000);
 </script>
 </body>

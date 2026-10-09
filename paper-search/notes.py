@@ -404,6 +404,27 @@ def ask(nid, body):
     return {"ok": True, "note": nt}
 
 
+def _ask_jobkey(nid, nt):
+    """돌고 있는 claude 호출의 이름 — 물음마다 다르게(pending 시각)."""
+    return "notes:%s:%d" % (nid, int(nt.get("pending") or 0))
+
+
+def ask_cancel(nid):
+    """답을 기다리는 물음을 취소 — 돌고 있는 claude 를 끊고, _ask_job 의 마무리가 그 물음을 뺀다 (사용자 2026-10-09)"""
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return {"error": "주제를 찾지 못했습니다"}
+        if not nt.get("pending"):
+            return {"error": "이미 답이 왔습니다"}
+        job = _ask_jobkey(nid, nt)
+    cancel = cfg.get("claude_cancel")
+    if not cancel:
+        return {"error": "이 서버는 취소를 지원하지 않습니다"}
+    cancel(job)
+    return {"ok": True}
+
+
 def _ask_job(nid):
     nt = _load(nid)
     if not nt or not nt.get("thread"):
@@ -412,14 +433,15 @@ def _ask_job(nid):
     model, eff = _EFFORT.get((nt.get("opts") or {}).get("effort"), _EFFORT["xhigh"])
     lib = bool((nt.get("opts") or {}).get("lib"))
     t0 = time.time()
-    res, err = None, ""
+    res, err, cancelled = None, "", False
     try:
         others = [o for o in list_notes() if o["id"] != nid]
         system, _st = _background()
         run = cfg.get("claude_run")
         res = run(_prompt(nt, question, lib, others), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
-                  add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system) if run else None
-        if not res or not (res.get("text") or "").strip():
+                  add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt)) if run else None
+        cancelled = bool((res or {}).get("cancelled"))
+        if not cancelled and (not res or not (res.get("text") or "").strip()):
             err = "Claude 응답이 없습니다" + _why()
     except Exception as e:
         err = "Claude 호출 실패: " + str(e)[:200]
@@ -428,6 +450,13 @@ def _ask_job(nid):
         if not nt:
             return
         nt.pop("pending", None)
+        if cancelled:   # 「취소」 — 그 물음을 대화에서 뺀다 (오류로 적지 않는다)
+            th = nt.get("thread") or []
+            if th and th[-1].get("role") == "user":
+                th.pop()
+            nt.pop("error", None)
+            _save(nt)
+            return
         if err:
             nt["error"] = err
         else:
@@ -567,6 +596,8 @@ def handle_post(h, body):
             return h._send(200, new_note(body))
         if op == "ask":
             return h._send(200, ask(nid, body))
+        if op == "cancel":
+            return h._send(200, ask_cancel(nid))
         if op == "card":
             return h._send(200, card_start(nid, body))
         if op == "save":
