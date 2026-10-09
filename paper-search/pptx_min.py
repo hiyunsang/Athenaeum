@@ -170,7 +170,7 @@ def layout_content(s, idx, total, deck_title=""):
     full_w = W_IN - L - R
     panels = [p for p in (s.get("panels") or []) if p]
     tab = next((p for p in panels if p.get("kind") == "table"), None)
-    figs_p = [p for p in panels if p.get("kind") != "table"][:2 if not tab else 1]
+    figs_p = [p for p in panels if p.get("kind") != "table"][:3 if not tab else 2]   # 셋까지 (사용자 2026-10-10: '그림 세 개도 넣고 싶을 때가 있다')
     zone_h = body_bot - body_top
     has_right = bool(figs_p or tab)
     kw_w = 3.9 if has_right else full_w                 # 키워드 열 — 그림·표가 있으면 좁게, 그림이 주인공
@@ -211,11 +211,41 @@ def layout_content(s, idx, total, deck_title=""):
         return [text(x, y, w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"), dict(table(x, y + 0.32, w, sum(rhs), pn.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
 
     gap = 0.25
-    if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에')
+    if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에'); 그림이 둘이면 왼쪽 반에 위아래로
         w2 = (fig_w - gap) / 2
-        bx, _u = _fig_block(figs_p[0], fig_x, body_top, w2, zone_h)
-        boxes += bx
+        if len(figs_p) == 1:
+            boxes += _fig_block(figs_p[0], fig_x, body_top, w2, zone_h)[0]
+        else:
+            h2, py = (zone_h - gap) / 2, body_top
+            for pn in figs_p[:2]:
+                boxes += _fig_block(pn, fig_x, py, w2, h2)[0]
+                py += h2 + gap
         boxes += table_block(tab, fig_x + w2 + gap, body_top, w2, zone_h)
+    elif len(figs_p) >= 3:        # 셋: 가로 셋 / 큰 하나 + 작은 둘(위아래) / 위 둘 + 아래 하나 가운데 그림 면적이 가장 큰 배치
+        def area(pn, w, h):
+            need, ch = _figs_need(pn, w)
+            iw, ih = png_size(pn.get("path") or "")
+            fw, fh = fit(iw, ih, w, max(0.6, h - ch - 0.05))
+            return fw * fh
+        w3, w2, h2 = (fig_w - 2 * gap) / 3, (fig_w - gap) / 2, (zone_h - gap) / 2
+        wb, ws = (fig_w - gap) * 0.58, (fig_w - gap) * 0.42
+        a_row = sum(area(pn, w3, zone_h) for pn in figs_p)
+        a_big = area(figs_p[0], wb, zone_h) + area(figs_p[1], ws, h2) + area(figs_p[2], ws, h2)
+        a_tb = area(figs_p[0], w2, h2) + area(figs_p[1], w2, h2) + area(figs_p[2], fig_w, h2)
+        best = max((a_row, "row"), (a_big, "big"), (a_tb, "tb"))[1]
+        if best == "row":
+            for k2, pn in enumerate(figs_p):
+                boxes += _fig_block(pn, fig_x + k2 * (w3 + gap), body_top, w3, zone_h)[0]
+        elif best == "big":
+            boxes += _fig_block(figs_p[0], fig_x, body_top, wb, zone_h)[0]
+            py = body_top
+            for pn in figs_p[1:3]:
+                boxes += _fig_block(pn, fig_x + wb + gap, py, ws, h2)[0]
+                py += h2 + gap
+        else:
+            boxes += _fig_block(figs_p[0], fig_x, body_top, w2, h2)[0]
+            boxes += _fig_block(figs_p[1], fig_x + w2 + gap, body_top, w2, h2)[0]
+            boxes += _fig_block(figs_p[2], fig_x, body_top + h2 + gap, fig_w, h2)[0]
     elif tab:                     # 표만: 그림 영역 전체 폭
         boxes += table_block(tab, fig_x, body_top, fig_w, zone_h)
     elif len(figs_p) == 1:

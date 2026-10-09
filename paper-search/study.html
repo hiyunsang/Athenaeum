@@ -297,6 +297,7 @@ function renderOutline() {
   const summ = ch.sections.find(x => x.kind === "summary");
   el.innerHTML = "<div class='sideh'>장의 차례 <button class='act' id='olTitle' title='이 장의 개요로'>개요</button></div>" +
     item("overview", null, "", "", "개요", "") +
+    item("basics", null, " fig", "", "바탕 이론 (Claude 의 풀이)", cur.basics ? "" : cur.basics_pending ? "쓰는 중" : "아직 없음") +
     item("map", null, " fig", "", "마인드맵 (그림)", cur.map ? "" : cur.map_pending ? "만드는 중" : "아직 없음") +
     item("deck", null, " fig", "", "발표 자료 (PPT)", (cur.decks || []).length ? cur.decks.length + "개" : cur.deck_pending ? "만드는 중" : "") +
     ((cur.chats || []).length ? item("chats", null, " sub", "", "Claude 에게 물은 것", cur.chats.length) : "") +
@@ -326,14 +327,14 @@ async function refresh(first) {
   if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); renderOutline(); return; }
   const was = cur && cur.id === st.id ? cur.status : "";
   cur = st; got = Date.now();
-  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "") + (st.deck_pending ? "d" + st.deck_pending : "") + ((st.decks || []).length) + (st.deck_error || "");
+  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "") + (st.basics_pending ? "b" : "") + ((st.basics || {}).t || "") + (st.basics_error || "") + (st.deck_pending ? "d" + st.deck_pending : "") + ((st.decks || []).length) + (st.deck_error || "");
   if (first || st.status !== "done" || was !== "done") { renderMain(); renderPanel(); }
   else if (ms !== mapStamp) renderMain();
   if (ms !== mapStamp) { mapStamp = ms; renderOutline(); }
   if (first) { renderOutline(); newboxSet(lsGet("study_new_open", st.status === "done" ? "0" : "1") === "1"); }
   if (was && was !== st.status) loadList();
   clearTimeout(pollT);
-  if (st.status === "running" || st.map_pending || st.comment_pending || st.deck_pending) pollT = setTimeout(refresh, 4000);
+  if (st.status === "running" || st.map_pending || st.comment_pending || st.deck_pending || st.basics_pending) pollT = setTimeout(refresh, 4000);
   if (st.status === "done" && (st.chats || []).some(c => c.pending)) startChatPoll();
 }
 
@@ -485,6 +486,7 @@ function viewHtml() {
   const ch = cur.chapter, k = view.kind;
   if (k === "map") return mapHtml();
   if (k === "deck") return deckHtml();
+  if (k === "basics") return basicsHtml();
   if (k === "all") return "<div class='page ch'>" + crumb("전체를 한 번에") + overviewBody(true) + "</div>";
   if (k === "sec") return "<div class='page ch'>" + sectionHtml(view.si) + "</div>";
   if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
@@ -499,7 +501,8 @@ function overviewBody(all) {
   const chars = ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((q, u) => q + u.t.length, 0), 0), 0);
   let h = "<h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
     "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) + (cur.stylus ? " · " + esc(cur.stylus) + " 로 씀" : "") +
-    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + "<button class='act' id='rwBtn' title='읽은 논문·메모는 그대로 두고 짜기부터 지금 규칙(줄기 먼저 · 리뷰를 뼈대로 · 고르기)으로 다시 씁니다 — 새 장이 생기고 이 장은 남습니다. 40분쯤'>새 규칙으로 다시 쓰기</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
+    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + basicsBtnHtml() + "<button class='act' id='rwBtn' title='읽은 논문·메모는 그대로 두고 짜기부터 지금 규칙(줄기 먼저 · 리뷰를 뼈대로 · 고르기)으로 다시 씁니다 — 새 장이 생기고 이 장은 남습니다. 40분쯤'>새 규칙으로 다시 쓰기</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
+  if (all && cur.basics && (cur.basics.parts || []).length) h += basicsAside(cur.basics);
   if (!all) {
     h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
       "<li data-v='map' data-si='-1'><span class='no'>▦</span><span>마인드맵 — 장을 한 그림으로" + (cur.map ? "" : " <span class='q'>(아직 만들지 않음)</span>") + "</span></li>" +
@@ -551,6 +554,24 @@ function commentHtml(sec) {
   return "<aside class='cmt'><div class='ch2'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude 의 생각<span class='hint'>— 서재의 문장으로 확인한 것이 아니라 Claude 의 풀이입니다</span></div>" +
     c.parts.map(p => "<h4>" + esc(p.h) + "</h4><p>" + citeLinks(p.t) + "</p>").join("") + "</aside>";
 }
+// 바탕 이론 — 초보가 장을 읽기 전에 필요한 교과서 지식을 Claude 가 쓴다(서재로 확인한 것이 아님, 앰버로 갈라 표시). 사용자 2026-10-10: '전위의 기초도 많이 담고 있어야 할 거 아냐, 내가 초짜라서'
+function basicsAside(b) {
+  return "<aside class='cmt basics'><div class='ch2'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>바탕 이론 — Claude 의 풀이<span class='hint'>— 서재의 문장으로 확인한 것이 아니라 교과서 지식입니다" + (b.t ? " · " + fmtDate(b.t) : "") + (b.model ? " · " + esc(b.model) : "") + "</span></div>" +
+    b.parts.map(p => "<h4>" + esc(p.h) + "</h4>" + p.t.split(/\n+/).filter(x => x.trim()).map(x => "<p>" + esc(x) + "</p>").join("")).join("") + "</aside>";
+}
+function basicsHtml() {
+  const b = cur.basics;
+  let h = crumb("바탕 이론") + "<h2 class='first'>바탕 이론</h2><div class='aim'>이 장을 읽는 데 필요한 기초(이 장이 설명 없이 쓰는 개념)를 교과서처럼 적은 것입니다. 서재의 논문이 말하지 않은 것이라 Claude 의 풀이로 갈라 둡니다 — 본문과 달리 원문 대조를 거치지 않았으니, 꼭 확인할 것은 교과서로 되짚어 보세요.</div>";
+  if (cur.basics_pending) h += "<aside class='cmt pending noprint'><div class='ch2'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>바탕 이론을 쓰는 중… (5분쯤)</div></aside>";
+  else if (b && (b.parts || []).length) h += basicsAside(b);
+  else h += "<div class='hint'>아직 쓰지 않았습니다.</div>";
+  return "<div class='page ch'>" + h + "<div class='noprint' style='margin-top:var(--s3)'>" + basicsBtnHtml() + "</div></div>";
+}
+function basicsBtnHtml() {
+  if (cur.basics_pending) return "<span class='hint'>바탕 이론을 쓰는 중…</span>";
+  return "<button class='act basicsBtn' title='이 장이 설명 없이 쓰는 개념(격자·전위·미끄럼계 같은 기초)을 Claude 가 교과서처럼 씁니다 — 서재로 확인한 것이 아니라 따로 표시됩니다. Opus 한 번, 5분쯤'>" + (cur.basics ? "바탕 이론 다시 쓰기" : "바탕 이론 쓰기 (초보용)") + "</button>" +
+    (cur.basics_error ? "<span class='hint' style='color:var(--amber)'>" + esc(cur.basics_error) + "</span>" : "");
+}
 function cmtBtnHtml() {
   const n = bodySecs().filter(x => x.sec.comment && (x.sec.comment.parts || []).length).length;
   if (cur.comment_pending) return "<span class='hint'>Claude 의 생각을 쓰는 중…</span>";
@@ -575,6 +596,7 @@ function chatsListHtml(list, q) {
       "<div class='noprint' style='margin-top:4px'><button class='act' onclick=\"openChat('" + esc(c.id) + "')\">대화 열기 · 이어 묻기</button>" + ((c.keys || []).length ? "<button class='act' onclick=\"gotoUnit('" + esc(c.keys[0]) + "')\">본문으로</button>" : "") + "</div></div>"; }).join("");
 }
 function bindChapter() {
+  document.querySelectorAll(".basicsBtn").forEach(bb => bb.onclick = async () => { if (cur.basics && !confirm("지금 있는 바탕 이론을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "basics", id: cur.id, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); });
   const cb = $("cmtBtn"); if (cb) cb.onclick = async () => { const n = bodySecs().filter(x => x.sec.comment).length; if (n && !confirm("지금 있는 Claude 의 생각을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "comment", id: cur.id, force: !!n, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); };
   const m = $("main");
   const cf = $("cvFind"); if (cf) { cf.value = cvQuery; cf.oninput = () => { cvQuery = cf.value; $("cvList").innerHTML = chatsListHtml((cur.chats || []).slice().reverse(), cvQuery); }; }
@@ -622,7 +644,7 @@ let deckTick = null, deckDraft = "";
 function deckHtml() {
   const decks = (cur.decks || []).slice().reverse();
   let h = "<div class='page ch'>" + crumb("발표 자료") + "<h2 class='first'>발표 자료 (PPT) — " + esc(cur.chapter.title) + "</h2>" +
-    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 그림이 주인공입니다: 쪽마다 장이 인용한 논문의 그림 둘(장에 실린 그림 + 그 논문들의 그림 색인에서 양질의 것 — 색인이 없는 논문은 먼저 만듭니다, 편당 45초쯤)과 그 아래 '무슨 그림인지' 한 줄·참고문헌, 왼쪽에는 키워드 4~6개와 핵심 수치, 아래에 출처(저널·이름·연도). 설명은 발표자 메모에 담깁니다(참고문헌 전체 포함). 키워드마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 수치는 근거 문장과 대조해 어긋나면 뺍니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 미리보기 그림은 어림이라 PowerPoint 와 줄바꿈이 조금 다를 수 있습니다.</div>";
+    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 그림이 주인공입니다: 쪽마다 장이 인용한 논문의 그림 둘(주문에 '그림 셋' 이라 적으면 셋; 장에 실린 그림 + 그 논문들의 그림 색인에서 양질의 것 — 색인이 없는 논문은 먼저 만듭니다, 편당 45초쯤)과 그 아래 '무슨 그림인지' 한 줄·참고문헌, 왼쪽에는 키워드 4~6개, 아래에 출처(저널·이름·연도). 설명은 발표자 메모에 담깁니다(참고문헌 전체 포함). 키워드마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 수치는 근거 문장과 대조해 어긋나면 뺍니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 미리보기 그림은 어림이라 PowerPoint 와 줄바꿈이 조금 다를 수 있습니다.</div>";
   if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>색인이 없는 논문의 그림을 먼저 읽고(편당 45초쯤, 처음 한 번), 장 전체를 읽어 쪽마다 재료를 고릅니다(2~6분). 창을 닫아도 계속 만듭니다.</div>";
   else {
     const eff = lsGet("study_ask_effort", "xhigh");
