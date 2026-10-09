@@ -52,6 +52,7 @@ function renderResultMap(m, host, opts) {
   const legend = document.createElement("div"); legend.className = "maplegend"; legend.style.left = (LIST_W ? LIST_W + 8 : 8) + "px";
   legend.innerHTML = "<span class='yr' id='yrLegend'><i class='grad'></i>옅음 = 오래됨 · 진함 = 최근</span>" +
     (nodes.some(n => n.owned) ? "<span class='lo' title='내 서재에 있는 논문 — 과녁 테두리'><i></i>보유 (" + nodes.filter(n => n.owned).length + ")</span>" : "") +
+    (nodes.some(n => n.review) ? "<span class='lrv' title='리뷰·서베이 논문 — 원 바깥의 점선 테. 올리면 리뷰만 또렷이, 누르면 고정'><i></i>리뷰 (" + nodes.filter(n => n.review).length + ")</span>" : "") +
     m.groups.map((g, gi) => "<span class='lg' data-g='" + gi + "' title='마우스를 올리면 이 소주제만 강조, 누르면 고정'><i style='background:" + gcolor(gi) + "'></i>" + mapEscH(g) + " (" + nodes.filter(n => n.g === gi).length + ")</span>").join("");
   // 저널별 편수(색 없이) — 누르면 그 저널만 보이게 (사용자 2026-10-07: '왼쪽 위에 저널들도 몇 개인지, 누르면 그 저널들만 뜨게'). ★ = 우선 저널(설정)
   let venueF = (opts.venueFilter && opts.venueFilter()) || null;
@@ -146,7 +147,8 @@ function renderResultMap(m, host, opts) {
   const hullAlpha = dark ? 0.10 : 0.07;         // 군집 바탕은 아주 연하게
   const off = document.createElement("canvas"); off.width = cv.width; off.height = cv.height; const octx = off.getContext("2d");
   const rowOf = new Map();   // 노드 → 왼쪽 목록 줄
-  let hovered = null, selected = null, focusG = null, focusPinned = false;   // selected = 눌러서 오른쪽 패널에 띄운 논문. focusG = 범례에서 고른 소주제 (그 군집만 껍질·이름·선을 또렷이)
+  let hovered = null, selected = null, focusG = null, focusPinned = false;
+  let revF = false, revPinned = false;   // 범례의 「리뷰」 줄에 올리거나 눌렀을 때 — 리뷰 논문만 또렷이   // selected = 눌러서 오른쪽 패널에 띄운 논문. focusG = 범례에서 고른 소주제 (그 군집만 껍질·이름·선을 또렷이)
   // 색 모드: 연도(한 색, 최근일수록 진하게) 또는 소주제. 기억됨
   let colorMode = opts.colorMode || "group";
   if (opts.fixedColor) colorMode = opts.fixedColor; else { try { colorMode = localStorage.getItem(KEY + "color") || colorMode; } catch (e) {} }
@@ -192,7 +194,7 @@ function renderResultMap(m, host, opts) {
   if (host._pinnedG != null && host._pinnedG < G) { focusG = host._pinnedG; focusPinned = true; }   // 폭이 바뀌어 다시 그린 경우
   const top = nodes.slice().sort((a, b) => b.cit - a.cit).slice(0, narrow ? 6 : 12);
   const ownedTop = nodes.filter(n => n.owned).sort((a, b) => b.cit - a.cit).slice(0, narrow ? 4 : 8);
-  const inFocus = (n) => (focusG === null || n.g === focusG) && (venueF === null || n.venue === venueF) && (labF === null || n.lab === labF);
+  const inFocus = (n) => (focusG === null || n.g === focusG) && (venueF === null || n.venue === venueF) && (labF === null || n.lab === labF) && (!revF || n.review);
   // 군집 껍질: 볼록 껍질을 굵고 둥근 선으로 그려 부드러운 덩어리 (1편이면 원, 2편이면 캡슐). 오프스크린에 불투명하게 그린 뒤 한 번에 반투명 합성 → 겹침 띠 없음.
   // 관계대로 놓으면 껍질끼리 겹쳐 보이는데 그게 "소주제가 섞이는 자리"
   function hull(pts) {
@@ -304,7 +306,11 @@ function renderResultMap(m, host, opts) {
         ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7);
       }
       if (lift) { ctx.lineWidth = lw * 2.5; ctx.strokeStyle = accent; ctx.stroke(); }                                        // 파란 굵은 테두리 = 올리거나 누른 논문
-      else if (n.review && !n.owned) { ctx.setLineDash([3 * lw, 3 * lw]); ctx.lineWidth = lw * 1.2; ctx.strokeStyle = bg; ctx.stroke(); ctx.setLineDash([]); }   // 바탕색 점선 = Review. 그 밖엔 테두리 없음
+      if (n.review) {   // 리뷰 = 원 바깥의 점선 테 (어떤 색·보유 과녁 위에서도 보이되 크지 않게 — 사용자 2026-10-09: '크게는 아니더라도 조금은'). 전에는 바탕색 점선을 테두리에 그려 안 보였다
+        const ga = ctx.globalAlpha; ctx.globalAlpha = ga * 0.8;
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + lw * 2.8, 0, 7); ctx.setLineDash([lw * 1.6, lw * 2.2]); ctx.lineWidth = lw * 1.3; ctx.strokeStyle = textCol; ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = ga;
+      }
       ctx.globalAlpha = 1;
     }
     drawNodeLabels();
@@ -433,6 +439,12 @@ function renderResultMap(m, host, opts) {
       legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", focusPinned && +x.dataset.g === focusG)); draw(); };
   });
   if (focusPinned) legend.querySelectorAll(".lg").forEach(x => x.classList.toggle("on", +x.dataset.g === focusG));
+  const lrv = legend.querySelector(".lrv");
+  if (lrv) {
+    lrv.onmouseenter = () => { if (!revPinned) { revF = true; draw(); } };
+    lrv.onmouseleave = () => { if (!revPinned) { revF = false; draw(); } };
+    lrv.onclick = () => { revPinned = !revPinned; revF = revPinned; lrv.classList.toggle("on", revPinned); draw(); };
+  }
   // 저널로 거르기: 범례의 저널을 누르면 그 저널만(다시 누르면 해제). 왼쪽 목록도 같이 거르고, 부르는 쪽(탐색의 목록)에 알린다
   const setVenue = (v, tell) => {
     venueF = v || null;
