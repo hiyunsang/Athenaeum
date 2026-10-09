@@ -1,18 +1,22 @@
 # -*- coding: utf-8 -*-
 """pptx_min — 표준 라이브러리만으로 .pptx 를 쓴다 (python-pptx 없이; 포터블판에 의존성을 더하지 않으려고).
-공부의 「발표 자료」 가 쓴다: 제목 슬라이드 · 내용 슬라이드(제목 + 글머리표 + 오른쪽 그림 + 출처 줄) · 참고문헌 슬라이드, 발표자 메모(notes).
-16:9. 글꼴은 맑은 고딕(설치된 PC 에서 그 글꼴로 보인다 — 파일에는 이름만 든다).
+공부의 「발표 자료」 가 쓴다. 16:9, 맑은 고딕(설치된 PC 에서 그 글꼴로 보인다 — 파일에는 이름만 든다).
 
-build(path, deck)  deck = {title, subtitle, slides: [{h, bullets: [str], fig: {path, caption} | None, foot: str, note: str}], refs: [str], footer: str}
+쪽의 짜임은 '상자' 목록(layout_*)으로 먼저 세우고, 같은 상자를 ① .pptx 의 도형으로 ② 미리보기 PNG(PyMuPDF, 있으면)로 그린다 — 화면의 쪽 미리보기와 파일이 같은 자리를 쓴다.
+
+build(path, deck, preview_dir=None) → {slides, pics, previews}
+deck = {title, subtitle, footer, title_note, deck_title,
+        slides: [{h, msg, bullets: [{t, sub: [str]}], stats: [{v, label}], panels: [{kind: fig, path, caption} | {kind: table, cap, cols, rows}], foot, note}],
+        refs: [str], skip_refs: bool}
 """
-import io, os, re, struct, zipfile, time
+import os, struct, zipfile, time
 
-EMU = 914400                                   # 1 inch
-W, H = 12192000, 6858000                       # 16:9 (13.333 × 7.5 in)
+EMU = 914400
+W_IN, H_IN = 13.333, 7.5
+W, H = 12192000, 6858000
 FONT = "Malgun Gothic"
-ACCENT = "1F5FBF"                              # 파랑 하나 (ui.css 의 강조색에 가깝게)
-GRAY = "6B6B6B"
-TEXT = "1A1A1A"
+ACCENT, ACCENT_SOFT, ACCENT_DARK = "1F5FBF", "EEF3FB", "1A2B4A"
+GRAY, GRAY2, TEXT, LINE, HEAD_FILL, STAT_FILL = "6B6B6B", "9A9A9A", "1A1A1A", "D9DEE7", "E9EEF6", "F5F7FA"
 NS_P = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
 
 
@@ -20,15 +24,19 @@ def esc(t):
     return str(t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
+def inch(x):
+    return int(round(x * EMU))
+
+
 def png_size(path):
-    """PNG 의 가로·세로 (IHDR). 못 읽으면 (4, 3)."""
+    """PNG·JPEG 의 가로·세로. 못 읽으면 (4, 3)."""
     try:
         with open(path, "rb") as f:
             head = f.read(24)
         if head[:8] == b"\x89PNG\r\n\x1a\n":
             w, h = struct.unpack(">II", head[16:24])
             return max(1, w), max(1, h)
-        if head[:2] == b"\xff\xd8":   # JPEG: SOF 를 찾는다
+        if head[:2] == b"\xff\xd8":
             with open(path, "rb") as f:
                 data = f.read()
             i = 2
@@ -40,79 +48,279 @@ def png_size(path):
                 if m in (0xC0, 0xC1, 0xC2):
                     h, w = struct.unpack(">HH", data[i + 5:i + 9])
                     return max(1, w), max(1, h)
-                seg = struct.unpack(">H", data[i + 2:i + 4])[0]
-                i += 2 + seg
+                i += 2 + struct.unpack(">H", data[i + 2:i + 4])[0]
     except Exception:
         pass
     return 4, 3
 
 
-def inch(x):
-    return int(round(x * EMU))
+def fit(iw, ih, bw, bh):
+    r = min(bw / float(iw), bh / float(ih))
+    return iw * r, ih * r
 
 
-# ---------- 조각 ----------
-def _rpr(sz, bold=False, color=TEXT, italic=False):
+# ---------- 상자(layout) ----------
+def P(t, sz, b=False, color=TEXT, lvl=None, align="l", after=0, line=1.1, i=False):
+    return {"t": str(t or ""), "sz": sz, "b": b, "color": color, "lvl": lvl, "align": align, "after": after, "line": line, "i": i}
+
+
+def text(x, y, w, h, paras, anchor="t", fill=None):
+    return {"kind": "text", "x": x, "y": y, "w": w, "h": h, "paras": paras, "anchor": anchor, "fill": fill}
+
+
+def rect(x, y, w, h, fill):
+    return {"kind": "rect", "x": x, "y": y, "w": w, "h": h, "fill": fill}
+
+
+def pic(x, y, w, h, path):
+    return {"kind": "pic", "x": x, "y": y, "w": w, "h": h, "path": path}
+
+
+def table(x, y, w, h, cols, rows, sz=9):
+    return {"kind": "table", "x": x, "y": y, "w": w, "h": h, "cols": cols, "rows": rows, "sz": sz}
+
+
+def _lines(t, per):
+    return max(1, -(-len(t) // max(8, int(per))))
+
+
+def _para_h(p, width_in):
+    """문단 높이(in) — 한글 한 자 폭 ≈ 0.98 × 글자 크기"""
+    per = max(8, int(width_in * 72 / (p["sz"] * 0.98)))
+    return _lines(p["t"], per) * p["sz"] * p["line"] * 1.2 / 72.0 + p["after"] / 72.0
+
+
+def _fit_bullets(bullets, width_in, avail):
+    """글머리표 문단들을 avail 높이에 들어가는 가장 큰 글꼴로. 11pt 로도 넘치면 세부(sub)를 뒤 글머리표부터 하나씩 덜어 낸다 (수치 상자 뒤로 글이 숨지 않게)"""
+    bl = [{"t": b["t"], "sub": list(b.get("sub") or [])} for b in bullets]
+    while True:
+        paras, h = [], 0
+        for sz in (16, 15, 14, 13, 12, 11):
+            paras = []
+            for b in bl:
+                paras.append(P(b["t"], sz, lvl=0, after=5, line=1.12))
+                for x in b["sub"]:
+                    paras.append(P(x, max(9.5, sz - 3.5), lvl=1, color=GRAY, after=3, line=1.1))
+            h = sum(_para_h(p, width_in - 0.3 * (p["lvl"] + 1)) for p in paras)
+            if h <= avail:
+                return paras, h
+        cand = [b for b in bl if b["sub"]]
+        if not cand:
+            return paras, h
+        cand[-1]["sub"].pop()
+
+
+def _row_heights(cols, rows, width_in, sz):
+    """표 행마다의 높이(in) — 가장 긴 칸의 줄 수로"""
+    ws = col_widths(cols, rows, width_in)
+    out = []
+    for row in [cols] + list(rows):
+        lines = 1
+        for ci, w in enumerate(ws):
+            t = str(row[ci]) if ci < len(row) else ""
+            lines = max(lines, _lines(t, max(4, int((w - 0.12) * 72 / (sz * 1.08)))))   # 굵은 글꼴·한글은 넓다 — 보수적으로
+        out.append(lines * sz * 1.25 / 72.0 + 0.09)
+    return out
+
+
+def _cap_h(cap, width_in):
+    return 0.12 + 0.165 * _lines(cap, int(width_in * 72 / (9.5 * 0.95)))
+
+
+def layout_title(deck):
+    T, sub, footer = str(deck.get("title") or "발표 자료"), str(deck.get("subtitle") or ""), str(deck.get("footer") or "")
+    boxes = [rect(0, 0, 0.35, H_IN, ACCENT),
+             text(1.0, 2.3, W_IN - 2.0, 1.9, [P(T, 36, True, line=1.1)], anchor="b"),
+             text(1.0, 4.35, W_IN - 2.0, 1.2, [P(s, 16, color=GRAY, after=4) for s in sub.split("\n") if s.strip()], anchor="t")]
+    if footer:
+        boxes.append(text(1.0, H_IN - 0.7, W_IN - 2.0, 0.4, [P(footer, 10, color=GRAY)], anchor="b"))
+    return boxes
+
+
+def layout_content(s, idx, total, deck_title=""):
+    L, R = 0.6, 0.6
+    boxes = []
+    if deck_title:
+        boxes.append(text(W_IN - R - 6.0, 0.16, 6.0, 0.3, [P(deck_title, 9, color=GRAY2, align="r")]))
+    boxes.append(text(L, 0.5, W_IN - L - R, 0.85, [P(s.get("h") or "", 26, True, line=1.05)], anchor="b"))
+    boxes.append(rect(L, 1.42, 0.9, 0.04, ACCENT))
+    y = 1.6
+    if s.get("msg"):
+        boxes.append(rect(L, y, W_IN - L - R, 0.64, ACCENT_SOFT))
+        boxes.append(rect(L, y, 0.07, 0.64, ACCENT))
+        boxes.append(text(L + 0.22, y, W_IN - L - R - 0.3, 0.64, [P(s["msg"], 14.5, color=ACCENT_DARK, line=1.15)], anchor="ctr"))
+        y += 0.82
+    body_top, body_bot = y, H_IN - 0.98
+    panels = [p for p in (s.get("panels") or []) if p]
+    tab = next((p for p in panels if p.get("kind") == "table"), None)
+    figs_p = [p for p in panels if p.get("kind") != "table"][:2]
+    full_w = W_IN - L - R
+    # 표: 쪽 아래에 전체 폭으로 (오른쪽 좁은 열에 두면 칸이 여러 줄로 늘어나 행이 거의 안 들어간다) — 세로의 45% 까지, 넘치는 행은 덜어 낸다
+    tab_box, body_bot_eff = None, body_bot
+    if tab:
+        sz_t = 9
+        rows = [[(str(c)[:70] + "…") if len(str(c)) > 70 else str(c) for c in r] for r in (tab.get("rows") or [])[:8]]
+        allrows = len(tab.get("rows") or [])
+        rhs = _row_heights(tab.get("cols") or [], rows, full_w, sz_t)
+        tab_max = (body_bot - body_top) * 0.45
+        while len(rows) > 1 and 0.32 + sum(rhs) > tab_max:
+            rows.pop(); rhs.pop()
+        th = 0.32 + sum(rhs)
+        tab_y = body_bot - th
+        cap = (tab.get("cap") or "") + ((" (…외 %d행은 장에서)" % (allrows - len(rows))) if allrows > len(rows) else "")
+        tab_box = [text(L, tab_y, full_w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"),
+                   dict(table(L, tab_y + 0.32, full_w, sum(rhs), tab.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
+        body_bot_eff = tab_y - 0.18
+    colw = 5.0 if figs_p else 0.0
+    leftw = full_w - ((colw + 0.3) if figs_p else 0.0)
+    stats = [] if tab else [x for x in (s.get("stats") or []) if x.get("v")][:2]   # 표가 있는 쪽은 수치 상자를 두지 않는다 (자리; 표가 수치를 보인다)
+    stats_h = 1.12 if stats else 0.0
+    bullets = [b for b in (s.get("bullets") or []) if (b.get("t") or "").strip()]
+    avail = body_bot_eff - body_top - stats_h
+    paras, _h = _fit_bullets(bullets, leftw, avail)
+    boxes.append(text(L, body_top, leftw, avail, paras, anchor="t"))
+    if stats:
+        n, gap = len(stats), 0.2
+        bw, sy = (leftw - gap * (n - 1)) / n, body_bot_eff - 0.98
+        for i, st in enumerate(stats):
+            x = L + i * (bw + gap)
+            boxes.append(rect(x, sy, bw, 0.98, STAT_FILL))
+            boxes.append(rect(x, sy, bw, 0.04, ACCENT))
+            boxes.append(text(x + 0.15, sy + 0.12, bw - 0.3, 0.48, [P(st["v"], 22, True, color=ACCENT)], anchor="t"))
+            boxes.append(text(x + 0.15, sy + 0.6, bw - 0.3, 0.36, [P(st.get("label") or "", 10, color=GRAY, line=1.05)], anchor="t"))
+    if figs_p:
+        px, n, gap = W_IN - R - colw, len(figs_p), 0.16
+        total_h = body_bot_eff - body_top - gap * (n - 1)
+        need, meta = [], []   # 그림마다 폭에 맞춘 자연 높이 + 캡션 — 넘치면 비율대로 줄인다, 남으면 그대로(폭보다 커질 수 없으니)
+        for pn in figs_p:
+            iw, ih = png_size(pn.get("path") or "")
+            ch = _cap_h(pn.get("caption") or "", colw)
+            need.append(colw * ih / float(iw) + ch + 0.05); meta.append((iw, ih, ch))
+        k = min(1.0, total_h / max(0.01, sum(need)))
+        py = body_top
+        for pn, h_need, (iw, ih, ch) in zip(figs_p, need, meta):
+            h_i = h_need * k
+            w, h = fit(iw, ih, colw, max(0.6, h_i - ch - 0.05))
+            boxes.append(pic(px + (colw - w) / 2, py, w, h, pn.get("path")))
+            boxes.append(text(px, py + h + 0.05, colw, ch, [P(pn.get("caption") or "", 9.5, color=GRAY, line=1.12)], anchor="t"))
+            py += h_i + gap
+    if tab_box:
+        boxes += tab_box
+    if s.get("foot"):
+        boxes.append(text(L, H_IN - 0.86, W_IN - L - R - 1.0, 0.56, [P(s["foot"], 9.5, color=GRAY, line=1.15)], anchor="b"))
+    boxes.append(text(W_IN - R - 0.8, H_IN - 0.62, 0.8, 0.3, [P("%d / %d" % (idx, total), 10, color=GRAY, align="r")], anchor="b"))
+    return boxes
+
+
+def layout_refs(chunk, label, idx, total):
+    L, R = 0.6, 0.6
+    return [text(L, 0.5, W_IN - L - R, 0.85, [P(label, 26, True)], anchor="b"), rect(L, 1.42, 0.9, 0.04, ACCENT),
+            text(L, 1.65, W_IN - L - R, H_IN - 2.5, [P(r, 11 if len(chunk) > 8 else 12, after=4, line=1.1) for r in chunk] or [P("(없음)", 12, color=GRAY)], anchor="t"),
+            text(W_IN - R - 0.8, H_IN - 0.62, 0.8, 0.3, [P("%d / %d" % (idx, total), 10, color=GRAY, align="r")], anchor="b")]
+
+
+# ---------- 상자 → pptx 도형 ----------
+def _rpr(p):
     return ('<a:rPr lang="ko-KR" altLang="en-US" sz="%d"%s%s dirty="0"><a:solidFill><a:srgbClr val="%s"/></a:solidFill>'
-            '<a:latin typeface="%s"/><a:ea typeface="%s"/><a:cs typeface="%s"/></a:rPr>' % (sz * 100, ' b="1"' if bold else "", ' i="1"' if italic else "", color, FONT, FONT, FONT))
+            '<a:latin typeface="%s"/><a:ea typeface="%s"/><a:cs typeface="%s"/></a:rPr>' % (int(p["sz"] * 100), ' b="1"' if p["b"] else "", ' i="1"' if p.get("i") else "", p["color"], FONT, FONT, FONT))
 
 
-def _run(text, sz, bold=False, color=TEXT, italic=False):
-    return "<a:r>%s<a:t>%s</a:t></a:r>" % (_rpr(sz, bold, color, italic), esc(text))
-
-
-def _para(runs, align="l", bullet=False, level=0, space_after=0, line=None):
-    ppr = '<a:pPr algn="%s"' % align
-    if bullet:
-        ppr += ' marL="%d" indent="-%d" lvl="%d"' % (inch(0.32) * (level + 1), inch(0.28), level)
-    ppr += ">"
-    if line:
-        ppr += '<a:lnSpc><a:spcPct val="%d"/></a:lnSpc>' % int(line * 100000)   # 1/1000 % — 100% = 100000
-    if space_after:
-        ppr += '<a:spcAft><a:spcPts val="%d"/></a:spcAft>' % int(space_after * 100)
-    ppr += ('<a:buClr><a:srgbClr val="%s"/></a:buClr><a:buFont typeface="Arial"/><a:buChar char="%s"/>' % (ACCENT, "•" if level == 0 else "–")) if bullet else "<a:buNone/>"
+def _para_xml(p):
+    ppr = '<a:pPr algn="%s"' % p["align"]
+    if p["lvl"] is not None:
+        ppr += ' marL="%d" indent="-%d" lvl="%d"' % (inch(0.3 * (p["lvl"] + 1)), inch(0.26), p["lvl"])
+    ppr += '><a:lnSpc><a:spcPct val="%d"/></a:lnSpc>' % int(p["line"] * 100000)   # 1/1000 % — 100% = 100000
+    if p["after"]:
+        ppr += '<a:spcAft><a:spcPts val="%d"/></a:spcAft>' % int(p["after"] * 100)
+    if p["lvl"] is not None:
+        ppr += '<a:buClr><a:srgbClr val="%s"/></a:buClr><a:buFont typeface="Arial"/><a:buChar char="%s"/>' % (ACCENT if p["lvl"] == 0 else GRAY2, "•" if p["lvl"] == 0 else "–")
+    else:
+        ppr += "<a:buNone/>"
     ppr += "</a:pPr>"
-    return "<a:p>%s%s</a:p>" % (ppr, runs)
+    return "<a:p>%s<a:r>%s<a:t>%s</a:t></a:r></a:p>" % (ppr, _rpr(p), esc(p["t"]))
 
 
-def _sp(id_, name, x, y, w, h, paras, anchor="t", autofit=True, fill=None, line=None, wrap=True):
-    body = ('<p:txBody><a:bodyPr wrap="%s" lIns="0" tIns="0" rIns="0" bIns="0" anchor="%s">%s</a:bodyPr><a:lstStyle/>%s</p:txBody>'
-            % ("square" if wrap else "none", anchor, '<a:normAutofit/>' if autofit else "", paras or "<a:p><a:endParaRPr lang=\"ko-KR\"/></a:p>"))
-    sppr = '<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>%s%s</p:spPr>' % (
-        x, y, w, h, ('<a:solidFill><a:srgbClr val="%s"/></a:solidFill>' % fill) if fill else "<a:noFill/>",
-        ('<a:ln w="%d"><a:solidFill><a:srgbClr val="%s"/></a:solidFill></a:ln>' % line) if line else "")
-    return ('<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>%s%s</p:sp>' % (id_, esc(name), sppr, body))
+def _sp_text(id_, box):
+    paras = "".join(_para_xml(p) for p in box["paras"]) or '<a:p><a:endParaRPr lang="ko-KR"/></a:p>'
+    body = '<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="%s"><a:normAutofit/></a:bodyPr><a:lstStyle/>%s</p:txBody>' % (box["anchor"], paras)
+    fill = ('<a:solidFill><a:srgbClr val="%s"/></a:solidFill>' % box["fill"]) if box.get("fill") else "<a:noFill/>"
+    return ('<p:sp><p:nvSpPr><p:cNvPr id="%d" name="t%d"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>'
+            '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>%s</p:spPr>%s</p:sp>' % (id_, id_, inch(box["x"]), inch(box["y"]), inch(box["w"]), inch(box["h"]), fill, body))
 
 
-def _rect(id_, name, x, y, w, h, fill):
-    return ('<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>'
+def _sp_rect(id_, box):
+    return ('<p:sp><p:nvSpPr><p:cNvPr id="%d" name="r%d"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>'
             '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="%s"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>'
-            '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>' % (id_, esc(name), x, y, w, h, fill))
+            '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>' % (id_, id_, inch(box["x"]), inch(box["y"]), inch(box["w"]), inch(box["h"]), box["fill"]))
 
 
-def _pic(id_, name, rid, x, y, w, h):
-    return ('<p:pic><p:nvPicPr><p:cNvPr id="%d" name="%s"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>'
+def _sp_pic(id_, box, rid):
+    return ('<p:pic><p:nvPicPr><p:cNvPr id="%d" name="p%d"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>'
             '<p:blipFill><a:blip r:embed="%s"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
-            '<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>' % (id_, esc(name), rid, x, y, w, h))
+            '<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>' % (id_, id_, rid, inch(box["x"]), inch(box["y"]), inch(box["w"]), inch(box["h"])))
 
 
-def _slide_xml(shapes):
+def col_widths(cols, rows, total):
+    """열 너비 — 글자 수에 비례, 최소 몫은 둔다"""
+    n = max(1, len(cols))
+    ln = [max([len(str(c))] + [len(str(r[i])) if i < len(r) else 0 for r in rows]) for i, c in enumerate(cols)]
+    ln = [min(40, max(4, x)) for x in ln]
+    tot = float(sum(ln)) or 1.0
+    return [total * (0.5 / n + 0.5 * x / tot) for x in ln]
+
+
+def _sp_table(id_, box):
+    cols, rows, sz = box["cols"], box["rows"], box["sz"]
+    ws = col_widths(cols, rows, box["w"])
+    rhs = box.get("rhs") or [box["h"] / (len(rows) + 1)] * (len(rows) + 1)
+
+    def tc(t, head):
+        pr = P(t, sz, head, ACCENT_DARK if head else TEXT, line=1.05)
+        fill = ('<a:solidFill><a:srgbClr val="%s"/></a:solidFill>' % HEAD_FILL) if head else "<a:noFill/>"
+        return ('<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>%s</a:txBody><a:tcPr marL="54864" marR="54864" marT="27432" marB="27432" anchor="ctr">'
+                '<a:lnL><a:noFill/></a:lnL><a:lnR><a:noFill/></a:lnR><a:lnT w="6350"><a:solidFill><a:srgbClr val="%s"/></a:solidFill></a:lnT><a:lnB w="6350"><a:solidFill><a:srgbClr val="%s"/></a:solidFill></a:lnB>%s</a:tcPr></a:tc>'
+                % (_para_xml(pr), LINE, LINE, fill))
+    trs = '<a:tr h="%d">%s</a:tr>' % (inch(rhs[0]), "".join(tc(c, True) for c in cols))
+    for ri, r in enumerate(rows, 1):
+        trs += '<a:tr h="%d">%s</a:tr>' % (inch(rhs[ri] if ri < len(rhs) else rhs[-1]), "".join(tc(r[i] if i < len(r) else "", False) for i in range(len(cols))))
+    return ('<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="%d" name="tbl%d"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>'
+            '<p:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">'
+            '<a:tbl><a:tblPr firstRow="1" bandRow="0"/><a:tblGrid>%s</a:tblGrid>%s</a:tbl></a:graphicData></a:graphic></p:graphicFrame>'
+            % (id_, id_, inch(box["x"]), inch(box["y"]), inch(box["w"]), inch(box["h"]), "".join('<a:gridCol w="%d"/>' % inch(w) for w in ws), trs))
+
+
+def _slide_xml(boxes, rels, media):
+    shapes, sid = [], 2
+    for b in boxes:
+        if b["kind"] == "text":
+            shapes.append(_sp_text(sid, b))
+        elif b["kind"] == "rect":
+            shapes.append(_sp_rect(sid, b))
+        elif b["kind"] == "table":
+            shapes.append(_sp_table(sid, b))
+        elif b["kind"] == "pic" and b.get("path") and os.path.isfile(b["path"]):
+            rid = "rId%d" % (len(rels) + 2)
+            ext = os.path.splitext(b["path"])[1].lower() or ".png"
+            mname = "image%d%s" % (len(media) + 1, ext)
+            media[mname] = b["path"]
+            rels.append((rid, "image", "../media/" + mname))
+            shapes.append(_sp_pic(sid, b, rid))
+        sid += 1
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:sld %s><p:cSld><p:spTree>'
             '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'
             '%s</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>' % (NS_P, "".join(shapes)))
 
 
-def _notes_xml(text, slide_rid="rId1"):
-    paras = "".join(_para(_run(t, 12), space_after=4) for t in (text or "").split("\n") if t.strip()) or "<a:p><a:endParaRPr lang=\"ko-KR\"/></a:p>"
+def _notes_xml(txt):
+    paras = "".join(_para_xml(P(t, 12, after=4)) for t in (txt or "").split("\n") if t.strip()) or '<a:p><a:endParaRPr lang="ko-KR"/></a:p>'
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:notes %s><p:cSld><p:spTree>'
             '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'
             '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>'
             '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>'
-            '<p:txBody><a:bodyPr/><a:lstStyle/>%s</p:txBody></p:sp>'
-            '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>' % (NS_P, paras))
+            '<p:txBody><a:bodyPr/><a:lstStyle/>%s</p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>' % (NS_P, paras))
 
 
-# ---------- 고정 부품 (마스터·레이아웃·테마·노트 마스터) ----------
+# ---------- 고정 부품 ----------
 _THEME = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Athenaeum"><a:themeElements>'
           '<a:clrScheme name="Athenaeum"><a:dk1><a:srgbClr val="1A1A1A"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2>'
           '<a:accent1><a:srgbClr val="%s"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="4472C4"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6>'
@@ -151,86 +359,33 @@ _RELS_ROOT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relatio
 
 def _rels(items):
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            + "".join('<Relationship Id="%s" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/%s" Target="%s"/>' % (rid, typ, tgt) for rid, typ, tgt in items)
-            + "</Relationships>")
-
-
-def _fit(img_w, img_h, box_w, box_h):
-    """그림을 상자 안에 비율대로 (가운데 맞춤 좌표는 호출 쪽에서)"""
-    r = min(box_w / float(img_w), box_h / float(img_h))
-    return int(img_w * r), int(img_h * r)
-
-
-def _wrap_len(text, per_line):
-    """글머리표 한 줄의 글자 수로 줄 수를 어림(글꼴 크기를 고르려고)"""
-    return max(1, -(-len(text) // per_line))
+            + "".join('<Relationship Id="%s" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/%s" Target="%s"/>' % (rid, typ, tgt) for rid, typ, tgt in items) + "</Relationships>")
 
 
 # ---------- 본체 ----------
-def build(path, deck):
-    """deck 를 path(.pptx) 로 쓴다. 돌려주는 값: {slides: n, pics: n}"""
-    slides_xml, slide_rels, media, notes = [], [], {}, []
-    T = str(deck.get("title") or "발표 자료")
-    sub = str(deck.get("subtitle") or "")
-    footer = str(deck.get("footer") or "")
-    m = [inch(0.6), inch(0.45)]   # 좌우·상하 여백
-
-    # 1) 제목 슬라이드
-    shapes = [_rect(2, "accent", 0, 0, inch(0.35), H, ACCENT),
-              _sp(3, "title", inch(1.0), inch(2.3), W - inch(2.0), inch(1.9), _para(_run(T, 36, True), line=1.1), anchor="b"),
-              _sp(4, "subtitle", inch(1.0), inch(4.35), W - inch(2.0), inch(1.2), "".join(_para(_run(s, 16, False, GRAY), space_after=4) for s in sub.split("\n") if s.strip()), anchor="t")]
-    if footer:
-        shapes.append(_sp(5, "foot", inch(1.0), H - inch(0.7), W - inch(2.0), inch(0.4), _para(_run(footer, 10, False, GRAY)), anchor="b"))
-    slides_xml.append(_slide_xml(shapes)); slide_rels.append([]); notes.append(str(deck.get("title_note") or ""))
-
-    # 2) 내용 슬라이드 (쪽 번호는 제목 쪽을 1로 전체 기준)
+def slide_boxes(deck):
+    """쪽마다의 상자 목록과 발표자 메모 — build 와 미리보기가 같이 쓴다"""
+    content = [s for s in (deck.get("slides") or []) if s]
     refs = [str(r) for r in (deck.get("refs") or []) if str(r).strip()]
     chunks = [] if deck.get("skip_refs") else ([refs[i:i + 12] for i in range(0, len(refs), 12)] or [[]])
-    total = 1 + len(deck.get("slides") or []) + len(chunks)
-    for n, s in enumerate(deck.get("slides") or [], 1):
-        shapes, rels = [], []
-        sid = 2
-        shapes.append(_sp(sid, "title", m[0], m[1], W - 2 * m[0], inch(0.9), _para(_run(s.get("h") or "", 26, True), line=1.05), anchor="b")); sid += 1
-        shapes.append(_rect(sid, "rule", m[0], inch(1.42), inch(0.9), inch(0.04), ACCENT)); sid += 1
-        fig = s.get("fig") if isinstance(s.get("fig"), dict) and s["fig"].get("path") and os.path.isfile(s["fig"]["path"]) else None
-        body_w = W - 2 * m[0] - (inch(4.9) if fig else 0)
-        bullets = [str(b) for b in (s.get("bullets") or []) if str(b).strip()]
-        # 글자 크기: 줄 수에 맞춰 (대강 — 16:9 에서 18pt 는 한 줄에 한글 38자쯤, 그림이 있으면 24자쯤)
-        per = 24 if fig else 40
-        lines = sum(_wrap_len(b, per) for b in bullets)
-        sz = 18 if lines <= 10 else 16 if lines <= 13 else 14
-        paras = "".join(_para(_run(b, sz), bullet=True, space_after=7, line=1.12) for b in bullets)
-        shapes.append(_sp(sid, "body", m[0], inch(1.65), body_w, H - inch(1.65) - inch(0.85), paras, anchor="t")); sid += 1
-        if fig:
-            iw, ih = png_size(fig["path"])
-            box_w, box_h = inch(4.5), inch(3.9)
-            w, h = _fit(iw, ih, box_w, box_h)
-            x = W - m[0] - box_w + (box_w - w) // 2
-            y = inch(1.65)
-            rid = "rId%d" % (len(rels) + 2)
-            ext = os.path.splitext(fig["path"])[1].lower() or ".png"
-            mname = "image%d%s" % (len(media) + 1, ext)
-            media[mname] = fig["path"]
-            rels.append((rid, "image", "../media/" + mname))
-            shapes.append(_pic(sid, "fig", rid, x, y, w, h)); sid += 1
-            cap = str(fig.get("caption") or "")
-            if cap:
-                shapes.append(_sp(sid, "caption", W - m[0] - box_w, y + h + inch(0.08), box_w, inch(1.2), _para(_run(cap, 10, False, GRAY), line=1.1), anchor="t")); sid += 1
-        foot = str(s.get("foot") or "")
-        if foot:
-            shapes.append(_sp(sid, "foot", m[0], H - inch(0.72), W - 2 * m[0] - inch(0.8), inch(0.45), _para(_run(foot, 10, False, GRAY), line=1.1), anchor="b")); sid += 1
-        shapes.append(_sp(sid, "num", W - m[0] - inch(0.8), H - inch(0.6), inch(0.8), inch(0.3), _para(_run("%d / %d" % (n + 1, total), 10, False, GRAY), align="r"), anchor="b")); sid += 1
-        slides_xml.append(_slide_xml(shapes)); slide_rels.append(rels); notes.append(str(s.get("note") or ""))
-
-    # 3) 참고문헌 슬라이드 (길면 둘로; skip_refs 면 없음)
+    total = 1 + len(content) + len(chunks)
+    out = [(layout_title(deck), str(deck.get("title_note") or ""))]
+    for i, s in enumerate(content, 2):
+        out.append((layout_content(s, i, total, deck.get("deck_title") or deck.get("title") or ""), str(s.get("note") or "")))
     for ci, chunk in enumerate(chunks):
-        shapes = [_sp(2, "title", m[0], m[1], W - 2 * m[0], inch(0.9), _para(_run("참고문헌" + (" (%d/%d)" % (ci + 1, len(chunks)) if len(chunks) > 1 else ""), 26, True)), anchor="b"),
-                  _rect(3, "rule", m[0], inch(1.42), inch(0.9), inch(0.04), ACCENT),
-                  _sp(4, "body", m[0], inch(1.65), W - 2 * m[0], H - inch(2.4), "".join(_para(_run(r, 11 if len(chunk) > 8 else 12), space_after=4, line=1.1) for r in chunk) or _para(_run("(없음)", 12, False, GRAY)), anchor="t")]
-        slides_xml.append(_slide_xml(shapes)); slide_rels.append([]); notes.append("")
-    nslides = len(slides_xml)
+        out.append((layout_refs(chunk, "참고문헌" + (" (%d/%d)" % (ci + 1, len(chunks)) if len(chunks) > 1 else ""), len(content) + 2 + ci, total), ""))
+    return out
 
-    # 4) 꾸러미
+
+def build(path, deck, preview_dir=None):
+    pages = slide_boxes(deck)
+    slides_xml, slide_rels, media, notes = [], [], {}, []
+    for boxes, note in pages:
+        rels = []
+        slides_xml.append(_slide_xml(boxes, rels, media))
+        slide_rels.append(rels)
+        notes.append(note)
+    nslides = len(slides_xml)
     ct = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
           '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>', '<Default Extension="xml" ContentType="application/xml"/>',
           '<Default Extension="png" ContentType="image/png"/>', '<Default Extension="jpg" ContentType="image/jpeg"/>', '<Default Extension="jpeg" ContentType="image/jpeg"/>',
@@ -247,10 +402,8 @@ def build(path, deck):
         ct.append('<Override PartName="/ppt/slides/slide%d.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>' % i)
         ct.append('<Override PartName="/ppt/notesSlides/notesSlide%d.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>' % i)
     ct.append("</Types>")
-
     pres = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentation %s saveSubsetFonts="1">'
-            '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>'
-            '<p:notesMasterIdLst><p:notesMasterId r:id="rId%d"/></p:notesMasterIdLst>'
+            '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId r:id="rId%d"/></p:notesMasterIdLst>'
             '<p:sldIdLst>%s</p:sldIdLst><p:sldSz cx="%d" cy="%d"/><p:notesSz cx="6858000" cy="9144000"/>'
             '<p:defaultTextStyle><a:defPPr><a:defRPr lang="ko-KR"/></a:defPPr></p:defaultTextStyle></p:presentation>'
             % (NS_P, nslides + 2, "".join('<p:sldId id="%d" r:id="rId%d"/>' % (256 + i, i + 2) for i in range(nslides)), W, H))
@@ -258,10 +411,8 @@ def build(path, deck):
                 [("rId%d" % (nslides + 2), "notesMaster", "notesMasters/notesMaster1.xml"), ("rId%d" % (nslides + 3), "theme", "theme/theme1.xml"), ("rId%d" % (nslides + 4), "presProps", "presProps.xml")]
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     core = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-            '<dc:title>%s</dc:title><dc:creator>Athenaeum</dc:creator><cp:lastModifiedBy>Athenaeum</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">%s</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified></cp:coreProperties>' % (esc(T), now, now))
+            '<dc:title>%s</dc:title><dc:creator>Athenaeum</dc:creator><cp:lastModifiedBy>Athenaeum</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">%s</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified></cp:coreProperties>' % (esc(deck.get("title")), now, now))
     app = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Athenaeum</Application><Slides>%d</Slides></Properties>' % nslides)
-    pres_props = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentationPr %s/>' % NS_P
-
     tmp = path + ".%d.tmp" % os.getpid()
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", "".join(ct))
@@ -270,7 +421,7 @@ def build(path, deck):
         z.writestr("docProps/app.xml", app)
         z.writestr("ppt/presentation.xml", pres)
         z.writestr("ppt/_rels/presentation.xml.rels", _rels(pres_rels))
-        z.writestr("ppt/presProps.xml", pres_props)
+        z.writestr("ppt/presProps.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentationPr %s/>' % NS_P)
         z.writestr("ppt/theme/theme1.xml", _THEME)
         z.writestr("ppt/theme/theme2.xml", _THEME)
         z.writestr("ppt/slideMasters/slideMaster1.xml", _MASTER)
@@ -287,12 +438,103 @@ def build(path, deck):
         for mname, src in media.items():
             z.write(src, "ppt/media/" + mname)
     os.replace(tmp, path)
-    return {"slides": nslides, "pics": len(media)}
+    n_prev = render_previews(pages, preview_dir) if preview_dir else 0
+    return {"slides": nslides, "pics": len(media), "previews": n_prev}
 
 
-if __name__ == "__main__":   # python pptx_min.py out.pptx  — 보기용 두 장
+# ---------- 미리보기 PNG (PyMuPDF 가 있을 때만; 화면의 쪽 미리보기용 — 글꼴·줄바꿈이 PowerPoint 와 똑같지는 않다) ----------
+def _font_files():
+    d = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+    reg, bold = os.path.join(d, "malgun.ttf"), os.path.join(d, "malgunbd.ttf")
+    reg = reg if os.path.isfile(reg) else None
+    return reg, (bold if os.path.isfile(bold) else reg)
+
+
+def _para_height(p, width_pt, reg, bold):
+    """문단이 차지할 높이(pt) — 글자 폭으로 줄 수를 어림"""
+    try:
+        import fitz
+        fnt = fitz.Font(fontfile=bold if p["b"] else reg) if reg else fitz.Font("helv")
+        tw = fnt.text_length(p["t"], fontsize=p["sz"]) if p["t"] else 1
+    except Exception:
+        tw = len(p["t"]) * p["sz"] * 0.9
+    lines = max(1, int(tw / max(10.0, width_pt - 2)) + 1)
+    return lines * p["sz"] * p["line"] * 1.18
+
+
+def render_previews(pages, outdir, dpi=96):
+    try:
+        import fitz
+    except ImportError:
+        return 0
+    os.makedirs(outdir, exist_ok=True)
+    reg, bold = _font_files()
+    PT = 72.0
+    rgb = lambda h: tuple(int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    n = 0
+    for idx, (boxes, _note) in enumerate(pages, 1):
+        doc = fitz.open()
+        page = doc.new_page(width=W_IN * PT, height=H_IN * PT)
+        for b in boxes:
+            r = fitz.Rect(b["x"] * PT, b["y"] * PT, (b["x"] + b["w"]) * PT, (b["y"] + b["h"]) * PT)
+            try:
+                if b["kind"] == "rect":
+                    page.draw_rect(r, color=None, fill=rgb(b["fill"]))
+                elif b["kind"] == "pic":
+                    if b.get("path") and os.path.isfile(b["path"]):
+                        page.insert_image(r, filename=b["path"], keep_proportion=True)
+                elif b["kind"] == "table":
+                    cols, rows = b["cols"], b["rows"]
+                    ws = col_widths(cols, rows, b["w"])
+                    rhs = b.get("rhs") or [b["h"] / (len(rows) + 1)] * (len(rows) + 1)
+                    y0 = b["y"]
+                    for ri, row in enumerate([cols] + rows):
+                        rh = rhs[ri] if ri < len(rhs) else rhs[-1]
+                        if ri:
+                            y0 += rhs[ri - 1] if ri - 1 < len(rhs) else rhs[-1]
+                        if ri == 0:
+                            page.draw_rect(fitz.Rect(b["x"] * PT, y0 * PT, (b["x"] + b["w"]) * PT, (y0 + rh) * PT), color=None, fill=rgb(HEAD_FILL))
+                        page.draw_line(fitz.Point(b["x"] * PT, (y0 + rh) * PT), fitz.Point((b["x"] + b["w"]) * PT, (y0 + rh) * PT), color=rgb(LINE), width=0.5)
+                        cx = b["x"]
+                        for ci, w in enumerate(ws):
+                            t = str(row[ci]) if ci < len(row) else ""
+                            cr = fitz.Rect((cx + 0.06) * PT, (y0 + 0.04) * PT, (cx + w - 0.06) * PT, (y0 + rh + 0.3) * PT)
+                            kw = {"fontname": "F1" if ri == 0 else "F0", "fontfile": bold if ri == 0 else reg} if reg else {"fontname": "helv"}
+                            page.insert_textbox(cr, t, fontsize=b["sz"], color=rgb(ACCENT_DARK if ri == 0 else TEXT), lineheight=1.15, **kw)
+                            cx += w
+                elif b["kind"] == "text":
+                    if b.get("fill"):
+                        page.draw_rect(r, color=None, fill=rgb(b["fill"]))
+                    y = r.y0
+                    if b["anchor"] in ("b", "ctr"):
+                        tot = sum(_para_height(p, r.width - ((0.3 * (p["lvl"] + 1)) * PT if p["lvl"] is not None else 0), reg, bold) + p["after"] for p in b["paras"])
+                        y = max(r.y0, r.y1 - tot) if b["anchor"] == "b" else r.y0 + max(0, (r.height - tot) / 2)
+                    for p in b["paras"]:
+                        indent = (0.3 * (p["lvl"] + 1)) * PT if p["lvl"] is not None else 0
+                        if p["lvl"] is not None:
+                            page.insert_text(fitz.Point(r.x0 + indent - 0.2 * PT, y + p["sz"] * 1.05), "•" if p["lvl"] == 0 else "–", fontsize=p["sz"], color=rgb(ACCENT if p["lvl"] == 0 else GRAY2), fontname="helv")
+                        h = _para_height(p, r.width - indent, reg, bold)
+                        tr = fitz.Rect(r.x0 + indent, y, r.x1, y + h + 4)
+                        kw = {"fontname": "F1" if p["b"] else "F0", "fontfile": bold if p["b"] else reg} if reg else {"fontname": "helv"}   # 같은 이름으로 두 파일을 등록하면 먼저 것만 쓰인다
+                        page.insert_textbox(tr, p["t"], fontsize=p["sz"], color=rgb(p["color"]), align={"l": 0, "ctr": 1, "r": 2}.get(p["align"], 0), lineheight=p["line"], **kw)
+                        y += h + p["after"]
+            except Exception:
+                pass
+        pix = page.get_pixmap(dpi=dpi)
+        pix.save(os.path.join(outdir, "s%02d.png" % idx))
+        doc.close()
+        n += 1
+    return n
+
+
+if __name__ == "__main__":   # python pptx_min.py out.pptx [preview_dir]
     import sys
     out = sys.argv[1] if len(sys.argv) > 1 else "pptx_min_test.pptx"
-    print(build(out, {"title": "시험 발표", "subtitle": "pptx_min 보기\n2026-10-09", "footer": "Athenaeum",
-                      "slides": [{"h": "첫 슬라이드", "bullets": ["글머리표 하나", "둘 — 조금 더 긴 문장을 넣어 줄바꿈이 어떻게 되는지 본다, 숫자 12.5 µm 와 영어 built-up edge 도"], "foot": "출처: [1] Davis 2020", "note": "발표자 메모"}],
-                      "refs": ["[1] Davis J. et al. (2020) …"]}))
+    deck = {"title": "시험 발표", "subtitle": "pptx_min 보기\n2026-10-09", "footer": "Athenaeum", "deck_title": "시험 발표", "skip_refs": True,
+            "slides": [{"h": "첫 슬라이드 — 글머리표·메시지·수치·표", "msg": "한 줄 메시지는 이 쪽의 주장을 한 문장으로 세운다.",
+                        "bullets": [{"t": "글머리표 하나", "sub": ["받치는 세부 — 조건과 값 12.5 µm", "둘째 세부"]}, {"t": "둘 — 조금 더 긴 문장을 넣어 줄바꿈이 어떻게 되는지 본다, 숫자 12.5 µm 와 영어 built-up edge 도", "sub": []}, {"t": "셋"}],
+                        "stats": [{"v": "15,800 MPa", "label": "탄탈럼의 최대 비절삭력"}, {"v": "40–50", "label": "칩 두께비"}],
+                        "panels": [{"kind": "table", "cap": "표 1. 시험 표", "cols": ["논문", "용융점", "그 밖"], "rows": [["Wang 2002", "2950°C", "비열 0.153 J/g°C"], ["Davis 2020", "3017 °C", "경도 ~200 HV"]]}],
+                        "foot": "출처: [1] Davis 2020, IJMTM · [3] Wang 2023, JMP", "note": "발표자 메모"}],
+            "refs": []}
+    print(build(out, deck, sys.argv[2] if len(sys.argv) > 2 else None))

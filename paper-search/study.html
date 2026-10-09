@@ -60,6 +60,10 @@
   .dk .dkbody { display: flex; gap: 14px; align-items: flex-start; } .dk .dkbody ul { margin: 0; padding-left: 18px; flex: 1; line-height: 1.55; } .dk .dkbody li { margin: 2px 0; }
   .dk .dkfig { margin: 0; flex: 0 0 240px; } .dk .dkfig img { max-width: 240px; max-height: 170px; border: 1px solid var(--line); background: #fff; } .dk .dkfig figcaption { font-size: 11.5px; color: var(--text-3); line-height: 1.4; }
   .dk .note { color: var(--text-3); font-size: 12.5px; line-height: 1.55; margin-top: 4px; white-space: pre-wrap; } .dk .dkk { color: var(--accent); text-decoration: none; font-size: 11px; margin-left: 2px; }
+  .dk .dkimg { display: block; width: 100%; max-width: 760px; border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0 8px; background: #fff; }
+  .dk .dkmsg { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); padding: 4px 10px; margin: 2px 0 6px; font-size: 13px; }
+  .dk .dkbody li .sub { display: block; color: var(--text-3); font-size: 12px; margin-left: 2px; } .dk .dkstat { display: inline-block; margin: 4px 10px 0 0; padding: 4px 10px; border-top: 2px solid var(--accent); background: var(--bg-2, transparent); } .dk .dkstat b { color: var(--accent); font-size: 15px; margin-right: 6px; }
+  .dk .dkfig { margin: 0; flex: 0 0 220px; } .dk .dkfig img { max-width: 220px; max-height: 150px; }
   .askwrap .fsz { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; } .askwrap .fsz .act { padding: 0 4px; }
   .askwrap .msg, .askwrap .spq, .askwrap textarea, .askwrap .srci { font-size: inherit; }
   #list.closed { display: none; }
@@ -618,13 +622,13 @@ let deckTick = null, deckDraft = "";
 function deckHtml() {
   const decks = (cur.decks || []).slice().reverse();
   let h = "<div class='page ch'>" + crumb("발표 자료") + "<h2 class='first'>발표 자료 (PPT) — " + esc(cur.chapter.title) + "</h2>" +
-    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 글머리표마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 그림은 장에 실린 논문 그림에서 고르며, 쪽마다 발표자 메모가 붙습니다. 글머리표의 수치는 프로그램이 근거 문장과 대조해 어긋나면 뺍니다. 제목 쪽과 참고문헌 쪽은 따로 붙습니다.</div>";
+    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 쪽마다 한 줄 메시지 · 글머리표와 받치는 세부 · 장에 실린 논문 그림 둘(도식 + 사진·그래프) · 표 · 핵심 수치 · 출처(저널·이름·연도) · 발표자 메모(참고문헌 전체 포함). 글머리표마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 수치는 프로그램이 근거 문장과 대조해 어긋나면 뺍니다. 미리보기 그림은 어림이라 PowerPoint 에서 보는 것과 줄바꿈이 조금 다를 수 있습니다.</div>";
   if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>장 전체를 읽고 쪽마다 재료를 고릅니다(3~6분). 창을 닫아도 계속 만듭니다.</div>";
   else {
     const eff = lsGet("study_ask_effort", "xhigh");
     h += "<div class='dkform noprint'><textarea id='deckReq' placeholder='발표의 목적과 쪽 구성 — 예: 연구실 세미나용. 1쪽 탄탈럼의 특성과 쓰임, 2쪽 왜 깎기 어려운가, 3쪽 지금까지의 연구 동향(코팅·냉각·기전), 4쪽 남은 물음. (비우면 장의 줄기대로)'>" + esc(deckDraft) + "</textarea>" +
       "<div class='row'><label class='hint' title='제목 쪽을 포함한 전체 쪽 수. 참고문헌 쪽은 따로 붙습니다. 비우면 장의 줄기대로 6~10쪽'>쪽 수(제목 포함) <input id='deckN' type='number' min='2' max='40' placeholder='자동' style='width:64px'></label>" +
-      "<label class='hint' title='마지막에 참고문헌 쪽을 붙입니다'><input type='checkbox' id='deckRefs' checked> 참고문헌 쪽</label>" +
+      "<label class='hint' title='출처는 쪽마다 아래에 저널·이름·연도로 달립니다. 이 체크를 켜면 마지막에 참고문헌 쪽도 붙입니다'><input type='checkbox' id='deckRefs'> 참고문헌 쪽도</label>" +
       "<select id='deckEff'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
       "<button class='primary' id='deckGo'>만들기</button><span class='hint' id='deckMsg'></span></div></div>";
     if (cur.deck_error) h += "<div class='warnbox'>" + esc(cur.deck_error) + "</div>";
@@ -633,15 +637,20 @@ function deckHtml() {
   return h + "</div>";
 }
 function deckOneHtml(d) {
-  const fig = f => f ? "<figure class='dkfig'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''><figcaption>그림 " + f.no + (f.why ? " — " + esc(f.why) : "") + "</figcaption></figure>" : "";
+  const figHtml = f => f ? "<figure class='dkfig'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''><figcaption>그림 " + f.no + (f.ftype ? " · " + esc(f.ftype) : "") + "</figcaption></figure>" : "";
   const keyLinks = keys => (keys || []).map(k => "<a href='#' class='dkk' data-unit='" + esc(k) + "' title='본문의 이 문장으로'>¶</a>").join("");
   const fname = (d.title || "발표").replace(/[\\/:*?"<>|]/g, " ") + ".pptx";
-  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · 제목 + 내용 " + d.slides.length + "쪽" + (d.refs === false ? "" : " + 참고문헌") + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + "</span>" +
+  const img = n => d.previews && n <= d.previews ? "<img class='dkimg' src='/api/study/deckimg?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "&n=" + n + "&t=" + Math.round(d.t || 0) + "' alt='' loading='lazy'>" : "";
+  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · 제목 + 내용 " + d.slides.length + "쪽" + (d.refs === true ? " + 참고문헌" : "") + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + "</span>" +
     "<span class='noprint' style='margin-left:auto'><a class='act' href='/api/study/deck?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "' download='" + esc(fname) + "'>pptx 내려받기</a><button class='act warn' data-dkdel='" + esc(d.id) + "'>지우기</button></span></div>" +
-    (d.req ? "<div class='hint'>주문: " + esc(d.req) + "</div>" : "") + (d.subtitle ? "<div class='hint'>" + esc(d.subtitle) + "</div>" : "") +
-    d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 1) + "</span>" + esc(s.h) + "</div><div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + "</li>").join("") + "</ul>" + fig(s.fig) + "</div>" +
+    (d.req ? "<div class='hint'>주문: " + esc(d.req) + "</div>" : "") + (d.subtitle ? "<div class='hint'>" + esc(d.subtitle) + "</div>" : "") + img(1) +
+    d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 2) + "</span>" + esc(s.h) + "</div>" + img(i + 2) +
+      (s.msg ? "<div class='dkmsg'>" + esc(s.msg) + "</div>" : "") +
+      "<div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + (b.sub || []).map(x => "<span class='sub'>– " + esc(x) + "</span>").join("") + "</li>").join("") + "</ul>" + (s.figs || (s.fig ? [s.fig] : [])).map(figHtml).join("") + "</div>" +
+      ((s.stats || []).length ? "<div>" + s.stats.map(x => "<span class='dkstat'><b>" + esc(x.v) + "</b>" + esc(x.label) + " " + keyLinks(x.keys) + "</span>").join("") + "</div>" : "") +
+      (s.table ? "<div class='hint'>표 " + s.table.no + ": " + esc(s.table.cap) + "</div>" : "") + (s.fig_why ? "<div class='hint'>그림: " + esc(s.fig_why) + "</div>" : "") +
       (s.note ? "<div class='note'><b>메모</b> " + esc(s.note.t) + " " + keyLinks(s.note.keys) + "</div>" : "") + (s.cites && s.cites.length ? "<div class='hint'>출처 [" + s.cites.join(", ") + "]</div>" : "") + "</div>").join("") +
-    ((d.dropped || []).length ? "<details class='evd'><summary>뺀 글머리표 " + d.dropped.length + " (장의 문장 id 가 없거나 수치가 어긋남)</summary>" + d.dropped.map(x => "<div class='hint'>" + esc(x.slide) + " · " + esc(x.t) + " — " + esc(x.why) + "</div>").join("") + "</details>" : "") + "</div>";
+    ((d.dropped || []).length ? "<details class='evd'><summary>뺀 것 " + d.dropped.length + " (장의 문장 id 가 없거나 수치가 어긋남)</summary>" + d.dropped.map(x => "<div class='hint'>" + esc(x.slide) + " · " + esc(x.t) + " — " + esc(x.why) + "</div>").join("") + "</details>" : "") + "</div>";
 }
 function bindDeck() {
   const m = $("main");
