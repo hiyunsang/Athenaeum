@@ -327,10 +327,11 @@ def doi_variants(doi):
             out.append(v)
 
     add(doi)
+    add(re.sub(r"-\d{1,5}(?:-[A-Za-z]*)?$", "", doi))   # 뒤에 붙은 쪽 번호·낱말 (CIRP Annals: '10.1016/j.cirp.2006.10.006-745-components' — 2026-10-10, Dornfeld 2006 이 건너뛰어졌다)
     add(re.sub(r"\(0123456789.*$", "", doi))    # Springer 첫 페이지 세로 글씨
     add(re.sub(r"/[A-Z]\d{3,}$", "", doi))      # 폰트 글리프 코드 (예: /H20852)
     add(re.sub(r"(?<=\d)[A-Za-z]+$", "", doi))  # 뒤에 바로 붙은 단어
-    return out[:3]
+    return out[:4]
 
 
 def title_matches(title, page_text):
