@@ -318,8 +318,10 @@
 </head>
 <body>
 <header>
-  <h1><a class="brand" href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
-  <a href="/" class="act">← 논문</a>
+  <h1><a class="brand" href="/" title="Athenaeum 홈" onclick="return goHome(event)"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
+  <a href="/" class="act" onclick="return goHome(event)" title="논문(홈) 창으로 — 원고 창은 그대로 둡니다">← 논문</a>
+  <script>/* 원고는 따로 큰 창이다(2026-10-09). 「← 논문」 은 이 창을 바꾸지 않고 홈 창(athenaeum_home)을 앞으로; 홈 창이 없으면 새로 연다 */
+  function goHome(e) { let w = null; try { w = window.open("", "athenaeum_home"); } catch (x) {} if (!w) return true; try { if (!w.location || w.location.href === "about:blank") w.location.href = "/"; w.focus(); } catch (x) { return true; } if (e) e.preventDefault(); return false; }</script>
   <select id="msSel" title="원고 선택"></select>
   <button class="btn" id="newMs">+ 새 원고</button>
   <button class="btn" id="importMs" title="워드(.docx) 원고를 가져와 개요·문단·그림·참고문헌·주석으로 나눕니다">워드 가져오기</button>
