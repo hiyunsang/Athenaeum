@@ -2383,6 +2383,256 @@ def _map_prompt(st):
         + _chapter_text_ids(st))
 
 
+# ---------- 발표 자료(PPT) — 장을 바탕으로 슬라이드 (사용자 2026-10-09: '공부한 것을 바탕으로 1쪽 특성, 2쪽 연구 동향 식으로 PPT 를 만들어 줬으면 — 읽은 걸 자료화하는 데 시간이 걸린다') ----------
+# 흐름: Claude(Opus) 에게 장 전체(문장 id)·그림 목록(그림 읽기 포함)·Claude 의 생각을 주고 쪽마다 제목·글머리표(keys)·그림 번호·발표자 메모(keys)를 JSON 으로 받는다 →
+# _deck_clean: 장에 없는 id 를 든 글머리표·메모는 버리고, 수치가 그 문장(과 근거 원문)에 없으면 버린다(지어내기 방지는 마인드맵과 같은 원리) →
+# pptx_min.build 로 .pptx(제목 쪽 · 내용 쪽 = 제목+글머리표+오른쪽 그림+출처 줄 · 참고문헌 쪽, 발표자 메모) → 공부\발표\<장 id>_<deck id>.pptx, st.decks[] 에 재료를 남긴다.
+_FTYPE_KO = {"schematic": "도식", "photo": "사진", "plot": "그래프", "setup": "장치", "mixed": "혼합"}
+
+
+def _deck_dir():
+    d = os.path.join(cfg["DIR"], "발표")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _deck_figs(st):
+    """장에 실린 그림(표 제외): 번호 → {no, pi, n, img, path, ftype, text(장의 그림 설명), cap_en, desc(그림 읽기), sec}"""
+    out = {}
+    for sec in (st.get("chapter") or {}).get("sections") or []:
+        for b in sec.get("blocks") or []:
+            f = b.get("fig") or {}
+            if not f.get("no") or not f.get("img") or f.get("kind") == "table":
+                continue
+            fp = os.path.join(_fig_dir(st["id"]), f["img"])
+            if not os.path.isfile(fp):
+                continue
+            u = (b.get("units") or [{}])[0]
+            out[int(f["no"])] = {"no": int(f["no"]), "pi": f.get("pi"), "n": f.get("n"), "img": f["img"], "path": fp, "ftype": f.get("ftype") or "", "page": f.get("page"),
+                                 "text": u.get("t") or "", "cap_en": f.get("cap_en") or "", "desc": f.get("desc") or "", "sec": sec.get("title") or ""}
+    return out
+
+
+def _deck_prompt(st, req, nslides):
+    P = st.get("papers") or []
+    figs = _deck_figs(st)
+    pn = lambda pi: (P[pi].get("n"), P[pi].get("short")) if isinstance(pi, int) and 0 <= pi < len(P) else ("?", "?")
+    figtxt = "\n".join("그림 %d (논문 [%s] %s, Fig. %s%s · %s): %s%s" % (f["no"], pn(f["pi"])[0], pn(f["pi"])[1], f["n"], (", " + _FTYPE_KO.get(f["ftype"], f["ftype"])) if f["ftype"] else "", f["sec"][:30],
+                                                              (f["text"] or f["cap_en"])[:220], (" — 그림 읽기: " + f["desc"][:180]) if f["desc"] else "")
+                       for f in sorted(figs.values(), key=lambda x: x["no"]))
+    cmts = []
+    for si, sec in enumerate((st.get("chapter") or {}).get("sections") or []):
+        for part in (sec.get("comment") or {}).get("parts") or []:
+            cmts.append("(si=%d) %s: %s" % (si, part.get("h", ""), (part.get("t") or "")[:700]))
+    plan = ("[발표의 목적과 쪽 구성 — 연구자가 적은 것]\n" + req) if req else "[발표의 목적] 연구실 세미나에서 이 장의 내용을 발표한다. 쪽 구성은 당신이 장의 줄기대로 짠다."
+    nstr = ("%d쪽" % nslides) if nslides else "6~10쪽 사이에서 내용에 맞게"
+    return (   # 장 글·그림 설명에 % 가 들어 있으므로 % 형식화를 쓰지 않고 이어 붙인다
+        "아래 장(연구자가 자기 서재의 논문만으로 쓴 교과서 한 장)을 바탕으로 발표 슬라이드의 재료를 만든다. 슬라이드 파일은 프로그램이 만든다 — 당신은 쪽마다 제목·글머리표·그림·발표자 메모와, "
+        "글머리표와 메모마다 그것을 받치는 장의 문장 id 를 준다.\n" + plan + "\n슬라이드 수: " + nstr + " (제목 쪽과 참고문헌 쪽은 프로그램이 따로 붙인다)\n"
+        "JSON 으로만 답하라:\n"
+        "{\"title\": \"발표 제목(장 제목을 바탕으로 20자 안팎)\", \"subtitle\": \"부제 한 줄 — 무엇을 다루는지\",\n"
+        " \"slides\": [{\"h\": \"쪽 제목(16자 안팎)\", \"bullets\": [{\"t\": \"글머리표 한 줄(45자 안팎)\", \"keys\": [\"u0.1.2\"]}], \"fig\": 3, \"fig_why\": \"이 그림을 이 쪽에 두는 까닭 한 줄\",\n"
+        "   \"note\": {\"t\": \"발표자 메모 — 이 쪽을 말로 풀 때 할 말 3~5문장\", \"keys\": [\"u0.1.2\"]}}]}\n"
+        "규칙:\n"
+        "- 쪽마다 글머리표 3~6개. 글머리표는 장의 문장을 줄인 것 — keys(1~4개, 장에 있는 id 그대로)의 문장이 말하는 것만 담는다. 장에 없는 사실·수치·논문은 넣지 않는다. 수치는 문장에 적힌 그대로(단위 포함); keys 로 받칠 수 없는 글머리표는 넣지 않는다.\n"
+        "- 연구자가 쪽 구성을 적었으면 그 차례와 제목을 따른다 — 쪽마다 그 주제에 맞는 문장을 장 전체에서 고른다(한 절에 매이지 않는다). 적지 않았으면 장의 줄기대로: 배경과 왜 문제인가 → 핵심 개념·기전 → 연구들이 본 것(엇갈림 포함) → 영향 인자·조건 → 남은 물음.\n"
+        "- fig 는 [그림 목록]의 번호 가운데 그 쪽의 글머리표가 말하는 것을 보여 주는 그림 하나(없으면 null). 같은 그림을 두 쪽에 쓰지 않는다. 그림 읽기(도식·사진·그래프)를 보고 쪽의 내용에 맞는 것만 — 채우려고 고르지 않는다. 표는 그림 목록에 없다.\n"
+        "- note 는 발표자가 읽을 말 — 글머리표를 잇는 설명, 왜 중요한지, 어느 연구가 무엇을 했는지(논문은 [번호]로). keys 의 문장이 말하는 것만. 'Claude 의 생각'에서 가져온 말은 '풀이:' 로 시작해 사실과 가른다.\n"
+        "- 글머리표에는 [번호] 인용을 적지 않는다 — 출처는 프로그램이 keys 로 단다. 번역투·'~에 대한 연구'·'살펴본다' 같은 군말을 뺀다. 전문 용어는 장에 쓰인 한국어 그대로.\n\n"
+        "[그림 목록]\n" + (figtxt or "(없음)") + "\n\n[Claude 의 생각 — 장의 사실 층과 갈라 표시된 풀이]\n" + ("\n".join(cmts) or "(없음)") + "\n\n" + _chapter_text_ids(st)
+    )
+
+
+def deck_start(sid, body):
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    req = str(body.get("req") or "").strip()[:2000]
+    try:
+        n = max(0, min(20, int(body.get("n") or 0)))
+    except (TypeError, ValueError):
+        n = 0
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만 만들 수 있습니다"}
+        if st.get("deck_pending"):
+            return {"error": "이미 만드는 중입니다"}
+        st["deck_pending"] = time.time()
+        st.pop("deck_error", None)
+        st["deck_opts"] = {"effort": effort, "req": req, "n": n}
+        _save(st)
+    threading.Thread(target=_deck_job, args=(sid,), name="study-deck", daemon=True).start()
+    return {"ok": True}
+
+
+def _deck_job(sid):
+    st = _load(sid)
+    if not st:
+        return
+    opts = st.get("deck_opts") or {}
+    model, eff = _CHAT_EFFORT.get(opts.get("effort"), _CHAT_EFFORT["xhigh"])
+    t0 = time.time()
+    res, err, deck = None, "", None
+    try:
+        run = cfg.get("claude_run")
+        res = run(_deck_prompt(st, opts.get("req") or "", opts.get("n") or 0), timeout=1800, model=model, effort=eff, tools="") if run else None
+        d = _json_of((res or {}).get("text") or "")
+        if not d or not isinstance(d.get("slides"), list):
+            err = "Claude 가 슬라이드 재료를 주지 않았습니다" + _why()
+        else:
+            deck = _deck_clean(st, d)
+            if not deck["slides"]:
+                err = "장의 문장이 받치는 글머리표가 없어 만들지 못했습니다"
+            else:
+                deck.update(id="d%d" % int(time.time() * 1000), t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"), req=opts.get("req") or "", effort=opts.get("effort"))
+                deck["file"] = _deck_write(st, deck)
+    except Exception as e:
+        err = "만들지 못했습니다: " + str(e)[:200]
+    with _LOCK:
+        st = _load(sid)
+        if not st:
+            return
+        st.pop("deck_pending", None)
+        if err:
+            st["deck_error"] = err
+        else:
+            st.setdefault("decks", []).append(deck)
+            st.pop("deck_error", None)
+        _save(st)
+
+
+def _deck_clean(st, d):
+    """Claude 의 답에서 장의 문장이 받치는 글머리표·메모만 남기고(keys 검사 + 수치 대조), 그림 번호를 장의 그림으로 맞춘다."""
+    P = st.get("papers") or []
+    figs = _deck_figs(st)
+    src = st.get("src") or {}
+
+    def keys_of(x):
+        out = []
+        for k in (x.get("keys") if isinstance(x.get("keys"), list) else [])[:6]:
+            k = re.sub(r"^u", "", str(k).strip())
+            if _unit_at(st, k)[1] and k not in out:
+                out.append(k)
+        return out
+
+    def evidence(keys):   # keys 의 장 문장 + 그 근거 원문 (수치 대조용)
+        texts = []
+        for k in keys:
+            u = _unit_at(st, k)[1]
+            if not u:
+                continue
+            texts.append(u.get("t") or "")
+            for sk in u.get("src") or []:
+                texts.append((src.get(sk) or {}).get("en") or "")
+        return texts
+
+    def cites(keys):
+        ns = set()
+        for k in keys:
+            u = _unit_at(st, k)[1]
+            for sk in (u or {}).get("src") or []:
+                try:
+                    n = P[int(sk.split(":")[0])].get("n")
+                except (ValueError, IndexError):
+                    n = None
+                if n:
+                    ns.add(int(n))
+        return sorted(ns)
+
+    short = lambda v, n: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+    nocite = lambda t: re.sub(r"\[\d{1,3}(?:\s*[,\u2013\-]\s*\d{1,3})*\]", " ", t)   # 인용 번호 [1,7,8,11] 은 수치가 아니다 — 대조 전에 뗀다 (첫 시험에서 메모 둘이 이것 때문에 빠졌다)
+    slides, dropped, used_figs = [], [], set()
+    for sl in d.get("slides") or []:
+        if not isinstance(sl, dict):
+            continue
+        h = short(sl.get("h"), 60)
+        bullets = []
+        for b in (sl.get("bullets") or [])[:8]:
+            if not isinstance(b, dict):
+                continue
+            t, keys = short(b.get("t"), 160), keys_of(b)
+            if not t:
+                continue
+            if not keys:
+                dropped.append({"slide": h, "t": t, "why": "장의 문장 id 가 없음"})
+                continue
+            miss = _nums_missing(nocite(t), evidence(keys))
+            if miss:
+                dropped.append({"slide": h, "t": t, "why": "수치가 근거에 없음: " + ", ".join(sorted(miss)[:4])})
+                continue
+            bullets.append({"t": t, "keys": keys})
+        if not h or not bullets:
+            continue
+        fig = None
+        try:
+            fno = int(sl.get("fig")) if sl.get("fig") not in (None, "", "null") else None
+        except (TypeError, ValueError):
+            fno = None
+        if fno in figs and fno not in used_figs:
+            used_figs.add(fno)
+            f = figs[fno]
+            fig = {"no": fno, "img": f["img"], "pi": f["pi"], "n": f["n"], "ftype": f["ftype"], "why": short(sl.get("fig_why"), 160)}
+        note = None
+        nt = sl.get("note") if isinstance(sl.get("note"), dict) else ({"t": sl.get("note")} if isinstance(sl.get("note"), str) else None)
+        if nt and short(nt.get("t"), 1500):
+            nk = keys_of(nt)
+            t = short(nt.get("t"), 1500)
+            miss = _nums_missing(nocite(re.sub(r"풀이:.*", "", t)), evidence(nk + [k for b in bullets for k in b["keys"]])) if nk or bullets else set()
+            if miss:
+                dropped.append({"slide": h, "t": "(메모) " + t[:80], "why": "수치가 근거에 없음: " + ", ".join(sorted(miss)[:4])})
+            else:
+                note = {"t": t, "keys": nk}
+        allk = [k for b in bullets for k in b["keys"]]
+        slides.append({"h": h, "bullets": bullets, "fig": fig, "note": note, "cites": cites(allk)})
+    return {"title": short(d.get("title"), 80) or (st.get("chapter") or {}).get("title") or "발표 자료", "subtitle": short(d.get("subtitle"), 160), "slides": slides, "dropped": dropped}
+
+
+def _deck_write(st, deck):
+    """deck 재료 → .pptx (공부\발표\<장 id>_<deck id>.pptx). 파일 이름을 돌려준다."""
+    import pptx_min
+    P = st.get("papers") or []
+    figs = _deck_figs(st)
+    ch = st.get("chapter") or {}
+    name = "%s_%s.pptx" % (st["id"], deck["id"])
+    path = os.path.join(_deck_dir(), name)
+    pshort = lambda n: next((p.get("short") for p in P if str(p.get("n")) == str(n)), "")
+    slides, allc = [], set()
+    for sl in deck["slides"]:
+        fig = None
+        f = figs.get((sl.get("fig") or {}).get("no")) if sl.get("fig") else None
+        if f:
+            pn, ps = (P[f["pi"]].get("n"), P[f["pi"]].get("short")) if isinstance(f["pi"], int) and f["pi"] < len(P) else ("?", "")
+            fig = {"path": f["path"], "caption": "그림 %d. %s — %s [%s], Fig. %s" % (f["no"], (f["text"] or f["cap_en"])[:140].rstrip(". "), ps, pn, f["n"])}
+            if pn not in ("?", None):
+                allc.add(int(pn))
+        allc |= set(sl.get("cites") or [])
+        foot = ("출처: " + " · ".join("[%d] %s" % (n, pshort(n)) for n in sl.get("cites") or [])) if sl.get("cites") else ""
+        slides.append({"h": sl["h"], "bullets": [b["t"] for b in sl["bullets"]], "fig": fig, "foot": foot, "note": (sl.get("note") or {}).get("t") or ""})
+    refs = ["[%s] %s" % (p.get("n"), p.get("ref") or ("%s. %s. %s %s." % (p.get("short"), p.get("title"), p.get("journal"), p.get("year")))) for p in sorted((p for p in P if p.get("n") and int(p["n"]) in allc), key=lambda p: int(p["n"]))]
+    pptx_min.build(path, {"title": deck["title"], "subtitle": (deck.get("subtitle") or "") + "\n" + time.strftime("%Y-%m-%d"),
+                          "footer": "Athenaeum 공부 장 「%s」 에서 — 내 서재의 논문 %d편으로 쓴 장, 글머리표마다 논문의 원문 문장에 묶여 있음" % (ch.get("title") or "", (st.get("stats") or {}).get("cited") or len(P)),
+                          "title_note": "이 발표 자료는 Athenaeum 의 공부 장을 바탕으로 만들었습니다. 글머리표와 메모는 장의 문장을 줄인 것이고, 장의 문장은 논문의 원문 문장과 대조한 것입니다.",
+                          "slides": slides, "refs": refs})
+    return name
+
+
+def deck_delete(sid, did):
+    with _LOCK:
+        st = _load(sid)
+        if not st:
+            return {"error": "찾지 못했습니다"}
+        gone = next((d for d in st.get("decks") or [] if d.get("id") == did), None)
+        st["decks"] = [d for d in st.get("decks") or [] if d.get("id") != did]
+        _save(st)
+    if gone and gone.get("file"):
+        fp = os.path.join(_deck_dir(), os.path.basename(gone["file"]))
+        if os.path.isfile(fp):
+            try:
+                os.remove(fp)
+            except OSError:
+                pass
+    return {"ok": True}
+
+
 def map_start(sid, body):
     effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
     with _LOCK:
@@ -2499,6 +2749,13 @@ def handle_get(h, url):
         return h._send(200, get(_q(url, "id")))
     if p == "/api/study/chats":
         return h._send(200, chats_of(_q(url, "id")))
+    if p == "/api/study/deck":         # 발표 자료 .pptx 내려받기: ?id=<공부 id>&name=<파일>
+        name = os.path.basename(_q(url, "name"))
+        fp = os.path.join(_deck_dir(), name)
+        if name.lower().endswith(".pptx") and name.startswith(_q(url, "id") + "_") and os.path.isfile(fp):
+            with open(fp, "rb") as f:
+                return h._send(200, f.read(), "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        return h._send(404, {"error": "no deck"})
     if p == "/api/study/fig":          # 장에 실은 그림(논문 PDF 에서 잘라 둔 PNG): ?id=<공부 id>&name=P5_fig4.png
         name = os.path.basename(_q(url, "name"))
         fp = os.path.join(_fig_dir(_q(url, "id")), name)
@@ -2538,6 +2795,10 @@ def handle_post(h, body):
             return h._send(200, map_start(sid, body))
         if op == "comment":
             return h._send(200, comment_start(sid, body))
+        if op == "deck":
+            return h._send(200, deck_start(sid, body))
+        if op == "deck_delete":
+            return h._send(200, deck_delete(sid, str(body.get("deck") or "")))
         if op == "chat_delete":
             return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
         if op == "cancel":

@@ -53,6 +53,13 @@
   .ix .ixq { margin: 2px 0 12px; } .ix .ixq input, .ch .cvf input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   .ix .ixc { padding: 7px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; line-height: 1.5; } .ix .ixc:last-child { border-bottom: 1px solid var(--line); } .ix #ixChats { margin-bottom: 18px; } .ix .ixc:hover .q { color: var(--accent); } .ix .ixc .q { font-weight: 500; } .ix .ixc .m { color: var(--text-3); font-size: 12px; }
   .ch .cvf { margin: 0 0 10px; }
+  .dkform textarea { width: 100%; box-sizing: border-box; min-height: 64px; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
+  .dkform .row { display: flex; gap: var(--s2); align-items: center; margin: 6px 0 14px; }
+  .dk { border-top: 1px solid var(--line); padding: 12px 0; font-family: var(--font); font-size: 13.5px; } .dk .dkhead { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+  .dk .dks { padding: 8px 0 6px; border-top: 1px dashed var(--line); } .dk .dkh { font-weight: 600; margin-bottom: 4px; } .dk .dkh .no { color: var(--text-3); font-weight: 400; margin-right: 8px; }
+  .dk .dkbody { display: flex; gap: 14px; align-items: flex-start; } .dk .dkbody ul { margin: 0; padding-left: 18px; flex: 1; line-height: 1.55; } .dk .dkbody li { margin: 2px 0; }
+  .dk .dkfig { margin: 0; flex: 0 0 240px; } .dk .dkfig img { max-width: 240px; max-height: 170px; border: 1px solid var(--line); background: #fff; } .dk .dkfig figcaption { font-size: 11.5px; color: var(--text-3); line-height: 1.4; }
+  .dk .note { color: var(--text-3); font-size: 12.5px; line-height: 1.55; margin-top: 4px; white-space: pre-wrap; } .dk .dkk { color: var(--accent); text-decoration: none; font-size: 11px; margin-left: 2px; }
   .askwrap .fsz { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; } .askwrap .fsz .act { padding: 0 4px; }
   .askwrap .msg, .askwrap .spq, .askwrap textarea, .askwrap .srci { font-size: inherit; }
   #list.closed { display: none; }
@@ -287,6 +294,7 @@ function renderOutline() {
   el.innerHTML = "<div class='sideh'>장의 차례 <button class='act' id='olTitle' title='이 장의 개요로'>개요</button></div>" +
     item("overview", null, "", "", "개요", "") +
     item("map", null, " fig", "", "마인드맵 (그림)", cur.map ? "" : cur.map_pending ? "만드는 중" : "아직 없음") +
+    item("deck", null, " fig", "", "발표 자료 (PPT)", (cur.decks || []).length ? cur.decks.length + "개" : cur.deck_pending ? "만드는 중" : "") +
     ((cur.chats || []).length ? item("chats", null, " sub", "", "Claude 에게 물은 것", cur.chats.length) : "") +
     bodySecs().map((x, i) => item("sec", x.si, "", i + 1, x.sec.title, secUnits(x.sec) + "문장")).join("") +
     (summ ? item("summary", null, " sub", "", "핵심 정리", secUnits(summ) + "줄") : "") +
@@ -314,14 +322,14 @@ async function refresh(first) {
   if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); renderOutline(); return; }
   const was = cur && cur.id === st.id ? cur.status : "";
   cur = st; got = Date.now();
-  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "");
+  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "") + (st.deck_pending ? "d" + st.deck_pending : "") + ((st.decks || []).length) + (st.deck_error || "");
   if (first || st.status !== "done" || was !== "done") { renderMain(); renderPanel(); }
   else if (ms !== mapStamp) renderMain();
   if (ms !== mapStamp) { mapStamp = ms; renderOutline(); }
   if (first) { renderOutline(); newboxSet(lsGet("study_new_open", st.status === "done" ? "0" : "1") === "1"); }
   if (was && was !== st.status) loadList();
   clearTimeout(pollT);
-  if (st.status === "running" || st.map_pending || st.comment_pending) pollT = setTimeout(refresh, 4000);
+  if (st.status === "running" || st.map_pending || st.comment_pending || st.deck_pending) pollT = setTimeout(refresh, 4000);
   if (st.status === "done" && (st.chats || []).some(c => c.pending)) startChatPoll();
 }
 
@@ -472,6 +480,7 @@ function viewHtml() {
   askedSet = new Set((cur.chats || []).flatMap(c => c.keys || []));
   const ch = cur.chapter, k = view.kind;
   if (k === "map") return mapHtml();
+  if (k === "deck") return deckHtml();
   if (k === "all") return "<div class='page ch'>" + crumb("전체를 한 번에") + overviewBody(true) + "</div>";
   if (k === "sec") return "<div class='page ch'>" + sectionHtml(view.si) + "</div>";
   if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
@@ -490,6 +499,7 @@ function overviewBody(all) {
   if (!all) {
     h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
       "<li data-v='map' data-si='-1'><span class='no'>▦</span><span>마인드맵 — 장을 한 그림으로" + (cur.map ? "" : " <span class='q'>(아직 만들지 않음)</span>") + "</span></li>" +
+      "<li data-v='deck' data-si='-1'><span class='no'>▤</span><span>발표 자료 — 장을 바탕으로 슬라이드(.pptx)" + ((cur.decks || []).length ? "" : " <span class='q'>(아직 만들지 않음)</span>") + "</span>" + ((cur.decks || []).length ? "<span class='n'>" + cur.decks.length + "개</span>" : "") + "</li>" +
       (summ ? "<li data-v='summary' data-si='-1'><span class='no'>·</span><span>핵심 정리</span><span class='n'>" + secUnits(summ) + "줄</span></li>" : "") +
       ((ch.gaps || []).length ? "<li data-v='gaps' data-si='-1'><span class='no'>·</span><span>이 서재로는 답하지 못한 것</span><span class='n'>" + ch.gaps.length + "</span></li>" : "") +
       "<li data-v='refs' data-si='-1'><span class='no'>·</span><span>참고문헌</span><span class='n'>" + (s.cited || 0) + "편</span></li></ul>" +
@@ -578,6 +588,7 @@ function bindChapter() {
   if ($("rwBtn")) $("rwBtn").onclick = async () => { if (!confirm("읽은 논문과 메모는 그대로 두고 짜기부터 다시 씁니다(40분쯤, 토큰은 새로 쓰는 장의 절반쯤). 새 장이 생기고 이 장은 남습니다. 시작할까요?")) return;
     const r = await api("/api/study", { op: "rewrite", id: cur.id }); if (r.error) { alert(r.error); return; } await loadList(); openStudy(r.id); };
   if (view.kind === "map") bindMap();
+  if (view.kind === "deck") bindDeck();
 }
 document.addEventListener("keydown", e => {      // 문장을 하나씩 넘기며 근거 보기: ↑↓ 또는 J·K
   if (!cur || cur.status !== "done" || !selKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "")) return;
@@ -602,6 +613,45 @@ function wrapText(t, maxW, px, bold) {   // 글을 폭에 맞춰 줄로 — 빈�
   return out.slice(0, 6);
 }
 function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+// 발표 자료(PPT) — 장을 바탕으로 슬라이드 (사용자 2026-10-09: '공부한 것을 바탕으로 1쪽 특성, 2쪽 연구 동향 식으로 PPT 를 만들어 줬으면')
+let deckTick = null, deckDraft = "";
+function deckHtml() {
+  const decks = (cur.decks || []).slice().reverse();
+  let h = "<div class='page ch'>" + crumb("발표 자료") + "<h2 class='first'>발표 자료 (PPT) — " + esc(cur.chapter.title) + "</h2>" +
+    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 글머리표마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 그림은 장에 실린 논문 그림에서 고르며, 쪽마다 발표자 메모가 붙습니다. 글머리표의 수치는 프로그램이 근거 문장과 대조해 어긋나면 뺍니다. 제목 쪽과 참고문헌 쪽은 따로 붙습니다.</div>";
+  if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>장 전체를 읽고 쪽마다 재료를 고릅니다(3~6분). 창을 닫아도 계속 만듭니다.</div>";
+  else {
+    const eff = lsGet("study_ask_effort", "xhigh");
+    h += "<div class='dkform noprint'><textarea id='deckReq' placeholder='발표의 목적과 쪽 구성 — 예: 연구실 세미나용. 1쪽 탄탈럼의 특성과 쓰임, 2쪽 왜 깎기 어려운가, 3쪽 지금까지의 연구 동향(코팅·냉각·기전), 4쪽 남은 물음. (비우면 장의 줄기대로)'>" + esc(deckDraft) + "</textarea>" +
+      "<div class='row'><select id='deckN' title='내용 쪽 수'><option value='0'>쪽 수 자동</option>" + [4, 6, 8, 10, 12].map(n => "<option value='" + n + "'>" + n + "쪽</option>").join("") + "</select>" +
+      "<select id='deckEff'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
+      "<button class='primary' id='deckGo'>만들기</button><span class='hint' id='deckMsg'></span></div></div>";
+    if (cur.deck_error) h += "<div class='warnbox'>" + esc(cur.deck_error) + "</div>";
+  }
+  decks.forEach(d => { h += deckOneHtml(d); });
+  return h + "</div>";
+}
+function deckOneHtml(d) {
+  const fig = f => f ? "<figure class='dkfig'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''><figcaption>그림 " + f.no + (f.why ? " — " + esc(f.why) : "") + "</figcaption></figure>" : "";
+  const keyLinks = keys => (keys || []).map(k => "<a href='#' class='dkk' data-unit='" + esc(k) + "' title='본문의 이 문장으로'>¶</a>").join("");
+  const fname = (d.title || "발표").replace(/[\\/:*?"<>|]/g, " ") + ".pptx";
+  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · " + d.slides.length + "쪽" + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + "</span>" +
+    "<span class='noprint' style='margin-left:auto'><a class='act' href='/api/study/deck?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "' download='" + esc(fname) + "'>pptx 내려받기</a><button class='act warn' data-dkdel='" + esc(d.id) + "'>지우기</button></span></div>" +
+    (d.req ? "<div class='hint'>주문: " + esc(d.req) + "</div>" : "") + (d.subtitle ? "<div class='hint'>" + esc(d.subtitle) + "</div>" : "") +
+    d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 1) + "</span>" + esc(s.h) + "</div><div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + "</li>").join("") + "</ul>" + fig(s.fig) + "</div>" +
+      (s.note ? "<div class='note'><b>메모</b> " + esc(s.note.t) + " " + keyLinks(s.note.keys) + "</div>" : "") + (s.cites && s.cites.length ? "<div class='hint'>출처 [" + s.cites.join(", ") + "]</div>" : "") + "</div>").join("") +
+    ((d.dropped || []).length ? "<details class='evd'><summary>뺀 글머리표 " + d.dropped.length + " (장의 문장 id 가 없거나 수치가 어긋남)</summary>" + d.dropped.map(x => "<div class='hint'>" + esc(x.slide) + " · " + esc(x.t) + " — " + esc(x.why) + "</div>").join("") + "</details>" : "") + "</div>";
+}
+function bindDeck() {
+  const m = $("main");
+  const t = $("deckReq"); if (t) t.oninput = () => { deckDraft = t.value; };
+  const go = $("deckGo"); if (go) go.onclick = async () => { go.disabled = true; $("deckMsg").textContent = "보내는 중…"; const eff = $("deckEff").value; lsSet("study_ask_effort", eff);
+    const r = await api("/api/study", { op: "deck", id: cur.id, req: $("deckReq").value, n: +$("deckN").value, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; $("deckMsg").textContent = ""; return; } deckDraft = ""; await refresh(false); renderMain(); };
+  m.querySelectorAll("[data-dkdel]").forEach(b => b.onclick = async () => { if (!confirm("이 발표 자료를 지울까요? (파일도 지웁니다)")) return; const r = await api("/api/study", { op: "deck_delete", id: cur.id, deck: b.dataset.dkdel }); if (r.error) { alert(r.error); return; } await refresh(false); renderMain(); });
+  m.querySelectorAll(".dkk[data-unit]").forEach(a => a.onclick = e => { e.preventDefault(); gotoUnit(a.dataset.unit); });
+  clearInterval(deckTick);
+  if (cur.deck_pending) { const T = 300, tk = () => { const el = Date.now() / 1000 - cur.deck_pending, b = $("deckBar"), e2 = $("deckEta"); if (!b) { clearInterval(deckTick); return; } b.style.width = Math.round(Math.min(0.92, el / T * 0.9) * 100) + "%"; e2.textContent = (el > T ? "예상보다 오래 걸리고 있습니다 · " : "만드는 중 · ") + fmtDur(el) + "째"; }; tk(); deckTick = setInterval(tk, 1000); }
+}
 function mapHtml() {
   const m = cur.map, secs = bodySecs();
   if (mapSi < 0 || !secs.some(x => x.si === mapSi)) mapSi = secs.length ? secs[0].si : -1;
