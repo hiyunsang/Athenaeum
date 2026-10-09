@@ -457,7 +457,7 @@ function overviewBody(all) {
   const chars = ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((q, u) => q + u.t.length, 0), 0), 0);
   let h = "<h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
     "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) + (cur.stylus ? " · " + esc(cur.stylus) + " 로 씀" : "") +
-    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + "<button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
+    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + "<button class='act' id='rwBtn' title='읽은 논문·메모는 그대로 두고 짜기부터 지금 규칙(줄기 먼저 · 리뷰를 뼈대로 · 고르기)으로 다시 씁니다 — 새 장이 생기고 이 장은 남습니다. 40분쯤'>새 규칙으로 다시 쓰기</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
   if (!all) {
     h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
       "<li data-v='map' data-si='-1'><span class='no'>▦</span><span>마인드맵 — 장을 한 그림으로" + (cur.map ? "" : " <span class='q'>(아직 만들지 않음)</span>") + "</span></li>" +
@@ -537,6 +537,8 @@ function bindChapter() {
   if ($("printBtn")) $("printBtn").onclick = () => { if (view.kind !== "all") { view = { kind: "all", si: -1 }; renderMain(); } setTimeout(() => window.print(), 300); };
   if ($("infoBtn")) $("infoBtn").onclick = () => { panel = "info"; infoOpen = true; selKey = ""; m.querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
   if ($("delBtn")) $("delBtn").onclick = delStudy;
+  if ($("rwBtn")) $("rwBtn").onclick = async () => { if (!confirm("읽은 논문과 메모는 그대로 두고 짜기부터 다시 씁니다(40분쯤, 토큰은 새로 쓰는 장의 절반쯤). 새 장이 생기고 이 장은 남습니다. 시작할까요?")) return;
+    const r = await api("/api/study", { op: "rewrite", id: cur.id }); if (r.error) { alert(r.error); return; } await loadList(); openStudy(r.id); };
   if (view.kind === "map") bindMap();
 }
 document.addEventListener("keydown", e => {      // 문장을 하나씩 넘기며 근거 보기: ↑↓ 또는 J·K
@@ -836,13 +838,29 @@ function infoPanel() {
 }
 
 // ---------- 시작 ----------
-$("go").onclick = async () => {
-  const topic = $("topic").value.trim(); if (!topic) { $("topic").focus(); return; }
+// 쓰기 시작 — 먼저 주제가 한 장에 담기에 넓은지 본다(Sonnet 20초쯤). 넓으면 좁힌 주제를 골라 시작 (사용자 2026-10-09: '분야가 너무 넓으면 알아서 좁히거나 되물음 하나')
+async function startStudy(topic) {
   $("go").disabled = true;
   let r; try { r = await api("/api/study", { op: "start", topic, depth: $("depth").value, effort: $("effort").value }); } catch (e) { r = { error: "서버 연결 실패" }; }
   $("go").disabled = false;
   if (r.error) { $("newMsg").textContent = "⚠ " + r.error; return; }
-  $("topic").value = ""; await loadList(); openStudy(r.id);
+  $("topic").value = ""; $("newMsg").innerHTML = "서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다."; await loadList(); openStudy(r.id);
+}
+$("go").onclick = async () => {
+  const topic = $("topic").value.trim(); if (!topic) { $("topic").focus(); return; }
+  if ($("go").dataset.skip === topic) { $("go").dataset.skip = ""; return startStudy(topic); }
+  $("go").disabled = true; $("newMsg").textContent = "주제가 한 장에 담기에 넓은지 서재를 훑어 봅니다 (20초쯤)…";
+  let sc; try { sc = await api("/api/study", { op: "scope", topic, depth: $("depth").value }); } catch (e) { sc = { error: "서버 연결 실패" }; }
+  $("go").disabled = false;
+  if (sc.error) { $("newMsg").textContent = "⚠ " + sc.error; return; }
+  if (!sc.broad || !(sc.options || []).length) return startStudy(topic);
+  const opts = sc.options.map((o, i) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='radio' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>").join("") +
+    "<label style='display:block;padding:4px 0'><input type='radio' name='scopeopt' value='all'> 이대로 넓게 (서재 " + sc.n + "편 가운데 " + sc.cap + "편까지 읽음)</label>";
+  $("newMsg").innerHTML = "<div style='color:var(--amber);margin-bottom:4px'>이 주제는 서재 " + sc.n + "편에 걸립니다 — " + esc(sc.why || "한 장에 담기엔 넓어 보입니다") + "</div>" + opts +
+    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button> <span class='hint'>고른 주제는 위 칸에 채워지니 고쳐도 됩니다</span></div>";
+  $("newMsg").querySelectorAll("input[name=scopeopt]").forEach(inp => inp.onchange = () => { const v = inp.value; $("topic").value = v === "all" ? topic : sc.options[+v].topic; });
+  $("topic").value = sc.options[0].topic;
+  $("scopeGo").onclick = () => { const t = $("topic").value.trim(); if (!t) return; $("go").dataset.skip = t; startStudy(t); };
 };
 $("topic").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) $("go").click(); });
 (function srcpResize() {   // 오른쪽 Claude 칸의 폭 — 가장자리를 끌어 바꾼다 (사용자 2026-10-08: 'Claude 창 글꼴이나 창 크기 조절')

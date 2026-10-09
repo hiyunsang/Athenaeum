@@ -47,7 +47,7 @@ _SENT_CACHE = {}    # 파일 → ((정렬표 mtime, 번역 mtime), 문장들)
 _LIST_CACHE = {}    # 공부 파일 이름 → (mtime, 목록에 보일 것)
 _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text, ko}]
 
-VERSION = "공부 (2026-10-08)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 그림 색인·도식 후보·교과서식 배치(저녁)와 Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
+VERSION = "공부 (2026-10-09)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 그림 색인·도식 후보·교과서식 배치(저녁)와 Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
 _STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "verify", "wrap", "comment"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
@@ -674,29 +674,80 @@ def _all_notes(st):
 
 
 # ---------- 5 짜기 ----------
+def _review_skeleton(st):
+    """서재의 리뷰(읽은 논문 가운데 리뷰로 판정된 것)의 짜임 — 절 제목의 차례와 절마다 그 리뷰에서 뽑은 메모 → 짜기 물음의 [리뷰의 짜임]. 리뷰가 없으면 ''.
+    사용자(2026-10-09): '너무 많은 내용을 하나에 우겨넣어 조리가 없다 — 차라리 리뷰 논문을 읽는 게 낫겠다' → 이 분야를 정리한 사람의 차례를 뼈대의 출발점으로 빌린다."""
+    out = []
+    for pi, p in enumerate(st["papers"]):
+        if not p.get("read") or not p.get("notes"):
+            continue
+        if not (p.get("type") == "review" or _looks_review(p.get("title"))):
+            continue
+        try:
+            sents = _paper_sents(p["file"])
+        except Exception:
+            continue
+        by_sid, order = {}, []
+        for x in sents:
+            if x.get("zone") == "tail":
+                continue
+            sec = (x.get("sec") or "").strip()
+            if sec and sec not in order:
+                order.append(sec)
+            by_sid[x["sid"]] = sec
+        per = {}
+        for n in p["notes"]:
+            sec = next((by_sid[sid] for sid in (n.get("s") or []) if sid in by_sid and by_sid[sid]), "")
+            per.setdefault(sec, []).append(n["id"])
+        lines = ["## %s — %s" % (_pname(st, pi), str(p.get("title") or "")[:160])]
+        line = ""
+        try:
+            line = ms._paper_line(p["file"])
+        except Exception:
+            line = ""
+        if line:
+            lines.append("요지: " + line[:400])
+        for sec in order[:40]:
+            ids = per.get(sec) or []
+            lines.append("- %s%s" % (sec[:90], (" — 메모 " + ", ".join(ids[:10])) if ids else ""))
+        if per.get(""):
+            lines.append("- (절을 모르는 메모) " + ", ".join(per[""][:10]))
+        out.append("\n".join(lines))
+    return "\n\n".join(out[:2])
+
+
 def _outline(st, model, effort):
     notes = _all_notes(st)
     p = st["plan"]
     plist = "\n".join("%s (%s) — %s" % (_pname(st, i), {"review": "리뷰", "model": "모델", "simulation": "시뮬레이션"}.get(x.get("type"), "연구"), x.get("about") or x["title"][:120])
                       for i, x in enumerate(st["papers"]) if x.get("read") and x.get("notes"))
     nlist = "\n".join("%s [%s%s] %s" % (nid, _KINDS.get(n["kind"], ""), "" if n.get("own") else " · 재인용", n["pt"]) for nid, (_i, n) in notes.items())
+    try:
+        review = _review_skeleton(st)
+    except Exception:
+        review = ""
     prompt = (
-        "전공 교과서의 한 장을 짠다. 연구자의 서재 논문에서 뽑은 [메모]가 이 장의 재료 전부다(N번호의 앞 숫자 = 논문 P번호). 메모를 절로 나누고 절의 차례를 정하라.\n"
+        "전공 교과서의 한 장을 짠다. 연구자의 서재 논문에서 뽑은 [메모]가 이 장의 재료 전부다(N번호의 앞 숫자 = 논문 P번호). 먼저 이 장의 논증 줄기를 세우고, 그 줄기의 단계로 절을 나눈 뒤, 절마다 쓸 메모를 고르라.\n"
         "JSON 으로만 답하라:\n"
         "{\"title\": \"장 제목(한국어)\",\n"
-        " \"sections\": [{\"title\": \"절 제목(번호 없이)\", \"aim\": \"이 절이 답하는 물음 한 문장\", \"notes\": [\"N3.2\", \"N5.1\"]}],\n"
+        " \"spine\": \"이 장의 논증 한 문단(한국어, 5~8문장): 무엇이 물음인가 → 그것을 설명하는 경쟁하는 설명(이론·기전)은 무엇인가 → 무엇이 그 설명들을 가르는가(어떤 관찰·조건·측정) → 무엇이 합의되고 무엇이 엇갈리는가 → 무엇이 남는가. 읽는 사람은 P·N 번호를 모른다 — 논문은 '저자 연도' 로.\",\n"
+        " \"sections\": [{\"title\": \"절 제목(번호 없이)\", \"aim\": \"이 절이 답하는 물음 한 문장\", \"role\": \"줄기에서 이 절이 맡는 단계 한 구절(예: '경쟁하는 두 설명을 세운다', '둘을 가르는 관찰을 모은다')\", "
+        "\"owns\": [\"이 절이 집인 개념·변수 (예: '절삭속도의 영향', '단열 전단띠의 정의') — 다른 절은 이것을 다시 설명하지 않고 가리키기만 한다\"], \"notes\": [\"N3.2\", \"N5.1\"]}],\n"
         " \"summary\": [\"N3.2\"],\n"
         " \"terms\": [{\"en\": \"ductile-regime cutting\", \"ko\": \"연성 영역 절삭\"}],\n"
         " \"gaps\": [\"[이 장이 답할 물음] 가운데 이 서재의 논문으로는 답할 수 없는 것, 한두 편에만 기대는 것, 논문끼리 엇갈리는 것(한국어 한 문장씩. 읽는 사람은 P·N 번호를 모른다 — 논문은 '저자 연도' 로 적고 '메모' 라는 말은 쓰지 않는다)\"]}\n"
         "짜는 법:\n"
-        "- 절의 차례는 배우는 사람이 따라갈 논리다: 무엇인가(개념·배경) → 무슨 일이 일어나는가(현상) → 왜 그런가(기전) → 무엇이 그것을 바꾸는가(영향 인자) → 어떻게 알아내는가(실험·측정·모델) → 어디까지 아는가(한계·쟁점). "
-        "다만 메모가 실제로 있는 것으로만 절을 세운다 — 메모가 셋이 안 되는 절은 만들지 말고 가까운 절에 합친다. 절은 4~8개.\n"
-        "- 절 안의 notes 는 그 절에서 쓸 차례대로. 한 메모는 한 절에만 넣는다. 주제에서 벗어났거나 겹치는 메모는 어느 절에도 넣지 않아도 된다.\n"
+        "- 줄기 먼저: spine 은 이 장이 배우는 사람에게 펴 보일 하나의 논증이다. 절은 그 줄기의 단계이지 주제의 서랍(구조·조건·결과·방법…)이 아니다 — 절마다 role 에 줄기의 어느 단계를 맡는지 적는다. 절은 4~7개.\n"
+        "- 물음은 겹치지 않게: 한 물음은 한 절이 답한다. 같은 개념·변수가 여러 절에서 다시 설명되지 않도록, 개념마다 집이 되는 절을 하나 정해 owns 에 적는다(예: '절삭속도의 영향' 은 한 절에만). 다른 절은 그 개념을 한 구절로 가리키고 넘어간다.\n"
+        "- 메모는 그 절의 물음에 꼭 필요한 것만 고른다. 모든 메모를 어느 절엔가 넣으려 하지 않는다 — 교과서는 서재의 색인이 아니다. 쓰지 않은 메모는 그냥 둔다. 한 메모는 한 절에만.\n"
+        "- 절의 차례는 배우는 사람이 따라갈 논리다(무엇인가 → 무슨 일이 일어나는가 → 왜 → 무엇이 바꾸는가 → 어떻게 아는가 → 어디까지 아는가)를 줄기에 맞게 쓰되, 메모가 셋이 안 되는 절은 만들지 말고 가까운 절에 합친다.\n"
+        "- [리뷰의 짜임]이 있으면 그것은 이 분야를 정리한 사람의 차례다. 절의 차례와 범위를 거기서 빌려 출발점으로 삼고(리뷰의 절 제목을 그대로 베끼지는 않는다), 이 장의 물음에 맞게 고친 뒤 리뷰 뒤의 논문과 리뷰가 다루지 않은 메모를 그 틀에 얹는다.\n"
         "- 절 제목은 내용을 말하는 명사구로(예: '임계 절삭 깊이와 취성–연성 전이'). '서론'·'결론'·'기타' 같은 제목은 쓰지 않는다.\n"
         "- summary 는 장 끝의 '핵심 정리'에 쓸 메모 6~10개(이 장에서 가장 중요한 사실). [논문]의 ★ 는 연구자가 정한 우선 저널 — summary 는 ★ 논문과 리뷰의 메모를 먼저, ★ 가 아닌 저널의 연구 논문 결론은 그것뿐일 때만.\n"
         "- terms 는 메모에 나온 전문 용어 15~40개의 영어와 한국어. 같은 영어 용어에 메모마다 다른 한국어가 쓰였으면 이 분야에서 가장 굳은 것 하나로 정한다. 굳은 한국어가 없는 말은 ko 를 영어 그대로 둔다.\n"
         "- 메모에 없는 것을 지어내지 않는다.\n\n"
-        "[주제] %s\n[장의 범위] %s\n[이 장이 답할 물음]\n%s\n\n[논문]\n%s\n\n[메모]\n%s") % (st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]), plist, nlist)
+        "[주제] %s\n[장의 범위] %s\n[이 장이 답할 물음]\n%s\n\n%s[논문]\n%s\n\n[메모]\n%s") % (
+            st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]), ("[리뷰의 짜임] (이 서재의 리뷰 논문의 절 차례와, 절마다 그 리뷰에서 뽑은 메모)\n" + review + "\n\n") if review else "", plist, nlist)
     d = _ask_json(st, prompt, model, effort, 1800, need="sections")
     if not d:
         raise RuntimeError("장의 짜임을 정하지 못했습니다" + _why())
@@ -711,7 +762,8 @@ def _outline(st, model, effort):
                 used.add(x)
                 ids.append(x)
         if len(ids) >= 2 and str(s.get("title") or "").strip():
-            secs.append({"title": re.sub(r"^\s*\d+(\.\d+)*[.)]?\s*", "", str(s["title"]).strip())[:80], "aim": str(s.get("aim") or "").strip()[:240], "notes": ids})
+            secs.append({"title": re.sub(r"^\s*\d+(\.\d+)*[.)]?\s*", "", str(s["title"]).strip())[:80], "aim": str(s.get("aim") or "").strip()[:240],
+                         "role": str(s.get("role") or "").strip()[:160], "owns": [str(o).strip()[:40] for o in (s.get("owns") if isinstance(s.get("owns"), list) else [])[:8] if str(o).strip()], "notes": ids})
     if not secs:
         raise RuntimeError("장의 짜임을 정하지 못했습니다 (메모 %d개)" % len(notes))
     summ = [x for x in (str(y).strip() for y in d.get("summary") or []) if x in notes][:12]
@@ -729,8 +781,8 @@ def _outline(st, model, effort):
             i = int(m.group(1)) - 1
             return st["papers"][i]["short"] if 0 <= i < len(st["papers"]) else m.group(0)
         return re.sub(r"\bP(\d{1,2})\b", one, re.sub(r"\s*\(?N\d+\.\d+(?:\s*,\s*N\d+\.\d+)*\)?", "", t))
-    st["outline"] = {"title": str(d.get("title") or p["title"]).strip()[:80], "sections": secs, "terms": terms,
-                     "gaps": [names(str(x).strip())[:300] for x in (d.get("gaps") or [])[:8] if str(x).strip()], "unused": len(notes) - len(used)}
+    st["outline"] = {"title": str(d.get("title") or p["title"]).strip()[:80], "spine": names(_clean(str(d.get("spine") or "")))[:1500], "sections": secs, "terms": terms,
+                     "gaps": [names(str(x).strip())[:300] for x in (d.get("gaps") or [])[:8] if str(x).strip()], "unused": len(notes) - len(used), "review_based": bool(review)}
 
 
 # 절의 논지 — 사용자(2026-10-07): 장이 '결과 나열' 로 읽힌다. 재 보니 두 논문 이상이 받치는 문장이 4~5%, 한 논문만의 문단이 41~64% 였다.
@@ -740,7 +792,8 @@ _REL = {"agree": "여러 연구가 같은 것을 본다", "cond": "조건이 달
 
 
 def _claims(st, k, model, effort):
-    """절 하나의 논지와 번외 → outline.sections[k] 에 claims·extra·claimed 를 적는다. Claude 가 답하지 않으면 False"""
+    """절 하나의 논지와 번외 → outline.sections[k] 에 claims·extra·dropped·claimed 를 적는다. Claude 가 답하지 않으면 False.
+    사용자(2026-10-09): 메모를 다 싣는 규칙이 절을 리뷰 한 장 분량으로 만들었다 → 논지 3~5개, 논지마다 대표 메모 하나둘(anchor)을 깊게, 나머지는 보기, 안 쓰는 메모는 버린다."""
     ol = st["outline"]
     sec = ol["sections"][k]
     plist, nlist = _note_block(st, sec["notes"], with_src=False)
@@ -748,34 +801,43 @@ def _claims(st, k, model, effort):
     prompt = (
         "전공 교과서의 한 절을 쓰기 전에 그 절의 논지를 세운다. 절의 재료는 연구자의 서재 논문에서 뽑은 [메모]뿐이다(N번호의 앞 숫자 = 논문 P번호, ★ = 우선 저널).\n"
         "JSON 으로만 답하라:\n"
-        "{\"claims\": [{\"t\": \"논지 한 문장(한국어)\", \"notes\": [\"N3.2\", \"N5.1\"], \"rel\": \"agree|cond|conflict|extend|single\", \"how\": \"메모들 사이의 관계 한 구절 — 무엇이 같고 무엇이(어떤 조건이) 다른지\"}],\n"
-        " \"extra\": [\"어느 논지에도 들지 않는 메모 번호\"]}\n"
+        "{\"claims\": [{\"t\": \"논지 한 문장(한국어)\", \"anchor\": [\"이 논지를 가장 잘 받치는 대표 연구의 메모 1~2개\"], \"notes\": [\"대표를 포함해 이 논지에 쓸 메모 전부 — 보기로 한 문장이나 표의 행이 될 것까지\"], "
+        "\"rel\": \"agree|cond|conflict|extend|single\", \"how\": \"메모들 사이의 관계 한 구절 — 무엇이 같고 무엇이(어떤 조건이) 다른지. 엇갈리면 어느 쪽이 널리 받아들여지는지(정설)와 반론\"}],\n"
+        " \"extra\": [\"논지와 어긋나거나 특이해서 따로 적을 메모 번호 (5개까지)\"]}\n"
         "규칙:\n"
-        "- 논지 = 이 절의 물음에 답하는 한 문장으로 적은 사실. 2~6개, 배우는 사람이 따라갈 차례로(무엇인가 → 무슨 일이 일어나는가 → 왜 → 무엇이 바꾸는가 → 어떻게 아는가 → 어디까지 아는가). 첫 논지는 물음에 대한 답이다.\n"
-        "- 논지는 여러 메모가 함께 받치는 것이 좋다 — 가능하면 둘 이상의 논문. 한 메모만 받치는 논지도 된다(rel: single). 한 메모는 한 논지에만 넣는다.\n"
+        "- 논지 = 이 절의 물음에 답하는 한 문장으로 적은 사실. 3~5개, 배우는 사람이 따라갈 차례로. 첫 논지는 물음에 대한 답이다 — 정설이 있으면 정설을 먼저 세우고 반론은 뒤의 논지나 how 에 둔다.\n"
+        "- 고른다: 이 절의 물음에 꼭 필요한 메모만 notes 에 넣는다. 모든 메모를 어느 논지엔가 넣으려 하지 않는다 — 교과서는 서재의 색인이 아니다. 같은 사실을 되풀이하는 메모는 하나만. 한 메모는 한 논지에만.\n"
+        "- anchor = 그 논지를 가장 잘 받치는 대표 연구의 메모 1~2개(★·리뷰·직접 실험·기전을 말하는 것 먼저). 글은 대표 메모를 깊게 펴고 나머지 notes 는 한 문장이나 표의 행으로만 쓴다.\n"
         "- rel: agree 여러 연구가 같은 것을 본다 / cond 조건(재료·방위·공구·깊이·속도·방법)이 달라 값이나 양상이 다르다 — how 에 무엇이 다른지 / "
-        "conflict 연구끼리 엇갈린다 — 양쪽을 다 둔다(엇갈리는 것은 배우는 사람에게 가장 중요한 정보다) / extend 한 연구가 다른 연구를 넓히거나 기전을 더한다 / single.\n"
+        "conflict 연구끼리 엇갈린다 — 양쪽을 다 두되 how 에 정설과 반론을 가른다(엇갈리는 것은 배우는 사람에게 가장 중요한 정보다) / extend 한 연구가 다른 연구를 넓히거나 기전을 더한다 / single.\n"
         "- 논지 문장은 메모들이 말하는 것을 묶은 것이다. 메모에 없는 사실·수치·원인을 넣지 않고, 조건을 떼고 일반 법칙처럼 넓히지 않는다. 수치는 메모 그대로. 교과서적 상식을 보태지 않는다.\n"
         "- 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 논지의 받침은 ★ 논문과 리뷰의 결과·기전 메모로 먼저 세운다. ★ 가 아닌 저널의 연구 논문이 혼자 받치는 결과·기전·일반화는 논지로 세우지 않는다 — "
-        "그 수치와 조건은 ★ 논문의 논지를 받치는 보기(agree·cond)나 표의 행으로 쓰고, 붙을 데가 없으면 extra 로. ★ 가 아닌 논문의 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
-        "- 어느 논지에도 들지 않는 메모는 모두 extra 에 적는다 — 버리지 않는다(절 끝의 '번외'에 실린다).\n\n"
-        "[장] %s — %s\n[절의 차례] (▶ = 이 절)\n%s\n\n[이 절] %s%s\n\n[논문]\n%s\n\n[메모]\n%s") % (
-            ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "", plist, nlist)
+        "그 수치와 조건은 ★ 논문의 논지를 받치는 보기(agree·cond)나 표의 행으로 쓰고, 붙을 데가 없으면 쓰지 않는다. ★ 가 아닌 논문의 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
+        "- extra 는 논지와 어긋나거나 특이해서 따로 적을 가치가 있는 메모만(5개까지, 절 끝의 '번외'에 한 문장씩 실린다). 나머지 안 쓴 메모는 버린다.\n\n"
+        "[장] %s — %s\n[장의 줄기] %s\n[절의 차례] (▶ = 이 절)\n%s\n\n[이 절] %s%s%s\n\n[논문]\n%s\n\n[메모]\n%s") % (
+            ol["title"], st["plan"]["scope"], ol.get("spine") or "(없음)", toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "",
+            (" — 줄기에서 맡은 단계: " + sec["role"]) if sec.get("role") else "", plist, nlist)
     d = _ask_json(st, prompt, model, effort, 900, need="claims")
     claims, used = [], set()
     for c in ((d or {}).get("claims") or [])[:8]:
         if not isinstance(c, dict):
             continue
         ids = [x for x in (str(y).strip() for y in (c.get("notes") if isinstance(c.get("notes"), list) else [])) if x in sec["notes"] and x not in used]
+        anchor = [x for x in (str(y).strip() for y in (c.get("anchor") if isinstance(c.get("anchor"), list) else [])) if x in sec["notes"] and x not in used]
+        for a in anchor:
+            if a not in ids:
+                ids.insert(0, a)
         t = _clean(str(c.get("t") or "")).strip()
         if len(t) < 8 or not ids:
             continue
         used.update(ids)
         rel = c.get("rel") if c.get("rel") in _REL else ("single" if len({x.split(".")[0] for x in ids}) < 2 else "agree")
-        claims.append({"t": t[:300], "notes": ids[:12], "rel": rel, "how": str(c.get("how") or "").strip()[:200]})
+        claims.append({"t": t[:300], "notes": ids[:12], "anchor": [a for a in anchor if a in ids][:2] or ids[:1], "rel": rel, "how": str(c.get("how") or "").strip()[:240]})
+    extra = [x for x in (str(y).strip() for y in ((d or {}).get("extra") if isinstance((d or {}).get("extra"), list) else [])) if x in sec["notes"] and x not in used][:5]
     with _LOCK:
         sec["claims"] = claims
-        sec["extra"] = [x for x in sec["notes"] if x not in used]    # 논지에 들지 않은 메모는 모두 번외 — Claude 가 extra 에 적지 않았어도
+        sec["extra"] = extra                                                  # 번외는 Claude 가 고른 것만(어긋나거나 특이한 것)
+        sec["dropped"] = [x for x in sec["notes"] if x not in used and x not in extra]   # 쓰지 않는 메모 — 버린다(통계에만)
         sec["claimed"] = True
     return d is not None
 
@@ -824,11 +886,11 @@ def _claim_block(st, sec):
     """쓰기 물음의 재료: 논지마다 그 메모와 근거 원문, 끝에 번외 메모 → (논문 목록, 글, 논문 순번들)"""
     notes, lines, pset = _all_notes(st), [], []
 
-    def memo(nid):
+    def memo(nid, tag=""):
         pi, n = notes[nid]
         if pi not in pset:
             pset.append(pi)
-        out = ["  %s [%s · %s] (P%d %s) %s" % (nid, _KINDS.get(n["kind"], ""), "이 논문의 결과·해석" if n.get("own") else "재인용 — 이 논문이 남의 연구를 전한 말", pi + 1, st["papers"][pi]["short"], n["pt"])]
+        out = ["  %s%s [%s · %s] (P%d %s) %s" % (nid, tag, _KINDS.get(n["kind"], ""), "이 논문의 결과·해석" if n.get("own") else "재인용 — 이 논문이 남의 연구를 전한 말", pi + 1, st["papers"][pi]["short"], n["pt"])]
         by = {s["sid"]: s for s in _paper_sents(st["papers"][pi]["file"])}
         for sid in n["s"]:
             if sid in by:
@@ -839,11 +901,11 @@ def _claim_block(st, sec):
         lines.append("  메모 사이: %s%s" % (_REL.get(c.get("rel"), ""), (" — " + c["how"]) if c.get("how") else ""))
         for nid in c["notes"]:
             if nid in notes:
-                lines += memo(nid)
+                lines += memo(nid, " [대표 — 깊게]" if nid in (c.get("anchor") or []) else " [보기 — 한 문장이나 표의 행]")
         lines.append("")
     extra = [x for x in sec.get("extra") or [] if x in notes]
     if extra:
-        lines.append("[번외] 어느 논지에도 들지 않지만 이 절에 속하는 메모 — 절 끝의 '### 번외' 아래에 메모마다 한 문장으로 싣는다")
+        lines.append("[번외] 논지와 어긋나거나 특이해서 따로 적는 메모 — 절 끝의 '### 번외' 아래에 메모마다 한 문장으로")
         for nid in extra:
             lines += memo(nid)
     plist = "\n".join("%s — %s" % (_pname(st, pi), st["papers"][pi].get("about") or st["papers"][pi]["title"][:120]) for pi in sorted(pset))
@@ -999,12 +1061,12 @@ _WRITE_RULES = (
     "6. 연구자 이름은 문장의 주어가 아니라 인용이다. 사실·현상·기전·수치는 사실을 주어로 쓴다('절삭 깊이가 커지면 가공면은 … 을 차례로 거친다'). 연구자를 주어로 세우는 문장('Yan 등(2003)은 …')과 이름을 조건 자리에 끼운 꼴('Liu 등(2019)의 테이퍼 절삭에서는')은 "
     "그 연구만의 장치·방법을 말해야 할 때만, 절에 두셋까지. 그때는 [논문]에 적힌 이름과 연도만 쓴다. 인용 번호는 쓰지 않는다(프로그램이 붙인다).\n"
     "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다. 연구들이 같은 것을 보았는지, 어디서 갈리는지는 설명의 흐름 속에서 말하고, 그 문장에는 관계된 메모를 모두 ⟦ ⟧ 에 적는다 — "
-    "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 두지 않는다.\n"
+    "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 문단마다 두지 않는다(절 끝에 한 번 — 규칙 16).\n"
     "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
     "9. 문장의 크기: 문장은 생각의 단위다. 한 생각을 받치는 사실이 여럿이면 한 문장에 묶고(메모 번호를 모두 적는다), 한 메모가 조건·해석을 길게 담으면 둘로 나눈다. "
     "다만 실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 두고 나머지는 뺀다. 괄호 삽입은 처음 나온 영어 용어에만. "
-    "읽는 사람은 메모가 몇 개였는지 모른다 — 문단을 읽고 나면 사실의 목록이 아니라 하나의 설명이어야 한다. 잇는 문장은 필요한 만큼. 설계도의 메모를 빠뜨리지 않는다.\n"
-    "10. 절의 첫 문단은 [앞 절]이 끝낸 생각을 받아 시작한다(잇는 문장 한둘로 — '이 절은 …를 다룬다' 같은 안내문이 아니라 내용을 잇는 말). 절의 끝은 [다음 절]의 물음으로 자연스럽게 넘긴다(한 문장, 예고가 아니라 이음). "
+    "읽는 사람은 메모가 몇 개였는지 모른다 — 문단을 읽고 나면 사실의 목록이 아니라 하나의 설명이어야 한다. 잇는 문장은 필요한 만큼. 설계도의 메모를 다 쓰지 않는다: 논지마다 [대표] 메모 하나둘을 두세 문장으로 깊게(무엇을 어떤 조건에서 어떻게 보았나), [보기] 메모는 한 문장이나 표의 행으로, 붙을 자리가 없으면 뺀다. 교과서는 서재의 색인이 아니다.\n"
+    "10. 절의 첫 문단은 [앞 절]이 끝낸 생각을 받아 시작한다(잇는 문장 한둘로 — '이 절은 …를 다룬다' 같은 안내문이 아니라 내용을 잇는 말). 절의 끝은 [다음 절]의 물음으로 자연스럽게 넘긴다(한 문장, 예고가 아니라 이음). [장의 줄기]와 [이 절의 자리]를 따른다 — 이 절은 줄기의 한 단계이지 주제의 서랍이 아니다. [다른 절이 맡은 개념]은 여기서 다시 설명하지 않고 한 구절로 가리키고 넘어간다('…는 6절에서 본다' 는 괜찮다). "
     "소제목(###)은 절이 길 때만 둘에서 넷, 문단마다 달지 않는다.\n"
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
     "12. 표: 셋 이상의 연구가 견줄 만한 수치(값과 조건)를 주면 표로 묶는다 — '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
@@ -1014,9 +1076,10 @@ _WRITE_RULES = (
     "그림을 넣을 때는 그 그림을 걸고 풀어 쓴다: 앞 문단의 한 문장이 ⟨그림⟩ 으로 가리키고('…가 ⟨그림⟩에 보인다' — 번호는 프로그램이 붙인다), 바로 뒤에 '그림: P5 Fig. 4 — 설명. ⟦메모 번호⟧' 한 줄. "
     "설명은 한두 문장으로 무엇이 무엇인지(부분·화살표·영역·축이 가리키는 것)와 독자가 봐야 할 곳을 말한다 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만, 그 밖의 수치·결론은 보태지 않는다. "
     "도식(나)의 설명은 메모 번호가 없어도 된다(⟦-⟧ — 근거는 캡션과 그림 읽기). 표도 같은 식으로 ⟨표⟩. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"
-    "14. 번외: 절 끝 '### 번외' 아래에 [번외] 메모를 메모마다 한 문장으로(조건과 함께), 관련된 것끼리 한 문단. 논지와 어긋나는 메모는 어긋난다고 적는다. 번외 메모를 빠뜨리지 않는다.\n"
+    "14. 번외: 설계도에 [번외]가 있을 때만, 절 끝 '### 번외' 아래에 그 메모를 메모마다 한 문장으로(조건과 함께). 논지와 어긋나는 메모는 어긋난다고 적는다.\n"
     "15. 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 설명의 기둥(현상·기전·법칙을 말하는 문장)은 ★ 논문과 리뷰의 메모로 세운다. ★ 가 아닌 저널의 연구 논문의 결과는 그 조건과 수치를 보기로 덧붙이는 자리('…에서도 …가 관찰되었다', 표의 행)에 두고, "
-    "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n")
+    "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
+    "16. 분량과 수치: 한 절은 20~35문장이다(핵심 정리 제외). 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 두세 문장으로 이 절이 세운 것을 묶고 [다음 절]로 넘긴다(⟦-⟧ 로, 새 사실 없이).\n")
 
 
 # Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
@@ -1077,8 +1140,13 @@ def _write_prompt(st, k):
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n문장 하나. ⟦N3.2⟧\n문장 하나. ⟦N3.4, N7.1⟧\n¶\n### 소제목 (필요할 때만)\n앞의 사실들을 묶는 문장. ⟦-⟧\n<<<END>>>\n"
                 "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호를 적는다. ¶ 한 줄은 문단을 나눈다.\n"
                 "- ⟦-⟧ 는 이음 문장(이 절이 무엇을 다루는지 알리거나, 바로 앞에 쓴 사실들을 묶거나, 다음으로 넘기는 말)에만 쓴다. 이음 문장에는 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 주제문이어도 메모 번호를 적는다.\n\n")
-    prompt = (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n\n" + form + _WRITE_RULES + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n%s") % (
-        ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "",
+    spine = ""
+    if ol.get("spine"):
+        others = [(x["title"], x.get("owns") or []) for x in ol["sections"] if x is not sec and x.get("owns")]
+        spine = ("[장의 줄기] %s\n[이 절의 자리] %s\n[이 절이 맡은 개념 — 여기서 설명한다] %s\n[다른 절이 맡은 개념 — 여기서는 가리키기만] %s\n" % (
+            ol["spine"], sec.get("role") or "(없음)", ", ".join(sec.get("owns") or []) or "(없음)", " / ".join("%s: %s" % (t, ", ".join(o)) for t, o in others) or "(없음)"))
+    prompt = (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n%s\n" + form + _WRITE_RULES + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n%s") % (
+        ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "", spine,
         _stylus_block() if sec.get("kind") != "summary" else "", plist, terms, material)
     return prompt, figs
 
@@ -1490,7 +1558,7 @@ def _wrap(st):
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
-                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "schem": nschem, "extra": nextra, "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
+                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "schem": nschem, "extra": nextra, "dropped": sum(len(x.get("dropped") or []) for x in st["outline"].get("sections") or []), "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
 
 
 # ---------- 6-1 절 사이 잇기 (2026-10-07) ----------
@@ -1756,6 +1824,8 @@ def _run(st):
         _outline(st, model, eff)
         st["sections"] = [{"title": s["title"], "aim": s.get("aim", ""), "kind": s.get("kind", ""), "blocks": None, "checked": False} for s in st["outline"]["sections"]]
         st["removed"] = []
+        if st["outline"].get("spine"):
+            _log(st, "장의 줄기(%s): %s" % ("서재의 리뷰 짜임을 빌림" if st["outline"].get("review_based") else "리뷰 없이", st["outline"]["spine"][:160]))
         _save(st)
     _check_stop(st)
     if any(s.get("blocks") is None for s in st["sections"]):      # 아직 쓰지 않은 절이 있으면 절마다 논지부터 (다 쓴 절은 그대로)
@@ -1840,6 +1910,66 @@ def _job(sid):
         st["version"] = VERSION
         _JOBS.pop(sid, None)
         _save(st)
+
+
+def scope_check(body):
+    """「쓰기 시작」 전에 주제가 한 장에 담기에 넓은지 본다 → {n, cap, broad, why, options: [{topic, focus, n}]}.
+    사용자(2026-10-09): '이거이거로 만들어 줘 할 때 분야가 너무 넓으면 알아서 좁히거나 되물음 하나'. Sonnet 둘(계획 + 좁히기), 20초쯤."""
+    topic = str(body.get("topic") or "").strip()
+    if len(topic) < 2:
+        return {"error": "공부할 주제를 적어 주세요"}
+    st = {"id": "scope", "topic": topic[:800], "tok": {"in": 0, "cached": 0}, "calls": 0}
+    try:
+        nlib = len([f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf")])
+    except OSError:
+        nlib = 0
+    _plan(st, nlib)
+    cands, nfiles, nsent, odd = _scan(st["plan"]["concepts"])
+    cap = _DEPTH.get(body.get("depth"), _DEPTH["mid"])[1]
+    out = {"n": len(cands), "cap": cap, "broad": False, "why": "", "options": [], "title": st["plan"].get("title", ""), "scope": st["plan"].get("scope", "")}
+    if len(cands) <= max(30, cap + 6):
+        return out
+    rows = []
+    for k, c in enumerate(cands[:60]):
+        m = ms.paper_meta(c["file"])
+        line = ms._paper_line(c["file"])
+        rows.append("K%d | %s · %s | %s%s" % (k + 1, ms.paper_short(c["file"]), m.get("journal", ""), str(m.get("title") or "")[:140], (" | " + line[:160]) if line else ""))
+    prompt = (
+        "연구자가 자기 서재의 논문만으로 전공 교과서 한 장을 쓰려 한다. 적은 [주제]가 서재 논문 %d편에 걸리는데 한 장에 읽을 수 있는 것은 %d편이다. 후보 논문의 제목과 한 줄 요약을 보고, "
+        "이 주제가 한 장에 담기에 넓은지 판단하고 넓으면 좁힌 주제를 2~4개 제안하라.\n"
+        "JSON 으로만: {\"broad\": true, \"why\": \"넓은(또는 알맞은) 까닭 한 문장(한국어)\", \"options\": [{\"topic\": \"좁힌 주제(한국어, 장 제목처럼 — 원래 주제의 말을 살려서)\", \"focus\": \"무엇을 중심으로 하고 무엇을 빼는지 한 구절\", \"n\": 후보 가운데 이 주제에 드는 편수}]}\n"
+        "규칙: 좁힌 주제는 후보 논문이 실제로 받치는 것만(8편 이상), 서로 겹치지 않게, 첫째를 추천으로. 재료·공정·현상·스케일·방법 가운데 후보가 갈리는 축으로 좁힌다. "
+        "주제가 이미 한 장 분량이면 broad 를 false 로 하고 options 는 빈 목록.\n\n[주제] %s\n[계획이 본 범위] %s\n\n[후보 논문]\n%s") % (len(cands), cap, topic[:400], st["plan"].get("scope", ""), "\n".join(rows))
+    d = _ask_json(st, prompt, "sonnet", None, 240)
+    if isinstance(d, dict):
+        out["broad"] = bool(d.get("broad"))
+        out["why"] = str(d.get("why") or "").strip()[:300]
+        for o in (d.get("options") or [])[:4]:
+            if isinstance(o, dict) and str(o.get("topic") or "").strip():
+                try:
+                    n = int(o.get("n") or 0)
+                except (TypeError, ValueError):
+                    n = 0
+                out["options"].append({"topic": str(o["topic"]).strip()[:160], "focus": str(o.get("focus") or "").strip()[:200], "n": n})
+        if not out["options"]:
+            out["broad"] = False
+    return out
+
+
+def rewrite_start(sid):
+    """다 쓴 장을 짜기부터 새 규칙으로 다시 쓴다(읽은 논문·메모·그림 색인은 그대로 — 읽기 비용이 없다) → 새 장. 옛 장은 그대로 남는다."""
+    src = _load(sid)
+    if not src or not src.get("papers") or not any(p.get("read") for p in src["papers"]):
+        return {"error": "읽은 논문이 없는 장은 다시 쓸 수 없습니다"}
+    if len(_JOBS) >= 2:
+        return {"error": "이미 두 개를 쓰고 있습니다 — 끝난 뒤에 시작하세요"}
+    nid = "st_" + time.strftime("%Y%m%d_%H%M%S")
+    st = json.loads(json.dumps({k: src[k] for k in ("topic", "opts", "plan", "scan", "papers", "figidx") if k in src}, ensure_ascii=False))
+    for p in st["papers"]:
+        p.pop("n", None)
+    st.update(id=nid, t=time.time(), status="running", stage="outline", calls=0, sec=0, tok={"in": 0, "cached": 0}, removed=[], joined=False, log=[], rewrite_of=sid)
+    _save(st)
+    return _spawn(nid)
 
 
 def start(body):
@@ -2341,6 +2471,10 @@ def handle_post(h, body):
         op, sid = body.get("op"), str(body.get("id") or "")
         if op == "start":
             return h._send(200, start(body))
+        if op == "scope":
+            return h._send(200, scope_check(body))
+        if op == "rewrite":
+            return h._send(200, rewrite_start(sid))
         if op == "resume":
             return h._send(200, resume(sid))
         if op == "stop":
