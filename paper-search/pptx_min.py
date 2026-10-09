@@ -90,12 +90,12 @@ def _para_h(p, width_in):
     return _lines(p["t"], per) * p["sz"] * p["line"] * 1.2 / 72.0 + p["after"] / 72.0
 
 
-def _fit_bullets(bullets, width_in, avail):
-    """글머리표 문단들을 avail 높이에 들어가는 가장 큰 글꼴로. 11pt 로도 넘치면 세부(sub)를 뒤 글머리표부터 하나씩 덜어 낸다 (수치 상자 뒤로 글이 숨지 않게)"""
+def _fit_bullets(bullets, width_in, avail, sizes=(16, 15, 14, 13, 12, 11)):
+    """글머리표 문단들을 avail 높이에 들어가는 가장 큰 글꼴로. 가장 작은 글꼴로도 넘치면 세부(sub)를 뒤 글머리표부터 하나씩 덜어 낸다 (수치 상자 뒤로 글이 숨지 않게)"""
     bl = [{"t": b["t"], "sub": list(b.get("sub") or [])} for b in bullets]
     while True:
         paras, h = [], 0
-        for sz in (16, 15, 14, 13, 12, 11):
+        for sz in sizes:
             paras = []
             for b in bl:
                 paras.append(P(b["t"], sz, lvl=0, after=5, line=1.12))
@@ -137,6 +137,28 @@ def layout_title(deck):
     return boxes
 
 
+def _fig_block(pn, x, y, w, h_max):
+    """그림 하나를 (x, y) 에서 폭 w 안에 비율대로, 아래에 캡션(무슨 그림인지)과 참고문헌 줄. 돌려주는 값: (상자들, 쓴 높이)"""
+    cap, ref = pn.get("caption") or "", pn.get("ref") or ""
+    ch = _cap_h(cap, w) + (0.1 + 0.15 * _lines(ref, int(w * 72 / (8.5 * 0.95))) if ref else 0)
+    iw, ih = png_size(pn.get("path") or "")
+    fw, fh = fit(iw, ih, w, max(0.6, h_max - ch - 0.05))
+    out = [pic(x + (w - fw) / 2, y, fw, fh, pn.get("path"))]
+    paras = [P(cap, 9.5, color="3A3A3A", line=1.12, after=1)]
+    if ref:
+        paras.append(P(ref, 8.5, color=GRAY2, line=1.1))
+    out.append(text(x, y + fh + 0.05, w, ch, paras, anchor="t"))
+    return out, fh + 0.05 + ch
+
+
+def _figs_need(pn, w):
+    """폭 w 일 때 그림 블록의 자연 높이"""
+    cap, ref = pn.get("caption") or "", pn.get("ref") or ""
+    ch = _cap_h(cap, w) + (0.1 + 0.15 * _lines(ref, int(w * 72 / (8.5 * 0.95))) if ref else 0)
+    iw, ih = png_size(pn.get("path") or "")
+    return w * ih / float(iw) + 0.05 + ch, ch
+
+
 def layout_content(s, idx, total, deck_title=""):
     L, R = 0.6, 0.6
     boxes = []
@@ -144,68 +166,86 @@ def layout_content(s, idx, total, deck_title=""):
         boxes.append(text(W_IN - R - 6.0, 0.16, 6.0, 0.3, [P(deck_title, 9, color=GRAY2, align="r")]))
     boxes.append(text(L, 0.5, W_IN - L - R, 0.85, [P(s.get("h") or "", 26, True, line=1.05)], anchor="b"))
     boxes.append(rect(L, 1.42, 0.9, 0.04, ACCENT))
-    y = 1.6
-    if s.get("msg"):
-        boxes.append(rect(L, y, W_IN - L - R, 0.64, ACCENT_SOFT))
-        boxes.append(rect(L, y, 0.07, 0.64, ACCENT))
-        boxes.append(text(L + 0.22, y, W_IN - L - R - 0.3, 0.64, [P(s["msg"], 14.5, color=ACCENT_DARK, line=1.15)], anchor="ctr"))
-        y += 0.82
-    body_top, body_bot = y, H_IN - 0.98
+    body_top, body_bot = 1.62, H_IN - 0.98
+    full_w = W_IN - L - R
     panels = [p for p in (s.get("panels") or []) if p]
     tab = next((p for p in panels if p.get("kind") == "table"), None)
-    figs_p = [p for p in panels if p.get("kind") != "table"][:2]
-    full_w = W_IN - L - R
-    # 표: 쪽 아래에 전체 폭으로 (오른쪽 좁은 열에 두면 칸이 여러 줄로 늘어나 행이 거의 안 들어간다) — 세로의 45% 까지, 넘치는 행은 덜어 낸다
-    tab_box, body_bot_eff = None, body_bot
-    if tab:
-        sz_t = 9
-        rows = [[(str(c)[:70] + "…") if len(str(c)) > 70 else str(c) for c in r] for r in (tab.get("rows") or [])[:8]]
-        allrows = len(tab.get("rows") or [])
-        rhs = _row_heights(tab.get("cols") or [], rows, full_w, sz_t)
-        tab_max = (body_bot - body_top) * 0.45
-        while len(rows) > 1 and 0.32 + sum(rhs) > tab_max:
-            rows.pop(); rhs.pop()
-        th = 0.32 + sum(rhs)
-        tab_y = body_bot - th
-        cap = (tab.get("cap") or "") + ((" (…외 %d행은 장에서)" % (allrows - len(rows))) if allrows > len(rows) else "")
-        tab_box = [text(L, tab_y, full_w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"),
-                   dict(table(L, tab_y + 0.32, full_w, sum(rhs), tab.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
-        body_bot_eff = tab_y - 0.18
-    colw = 5.0 if figs_p else 0.0
-    leftw = full_w - ((colw + 0.3) if figs_p else 0.0)
-    stats = [] if tab else [x for x in (s.get("stats") or []) if x.get("v")][:2]   # 표가 있는 쪽은 수치 상자를 두지 않는다 (자리; 표가 수치를 보인다)
-    stats_h = 1.12 if stats else 0.0
+    figs_p = [p for p in panels if p.get("kind") != "table"][:2 if not tab else 1]
+    zone_h = body_bot - body_top
+    has_right = bool(figs_p or tab)
+    kw_w = 3.9 if has_right else full_w                 # 키워드 열 — 그림·표가 있으면 좁게, 그림이 주인공
+    fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
+    stats = [x for x in (s.get("stats") or []) if x.get("v")][:2]
+    stats_h = (0.95 * len(stats) + 0.15 * (len(stats) - 1) + 0.2) if (stats and has_right) else (1.12 if stats else 0.0)
     bullets = [b for b in (s.get("bullets") or []) if (b.get("t") or "").strip()]
-    avail = body_bot_eff - body_top - stats_h
-    paras, _h = _fit_bullets(bullets, leftw, avail)
-    boxes.append(text(L, body_top, leftw, avail, paras, anchor="t"))
+    avail = zone_h - stats_h
+    paras, _h = _fit_bullets(bullets, kw_w, avail, sizes=(18, 17, 16, 15, 14, 13, 12, 11))
+    boxes.append(text(L, body_top, kw_w, avail, paras, anchor="t"))
     if stats:
-        n, gap = len(stats), 0.2
-        bw, sy = (leftw - gap * (n - 1)) / n, body_bot_eff - 0.98
-        for i, st in enumerate(stats):
-            x = L + i * (bw + gap)
-            boxes.append(rect(x, sy, bw, 0.98, STAT_FILL))
-            boxes.append(rect(x, sy, bw, 0.04, ACCENT))
-            boxes.append(text(x + 0.15, sy + 0.12, bw - 0.3, 0.48, [P(st["v"], 22, True, color=ACCENT)], anchor="t"))
-            boxes.append(text(x + 0.15, sy + 0.6, bw - 0.3, 0.36, [P(st.get("label") or "", 10, color=GRAY, line=1.05)], anchor="t"))
-    if figs_p:
-        px, n, gap = W_IN - R - colw, len(figs_p), 0.16
-        total_h = body_bot_eff - body_top - gap * (n - 1)
-        need, meta = [], []   # 그림마다 폭에 맞춘 자연 높이 + 캡션 — 넘치면 비율대로 줄인다, 남으면 그대로(폭보다 커질 수 없으니)
+        if has_right:   # 좁은 열에 세로로
+            sy = body_bot - (0.95 * len(stats) + 0.15 * (len(stats) - 1))
+            for st in stats:
+                boxes.append(rect(L, sy, kw_w, 0.95, STAT_FILL)); boxes.append(rect(L, sy, kw_w, 0.04, ACCENT))
+                boxes.append(text(L + 0.15, sy + 0.12, kw_w - 0.3, 0.46, [P(st["v"], 21, True, color=ACCENT)], anchor="t"))
+                boxes.append(text(L + 0.15, sy + 0.58, kw_w - 0.3, 0.34, [P(st.get("label") or "", 10, color=GRAY, line=1.05)], anchor="t"))
+                sy += 0.95 + 0.15
+        else:           # 그림이 없으면 가로로 나란히
+            n, gap = len(stats), 0.2
+            bw, sy = (full_w - gap * (n - 1)) / n, body_bot - 0.98
+            for i, st in enumerate(stats):
+                x = L + i * (bw + gap)
+                boxes.append(rect(x, sy, bw, 0.98, STAT_FILL)); boxes.append(rect(x, sy, bw, 0.04, ACCENT))
+                boxes.append(text(x + 0.15, sy + 0.12, bw - 0.3, 0.48, [P(st["v"], 22, True, color=ACCENT)], anchor="t"))
+                boxes.append(text(x + 0.15, sy + 0.6, bw - 0.3, 0.36, [P(st.get("label") or "", 10, color=GRAY, line=1.05)], anchor="t"))
+
+    def table_block(pn, x, y, w, h_max):
+        """표 하나를 (x, y) 에서 폭 w 로 — 행 높이는 글 줄 수만큼, h_max 를 넘는 행은 덜어 낸다"""
+        sz_t = 9
+        cap_c = 70 if w > 6 else 44
+        rows = [[(str(c)[:cap_c] + "…") if len(str(c)) > cap_c else str(c) for c in r] for r in (pn.get("rows") or [])[:8]]
+        allrows = len(pn.get("rows") or [])
+        rhs = _row_heights(pn.get("cols") or [], rows, w, sz_t)
+        while len(rows) > 1 and 0.32 + sum(rhs) > h_max:
+            rows.pop(); rhs.pop()
+        cap = (pn.get("cap") or "") + ((" (…외 %d행은 장에서)" % (allrows - len(rows))) if allrows > len(rows) else "")
+        return [text(x, y, w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"), dict(table(x, y + 0.32, w, sum(rhs), pn.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
+
+    gap = 0.25
+    if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에')
+        w2 = (fig_w - gap) / 2
+        bx, _u = _fig_block(figs_p[0], fig_x, body_top, w2, zone_h)
+        boxes += bx
+        boxes += table_block(tab, fig_x + w2 + gap, body_top, w2, zone_h)
+    elif tab:                     # 표만: 그림 영역 전체 폭
+        boxes += table_block(tab, fig_x, body_top, fig_w, zone_h)
+    elif len(figs_p) == 1:
+        bx, _u = _fig_block(figs_p[0], fig_x, body_top, fig_w, zone_h)
+        boxes += bx
+    elif len(figs_p) == 2:        # 옆으로 둘 vs 위아래 둘 — 그림 면적이 큰 쪽
+        w2 = (fig_w - gap) / 2
+        side = []
         for pn in figs_p:
+            need, ch = _figs_need(pn, w2)
             iw, ih = png_size(pn.get("path") or "")
-            ch = _cap_h(pn.get("caption") or "", colw)
-            need.append(colw * ih / float(iw) + ch + 0.05); meta.append((iw, ih, ch))
-        k = min(1.0, total_h / max(0.01, sum(need)))
-        py = body_top
-        for pn, h_need, (iw, ih, ch) in zip(figs_p, need, meta):
-            h_i = h_need * k
-            w, h = fit(iw, ih, colw, max(0.6, h_i - ch - 0.05))
-            boxes.append(pic(px + (colw - w) / 2, py, w, h, pn.get("path")))
-            boxes.append(text(px, py + h + 0.05, colw, ch, [P(pn.get("caption") or "", 9.5, color=GRAY, line=1.12)], anchor="t"))
-            py += h_i + gap
-    if tab_box:
-        boxes += tab_box
+            fw, fh = fit(iw, ih, w2, max(0.6, zone_h - ch - 0.05))
+            side.append(fw * fh)
+        h2 = (zone_h - gap) / 2
+        stack = []
+        for pn in figs_p:
+            need, ch = _figs_need(pn, fig_w)
+            iw, ih = png_size(pn.get("path") or "")
+            fw, fh = fit(iw, ih, fig_w, max(0.6, h2 - ch - 0.05))
+            stack.append(fw * fh)
+        if sum(side) >= sum(stack):
+            for k2, pn in enumerate(figs_p):
+                bx, _u = _fig_block(pn, fig_x + k2 * (w2 + gap), body_top, w2, zone_h)
+                boxes += bx
+        else:
+            py = body_top
+            for pn in figs_p:
+                bx, _u = _fig_block(pn, fig_x, py, fig_w, h2)
+                boxes += bx
+                py += h2 + gap
     if s.get("foot"):
         boxes.append(text(L, H_IN - 0.86, W_IN - L - R - 1.0, 0.56, [P(s["foot"], 9.5, color=GRAY, line=1.15)], anchor="b"))
     boxes.append(text(W_IN - R - 0.8, H_IN - 0.62, 0.8, 0.3, [P("%d / %d" % (idx, total), 10, color=GRAY, align="r")], anchor="b"))
@@ -531,7 +571,7 @@ if __name__ == "__main__":   # python pptx_min.py out.pptx [preview_dir]
     import sys
     out = sys.argv[1] if len(sys.argv) > 1 else "pptx_min_test.pptx"
     deck = {"title": "시험 발표", "subtitle": "pptx_min 보기\n2026-10-09", "footer": "Athenaeum", "deck_title": "시험 발표", "skip_refs": True,
-            "slides": [{"h": "첫 슬라이드 — 글머리표·메시지·수치·표", "msg": "한 줄 메시지는 이 쪽의 주장을 한 문장으로 세운다.",
+            "slides": [{"h": "첫 슬라이드 — 키워드·수치·표",
                         "bullets": [{"t": "글머리표 하나", "sub": ["받치는 세부 — 조건과 값 12.5 µm", "둘째 세부"]}, {"t": "둘 — 조금 더 긴 문장을 넣어 줄바꿈이 어떻게 되는지 본다, 숫자 12.5 µm 와 영어 built-up edge 도", "sub": []}, {"t": "셋"}],
                         "stats": [{"v": "15,800 MPa", "label": "탄탈럼의 최대 비절삭력"}, {"v": "40–50", "label": "칩 두께비"}],
                         "panels": [{"kind": "table", "cap": "표 1. 시험 표", "cols": ["논문", "용융점", "그 밖"], "rows": [["Wang 2002", "2950°C", "비열 0.153 J/g°C"], ["Davis 2020", "3017 °C", "경도 ~200 HV"]]}],

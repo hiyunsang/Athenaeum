@@ -2413,6 +2413,40 @@ def _deck_figs(st):
     return out
 
 
+def _deck_pool(st):
+    """발표에 쓸 수 있는 그림 전부: 장에 실린 그림(설명이 있다) + 장이 인용한 논문들의 그림 색인(좋음·보통). id = 'F<논문 순번>.<Fig 번호>'"""
+    P = st.get("papers") or []
+    pool = {}
+    for f in _deck_figs(st).values():
+        if not isinstance(f.get("pi"), int):
+            continue
+        fid = "F%d.%s" % (f["pi"], f["n"])
+        pool[fid] = {"id": fid, "pi": f["pi"], "n": f["n"], "path": f["path"], "ftype": f["ftype"], "what": f["text"] or f["desc"] or f["cap_en"], "desc": f["desc"], "shows": "",
+                     "cap_en": f["cap_en"], "page": f.get("page"), "in_ch": True, "quality": "good"}
+    fi = _fi()
+    if fi:
+        for pi, p in enumerate(P):
+            if not p.get("n"):
+                continue
+            d = fi.load(p["file"])
+            if not d:
+                continue
+            for x in d.get("figs") or []:
+                try:
+                    n = int(x.get("n"))
+                except (TypeError, ValueError):
+                    continue
+                fid = "F%d.%d" % (pi, n)
+                if fid in pool or (x.get("quality") or "ok") == "poor" or not x.get("what"):
+                    continue
+                path = os.path.join(fi.img_dir(p["file"]), x.get("img") or ("fig%d.png" % n))
+                if not os.path.isfile(path):
+                    continue
+                pool[fid] = {"id": fid, "pi": pi, "n": n, "path": path, "ftype": x.get("type") or "", "what": x.get("what") or "", "desc": x.get("what") or "", "shows": x.get("shows") or "",
+                             "cap_en": x.get("cap") or "", "page": x.get("page"), "in_ch": False, "quality": x.get("quality") or "ok"}
+    return pool
+
+
 def _deck_tables(st):
     """장에 실린 표: 번호 → {no, cap, cols, rows, sec}"""
     out = {}
@@ -2427,13 +2461,20 @@ def _deck_tables(st):
     return out
 
 
-def _deck_prompt(st, req, nslides):
+def _deck_prompt(st, req, nslides, pool=None):
     P = st.get("papers") or []
-    figs, tables = _deck_figs(st), _deck_tables(st)
-    pn = lambda pi: (P[pi].get("n"), P[pi].get("short")) if isinstance(pi, int) and 0 <= pi < len(P) else ("?", "?")
-    figtxt = "\n".join("그림 %d (논문 [%s] %s, Fig. %s%s · %s): %s%s" % (f["no"], pn(f["pi"])[0], pn(f["pi"])[1], f["n"], (", " + _FTYPE_KO.get(f["ftype"], f["ftype"])) if f["ftype"] else "", f["sec"][:30],
-                                                              (f["text"] or f["cap_en"])[:220], (" — 그림 읽기: " + f["desc"][:180]) if f["desc"] else "")
-                       for f in sorted(figs.values(), key=lambda x: x["no"]))
+    pool = pool if pool is not None else _deck_pool(st)
+    tables = _deck_tables(st)
+    by_pi = {}
+    for f in pool.values():
+        by_pi.setdefault(f["pi"], []).append(f)
+    figtxt = []
+    for pi in sorted(by_pi, key=lambda k: int(P[k].get("n") or 999) if k < len(P) else 999):
+        p = P[pi] if pi < len(P) else {}
+        figtxt.append("논문 [%s] %s (%s):" % (p.get("n"), p.get("short"), p.get("journal") or "?"))
+        for f in sorted(by_pi[pi], key=lambda x: int(x["n"]) if str(x["n"]).isdigit() else 99):
+            tag = " · ".join(x for x in [_FTYPE_KO.get(f["ftype"], f["ftype"]), {"good": "좋음", "ok": "보통"}.get(f["quality"], ""), "장에 실림" if f["in_ch"] else ""] if x)
+            figtxt.append("  %s (Fig. %s%s): %s%s" % (f["id"], f["n"], (" · " + tag) if tag else "", (f["what"] or "")[:260], (" — 어울리는 자리: " + f["shows"][:120]) if f.get("shows") else ""))
     tabtxt = "\n".join("표 %d (%s): %s — 열: %s, 행 %d개 (예: %s)" % (t["no"], t["sec"][:30], t["cap"][:120], " | ".join(t["cols"])[:120], len(t["rows"]), " | ".join(t["rows"][0])[:100])
                        for t in sorted(tables.values(), key=lambda x: x["no"]))
     cmts = []
@@ -2444,25 +2485,27 @@ def _deck_prompt(st, req, nslides):
     nstr = (("정확히 %d쪽 — 더도 덜도 말고. 연구자가 적은 쪽 구성이 이 수와 다르면 이 수를 따르고 내용을 합치거나 나눈다" % nslides) if nslides
             else "연구자가 쪽 구성에 쪽 수를 적었으면 그대로(제목 쪽은 따로 붙으므로 '제목 포함 n쪽' 이면 내용은 n-1쪽), 적지 않았으면 6~10쪽 사이에서 내용에 맞게")
     return (   # 장 글·그림 설명에 % 가 들어 있으므로 % 형식화를 쓰지 않고 이어 붙인다
-        "아래 장(연구자가 자기 서재의 논문만으로 쓴 교과서 한 장)을 바탕으로 발표 슬라이드의 재료를 만든다. 슬라이드 파일은 프로그램이 만든다 — 당신은 쪽마다 제목·한 줄 메시지·글머리표·그림·표·핵심 수치·발표자 메모와, "
-        "글머리표·수치·메모마다 그것을 받치는 장의 문장 id 를 준다.\n" + plan + "\n슬라이드 수: " + nstr + " (제목 쪽은 프로그램이 따로 붙인다)\n"
+        "아래 장(연구자가 자기 서재의 논문만으로 쓴 교과서 한 장)을 바탕으로 발표 슬라이드의 재료를 만든다. 슬라이드 파일은 프로그램이 만든다. "
+        "이 발표는 **그림이 주인공**이다 — 연구자는 그림을 보여 주며 말로 설명하고, 글은 키워드만 둔다. 당신은 쪽마다 제목·키워드·그림(둘)·표·핵심 수치·발표자 메모와, 키워드·수치·메모마다 그것을 받치는 장의 문장 id 를 준다.\n"
+        + plan + "\n슬라이드 수: " + nstr + " (제목 쪽은 프로그램이 따로 붙인다)\n"
         "JSON 으로만 답하라:\n"
         "{\"title\": \"발표 제목(장 제목을 바탕으로 20자 안팎)\", \"subtitle\": \"부제 한 줄 — 무엇을 다루는지\",\n"
-        " \"slides\": [{\"h\": \"쪽 제목(16자 안팎)\", \"msg\": \"이 쪽의 한 줄 메시지 — 이 쪽이 말하려는 주장 한 문장(60자 안팎, 아래 글머리표가 받친다)\",\n"
-        "   \"bullets\": [{\"t\": \"글머리표 한 줄(40자 안팎)\", \"sub\": [\"받치는 세부 — 조건·값·연구 (0~2개, 각 50자 안팎)\"], \"keys\": [\"u0.1.2\"]}],\n"
-        "   \"figs\": [3, 7], \"fig_why\": \"이 그림들을 이 쪽에 두는 까닭 한 줄\", \"table\": 1,\n"
+        " \"slides\": [{\"h\": \"쪽 제목(16자 안팎)\",\n"
+        "   \"bullets\": [{\"t\": \"키워드 구절(8~22자, 명사형 — 문장이 아니다)\", \"keys\": [\"u0.1.2\"]}],\n"
+        "   \"figs\": [{\"id\": \"F3.5\", \"cap\": \"이 그림이 무엇을 보여 주는지 한 줄(30~70자) — 그림 설명·그림 읽기·캡션이 말하는 것만, 연구자가 가리키며 말할 곳을 담아\"}],\n"
+        "   \"table\": 1,\n"
         "   \"stats\": [{\"v\": \"15,800 MPa\", \"label\": \"그 수치가 무엇인지 짧은 이름표(20자 안팎)\", \"keys\": [\"u1.1.2\"]}],\n"
-        "   \"note\": {\"t\": \"발표자 메모 — 이 쪽을 말로 풀 때 할 말 3~5문장\", \"keys\": [\"u0.1.2\"]}}]}\n"
+        "   \"note\": {\"t\": \"발표자 메모 — 키워드마다 한두 문장씩 말로 풀고, 그림마다 어디를 보라고 할지 한 문장(4~8문장)\", \"keys\": [\"u0.1.2\"]}}]}\n"
         "규칙:\n"
-        "- 쪽마다 글머리표 3~5개. 글머리표는 장의 문장을 줄인 것 — keys(1~4개, 장에 있는 id 그대로)의 문장이 말하는 것만 담는다. sub 는 그 글머리표를 받치는 세부(조건·값·어느 연구)로, 같은 keys 의 문장이 말하는 것만. 장에 없는 사실·수치·논문은 넣지 않는다. 수치는 문장에 적힌 그대로(단위 포함); keys 로 받칠 수 없는 글머리표는 넣지 않는다.\n"
-        "- msg 는 그 쪽의 글머리표를 꿰는 주장 한 문장 — 글머리표가 받치는 범위를 넘지 않는다. '~에 대해 알아본다' 같은 안내문이 아니라 내용이 있는 문장.\n"
-        "- 연구자가 쪽 구성을 적었으면 그 차례와 제목을 따른다 — 쪽마다 그 주제에 맞는 문장을 장 전체에서 고른다(한 절에 매이지 않는다). 적지 않았으면 장의 줄기대로: 배경과 왜 문제인가 → 핵심 개념·기전 → 연구들이 본 것(엇갈림 포함) → 영향 인자·조건 → 남은 물음.\n"
-        "- figs 는 [그림 목록]의 번호로 쪽마다 1~2장. 되도록 둘: 개념·기전·장치를 그린 도식 하나 + 관찰·결과(사진·그래프) 하나. 맞는 그림이 없으면 하나나 비운다 — 채우려고 고르지 않는다. 같은 그림을 두 쪽에 쓰지 않는다. 그림 읽기(도식·사진·그래프)를 보고 쪽의 내용에 맞는 것만.\n"
-        "- table 은 그 쪽이 수치를 견줄 때 [표 목록]의 번호 하나(없으면 null). 표는 쪽 아래 전체 폭에 놓이므로 그 쪽은 figs 를 하나까지, stats 는 비운다(표가 수치를 보인다).\n"
-        "- stats 는 그 쪽의 핵심 수치 0~2개 — 발표에서 크게 보여 줄 값(문장에 적힌 그대로, 단위 포함)과 짧은 이름표, keys. 이름표에 수치를 되풀이하지 않는다.\n"
-        "- note 는 발표자가 읽을 말 — 글머리표를 잇는 설명, 왜 중요한지, 어느 연구가 무엇을 했는지(논문은 [번호]로). keys 의 문장이 말하는 것만. 'Claude 의 생각'에서 가져온 말은 '풀이:' 로 시작해 사실과 가른다.\n"
-        "- 글머리표·msg 에 [번호] 인용을 적지 않는다 — 출처는 프로그램이 keys 로 쪽 아래에 단다. 번역투·'~에 대한 연구'·'살펴본다' 같은 군말을 뺀다. 전문 용어는 장에 쓰인 한국어 그대로.\n\n"
-        "[그림 목록]\n" + (figtxt or "(없음)") + "\n\n[표 목록]\n" + (tabtxt or "(없음)") + "\n\n[Claude 의 생각 — 장의 사실 층과 갈라 표시된 풀이]\n" + ("\n".join(cmts) or "(없음)") + "\n\n" + _chapter_text_ids(st)
+        "- bullets 는 쪽마다 4~6개의 **키워드 구절** — 문장이 아니라 '끈적한 금속(~200 HV)', '칩 두께비 40–50', '사행 유동 → 접힘 칩' 같은 짧은 구절. keys(1~4개, 장에 있는 id 그대로)의 문장이 말하는 것만. 장에 없는 사실·수치·논문은 넣지 않는다. 수치는 문장에 적힌 그대로(단위 포함).\n"
+        "- figs 는 쪽마다 **둘**(둘이 기본, 맞는 것이 하나뿐이면 하나, 없으면 비운다 — 채우려고 고르지 않는다). [그림 목록]에서 **양질**의 그림을 고른다: 무엇을 보여 주는지 분명한 도식·사진·그래프, '좋음' 을 먼저, 장에 실린 것과 색인의 것 모두 후보. 같은 그림을 두 쪽에 쓰지 않는다. 둘을 고를 때는 서로 다른 것을 말하는 짝(개념 도식 + 관찰 사진, 조건 + 결과)으로.\n"
+        "- cap 은 그림 아래에 실릴 말 — '무슨 그림인지'(무엇을 어떻게 찍었나·어느 축과 조건인가·어디를 볼 것인가)를 그림 설명·그림 읽기·캡션이 말하는 범위 안에서. 출처는 프로그램이 참고문헌으로 단다.\n"
+        "- 연구자가 쪽 구성을 적었으면 그 차례와 제목을 따른다 — 쪽마다 그 주제에 맞는 문장을 장 전체에서 고른다. 적지 않았으면 장의 줄기대로: 배경과 왜 문제인가 → 핵심 개념·기전 → 연구들이 본 것(엇갈림 포함) → 영향 인자·조건 → 남은 물음.\n"
+        "- table 은 그 쪽이 수치를 견줄 때 [표 목록]의 번호 하나(없으면 null). 표는 그림 옆에 놓이므로 그 쪽은 figs 를 하나까지.\n"
+        "- stats 는 그 쪽의 핵심 수치 0~2개(문장에 적힌 그대로, 단위 포함)와 짧은 이름표, keys. 이름표에 수치를 되풀이하지 않는다.\n"
+        "- note 는 연구자가 읽을 말 — 화면에는 키워드만 있으니 여기에 설명을 다 담는다: 키워드마다 한두 문장, 그림마다 무엇을 가리킬지, 어느 연구가 무엇을 했는지(논문은 [번호]로). keys 의 문장이 말하는 것만. 'Claude 의 생각'에서 가져온 말은 '풀이:' 로 시작해 사실과 가른다.\n"
+        "- 키워드·cap 에 [번호] 인용을 적지 않는다 — 출처는 프로그램이 단다. 번역투·'~에 대한 연구' 같은 군말을 뺀다. 전문 용어는 장에 쓰인 한국어 그대로.\n\n"
+        "[그림 목록 — 장이 인용한 논문의 그림. id 로 고른다]\n" + ("\n".join(figtxt) or "(없음)") + "\n\n[표 목록]\n" + (tabtxt or "(없음)") + "\n\n[Claude 의 생각 — 장의 사실 층과 갈라 표시된 풀이]\n" + ("\n".join(cmts) or "(없음)") + "\n\n" + _chapter_text_ids(st)
     )
 
 
@@ -2489,6 +2532,21 @@ def deck_start(sid, body):
     return {"ok": True}
 
 
+def _deck_index(st):
+    """장이 인용한 논문 가운데 그림 색인이 없는 것을 만든다 (Sonnet, 편당 45초·2만 5천 토큰; 한 번 만들면 다음부터 공짜). 못 만들어도 장에 실린 그림으로 간다."""
+    fi = _fi()
+    if not fi:
+        return 0
+    items = [(p["file"], p.get("title") or "") for p in st.get("papers") or [] if p.get("n") and not fi.load(p["file"])]
+    if not items:
+        return 0
+    try:
+        fi.ensure(items, model="sonnet", workers=4)
+    except Exception:
+        pass
+    return len(items)
+
+
 def _deck_job(sid):
     st = _load(sid)
     if not st:
@@ -2498,20 +2556,23 @@ def _deck_job(sid):
     t0 = time.time()
     res, err, deck = None, "", None
     try:
-        run = cfg.get("claude_run")
+        nidx = _deck_index(st)
+        pool = _deck_pool(st)
         k = max(1, int(opts.get("n") or 0) - 1) if opts.get("n") else 0   # 내용 쪽 수 (제목 쪽을 뺀 것)
-        res = run(_deck_prompt(st, opts.get("req") or "", k), timeout=1800, model=model, effort=eff, tools="") if run else None
+        run = cfg.get("claude_run")
+        res = run(_deck_prompt(st, opts.get("req") or "", k, pool), timeout=1800, model=model, effort=eff, tools="") if run else None
         d = _json_of((res or {}).get("text") or "")
         if not d or not isinstance(d.get("slides"), list):
             err = "Claude 가 슬라이드 재료를 주지 않았습니다" + _why()
         else:
-            deck = _deck_clean(st, d, k)
+            deck = _deck_clean(st, d, k, pool)
             deck["refs"] = opts.get("refs") is True
             if not deck["slides"]:
-                err = "장의 문장이 받치는 글머리표가 없어 만들지 못했습니다"
+                err = "장의 문장이 받치는 키워드가 없어 만들지 못했습니다"
             else:
-                deck.update(id="d%d" % int(time.time() * 1000), t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"), req=opts.get("req") or "", effort=opts.get("effort"), n=opts.get("n") or 0)
-                deck["file"] = _deck_write(st, deck)
+                deck.update(id="d%d" % int(time.time() * 1000), t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"), req=opts.get("req") or "", effort=opts.get("effort"), n=opts.get("n") or 0,
+                            indexed=nidx, pool=len(pool))
+                deck["file"] = _deck_write(st, deck, pool)
     except Exception as e:
         err = "만들지 못했습니다: " + str(e)[:200]
     with _LOCK:
@@ -2527,10 +2588,11 @@ def _deck_job(sid):
         _save(st)
 
 
-def _deck_clean(st, d, k=0):
-    """Claude 의 답에서 장의 문장이 받치는 글머리표·세부·수치·메모만 남기고(keys 검사 + 수치 대조), 그림·표 번호를 장의 것으로 맞춘다. k 가 있으면 내용 쪽을 k 까지만."""
+def _deck_clean(st, d, k=0, pool=None):
+    """Claude 의 답에서 장의 문장이 받치는 키워드·수치·메모만 남기고(keys 검사 + 수치 대조), 그림 id·표 번호를 장의 것으로 맞춘다. k 가 있으면 내용 쪽을 k 까지만."""
     P = st.get("papers") or []
-    figs, tables = _deck_figs(st), _deck_tables(st)
+    pool = pool if pool is not None else _deck_pool(st)
+    tables = _deck_tables(st)
     src = st.get("src") or {}
 
     def keys_of(x):
@@ -2566,7 +2628,7 @@ def _deck_clean(st, d, k=0):
         return sorted(ns)
 
     short = lambda v, n: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
-    nocite = lambda t: re.sub(r"(?<![A-Za-z0-9])[A-Z][a-z]?(?:[-\u2013]?\d+(?:\.\d+)?[A-Z][a-z]?)+(?![A-Za-z0-9])", " ", re.sub(r"\[\d{1,3}(?:\s*[,\u2013\-]\s*\d{1,3})*\]", " ", t))   # 인용 번호 [1,7,8,11] 과 합금 이름(Ta-2.5W · Ti-6Al-4V)의 숫자는 수치가 아니다 — 대조 전에 뗀다
+    nocite = lambda t: re.sub(r"(?<![A-Za-z0-9])[A-Z][a-z]?(?:[-\u2013]?\d+(?:\.\d+)?[A-Z][a-z]?)+(?![A-Za-z0-9])", " ", re.sub(r"\[\d{1,3}(?:\s*[,\u2013\-]\s*\d{1,3})*\]", " ", t))   # 인용 번호·합금 이름(Ta-2.5W)의 숫자는 수치가 아니다
     ints = lambda v: [int(x) for x in (v if isinstance(v, list) else [v]) if str(x).strip().lstrip("-").isdigit()]
     slides, dropped, used_figs, used_tabs = [], [], set(), set()
     for sl in d.get("slides") or []:
@@ -2574,49 +2636,36 @@ def _deck_clean(st, d, k=0):
             continue
         h = short(sl.get("h"), 60)
         bullets = []
-        for b in (sl.get("bullets") or [])[:7]:
+        for b in (sl.get("bullets") or [])[:8]:
             if not isinstance(b, dict):
                 continue
-            t, keys = short(b.get("t"), 160), keys_of(b)
+            t, keys = short(b.get("t"), 120), keys_of(b)
             if not t:
                 continue
             if not keys:
                 dropped.append({"slide": h, "t": t, "why": "장의 문장 id 가 없음"})
                 continue
-            ev = evidence(keys)
-            miss = _nums_missing(nocite(t), ev)
+            miss = _nums_missing(nocite(t), evidence(keys))
             if miss:
                 dropped.append({"slide": h, "t": t, "why": "수치가 근거에 없음: " + ", ".join(sorted(miss)[:4])})
                 continue
-            subs = []
-            for x in (b.get("sub") or [])[:3]:
-                x = short(x, 140)
-                if not x:
-                    continue
-                m2 = _nums_missing(nocite(x), ev)
-                if m2:
-                    dropped.append({"slide": h, "t": "(세부) " + x, "why": "수치가 근거에 없음: " + ", ".join(sorted(m2)[:4])})
-                else:
-                    subs.append(x)
-            bullets.append({"t": t, "sub": subs, "keys": keys})
+            bullets.append({"t": t, "keys": keys})
         if not h or not bullets:
             continue
         allk = [x for b in bullets for x in b["keys"]]
         allev = evidence(allk)
-        msg = short(sl.get("msg"), 160)
-        statev = []   # 수치 상자의 근거 — 메모가 그 수치를 되풀이해도 걸리지 않게 (아래에서 채움)
-        if msg:
-            m3 = _nums_missing(nocite(msg), allev)
-            if m3:
-                dropped.append({"slide": h, "t": "(메시지) " + msg, "why": "수치가 근거에 없음: " + ", ".join(sorted(m3)[:4])})
-                msg = ""
         fl = []
-        for fno in ints(sl.get("figs") if sl.get("figs") is not None else sl.get("fig"))[:2]:
-            if fno in figs and fno not in used_figs and fno not in [f["no"] for f in fl]:
-                f = figs[fno]
-                fl.append({"no": fno, "img": f["img"], "pi": f["pi"], "n": f["n"], "ftype": f["ftype"]})
+        for fg in (sl.get("figs") if isinstance(sl.get("figs"), list) else [])[:3]:
+            fid = str((fg.get("id") if isinstance(fg, dict) else fg) or "").strip()
+            if not fid.startswith("F"):
+                fid = "F" + fid
+            f = pool.get(fid)
+            if not f or fid in used_figs or any(x["id"] == fid for x in fl) or len(fl) >= 2:
+                continue
+            cap = short(fg.get("cap") if isinstance(fg, dict) else "", 160) or short(f["what"], 110)
+            fl.append({"id": fid, "pi": f["pi"], "n": f["n"], "ftype": f["ftype"], "in_ch": f["in_ch"], "cap": cap})
         for f in fl:
-            used_figs.add(f["no"])
+            used_figs.add(f["id"])
         tab = None
         tno = ints(sl.get("table"))
         if tno and tno[0] in tables and tno[0] not in used_tabs:
@@ -2624,8 +2673,8 @@ def _deck_clean(st, d, k=0):
             tab = {"no": tno[0], "cap": tables[tno[0]]["cap"]}
             if len(fl) > 1:
                 fl = fl[:1]
-        stats = []
-        for x in ([] if tab else (sl.get("stats") or []))[:2]:   # 표가 있는 쪽은 수치 상자를 두지 않는다
+        stats, statev = [], []
+        for x in (sl.get("stats") or [])[:2]:
             if not isinstance(x, dict):
                 continue
             v, lab, kk = short(x.get("v"), 30), short(x.get("label"), 60), keys_of(x)
@@ -2639,15 +2688,15 @@ def _deck_clean(st, d, k=0):
             statev += evidence(kk)
         note = None
         nt = sl.get("note") if isinstance(sl.get("note"), dict) else ({"t": sl.get("note")} if isinstance(sl.get("note"), str) else None)
-        if nt and short(nt.get("t"), 1500):
+        if nt and short(nt.get("t"), 2000):
             nk = keys_of(nt)
-            t = short(nt.get("t"), 1500)
+            t = short(nt.get("t"), 2000)
             miss = _nums_missing(nocite(re.sub(r"풀이:.*", "", t)), evidence(nk) + allev + statev) if nk or bullets else set()
             if miss:
                 dropped.append({"slide": h, "t": "(메모) " + t[:80], "why": "수치가 근거에 없음: " + ", ".join(sorted(miss)[:4])})
             else:
                 note = {"t": t, "keys": nk}
-        slides.append({"h": h, "msg": msg, "bullets": bullets, "figs": fl, "fig_why": short(sl.get("fig_why"), 160), "table": tab, "stats": stats, "note": note,
+        slides.append({"h": h, "bullets": bullets, "figs": fl, "table": tab, "stats": stats, "note": note,
                        "cites": cites(allk + [x for st_ in stats for x in st_["keys"]] + ((note or {}).get("keys") or []))})
     if k and len(slides) > k:
         dropped.append({"slide": "", "t": "쪽 %d개가 정한 수(%d)를 넘어 뒤의 %d쪽을 뺐다" % (len(slides), k, len(slides) - k), "why": "쪽 수"})
@@ -2659,27 +2708,27 @@ def _ref_line(p):
     return p.get("ref") or ("%s. %s. %s %s." % (p.get("short"), p.get("title"), p.get("journal"), p.get("year")))
 
 
-def _deck_write(st, deck):
+def _deck_write(st, deck, pool=None):
     """deck 재료 → .pptx (공부\\발표\\<장 id>_<deck id>.pptx) + 쪽 미리보기 PNG(같은 이름의 폴더). 파일 이름을 돌려준다."""
     import pptx_min
     P = st.get("papers") or []
-    figs, tables = _deck_figs(st), _deck_tables(st)
+    pool = pool if pool is not None else _deck_pool(st)
+    tables = _deck_tables(st)
     ch = st.get("chapter") or {}
     stem = "%s_%s" % (st["id"], deck["id"])
     path = os.path.join(_deck_dir(), stem + ".pptx")
     byn = {str(p.get("n")): p for p in P if p.get("n")}
     pj = lambda n: ("%s, %s" % (byn[str(n)].get("short"), byn[str(n)].get("journal") or "?")) if str(n) in byn else str(n)
-    slides, allc, fno = [], set(), 0
+    slides, allc = [], set()
     for sl in deck["slides"]:
         panels = []
         for fg in sl.get("figs") or []:
-            f = figs.get(fg.get("no"))
+            f = pool.get(fg.get("id")) if fg.get("id") else None
             if not f:
                 continue
-            fno += 1
             p = P[f["pi"]] if isinstance(f["pi"], int) and f["pi"] < len(P) else {}
-            cap = "그림 %d. %s (%s, Fig. %s)" % (fno, (f["text"] or f["cap_en"])[:110].rstrip(". "), pj(p.get("n")) if p.get("n") else p.get("short", ""), f["n"])
-            panels.append({"kind": "fig", "path": f["path"], "caption": cap})
+            ref = (_ref_line(p).rstrip(". ") + " — Fig. %s" % f["n"]) if p else "Fig. %s" % f["n"]
+            panels.append({"kind": "fig", "path": f["path"], "caption": fg.get("cap") or (f["what"] or "")[:110], "ref": ref})
             if p.get("n"):
                 allc.add(int(p["n"]))
         if sl.get("table") and tables.get(sl["table"].get("no")):
@@ -2691,13 +2740,13 @@ def _deck_write(st, deck):
         note = ((sl.get("note") or {}).get("t") or "")
         if cs:
             note += ("\n\n" if note else "") + "출처\n" + "\n".join("[%d] %s" % (n, _ref_line(byn[str(n)])) for n in cs if str(n) in byn)
-        slides.append({"h": sl["h"], "msg": sl.get("msg") or "", "bullets": [{"t": b["t"], "sub": b.get("sub") or []} for b in sl["bullets"]],
+        slides.append({"h": sl["h"], "bullets": [{"t": b["t"], "sub": []} for b in sl["bullets"]],
                        "stats": [{"v": x["v"], "label": x["label"]} for x in sl.get("stats") or []], "panels": panels, "foot": foot, "note": note})
     refs = ["[%s] %s" % (p.get("n"), _ref_line(p)) for p in sorted((p for p in P if p.get("n") and int(p["n"]) in allc), key=lambda p: int(p["n"]))]
     prev_dir = os.path.join(_deck_dir(), stem)
     r = pptx_min.build(path, {"title": deck["title"], "subtitle": (deck.get("subtitle") or "") + "\n" + time.strftime("%Y-%m-%d"), "deck_title": deck["title"], "skip_refs": deck.get("refs", True) is not True,
-                              "footer": "Athenaeum 공부 장 「%s」 에서 — 내 서재의 논문 %d편으로 쓴 장, 글머리표마다 논문의 원문 문장에 묶여 있음" % (ch.get("title") or "", (st.get("stats") or {}).get("cited") or len(P)),
-                              "title_note": "이 발표 자료는 Athenaeum 의 공부 장을 바탕으로 만들었습니다. 글머리표와 메모는 장의 문장을 줄인 것이고, 장의 문장은 논문의 원문 문장과 대조한 것입니다.",
+                              "footer": "Athenaeum 공부 장 「%s」 에서 — 내 서재의 논문 %d편으로 쓴 장, 키워드마다 논문의 원문 문장에 묶여 있음" % (ch.get("title") or "", (st.get("stats") or {}).get("cited") or len(P)),
+                              "title_note": "이 발표 자료는 Athenaeum 의 공부 장을 바탕으로 만들었습니다. 키워드와 메모는 장의 문장을 줄인 것이고, 장의 문장은 논문의 원문 문장과 대조한 것입니다.",
                               "slides": slides, "refs": refs}, preview_dir=prev_dir)
     deck["previews"] = r.get("previews", 0)
     return stem + ".pptx"

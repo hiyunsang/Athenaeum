@@ -622,8 +622,8 @@ let deckTick = null, deckDraft = "";
 function deckHtml() {
   const decks = (cur.decks || []).slice().reverse();
   let h = "<div class='page ch'>" + crumb("발표 자료") + "<h2 class='first'>발표 자료 (PPT) — " + esc(cur.chapter.title) + "</h2>" +
-    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 쪽마다 한 줄 메시지 · 글머리표와 받치는 세부 · 장에 실린 논문 그림 둘(도식 + 사진·그래프) · 표 · 핵심 수치 · 출처(저널·이름·연도) · 발표자 메모(참고문헌 전체 포함). 글머리표마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 수치는 프로그램이 근거 문장과 대조해 어긋나면 뺍니다. 미리보기 그림은 어림이라 PowerPoint 에서 보는 것과 줄바꿈이 조금 다를 수 있습니다.</div>";
-  if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>장 전체를 읽고 쪽마다 재료를 고릅니다(3~6분). 창을 닫아도 계속 만듭니다.</div>";
+    "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 그림이 주인공입니다: 쪽마다 장이 인용한 논문의 그림 둘(장에 실린 그림 + 그 논문들의 그림 색인에서 양질의 것 — 색인이 없는 논문은 먼저 만듭니다, 편당 45초쯤)과 그 아래 '무슨 그림인지' 한 줄·참고문헌, 왼쪽에는 키워드 4~6개와 핵심 수치, 아래에 출처(저널·이름·연도). 설명은 발표자 메모에 담깁니다(참고문헌 전체 포함). 키워드마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 수치는 근거 문장과 대조해 어긋나면 뺍니다. 쪽 구성을 적으면 그대로, 비우면 장의 줄기대로 6~10쪽. 미리보기 그림은 어림이라 PowerPoint 와 줄바꿈이 조금 다를 수 있습니다.</div>";
+  if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>색인이 없는 논문의 그림을 먼저 읽고(편당 45초쯤, 처음 한 번), 장 전체를 읽어 쪽마다 재료를 고릅니다(2~6분). 창을 닫아도 계속 만듭니다.</div>";
   else {
     const eff = lsGet("study_ask_effort", "xhigh");
     h += "<div class='dkform noprint'><textarea id='deckReq' placeholder='발표의 목적과 쪽 구성 — 예: 연구실 세미나용. 1쪽 탄탈럼의 특성과 쓰임, 2쪽 왜 깎기 어려운가, 3쪽 지금까지의 연구 동향(코팅·냉각·기전), 4쪽 남은 물음. (비우면 장의 줄기대로)'>" + esc(deckDraft) + "</textarea>" +
@@ -637,18 +637,19 @@ function deckHtml() {
   return h + "</div>";
 }
 function deckOneHtml(d) {
-  const figHtml = f => f ? "<figure class='dkfig'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''><figcaption>그림 " + f.no + (f.ftype ? " · " + esc(f.ftype) : "") + "</figcaption></figure>" : "";
   const keyLinks = keys => (keys || []).map(k => "<a href='#' class='dkk' data-unit='" + esc(k) + "' title='본문의 이 문장으로'>¶</a>").join("");
   const fname = (d.title || "발표").replace(/[\\/:*?"<>|]/g, " ") + ".pptx";
   const img = n => d.previews && n <= d.previews ? "<img class='dkimg' src='/api/study/deckimg?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "&n=" + n + "&t=" + Math.round(d.t || 0) + "' alt='' loading='lazy'>" : "";
-  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · 제목 + 내용 " + d.slides.length + "쪽" + (d.refs === true ? " + 참고문헌" : "") + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + "</span>" +
+  const figLine = f => { const p = cur.papers[f.pi] || {}; return "<div class='hint'>그림 " + (f.in_ch ? "(장에 실림) " : "") + esc(f.cap || "") + " — " + esc(p.short || "") + ", " + esc(p.journal || "") + ", Fig. " + esc(String(f.n)) + "</div>"; };
+  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · 제목 + 내용 " + d.slides.length + "쪽" + (d.refs === true ? " + 참고문헌" : "") + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + (d.pool ? " · 그림 후보 " + d.pool + "장" : "") + "</span>" +
     "<span class='noprint' style='margin-left:auto'><a class='act' href='/api/study/deck?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "' download='" + esc(fname) + "'>pptx 내려받기</a><button class='act warn' data-dkdel='" + esc(d.id) + "'>지우기</button></span></div>" +
     (d.req ? "<div class='hint'>주문: " + esc(d.req) + "</div>" : "") + (d.subtitle ? "<div class='hint'>" + esc(d.subtitle) + "</div>" : "") + img(1) +
     d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 2) + "</span>" + esc(s.h) + "</div>" + img(i + 2) +
       (s.msg ? "<div class='dkmsg'>" + esc(s.msg) + "</div>" : "") +
-      "<div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + (b.sub || []).map(x => "<span class='sub'>– " + esc(x) + "</span>").join("") + "</li>").join("") + "</ul>" + (s.figs || (s.fig ? [s.fig] : [])).map(figHtml).join("") + "</div>" +
+      "<div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + (b.sub || []).map(x => "<span class='sub'>– " + esc(x) + "</span>").join("") + "</li>").join("") + "</ul></div>" +
+      (s.figs || []).filter(f => f && f.id).map(figLine).join("") +
       ((s.stats || []).length ? "<div>" + s.stats.map(x => "<span class='dkstat'><b>" + esc(x.v) + "</b>" + esc(x.label) + " " + keyLinks(x.keys) + "</span>").join("") + "</div>" : "") +
-      (s.table ? "<div class='hint'>표 " + s.table.no + ": " + esc(s.table.cap) + "</div>" : "") + (s.fig_why ? "<div class='hint'>그림: " + esc(s.fig_why) + "</div>" : "") +
+      (s.table ? "<div class='hint'>표 " + s.table.no + ": " + esc(s.table.cap) + "</div>" : "") +
       (s.note ? "<div class='note'><b>메모</b> " + esc(s.note.t) + " " + keyLinks(s.note.keys) + "</div>" : "") + (s.cites && s.cites.length ? "<div class='hint'>출처 [" + s.cites.join(", ") + "]</div>" : "") + "</div>").join("") +
     ((d.dropped || []).length ? "<details class='evd'><summary>뺀 것 " + d.dropped.length + " (장의 문장 id 가 없거나 수치가 어긋남)</summary>" + d.dropped.map(x => "<div class='hint'>" + esc(x.slide) + " · " + esc(x.t) + " — " + esc(x.why) + "</div>").join("") + "</details>" : "") + "</div>";
 }
