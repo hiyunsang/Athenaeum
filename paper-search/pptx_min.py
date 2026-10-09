@@ -183,8 +183,10 @@ def build(path, deck):
         shapes.append(_sp(5, "foot", inch(1.0), H - inch(0.7), W - inch(2.0), inch(0.4), _para(_run(footer, 10, False, GRAY)), anchor="b"))
     slides_xml.append(_slide_xml(shapes)); slide_rels.append([]); notes.append(str(deck.get("title_note") or ""))
 
-    # 2) 내용 슬라이드
-    total = len(deck.get("slides") or [])
+    # 2) 내용 슬라이드 (쪽 번호는 제목 쪽을 1로 전체 기준)
+    refs = [str(r) for r in (deck.get("refs") or []) if str(r).strip()]
+    chunks = [] if deck.get("skip_refs") else ([refs[i:i + 12] for i in range(0, len(refs), 12)] or [[]])
+    total = 1 + len(deck.get("slides") or []) + len(chunks)
     for n, s in enumerate(deck.get("slides") or [], 1):
         shapes, rels = [], []
         sid = 2
@@ -217,12 +219,10 @@ def build(path, deck):
         foot = str(s.get("foot") or "")
         if foot:
             shapes.append(_sp(sid, "foot", m[0], H - inch(0.72), W - 2 * m[0] - inch(0.8), inch(0.45), _para(_run(foot, 10, False, GRAY), line=1.1), anchor="b")); sid += 1
-        shapes.append(_sp(sid, "num", W - m[0] - inch(0.8), H - inch(0.6), inch(0.8), inch(0.3), _para(_run("%d / %d" % (n, total + 1), 10, False, GRAY), align="r"), anchor="b")); sid += 1
+        shapes.append(_sp(sid, "num", W - m[0] - inch(0.8), H - inch(0.6), inch(0.8), inch(0.3), _para(_run("%d / %d" % (n + 1, total), 10, False, GRAY), align="r"), anchor="b")); sid += 1
         slides_xml.append(_slide_xml(shapes)); slide_rels.append(rels); notes.append(str(s.get("note") or ""))
 
-    # 3) 참고문헌 슬라이드 (길면 둘로)
-    refs = [str(r) for r in (deck.get("refs") or []) if str(r).strip()]
-    chunks = [refs[i:i + 12] for i in range(0, len(refs), 12)] or [[]]
+    # 3) 참고문헌 슬라이드 (길면 둘로; skip_refs 면 없음)
     for ci, chunk in enumerate(chunks):
         shapes = [_sp(2, "title", m[0], m[1], W - 2 * m[0], inch(0.9), _para(_run("참고문헌" + (" (%d/%d)" % (ci + 1, len(chunks)) if len(chunks) > 1 else ""), 26, True)), anchor="b"),
                   _rect(3, "rule", m[0], inch(1.42), inch(0.9), inch(0.04), ACCENT),

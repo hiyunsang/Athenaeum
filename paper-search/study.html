@@ -623,7 +623,8 @@ function deckHtml() {
   else {
     const eff = lsGet("study_ask_effort", "xhigh");
     h += "<div class='dkform noprint'><textarea id='deckReq' placeholder='발표의 목적과 쪽 구성 — 예: 연구실 세미나용. 1쪽 탄탈럼의 특성과 쓰임, 2쪽 왜 깎기 어려운가, 3쪽 지금까지의 연구 동향(코팅·냉각·기전), 4쪽 남은 물음. (비우면 장의 줄기대로)'>" + esc(deckDraft) + "</textarea>" +
-      "<div class='row'><select id='deckN' title='내용 쪽 수'><option value='0'>쪽 수 자동</option>" + [4, 6, 8, 10, 12].map(n => "<option value='" + n + "'>" + n + "쪽</option>").join("") + "</select>" +
+      "<div class='row'><label class='hint' title='제목 쪽을 포함한 전체 쪽 수. 참고문헌 쪽은 따로 붙습니다. 비우면 장의 줄기대로 6~10쪽'>쪽 수(제목 포함) <input id='deckN' type='number' min='2' max='40' placeholder='자동' style='width:64px'></label>" +
+      "<label class='hint' title='마지막에 참고문헌 쪽을 붙입니다'><input type='checkbox' id='deckRefs' checked> 참고문헌 쪽</label>" +
       "<select id='deckEff'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
       "<button class='primary' id='deckGo'>만들기</button><span class='hint' id='deckMsg'></span></div></div>";
     if (cur.deck_error) h += "<div class='warnbox'>" + esc(cur.deck_error) + "</div>";
@@ -635,7 +636,7 @@ function deckOneHtml(d) {
   const fig = f => f ? "<figure class='dkfig'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''><figcaption>그림 " + f.no + (f.why ? " — " + esc(f.why) : "") + "</figcaption></figure>" : "";
   const keyLinks = keys => (keys || []).map(k => "<a href='#' class='dkk' data-unit='" + esc(k) + "' title='본문의 이 문장으로'>¶</a>").join("");
   const fname = (d.title || "발표").replace(/[\\/:*?"<>|]/g, " ") + ".pptx";
-  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · " + d.slides.length + "쪽" + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + "</span>" +
+  return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · 제목 + 내용 " + d.slides.length + "쪽" + (d.refs === false ? "" : " + 참고문헌") + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + "</span>" +
     "<span class='noprint' style='margin-left:auto'><a class='act' href='/api/study/deck?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "' download='" + esc(fname) + "'>pptx 내려받기</a><button class='act warn' data-dkdel='" + esc(d.id) + "'>지우기</button></span></div>" +
     (d.req ? "<div class='hint'>주문: " + esc(d.req) + "</div>" : "") + (d.subtitle ? "<div class='hint'>" + esc(d.subtitle) + "</div>" : "") +
     d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 1) + "</span>" + esc(s.h) + "</div><div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + "</li>").join("") + "</ul>" + fig(s.fig) + "</div>" +
@@ -646,7 +647,7 @@ function bindDeck() {
   const m = $("main");
   const t = $("deckReq"); if (t) t.oninput = () => { deckDraft = t.value; };
   const go = $("deckGo"); if (go) go.onclick = async () => { go.disabled = true; $("deckMsg").textContent = "보내는 중…"; const eff = $("deckEff").value; lsSet("study_ask_effort", eff);
-    const r = await api("/api/study", { op: "deck", id: cur.id, req: $("deckReq").value, n: +$("deckN").value, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; $("deckMsg").textContent = ""; return; } deckDraft = ""; await refresh(false); renderMain(); };
+    const r = await api("/api/study", { op: "deck", id: cur.id, req: $("deckReq").value, n: +$("deckN").value || 0, refs: $("deckRefs").checked, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; $("deckMsg").textContent = ""; return; } deckDraft = ""; await refresh(false); renderMain(); };
   m.querySelectorAll("[data-dkdel]").forEach(b => b.onclick = async () => { if (!confirm("이 발표 자료를 지울까요? (파일도 지웁니다)")) return; const r = await api("/api/study", { op: "deck_delete", id: cur.id, deck: b.dataset.dkdel }); if (r.error) { alert(r.error); return; } await refresh(false); renderMain(); });
   m.querySelectorAll(".dkk[data-unit]").forEach(a => a.onclick = e => { e.preventDefault(); gotoUnit(a.dataset.unit); });
   clearInterval(deckTick);

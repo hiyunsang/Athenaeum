@@ -2425,7 +2425,8 @@ def _deck_prompt(st, req, nslides):
         for part in (sec.get("comment") or {}).get("parts") or []:
             cmts.append("(si=%d) %s: %s" % (si, part.get("h", ""), (part.get("t") or "")[:700]))
     plan = ("[발표의 목적과 쪽 구성 — 연구자가 적은 것]\n" + req) if req else "[발표의 목적] 연구실 세미나에서 이 장의 내용을 발표한다. 쪽 구성은 당신이 장의 줄기대로 짠다."
-    nstr = ("%d쪽" % nslides) if nslides else "6~10쪽 사이에서 내용에 맞게"
+    nstr = (("정확히 %d쪽 — 더도 덜도 말고. 연구자가 적은 쪽 구성이 이 수와 다르면 이 수를 따르고 내용을 합치거나 나눈다" % nslides) if nslides
+            else "연구자가 쪽 구성에 쪽 수를 적었으면 그대로(제목 쪽·참고문헌 쪽은 따로 붙으므로 '제목 포함 n쪽' 이면 내용은 n-1쪽), 적지 않았으면 6~10쪽 사이에서 내용에 맞게")
     return (   # 장 글·그림 설명에 % 가 들어 있으므로 % 형식화를 쓰지 않고 이어 붙인다
         "아래 장(연구자가 자기 서재의 논문만으로 쓴 교과서 한 장)을 바탕으로 발표 슬라이드의 재료를 만든다. 슬라이드 파일은 프로그램이 만든다 — 당신은 쪽마다 제목·글머리표·그림·발표자 메모와, "
         "글머리표와 메모마다 그것을 받치는 장의 문장 id 를 준다.\n" + plan + "\n슬라이드 수: " + nstr + " (제목 쪽과 참고문헌 쪽은 프로그램이 따로 붙인다)\n"
@@ -2447,9 +2448,11 @@ def deck_start(sid, body):
     effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
     req = str(body.get("req") or "").strip()[:2000]
     try:
-        n = max(0, min(20, int(body.get("n") or 0)))
+        n = max(0, min(40, int(body.get("n") or 0)))   # 전체 쪽 수(제목 쪽 포함, 참고문헌 쪽 제외). 0 = 자동
     except (TypeError, ValueError):
         n = 0
+    if n == 1:
+        n = 2
     with _LOCK:
         st = _load(sid)
         if not st or not st.get("chapter"):
@@ -2458,7 +2461,7 @@ def deck_start(sid, body):
             return {"error": "이미 만드는 중입니다"}
         st["deck_pending"] = time.time()
         st.pop("deck_error", None)
-        st["deck_opts"] = {"effort": effort, "req": req, "n": n}
+        st["deck_opts"] = {"effort": effort, "req": req, "n": n, "refs": body.get("refs", True) is not False}
         _save(st)
     threading.Thread(target=_deck_job, args=(sid,), name="study-deck", daemon=True).start()
     return {"ok": True}
@@ -2474,16 +2477,18 @@ def _deck_job(sid):
     res, err, deck = None, "", None
     try:
         run = cfg.get("claude_run")
-        res = run(_deck_prompt(st, opts.get("req") or "", opts.get("n") or 0), timeout=1800, model=model, effort=eff, tools="") if run else None
+        k = max(1, int(opts.get("n") or 0) - 1) if opts.get("n") else 0   # 내용 쪽 수 (제목 쪽을 뺀 것)
+        res = run(_deck_prompt(st, opts.get("req") or "", k), timeout=1800, model=model, effort=eff, tools="") if run else None
         d = _json_of((res or {}).get("text") or "")
         if not d or not isinstance(d.get("slides"), list):
             err = "Claude 가 슬라이드 재료를 주지 않았습니다" + _why()
         else:
-            deck = _deck_clean(st, d)
+            deck = _deck_clean(st, d, k)
+            deck["refs"] = opts.get("refs", True) is not False
             if not deck["slides"]:
                 err = "장의 문장이 받치는 글머리표가 없어 만들지 못했습니다"
             else:
-                deck.update(id="d%d" % int(time.time() * 1000), t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"), req=opts.get("req") or "", effort=opts.get("effort"))
+                deck.update(id="d%d" % int(time.time() * 1000), t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"), req=opts.get("req") or "", effort=opts.get("effort"), n=opts.get("n") or 0)
                 deck["file"] = _deck_write(st, deck)
     except Exception as e:
         err = "만들지 못했습니다: " + str(e)[:200]
@@ -2500,8 +2505,8 @@ def _deck_job(sid):
         _save(st)
 
 
-def _deck_clean(st, d):
-    """Claude 의 답에서 장의 문장이 받치는 글머리표·메모만 남기고(keys 검사 + 수치 대조), 그림 번호를 장의 그림으로 맞춘다."""
+def _deck_clean(st, d, k=0):
+    """Claude 의 답에서 장의 문장이 받치는 글머리표·메모만 남기고(keys 검사 + 수치 대조), 그림 번호를 장의 그림으로 맞춘다. k 가 있으면 내용 쪽을 k 까지만."""
     P = st.get("papers") or []
     figs = _deck_figs(st)
     src = st.get("src") or {}
@@ -2581,8 +2586,11 @@ def _deck_clean(st, d):
                 dropped.append({"slide": h, "t": "(메모) " + t[:80], "why": "수치가 근거에 없음: " + ", ".join(sorted(miss)[:4])})
             else:
                 note = {"t": t, "keys": nk}
-        allk = [k for b in bullets for k in b["keys"]]
+        allk = [x for b in bullets for x in b["keys"]]
         slides.append({"h": h, "bullets": bullets, "fig": fig, "note": note, "cites": cites(allk)})
+    if k and len(slides) > k:
+        dropped.append({"slide": "", "t": "쪽 %d개가 정한 수(%d)를 넘어 뒤의 %d쪽을 뺐다" % (len(slides), k, len(slides) - k), "why": "쪽 수"})
+        slides = slides[:k]
     return {"title": short(d.get("title"), 80) or (st.get("chapter") or {}).get("title") or "발표 자료", "subtitle": short(d.get("subtitle"), 160), "slides": slides, "dropped": dropped}
 
 
@@ -2608,7 +2616,7 @@ def _deck_write(st, deck):
         foot = ("출처: " + " · ".join("[%d] %s" % (n, pshort(n)) for n in sl.get("cites") or [])) if sl.get("cites") else ""
         slides.append({"h": sl["h"], "bullets": [b["t"] for b in sl["bullets"]], "fig": fig, "foot": foot, "note": (sl.get("note") or {}).get("t") or ""})
     refs = ["[%s] %s" % (p.get("n"), p.get("ref") or ("%s. %s. %s %s." % (p.get("short"), p.get("title"), p.get("journal"), p.get("year")))) for p in sorted((p for p in P if p.get("n") and int(p["n"]) in allc), key=lambda p: int(p["n"]))]
-    pptx_min.build(path, {"title": deck["title"], "subtitle": (deck.get("subtitle") or "") + "\n" + time.strftime("%Y-%m-%d"),
+    pptx_min.build(path, {"title": deck["title"], "subtitle": (deck.get("subtitle") or "") + "\n" + time.strftime("%Y-%m-%d"), "skip_refs": deck.get("refs", True) is False,
                           "footer": "Athenaeum 공부 장 「%s」 에서 — 내 서재의 논문 %d편으로 쓴 장, 글머리표마다 논문의 원문 문장에 묶여 있음" % (ch.get("title") or "", (st.get("stats") or {}).get("cited") or len(P)),
                           "title_note": "이 발표 자료는 Athenaeum 의 공부 장을 바탕으로 만들었습니다. 글머리표와 메모는 장의 문장을 줄인 것이고, 장의 문장은 논문의 원문 문장과 대조한 것입니다.",
                           "slides": slides, "refs": refs})
