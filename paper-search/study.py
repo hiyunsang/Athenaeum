@@ -2803,6 +2803,16 @@ def _ref_line(p):
     return p.get("ref") or ("%s. %s. %s %s." % (p.get("short"), p.get("title"), p.get("journal"), p.get("year")))
 
 
+def _ref_short(p):
+    """그림 아래 한 줄용 참고문헌: 'Davis JM et al. Int J Mach Tools Manuf 2020;157:103607' — 참고문헌 전체를 좁은 열에 달면 4~6줄이 되어 그림이 작아진다(2026-10-10, 그림 셋 쪽). 전체는 발표자 메모에"""
+    line = _ref_line(p).strip().rstrip(".")
+    m = re.search(r"\.\s+([A-Z][^.]*?\s(?:19|20)\d\d(?:;[^.\s]+)?)$", line)
+    jpart = m.group(1) if m else ("%s %s" % (p.get("journal") or "", p.get("year") or "")).strip()
+    auth = line.split(". ")[0] if ". " in line else (p.get("short") or "")
+    first = auth.split(",")[0].strip()
+    return "%s%s %s" % (first, " et al." if "," in auth else ".", jpart)
+
+
 def _deck_write(st, deck, pool=None):
     """deck 재료 → .pptx (공부\\발표\\<장 id>_<deck id>.pptx) + 쪽 미리보기 PNG(같은 이름의 폴더). 파일 이름을 돌려준다."""
     import pptx_min
@@ -2822,7 +2832,7 @@ def _deck_write(st, deck, pool=None):
             if not f:
                 continue
             p = P[f["pi"]] if isinstance(f["pi"], int) and f["pi"] < len(P) else {}
-            ref = (_ref_line(p).rstrip(". ") + " — Fig. %s" % f["n"]) if p else "Fig. %s" % f["n"]
+            ref = (_ref_short(p) + " — Fig. %s" % f["n"]) if p else "Fig. %s" % f["n"]
             panels.append({"kind": "fig", "path": f["path"], "caption": fg.get("cap") or (f["what"] or "")[:110], "ref": ref})
             if p.get("n"):
                 allc.add(int(p["n"]))

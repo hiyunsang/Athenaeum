@@ -173,7 +173,7 @@ def layout_content(s, idx, total, deck_title=""):
     figs_p = [p for p in panels if p.get("kind") != "table"][:3 if not tab else 2]   # 셋까지 (사용자 2026-10-10: '그림 세 개도 넣고 싶을 때가 있다')
     zone_h = body_bot - body_top
     has_right = bool(figs_p or tab)
-    kw_w = 3.9 if has_right else full_w                 # 키워드 열 — 그림·표가 있으면 좁게, 그림이 주인공
+    kw_w = (3.4 if len(figs_p) >= 3 else 3.9) if has_right else full_w   # 키워드 열 — 그림·표가 있으면 좁게(셋이면 더 좁게), 그림이 주인공
     fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
     stats = [x for x in (s.get("stats") or []) if x.get("v")][:2]
     stats_h = (0.95 * len(stats) + 0.15 * (len(stats) - 1) + 0.2) if (stats and has_right) else (1.12 if stats else 0.0)
