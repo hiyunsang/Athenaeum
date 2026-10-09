@@ -18,6 +18,8 @@ cfg = {}
 _LOCK = threading.Lock()
 TYPES = {"schematic": "도식", "photo": "사진", "plot": "그래프", "setup": "장치", "mixed": "복합", "other": "기타"}
 MAX_FIGS = 14            # 논문 하나에서 읽는 그림 수 (뒤쪽 그림은 대개 보조 자료)
+MAX_FIGS_REVIEW = 20     # 리뷰는 뒤쪽 그림도 본문이다 — Beyerlein 2014 의 HCP 쌍정 모드(Fig. 16)·쌍정 배아(Fig. 17)가 14장 상한 밖이었다(2026-10-09)
+_REVIEW_RX = re.compile(r"\b(review|survey|overview|advances in|state[- ]of[- ]the[- ]art|perspectives?|progress in)\b", re.I)
 _RETRY_AFTER = 600       # 실패한 색인은 10분 뒤에 다시
 
 
@@ -67,7 +69,12 @@ def fig(f, n):
 def crop_all(f):
     """논문의 그림(표는 뺌)을 모두 잘라 PNG 로 → [{n, page, cap, img}] (이미 잘라 둔 것은 그대로). 못 자른 그림은 빠진다"""
     pdf = os.path.join(cfg["ARCHIVE"], f)
-    caps = [c for c in figcrop.captions(pdf) if c["kind"] == "fig"][:MAX_FIGS]
+    try:                       # 리뷰이거나 20쪽이 넘는 긴 논문은 뒤쪽 그림도 본문 — 파일 이름만으로는 리뷰를 못 알아본다(Beyerlein 2014 는 제목에 review 가 없다, 저널 ARMR)
+        npages = len(figcrop._fitz().open(pdf))
+    except Exception:
+        npages = 0
+    limit = MAX_FIGS_REVIEW if (_REVIEW_RX.search(f) or npages >= 20) else MAX_FIGS
+    caps = [c for c in figcrop.captions(pdf) if c["kind"] == "fig"][:limit]
     d = img_dir(f)
     os.makedirs(d, exist_ok=True)
     out = []

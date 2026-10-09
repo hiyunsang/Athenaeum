@@ -582,12 +582,13 @@ def _read_prompt(st, paper, text, part, nparts, nmax, mode):
         "메모에 넣지 않는다 — 그대로 옮기면 틀린 단위가 실리고, 고쳐 적으면 원문과 달라진다. 수치 없이 사실만 적는다.\n"
         "- own: 이 논문이 자기 실험·해석·모델로 말한 것이면 true. 남의 연구를 전한 것(서론·리뷰의 문헌 소개, 인용 번호가 달린 문장)이면 false.\n"
         "- kind: def 정의·개념 / bg 배경·필요성 / method 실험·측정·해석 방법 / result 관찰·측정 결과 / mech 기전·원인 설명 / factor 영향 인자와 그 방향 / model 모델·식·예측 / limit 한계·성립 조건 / open 아직 모르는 것·논쟁\n"
-        "- 주제에 관한 것만, 교과서에 실을 만한 것부터 많아야 %d개. 같은 말을 되풀이하는 메모는 하나로 합친다. 그림·표를 가리키기만 하는 말, 논문의 구성 안내, 감사·서지 정보는 뺀다.\n"
+        "- 주제에 관한 것만, 교과서에 실을 만한 것부터. 이 글의 길이면 %d개 안팎이 알맞고 많아야 %d개 — 긴 논문·리뷰는 절마다 빠짐없이 뽑는다. "
+        "정의·개념·기전·성립 조건·방향성(극성)·한계 같은 설명 메모는 결과 수치만큼 중요하다(교과서의 설명 절은 이 메모로 쓴다). 같은 말을 되풀이하는 메모는 하나로 합친다. 그림·표를 가리키기만 하는 말, 논문의 구성 안내, 감사·서지 정보는 뺀다.\n"
         "- 이 글이 주제를 다루지 않으면 notes 를 비운다.\n%s"
         "- 전문 용어는 한국어로 쓰고 처음 나올 때 영어를 괄호에: 연성 영역 절삭(ductile-regime cutting).\n\n"
         "[주제] %s\n[장의 범위] %s\n[이 장이 답할 물음]\n%s\n\n"
         "[논문] %s — %s (%s %s)%s%s\n\n%s") % (
-            nmax, ("" if paper.get("top") or _looks_review(paper.get("title")) else
+            max(12, int(nmax * 0.8)), nmax, ("" if paper.get("top") or _looks_review(paper.get("title")) else
                    "- 이 논문은 연구자가 정한 우선 저널의 것이 아니다. 배경·정의·방법·수치가 든 결과는 그대로 뽑되, 결론·해석·일반화(mech·factor·model·limit 의 단정)는 이 주제에 꼭 필요한 것만 뽑는다 — 교과서의 기둥은 우선 저널의 논문이 세운다.\n"),
             st["topic"][:400], p["scope"], "\n".join("- " + a for a in p["ask"]),
             paper["short"], paper["title"][:200], paper["journal"], paper["year"],
@@ -609,9 +610,18 @@ def _read_paper(st, pi, model, effort):
             chunks, mode = _parts(sents)[:1], "full"
     else:
         chunks = _parts(sents)
-    nmax = (32 if len(chunks) == 1 else 20) if mode == "full" else 10
-    if mode == "full" and not paper.get("top") and not _looks_review(paper.get("title")):   # 우선 저널이 아닌 연구 논문 — 결론·해석 메모를 덜 뽑는다(수치·배경은 그대로)
-        nmax = max(8, int(nmax * 0.75))
+    is_rev = _looks_review(paper.get("title")) or paper.get("type") == "review"
+    if mode == "full":
+        # 메모 상한은 글의 길이를 따른다 — 부분마다 2,600자에 하나꼴로 24~60, 리뷰는 1/4 더. 전에는 32(한 부분)/20 고정이었고 Beyerlein 2014(리뷰 11만 자)가 24개만 돌아와
+        # 극성 같은 개념 메모가 빠졌다(사용자 2026-10-09: '리뷰 논문은 특히 긴데 24개에 걸려 뭐가 없다 — 상한을 늘리자')
+        per = sum(len(s["en"]) for ch in chunks for s in ch) / float(max(1, len(chunks)))
+        nmax = max(24, min(60, int(per // 2600)))
+        if is_rev:
+            nmax = min(64, int(nmax * 1.25))
+        elif not paper.get("top"):   # 우선 저널이 아닌 연구 논문 — 결론·해석 메모를 덜 뽑는다(수치·배경은 그대로)
+            nmax = max(8, int(nmax * 0.75))
+    else:
+        nmax = 10
     about, typ, notes, dropped, fail = "", "", [], 0, 0
     for k, ch in enumerate(chunks):
         by = {s["sid"]: s for s in ch}
@@ -822,6 +832,8 @@ def _claims(st, k, model, effort):
         "- 논지 문장은 메모들이 말하는 것을 묶은 것이다. 메모에 없는 사실·수치·원인을 넣지 않고, 조건을 떼고 일반 법칙처럼 넓히지 않는다. 수치는 메모 그대로. 교과서적 상식을 보태지 않는다.\n"
         "- 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 논지의 받침은 ★ 논문과 리뷰의 결과·기전 메모로 먼저 세운다. ★ 가 아닌 저널의 연구 논문이 혼자 받치는 결과·기전·일반화는 논지로 세우지 않는다 — "
         "그 수치와 조건은 ★ 논문의 논지를 받치는 보기(agree·cond)나 표의 행으로 쓰고, 붙을 데가 없으면 쓰지 않는다. ★ 가 아닌 논문의 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
+        "- 일반 개념(정의·기전·극성·성립 조건)의 논지를 한 재료·한 조건의 논문 메모 하나로만 받치지 않는다. 리뷰나 일반 논문의 메모가 없으면 그 개념은 그 재료의 절(차례)에 맡기고 이 절에서는 세우지 않는다 — "
+        "특정 재료의 말('육방정 능면체 결정에서는 …')이 일반 설명의 자리에 들어가면 안 된다.\n"
         "- extra 는 논지와 어긋나거나 특이해서 따로 적을 가치가 있는 메모만(5개까지, 절 끝의 '번외'에 한 문장씩 실린다). 나머지 안 쓴 메모는 버린다.\n\n"
         "[장] %s — %s\n[장의 줄기] %s\n[절의 차례] (▶ = 이 절)\n%s\n\n[이 절] %s%s%s\n\n[논문]\n%s\n\n[메모]\n%s") % (
             ol["title"], st["plan"]["scope"], ol.get("spine") or "(없음)", toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "",
@@ -1035,8 +1047,18 @@ def _fig_list(st, sec):
         if nid in notes and notes[nid][0] not in pset:
             pset.append(notes[nid][0])
     # (나) 도식·장치 그림: 이 절 논문들의 그림 색인에서 — 근거 문장이 가리키지 않아도 후보. ★·통째로 읽은 논문부터, 절에 12장까지
+    # (나) 후보는 이 절의 대표(anchor) 메모를 낸 논문이나 이 절에 메모 둘 이상을 댄 논문의 것만 — 메모 하나로 스친 논문의 도식(쌍정 장 1절에 끼어든 사파이어 결정면 그림, 2026-10-09)이 후보에 들지 않게
+    cnt, strong = {}, set()
+    for c in sec.get("claims") or []:
+        for nid in c.get("notes") or []:
+            if nid in notes:
+                cnt[notes[nid][0]] = cnt.get(notes[nid][0], 0) + 1
+        for nid in c.get("anchor") or []:
+            if nid in notes:
+                strong.add(notes[nid][0])
+    strong |= {pi for pi, k in cnt.items() if k >= 2}
     schem = []
-    for pi in sorted(pset, key=lambda i: (0 if st["papers"][i].get("top") else 1, 0 if st["papers"][i].get("role") == "core" else 1, i)):
+    for pi in sorted([p for p in pset if p in strong], key=lambda i: (0 if st["papers"][i].get("top") else 1, 0 if st["papers"][i].get("role") == "core" else 1, i)):
         for x in (index(pi) or {}).get("figs") or []:
             k = (pi, "fig", x.get("n"))
             if x.get("type") in ("schematic", "setup") and x.get("quality") != "poor" and x.get("what") and k not in allow:
@@ -1082,6 +1104,7 @@ _WRITE_RULES = (
     "칸의 수치·단위·조건은 근거 그대로(표의 행도 본문 문장과 똑같이 원문과 대조된다). 표에 넣은 수치를 본문 문장에 되풀이하지 않는다. 절마다 많아야 둘.\n"
     "13. 그림: [그림 목록]에는 두 갈래가 있다 — (가) 설계도의 근거 문장이 가리키는 그림(사진·그래프·도식) (나) 이 절 논문들의 도식·장치 그림(근거 문장이 가리키지 않아도 된다). 교과서처럼 놓는다: "
     "개념·기전·장치를 처음 설명하는 문단에는 그것을 그린 도식 하나(나), 관찰을 말하는 대목 옆에 사진, 경향·수치를 말하는 대목 옆에 그래프(가). 절에 둘에서 넷, 같은 그림을 두 번 싣지 않는다. 그림을 채우려고 고르지 않는다 — 그 그림 없이도 설명이 서면 넣지 않는다. "
+    "(나)의 도식은 그 문단이 그 개념·장치를 실제로 설명할 때만 — 뒤의 절에서 쓸 그림을 미리 싣거나 '다른 절에서 다룬다' 며 거는 것, 이 절이 다루지 않는 재료의 그림(금속의 결정학 절에 사파이어 결정면 그림 같은)은 넣지 않는다. "
     "그림을 넣을 때는 그 그림을 걸고 풀어 쓴다: 앞 문단의 한 문장이 ⟨그림⟩ 으로 가리키고('…가 ⟨그림⟩에 보인다' — 번호는 프로그램이 붙인다), 바로 뒤에 '그림: P5 Fig. 4 — 설명. ⟦메모 번호⟧' 한 줄. "
     "설명은 한두 문장으로 무엇이 무엇인지(부분·화살표·영역·축이 가리키는 것)와 독자가 봐야 할 곳을 말한다 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만, 그 밖의 수치·결론은 보태지 않는다. "
     "도식(나)의 설명은 메모 번호가 없어도 된다(⟦-⟧ — 근거는 캡션과 그림 읽기). 표도 같은 식으로 ⟨표⟩. 목록에 없는 그림은 쓸 수 없다(프로그램이 논문 PDF 에서 그 그림을 잘라 싣는다).\n"

@@ -16,6 +16,46 @@ _CAP = re.compile(r"^\s*(Fig\.?|Figure|Table)\s*(\d+)\s*[.:|]?\s*[.:|]?\s*(.*)$"
 # 본문의 참조 문장: 번호 바로 뒤에 괄호·소문자(Fig. 1(c), Fig. 1a shows) 또는 동사. 'Fig.1 (a) A +ve…' 처럼 빈칸 뒤 괄호는 캡션이다
 _CAP_REF = re.compile(r"^(?i:fig\.?|figure|table)\s*\d+(?:\(|[a-z]|\s+(?i:shows?|illustrates?|presents?|depicts?|compares?|summari[sz]es?|gives?|and|to|in|of)\b)")
 _CAP_STYLE = re.compile(r"^(?:fig\.?|figure|table)\s*\d+\s*[.:|]?\s*[.:|]?\s*[A-Z(]", re.I)
+_LABEL_ONLY = re.compile(r"^\s*(?:Fig\.?|Figure|Table)\s*\d+\s*[.:|]?\s*$", re.I)   # 번호만 홀로 있는 블록 ('Figure 1')
+
+
+def _join_labels(texts):
+    """'Figure 1' 번호만 홀로 한 블록이고 캡션 글이 다음 블록(바로 아래나 같은 줄 오른쪽)에 있는 편집(Annual Reviews 꼴)은 둘을 한 블록으로 —
+    안 그러면 캡션을 하나도 못 잡아 그림 색인이 0장이 된다(Beyerlein 2014 ARMR: 그림 10장·'Figure N' 줄 20개인데 색인 0장, 2026-10-09)"""
+    pair = {}
+    for i, tb in enumerate(texts):
+        if not _LABEL_ONLY.match(tb["t"]):
+            continue
+        b = tb["bbox"]
+        best = None
+        for j, ob in enumerate(texts):
+            if j == i or len(ob["t"]) < 8 or _LABEL_ONLY.match(ob["t"]):
+                continue
+            o = ob["bbox"]
+            gap_below, gap_right = o[1] - b[3], o[0] - b[2]
+            if -2 <= gap_below <= 24 and (_hov(o, b) > 0 or abs(o[0] - b[0]) < 12):
+                d = gap_below
+            elif abs(o[1] - b[1]) <= 6 and -2 <= gap_right <= 24:
+                d = gap_right
+            else:
+                continue
+            if best is None or d < best[0]:
+                best = (d, j)
+        if best and best[1] not in pair.values():
+            pair[i] = best[1]
+    if not pair:
+        return texts
+    skip, out = set(pair.values()), []
+    for i, tb in enumerate(texts):
+        if i in skip:
+            continue
+        if i in pair:
+            ob = texts[pair[i]]
+            b, o = tb["bbox"], ob["bbox"]
+            out.append({"t": tb["t"].strip() + " " + ob["t"], "bbox": (min(b[0], o[0]), min(b[1], o[1]), max(b[2], o[2]), max(b[3], o[3]))})
+        else:
+            out.append(tb)
+    return out
 
 
 def _fitz():
@@ -58,6 +98,7 @@ def _page_info(page):
             t = " ".join(t.split())
             if t:
                 texts.append({"t": t, "bbox": tuple(b["bbox"])})
+    texts = _join_labels(texts)
     try:
         for dr in page.get_drawings():
             r = dr.get("rect")
