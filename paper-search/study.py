@@ -2909,6 +2909,135 @@ def deck_layout(sid, body):
     return {"ok": True, "rev": d["rev"]}
 
 
+_DECK_EDIT_RULE = (
+    "연구자가 발표 자료의 쪽 하나를 고쳐 달라고 한다. [지금 쪽]은 JSON 이고, [장 전체]·[그림 목록]·[표 목록]은 시스템 프롬프트에 있다.\n"
+    "JSON 으로만 답하라: {\"reply\": \"한국어 한두 문장 — 무엇을 어떻게 바꿨는지(못 바꾸면 왜)\", \"slide\": {지금 쪽과 같은 꼴 — h, bullets[{t, sub, keys}], figs[{id, cap}], table, note{t, keys}}}\n"
+    "규칙: 부탁한 것만 바꾸고 나머지는 그대로 둔다(keys·그림 id·메모도 그대로). 새로 넣는 글은 모두 장의 문장 id(keys, 시스템 프롬프트의 [u…] 그대로)가 받쳐야 하고 장에 없는 사실·수치·논문은 넣지 않는다 — "
+    "장에 없는 것을 넣어 달라면 reply 에 그렇게 말하고 쪽은 그대로 돌려준다. 그림을 바꾸려면 [그림 목록]의 id 로, cap 은 그 그림이 무엇인지 한 줄(그림 읽기·캡션 범위 안). 수치는 문장에 적힌 그대로(단위 포함). "
+    "글의 꼴(키워드만 / 주제 + sub 설명 항목)은 지금 쪽의 꼴을 따른다. 발표자 메모(note)를 고쳐 달라면 note.t 를 고치고 keys 를 단다.\n")
+
+
+def _deck_find(st, did):
+    return next((x for x in (st or {}).get("decks") or [] if x.get("id") == str(did or "")), None)
+
+
+def _deck_edit_jobkey(sid, d):
+    return "study:%s:deck:%s:%d" % (sid, d.get("id"), int(d.get("edit_pending") or 0))
+
+
+def deck_edit(sid, body):
+    """쪽 하나를 Claude 에게 고쳐 달라고 — 자료의 대화(deck.chat)에 적고 스레드로 (사용자 2026-10-11: '우측에 클로드와 대화 칸을 만들어 수정')"""
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    q = str(body.get("question") or "").strip()[:2000]
+    if not q:
+        return {"error": "무엇을 고칠지 적어 주세요"}
+    with _LOCK:
+        st = _load(sid)
+        d = _deck_find(st, body.get("deck"))
+        if not d:
+            return {"error": "자료를 찾지 못했습니다"}
+        try:
+            i = int(body.get("slide") or 0)
+        except (TypeError, ValueError):
+            i = -1
+        if not (0 <= i < len(d.get("slides") or [])):
+            return {"error": "쪽 번호가 맞지 않습니다"}
+        if d.get("edit_pending"):
+            return {"error": "이미 고치는 중입니다"}
+        d["edit_pending"] = time.time()
+        d.pop("edit_error", None)
+        d["edit_opts"] = {"effort": effort, "slide": i}
+        d.setdefault("chat", []).append({"role": "user", "text": q, "slide": i, "t": time.time()})
+        _save(st)
+    threading.Thread(target=_deck_edit_job, args=(sid, d["id"]), name="study-deck-edit", daemon=True).start()
+    return {"ok": True}
+
+
+def deck_edit_cancel(sid, did):
+    with _LOCK:
+        st = _load(sid)
+        d = _deck_find(st, did)
+        if not d or not d.get("edit_pending"):
+            return {"error": "고치는 중이 아닙니다"}
+        key = _deck_edit_jobkey(sid, d)
+    cancel = cfg.get("claude_cancel")
+    if cancel:
+        cancel(key)
+    return {"ok": True}
+
+
+def _deck_edit_job(sid, did):
+    st = _load(sid)
+    d = _deck_find(st, did)
+    if not d:
+        return
+    opts = d.get("edit_opts") or {}
+    i = int(opts.get("slide") or 0)
+    model, eff = _CHAT_EFFORT.get(opts.get("effort"), _CHAT_EFFORT["xhigh"])
+    run = cfg.get("claude_run")
+    t0, err, reply, newsl, dropped, res = time.time(), "", "", None, [], None
+    try:
+        pool = _deck_pool(st)
+        full = _deck_prompt(st, "", 0, pool, d.get("text") or "lecture")
+        bg = full[full.index("[그림 목록"):] if "[그림 목록" in full else _chapter_text_ids(st)
+        system = ("당신은 연구자의 발표 자료(쪽마다 제목·글·그림·표·발표자 메모)를 고치는 조수다. 자료는 연구자가 자기 서재의 논문만으로 쓴 교과서 장에서 만든 것이고, 모든 글은 장의 문장 id(keys)로 받쳐야 한다.\n\n" + bg)
+        sl = d["slides"][i]
+        thread = [m for m in d.get("chat") or [] if m.get("slide") == i][-7:]
+        cur_json = json.dumps({k: sl.get(k) for k in ("h", "bullets", "figs", "table", "note") if k in sl}, ensure_ascii=False)
+        past = "\n".join(("연구자: " if m.get("role") == "user" else "Claude: ") + str(m.get("text") or "")[:600] for m in thread[:-1]) or "(없음)"
+        prompt = _DECK_EDIT_RULE + "\n[지금 쪽 (%d쪽)]\n%s\n\n[지난 대화]\n%s\n\n[부탁]\n%s" % (i + 2, cur_json, past, (thread[-1].get("text") if thread else "") or "")
+        res = run(prompt, timeout=900, model=model, effort=eff, tools="", system=system, job=_deck_edit_jobkey(sid, d)) if run else None
+        if res and res.get("cancelled"):
+            err = "취소"
+        elif not res:
+            err = "Claude 호출 실패" + _why()
+        else:
+            j = _json_of(res.get("text") or "")
+            if not j:
+                err = "Claude 가 JSON 을 주지 않았습니다"
+            else:
+                reply = _clean(str(j.get("reply") or "")).strip()[:1200]
+                s2 = j.get("slide") if isinstance(j.get("slide"), dict) else None
+                if s2:
+                    cl = _deck_clean(st, {"title": d.get("title"), "slides": [s2]}, 1, pool)
+                    if cl.get("slides"):
+                        newsl = cl["slides"][0]
+                        newsl["layout"] = sl.get("layout") or "auto"
+                        dropped = cl.get("dropped") or []
+                    else:
+                        reply = (reply + " " if reply else "") + "(고친 쪽에 글이 남지 않아 그대로 두었습니다)"
+    except Exception as e:
+        err = "고치기 실패: " + str(e)[:200]
+    with _LOCK:
+        st2 = _load(sid)
+        d2 = _deck_find(st2, did)
+        if not d2:
+            return
+        if newsl and 0 <= i < len(d2.get("slides") or []) and not err:
+            d2["slides"][i] = newsl
+            try:
+                d2["file"] = _deck_write(st2, d2)
+                d2["rev"] = time.time()
+            except Exception as e:
+                err = "다시 그리기 실패: " + str(e)[:200]
+        ch = d2.setdefault("chat", [])
+        if err == "취소":
+            if ch and ch[-1].get("role") == "user":
+                ch.pop()
+        else:
+            txt = reply or err or "(답 없음)"
+            if dropped:
+                txt += "\n뺀 것: " + "; ".join((str(x.get("t") or "")[:60] + " — " + str(x.get("why") or "")) for x in dropped[:4])
+            ch.append({"role": "claude", "text": txt, "slide": i, "t": time.time(), "model": (res or {}).get("model") or "", "tok": (res or {}).get("tok"), "sec": round(time.time() - t0)})
+        d2.pop("edit_pending", None)
+        d2.pop("edit_opts", None)
+        if err and err != "취소":
+            d2["edit_error"] = err
+        else:
+            d2.pop("edit_error", None)
+        _save(st2)
+
+
 def deck_delete(sid, did):
     with _LOCK:
         st = _load(sid)
@@ -3109,6 +3238,10 @@ def handle_post(h, body):
             return h._send(200, deck_delete(sid, str(body.get("deck") or "")))
         if op == "deck_layout":
             return h._send(200, deck_layout(sid, body))
+        if op == "deck_edit":
+            return h._send(200, deck_edit(sid, body))
+        if op == "deck_edit_cancel":
+            return h._send(200, deck_edit_cancel(sid, str(body.get("deck") or "")))
         if op == "chat_delete":
             return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
         if op == "cancel":
