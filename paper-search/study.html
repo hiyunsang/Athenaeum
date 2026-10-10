@@ -11,6 +11,15 @@
   header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
   header .brand-mark { height: 24px; display: block; }
   header h1 { font-size: 14px; font-weight: 600; }
+  /* 머리줄의 길잡이: 「장 목록 n」 › 지금 장 제목 — 블로그의 '전체 글 › 글 제목' 처럼 (사용자 2026-10-10: '장 목록으로 가는 게 너무 작아, 지금 장 제목이랑 장 목록을 맨 위로') */
+  #nav { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  #nav .navix { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); cursor: pointer; white-space: nowrap; }
+  #nav .navix b { font-weight: 600; color: var(--text-2); margin-left: 2px; }
+  #nav .navix:hover { border-color: var(--accent); color: var(--accent); }
+  #nav .navix.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  #nav .navsep { color: var(--text-3); }
+  #nav .navcur { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+  #nav .navcur:hover { color: var(--accent); }
   #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 272px minmax(0, 1fr) 6px var(--srcp-w, 400px); }
   #srcsplit { cursor: col-resize; background: var(--line-2); }   /* 끌어서 오른쪽 Claude 칸의 폭을 바꾼다 (사용자 2026-10-08) */
   #srcsplit:hover, #srcsplit.drag { background: var(--accent); }
@@ -46,12 +55,12 @@
   .ix .ixh { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; }
   .ix .ixi { padding: 14px 0 15px; border-top: 1px solid var(--line); cursor: pointer; }
   .ix .ixi:last-child { border-bottom: 1px solid var(--line); }
-  .ix .ixi h2 { font-family: var(--font-serif); font-size: 17px; font-weight: 600; line-height: 1.35; margin: 0 0 4px; }
+  .ix .ixi h2 { font-family: var(--font-serif); font-size: 18px; font-weight: 600; line-height: 1.35; margin: 0 0 5px; }
   .ix .ixi:hover h2 { color: var(--accent); }
   .ix .ixi .ixm { color: var(--text-3); font-size: 12px; } .ix .ixi .ixm .now { color: var(--accent); }
   .ix .ixi .ixt { color: var(--text-2); font-size: 12.5px; margin-top: 4px; line-height: 1.5; }
-  .ix .ixq { margin: 2px 0 12px; } .ix .ixq input, .ch .cvf input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
-  .ix .ixc { padding: 7px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; line-height: 1.5; } .ix .ixc:last-child { border-bottom: 1px solid var(--line); } .ix #ixChats { margin-bottom: 18px; } .ix .ixc:hover .q { color: var(--accent); } .ix .ixc .q { font-weight: 500; } .ix .ixc .m { color: var(--text-3); font-size: 12px; }
+  .ixq { margin: 2px 0 12px; } .ixq input, .ch .cvf input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
+  .ixc { padding: 7px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; line-height: 1.5; } .ixc:last-child { border-bottom: 1px solid var(--line); } #ixChats { margin-bottom: 18px; } .ixc:hover .q { color: var(--accent); } .ixc .q { font-weight: 500; } .ixc .m { color: var(--text-3); font-size: 12px; }
   .ch .cvf { margin: 0 0 10px; }
   .dkform textarea { width: 100%; box-sizing: border-box; min-height: 64px; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   .dkform .row { display: flex; gap: var(--s2); align-items: center; margin: 6px 0 14px; }
@@ -200,8 +209,9 @@
 <header>
   <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>공부</h1>
-  <span class="hint">내 서재의 논문만으로 쓰는 교과서 한 장 — 왼쪽 차례로 절마다 읽고, 문장을 누르면 근거인 원문이 오른쪽에, 글을 드래그하면 Claude 에게 묻습니다</span>
+  <nav id="nav"></nav>
   <span style="margin-left:auto"></span>
+  <button class="act" id="hdrNew" title="왼쪽의 「새 장 쓰기」 를 엽니다">새 장 쓰기</button>
 </header>
 <div id="app">
   <aside id="side">
@@ -217,7 +227,6 @@
         <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
       </div>
     </div>
-    <div id="chpick"></div>
     <div id="list"></div>
     <div id="outline"></div>
   </aside>
@@ -255,6 +264,7 @@ $("effort").value = lsGet("ms_sel_effort", "xhigh");     // 원고의 대화·�
 if (!$("effort").value) $("effort").value = "xhigh";
 $("depth").onchange = () => lsSet("study_depth", $("depth").value);
 $("effort").onchange = () => lsSet("ms_sel_effort", $("effort").value);
+$("hdrNew").onclick = () => { newboxSet(true); const t = $("topic"); if (t) { t.focus(); t.scrollIntoView({ block: "nearest" }); } };
 function newboxSet(open) { $("newbox").classList.toggle("closed", !open); $("nbTg").textContent = open ? "접기" : "펴기"; lsSet("study_new_open", open ? "1" : "0"); }
 $("nbTg").onclick = () => newboxSet($("newbox").classList.contains("closed"));
 
@@ -271,12 +281,13 @@ function stateText(x) {
 }
 // 왼쪽 맨 위: 지금 보는 장 + 「다른 장 ▾」 — 목록은 누를 때만 펼쳐진다 (장의 차례와 섞이지 않게)
 function renderPick() {
-  const el = $("chpick");
-  if (!cur) { el.innerHTML = ""; return; }
-  const title = (cur.chapter || {}).title || (cur.plan || {}).title || cur.topic, others = items.filter(x => x.id !== cur.id).length;
-  el.innerHTML = "<div class='pick'><div class='pk'>지금 장</div><div class='pt'>" + esc(title) + "</div><div class='pm'>" + fmtDate(cur.t) + (cur.status === "done" && cur.stats ? " · 논문 " + (cur.stats.cited || 0) + "편 · 문장 " + (cur.stats.units || 0) + "개" : "") + "</div>" +
-    "<button class='act' id='pickIx' title='쓴 장을 모두 보고 고르기'>" + (view.kind === "index" ? "장 목록 보는 중" : "장 목록 " + items.length + "개 ▸") + "</button></div>";
+  const el = $("nav"); if (!el) return;
+  const n = items.length, ix = view.kind === "index";
+  const title = cur ? ((cur.chapter || {}).title || (cur.plan || {}).title || cur.topic) : "";
+  el.innerHTML = "<button class='navix" + (ix ? " on" : "") + "' id='pickIx' title='쓴 장을 모두 보고 고르기'>장 목록" + (n ? " <b>" + n + "</b>" : "") + "</button>" +
+    (cur && !ix ? "<span class='navsep'>›</span><a href='#' class='navcur' id='navCur' title='이 장의 개요로'>" + esc(title) + "</a>" : "");
   const b = $("pickIx"); if (b) b.onclick = () => gotoView("index");
+  const c = $("navCur"); if (c) c.onclick = ev => { ev.preventDefault(); gotoView("overview"); };
 }
 function renderList() {
   const others = cur ? items.filter(x => x.id !== curId) : items;
@@ -346,8 +357,9 @@ function noteFromGap(i) {
     "&text=" + encodeURIComponent("공부 장 「" + t + "」 의 '이 서재로는 답하지 못한 것':\n" + g) + "&ask=1", "athenaeum_notes", "width=1280,height=900");
 }
 function renderMain() {
+  setTimeout(renderPick, 0);   /* 머리줄의 「장 목록 n › 지금 장」 은 보기가 바뀔 때마다 */
   const m = $("main"); clearInterval(tickT); clearInterval(mapTick);
-  if (view.kind === "index") { m.innerHTML = indexHtml(); bindIndex(); renderOutline(); renderPick(); return; }
+  if (view.kind === "index") { m.innerHTML = indexHtml(); bindIndex(); renderOutline(); renderPick(); renderPanel(); return; }
   if (!cur) { m.innerHTML = emptyHtml(); renderOutline(); return; }
   if (cur.status === "done" && cur.chapter) { m.innerHTML = viewHtml(); bindChapter(); renderOutline(); return; }
   m.innerHTML = runHtml(); bindRun(); renderOutline();
@@ -355,19 +367,23 @@ function renderMain() {
 }
 // 장 목록 — 블로그 글 고르듯 (제목 · 날짜 · 편수·문장·그림·표 · 주제). 누르면 그 장의 개요로
 function indexHtml() {
-  const chats = allChats();
-  return "<div class='page ix'><div class='ixh'><h1>공부</h1><span class='hint'>" + items.length + "장 · 새 장은 왼쪽 「새 장 쓰기」</span></div>" +
-    (chats.length ? "<div class='ixq noprint'><input id='ixFind' placeholder='Claude 에게 물은 것 찾기 — 모든 장의 대화 " + chats.length + "개에서, 물음·고른 대목·절 이름의 낱말로' autocomplete='off'></div><div id='ixChats'>" + ixChatsHtml(chats, ixQuery) + "</div>" : "") +
+  return "<div class='page ix'><div class='ixh'><h1>장 목록</h1><span class='hint'>" + items.length + "장 — 누르면 그 장이 열립니다. 최근에 Claude 에게 물은 것은 오른쪽 칸에.</span></div>" +
     (items.length ? items.map(x => { const s = x.stats || {}; return "<article class='ixi' data-id='" + esc(x.id) + "'><h2>" + esc(x.title || x.topic) + "</h2>" +
       "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") + (s.comments ? " · Claude 의 생각" : "") + ((x.chats || []).length ? " · 대화 " + x.chats.length : "") : " · " + stateText(x)) + "</div>" +
       (x.topic && x.topic !== x.title ? "<div class='ixt'>주제: " + esc(x.topic) + "</div>" : "") + "</article>"; }).join("") : "<div class='hint'>아직 쓴 장이 없습니다. 왼쪽에서 주제를 적고 「쓰기 시작」.</div>") + "</div>";
 }
 function bindIndex() {
-  const m = $("main");
-  m.querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id));
-  const rows = () => m.querySelectorAll(".ixc").forEach(a => a.onclick = () => openStudyChat(a.dataset.sid, a.dataset.cid));
+  $("main").querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id));
+}
+// 장 목록 보기의 오른쪽 칸 = 최근에 물은 것 (사용자 2026-10-10: '최근 물은 것과 글 목록이 구분이 안 돼 — 우측에 빼자')
+function ixPanelHtml() {
+  const chats = allChats();
+  return "<div class='sec'>최근에 물은 것</div>" + (chats.length ? "<div class='ixq noprint'><input id='ixFind' placeholder='모든 장의 대화 " + chats.length + "개에서 찾기 — 물음·고른 대목·절 이름의 낱말' autocomplete='off'></div><div id='ixChats'>" + ixChatsHtml(chats, ixQuery) + "</div>" : "<div class='hint'>아직 Claude 에게 물은 것이 없습니다. 장을 열고 글을 드래그하면 물을 수 있습니다.</div>");
+}
+function bindIxPanel(el) {
+  const rows = () => el.querySelectorAll(".ixc").forEach(a => a.onclick = () => openStudyChat(a.dataset.sid, a.dataset.cid));
   rows();
-  const f = $("ixFind"); if (f) f.oninput = () => { ixQuery = f.value; $("ixChats").innerHTML = ixChatsHtml(allChats(), ixQuery); rows(); };
+  const f = $("ixFind"); if (f) { f.value = ixQuery; f.oninput = () => { ixQuery = f.value; $("ixChats").innerHTML = ixChatsHtml(allChats(), ixQuery); rows(); }; }
 }
 /* 대화 찾기 (사용자 2026-10-09: '기존에 했던 대화 찾기가 너무 빡세다') — 장 목록에서 모든 장의 대화를 낱말로 찾고, 누르면 그 장의 그 대목으로 가서 대화를 편다 */
 let ixQuery = "", cvQuery = "";
@@ -884,6 +900,7 @@ async function askSend() {
 function renderPanel() {
   const el = $("srcp");
   clearInterval(askTick);
+  if (view.kind === "index") { el.innerHTML = ixPanelHtml(); bindIxPanel(el); return; }
   if (!cur) { el.innerHTML = ""; return; }
   if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
   if (panel === "ask") { el.innerHTML = askPanel(); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
