@@ -159,7 +159,26 @@ def _figs_need(pn, w):
     return w * ih / float(iw) + 0.05 + ch, ch
 
 
+# 쪽 배치 — 화면의 메뉴와 같은 차례 (study.html 의 DK_LAYOUTS 와 맞출 것). needs: f=그림 수 최소, t=표 필요
+LAYOUTS = [
+    ("auto", "자동 (면적이 큰 배치)", 0, False),
+    ("row", "그림 가로로 나란히", 2, False),
+    ("col", "그림 세로로 쌓기", 2, False),
+    ("big_left", "큰 하나 왼쪽 + 작은 것 오른쪽", 2, False),
+    ("one_top", "위에 하나 크게 + 아래 나란히", 2, False),
+    ("one_bottom", "위에 나란히 + 아래 하나 크게", 2, False),
+    ("kw_top", "키워드 위 · 그림 아래 가로", 1, False),
+    ("kw_bottom", "그림 위 가로 · 키워드 아래", 1, False),
+    ("fig_only", "그림만 크게 (키워드는 메모로)", 1, False),
+    ("kw_only", "키워드만", 0, False),
+    ("table_bottom", "표를 아래 전체 폭에", 0, True),
+    ("table_only", "표만", 0, True),
+]
+LAYOUT_KEYS = [k for k, _l, _f, _t in LAYOUTS]
+
+
 def layout_content(s, idx, total, deck_title=""):
+    """내용 쪽 하나의 상자들. s["layout"](LAYOUTS 의 키, 기본 auto)대로 — 그림 수·표 유무에 안 맞는 배치는 auto 로 떨어진다 (사용자 2026-10-10: 쪽마다 배치를 직접 고르게)"""
     L, R = 0.6, 0.6
     boxes = []
     if deck_title:
@@ -168,35 +187,33 @@ def layout_content(s, idx, total, deck_title=""):
     boxes.append(rect(L, 1.42, 0.9, 0.04, ACCENT))
     body_top, body_bot = 1.62, H_IN - 0.98
     full_w = W_IN - L - R
+    zone_h = body_bot - body_top
+    gap = 0.25
     panels = [p for p in (s.get("panels") or []) if p]
     tab = next((p for p in panels if p.get("kind") == "table"), None)
-    figs_p = [p for p in panels if p.get("kind") != "table"][:3 if not tab else 2]   # 셋까지 (사용자 2026-10-10: '그림 세 개도 넣고 싶을 때가 있다')
-    zone_h = body_bot - body_top
-    has_right = bool(figs_p or tab)
-    kw_w = (3.4 if len(figs_p) >= 3 else 3.9) if has_right else full_w   # 키워드 열 — 그림·표가 있으면 좁게(셋이면 더 좁게), 그림이 주인공
-    fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
-    stats = [x for x in (s.get("stats") or []) if x.get("v")][:2]
-    stats_h = (0.95 * len(stats) + 0.15 * (len(stats) - 1) + 0.2) if (stats and has_right) else (1.12 if stats else 0.0)
+    figs_all = [p for p in panels if p.get("kind") != "table"][:3]
     bullets = [b for b in (s.get("bullets") or []) if (b.get("t") or "").strip()]
-    avail = zone_h - stats_h
-    paras, _h = _fit_bullets(bullets, kw_w, avail, sizes=(18, 17, 16, 15, 14, 13, 12, 11))
-    boxes.append(text(L, body_top, kw_w, avail, paras, anchor="t"))
-    if stats:
-        if has_right:   # 좁은 열에 세로로
-            sy = body_bot - (0.95 * len(stats) + 0.15 * (len(stats) - 1))
-            for st in stats:
-                boxes.append(rect(L, sy, kw_w, 0.95, STAT_FILL)); boxes.append(rect(L, sy, kw_w, 0.04, ACCENT))
-                boxes.append(text(L + 0.15, sy + 0.12, kw_w - 0.3, 0.46, [P(st["v"], 21, True, color=ACCENT)], anchor="t"))
-                boxes.append(text(L + 0.15, sy + 0.58, kw_w - 0.3, 0.34, [P(st.get("label") or "", 10, color=GRAY, line=1.05)], anchor="t"))
-                sy += 0.95 + 0.15
-        else:           # 그림이 없으면 가로로 나란히
-            n, gap = len(stats), 0.2
-            bw, sy = (full_w - gap * (n - 1)) / n, body_bot - 0.98
-            for i, st in enumerate(stats):
-                x = L + i * (bw + gap)
-                boxes.append(rect(x, sy, bw, 0.98, STAT_FILL)); boxes.append(rect(x, sy, bw, 0.04, ACCENT))
-                boxes.append(text(x + 0.15, sy + 0.12, bw - 0.3, 0.48, [P(st["v"], 22, True, color=ACCENT)], anchor="t"))
-                boxes.append(text(x + 0.15, sy + 0.6, bw - 0.3, 0.36, [P(st.get("label") or "", 10, color=GRAY, line=1.05)], anchor="t"))
+    lay = s.get("layout") or "auto"
+    if lay not in LAYOUT_KEYS:
+        lay = "auto"
+    # 배치가 재료에 안 맞으면 auto 로
+    need = next((f for k, _l, f, _t in LAYOUTS if k == lay), 0)
+    need_tab = next((t for k, _l, _f, t in LAYOUTS if k == lay), False)
+    if len(figs_all) < need or (need_tab and not tab):
+        lay = "auto"
+
+    def kw_box(x, y, w, h, sizes=(18, 17, 16, 15, 14, 13, 12, 11), bl=None):
+        paras, _h = _fit_bullets(bl if bl is not None else bullets, w, h, sizes=sizes)
+        boxes.append(text(x, y, w, h, paras, anchor="t"))
+
+    def fig_at(pn, x, y, w, h):
+        boxes.extend(_fig_block(pn, x, y, w, h)[0])
+
+    def area(pn, w, h):
+        need_, ch = _figs_need(pn, w)
+        iw, ih = png_size(pn.get("path") or "")
+        fw, fh = fit(iw, ih, w, max(0.6, h - ch - 0.05))
+        return fw * fh
 
     def table_block(pn, x, y, w, h_max):
         """표 하나를 (x, y) 에서 폭 w 로 — 행 높이는 글 줄 수만큼, h_max 를 넘는 행은 덜어 낸다"""
@@ -210,72 +227,89 @@ def layout_content(s, idx, total, deck_title=""):
         cap = (pn.get("cap") or "") + ((" (…외 %d행은 장에서)" % (allrows - len(rows))) if allrows > len(rows) else "")
         return [text(x, y, w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"), dict(table(x, y + 0.32, w, sum(rhs), pn.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
 
-    gap = 0.25
-    if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에'); 그림이 둘이면 왼쪽 반에 위아래로
-        w2 = (fig_w - gap) / 2
-        if len(figs_p) == 1:
-            boxes += _fig_block(figs_p[0], fig_x, body_top, w2, zone_h)[0]
+    def arrange(figs, x, y, w, h, mode):
+        """그림 1~3장을 (x, y, w, h) 안에 mode 대로. auto 는 면적이 큰 배치"""
+        n = len(figs)
+        if n == 0:
+            return
+        if n == 1:
+            fig_at(figs[0], x, y, w, h); return
+        wn, hn = (w - gap * (n - 1)) / n, (h - gap * (n - 1)) / n
+        w2, h2 = (w - gap) / 2, (h - gap) / 2
+        wb, ws = (w - gap) * 0.58, (w - gap) * 0.42
+        if mode == "auto":
+            if n == 2:
+                mode = "row" if area(figs[0], w2, h) + area(figs[1], w2, h) >= area(figs[0], w, h2) + area(figs[1], w, h2) else "col"
+            else:
+                cand = [(sum(area(pn, wn, h) for pn in figs), "row"),
+                        (area(figs[0], wb, h) + area(figs[1], ws, h2) + area(figs[2], ws, h2), "big_left"),
+                        (area(figs[0], w2, h2) + area(figs[1], w2, h2) + area(figs[2], w, h2), "one_bottom")]
+                mode = max(cand)[1]
+        if mode == "row":
+            for k, pn in enumerate(figs):
+                fig_at(pn, x + k * (wn + gap), y, wn, h)
+        elif mode == "col":
+            for k, pn in enumerate(figs):
+                fig_at(pn, x, y + k * (hn + gap), w, hn)
+        elif mode == "big_left":
+            fig_at(figs[0], x, y, wb, h)
+            rest = figs[1:]
+            hr = (h - gap * (len(rest) - 1)) / len(rest)
+            for k, pn in enumerate(rest):
+                fig_at(pn, x + wb + gap, y + k * (hr + gap), ws, hr)
+        elif mode == "one_top":
+            fig_at(figs[0], x, y, w, h2)
+            rest = figs[1:]
+            wr = (w - gap * (len(rest) - 1)) / len(rest)
+            for k, pn in enumerate(rest):
+                fig_at(pn, x + k * (wr + gap), y + h2 + gap, wr, h2)
+        else:   # one_bottom: 위에 나란히 + 아래 하나 크게
+            rest = figs[:-1]
+            wr = (w - gap * (len(rest) - 1)) / len(rest)
+            for k, pn in enumerate(rest):
+                fig_at(pn, x + k * (wr + gap), y, wr, h2)
+            fig_at(figs[-1], x, y + h2 + gap, w, h2)
+
+    kw_h = 1.5   # 키워드를 위·아래 띠로 둘 때의 높이
+    if lay == "kw_only":
+        kw_box(L, body_top, full_w, zone_h, sizes=(20, 18, 17, 16, 15, 14, 13, 12))
+    elif lay == "fig_only":
+        arrange(figs_all, L, body_top, full_w, zone_h, "auto")
+    elif lay in ("kw_top", "kw_bottom"):
+        half = (len(bullets) + 1) // 2
+        cols = [bullets[:half], bullets[half:]] if len(bullets) > 2 else [bullets]
+        cw = (full_w - gap * (len(cols) - 1)) / len(cols)
+        ky = body_top if lay == "kw_top" else body_bot - kw_h
+        for k, bl in enumerate(cols):
+            kw_box(L + k * (cw + gap), ky, cw, kw_h, sizes=(16, 15, 14, 13, 12, 11), bl=bl)
+        fy = body_top + kw_h + 0.15 if lay == "kw_top" else body_top
+        arrange(figs_all, L, fy, full_w, zone_h - kw_h - 0.15, "row" if len(figs_all) > 1 else "auto")
+    elif lay == "table_only":
+        kw_w = 3.9
+        kw_box(L, body_top, kw_w, zone_h)
+        boxes.extend(table_block(tab, L + kw_w + 0.3, body_top, full_w - kw_w - 0.3, zone_h))
+    elif lay == "table_bottom":
+        kw_w = 3.9
+        h_top = zone_h * 0.55 - gap
+        figs_p = figs_all[:2]
+        kw_box(L, body_top, kw_w, h_top)
+        if figs_p:
+            arrange(figs_p, L + kw_w + 0.3, body_top, full_w - kw_w - 0.3, h_top, "row")
+        boxes.extend(table_block(tab, L, body_top + h_top + gap, full_w, zone_h - h_top - gap))
+    else:
+        figs_p = figs_all[:3 if not tab else 2]
+        has_right = bool(figs_p or tab)
+        kw_w = (3.4 if len(figs_p) >= 3 else 3.9) if has_right else full_w
+        fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
+        kw_box(L, body_top, kw_w, zone_h)
+        if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에'); 그림이 둘이면 왼쪽 반에 위아래로
+            w2 = (fig_w - gap) / 2
+            arrange(figs_p, fig_x, body_top, w2, zone_h, "col" if len(figs_p) > 1 else "auto")
+            boxes.extend(table_block(tab, fig_x + w2 + gap, body_top, w2, zone_h))
+        elif tab:
+            boxes.extend(table_block(tab, fig_x, body_top, fig_w, zone_h))
         else:
-            h2, py = (zone_h - gap) / 2, body_top
-            for pn in figs_p[:2]:
-                boxes += _fig_block(pn, fig_x, py, w2, h2)[0]
-                py += h2 + gap
-        boxes += table_block(tab, fig_x + w2 + gap, body_top, w2, zone_h)
-    elif len(figs_p) >= 3:        # 셋: 가로 셋 / 큰 하나 + 작은 둘(위아래) / 위 둘 + 아래 하나 가운데 그림 면적이 가장 큰 배치
-        def area(pn, w, h):
-            need, ch = _figs_need(pn, w)
-            iw, ih = png_size(pn.get("path") or "")
-            fw, fh = fit(iw, ih, w, max(0.6, h - ch - 0.05))
-            return fw * fh
-        w3, w2, h2 = (fig_w - 2 * gap) / 3, (fig_w - gap) / 2, (zone_h - gap) / 2
-        wb, ws = (fig_w - gap) * 0.58, (fig_w - gap) * 0.42
-        a_row = sum(area(pn, w3, zone_h) for pn in figs_p)
-        a_big = area(figs_p[0], wb, zone_h) + area(figs_p[1], ws, h2) + area(figs_p[2], ws, h2)
-        a_tb = area(figs_p[0], w2, h2) + area(figs_p[1], w2, h2) + area(figs_p[2], fig_w, h2)
-        best = max((a_row, "row"), (a_big, "big"), (a_tb, "tb"))[1]
-        if best == "row":
-            for k2, pn in enumerate(figs_p):
-                boxes += _fig_block(pn, fig_x + k2 * (w3 + gap), body_top, w3, zone_h)[0]
-        elif best == "big":
-            boxes += _fig_block(figs_p[0], fig_x, body_top, wb, zone_h)[0]
-            py = body_top
-            for pn in figs_p[1:3]:
-                boxes += _fig_block(pn, fig_x + wb + gap, py, ws, h2)[0]
-                py += h2 + gap
-        else:
-            boxes += _fig_block(figs_p[0], fig_x, body_top, w2, h2)[0]
-            boxes += _fig_block(figs_p[1], fig_x + w2 + gap, body_top, w2, h2)[0]
-            boxes += _fig_block(figs_p[2], fig_x, body_top + h2 + gap, fig_w, h2)[0]
-    elif tab:                     # 표만: 그림 영역 전체 폭
-        boxes += table_block(tab, fig_x, body_top, fig_w, zone_h)
-    elif len(figs_p) == 1:
-        bx, _u = _fig_block(figs_p[0], fig_x, body_top, fig_w, zone_h)
-        boxes += bx
-    elif len(figs_p) == 2:        # 옆으로 둘 vs 위아래 둘 — 그림 면적이 큰 쪽
-        w2 = (fig_w - gap) / 2
-        side = []
-        for pn in figs_p:
-            need, ch = _figs_need(pn, w2)
-            iw, ih = png_size(pn.get("path") or "")
-            fw, fh = fit(iw, ih, w2, max(0.6, zone_h - ch - 0.05))
-            side.append(fw * fh)
-        h2 = (zone_h - gap) / 2
-        stack = []
-        for pn in figs_p:
-            need, ch = _figs_need(pn, fig_w)
-            iw, ih = png_size(pn.get("path") or "")
-            fw, fh = fit(iw, ih, fig_w, max(0.6, h2 - ch - 0.05))
-            stack.append(fw * fh)
-        if sum(side) >= sum(stack):
-            for k2, pn in enumerate(figs_p):
-                bx, _u = _fig_block(pn, fig_x + k2 * (w2 + gap), body_top, w2, zone_h)
-                boxes += bx
-        else:
-            py = body_top
-            for pn in figs_p:
-                bx, _u = _fig_block(pn, fig_x, py, fig_w, h2)
-                boxes += bx
-                py += h2 + gap
+            arrange(figs_p, fig_x, body_top, fig_w, zone_h, lay if lay in ("row", "col", "big_left", "one_top", "one_bottom") else "auto")
     if s.get("foot"):
         boxes.append(text(L, H_IN - 0.86, W_IN - L - R - 1.0, 0.56, [P(s["foot"], 9.5, color=GRAY, line=1.15)], anchor="b"))
     boxes.append(text(W_IN - R - 0.8, H_IN - 0.62, 0.8, 0.3, [P("%d / %d" % (idx, total), 10, color=GRAY, align="r")], anchor="b"))

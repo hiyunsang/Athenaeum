@@ -2843,10 +2843,12 @@ def _deck_write(st, deck, pool=None):
         allc |= set(cs)
         foot = ("출처: " + " · ".join("[%d] %s" % (n, pj(n)) for n in cs)) if cs else ""
         note = ((sl.get("note") or {}).get("t") or "")
+        if (sl.get("layout") or "") == "fig_only" and sl.get("bullets"):   # 그림만 둔 쪽은 키워드를 메모로
+            note = "키워드: " + " · ".join(b["t"] for b in sl["bullets"]) + ("\n\n" + note if note else "")
         if cs:
             note += ("\n\n" if note else "") + "출처\n" + "\n".join("[%d] %s" % (n, _ref_line(byn[str(n)])) for n in cs if str(n) in byn)
         slides.append({"h": sl["h"], "bullets": [{"t": b["t"], "sub": []} for b in sl["bullets"]],
-                       "stats": [], "panels": panels, "foot": foot, "note": note})
+                       "stats": [], "panels": panels, "foot": foot, "note": note, "layout": sl.get("layout") or "auto"})
     refs = ["[%s] %s" % (p.get("n"), _ref_line(p)) for p in sorted((p for p in P if p.get("n") and int(p["n"]) in allc), key=lambda p: int(p["n"]))]
     prev_dir = os.path.join(_deck_dir(), stem)
     r = pptx_min.build(path, {"title": deck["title"], "subtitle": (deck.get("subtitle") or "") + "\n" + time.strftime("%Y-%m-%d"), "deck_title": deck["title"], "skip_refs": deck.get("refs", True) is not True,
@@ -2855,6 +2857,37 @@ def _deck_write(st, deck, pool=None):
                               "slides": slides, "refs": refs}, preview_dir=prev_dir)
     deck["previews"] = r.get("previews", 0)
     return stem + ".pptx"
+
+
+def deck_layout(sid, body):
+    """쪽 하나의 배치·그림 순서를 바꾸고 pptx·미리보기만 다시 쓴다 (Claude 없음, 1~3초). 사용자 2026-10-10: '쪽 구성을 내가 정할 수 있게'"""
+    import pptx_min
+    lay = str(body.get("layout") or "auto")
+    if lay not in pptx_min.LAYOUT_KEYS:
+        return {"error": "모르는 배치"}
+    with _LOCK:
+        st = _load(sid)
+        decks = (st or {}).get("decks") or []
+        d = next((x for x in decks if x.get("id") == str(body.get("deck") or "")), None)
+        if not d:
+            return {"error": "자료를 찾지 못했습니다"}
+        try:
+            i = int(body.get("slide") or 0)
+        except (TypeError, ValueError):
+            i = -1
+        if not (0 <= i < len(d.get("slides") or [])):
+            return {"error": "쪽 번호가 맞지 않습니다"}
+        sl = d["slides"][i]
+        sl["layout"] = lay
+        if body.get("rotate") and len(sl.get("figs") or []) > 1:
+            sl["figs"] = sl["figs"][1:] + sl["figs"][:1]
+        try:
+            d["file"] = _deck_write(st, d)
+        except Exception as e:
+            return {"error": "다시 그리기 실패: " + str(e)[:200]}
+        d["rev"] = time.time()
+        _save(st)
+    return {"ok": True, "rev": d["rev"]}
 
 
 def deck_delete(sid, did):
@@ -3055,6 +3088,8 @@ def handle_post(h, body):
             return h._send(200, deck_start(sid, body))
         if op == "deck_delete":
             return h._send(200, deck_delete(sid, str(body.get("deck") or "")))
+        if op == "deck_layout":
+            return h._send(200, deck_layout(sid, body))
         if op == "chat_delete":
             return h._send(200, chat_delete(sid, str(body.get("chat") or "")))
         if op == "cancel":

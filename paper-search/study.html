@@ -69,6 +69,7 @@
   .dk .dkbody { display: flex; gap: 14px; align-items: flex-start; } .dk .dkbody ul { margin: 0; padding-left: 18px; flex: 1; line-height: 1.55; } .dk .dkbody li { margin: 2px 0; }
   .dk .dkfig { margin: 0; flex: 0 0 240px; } .dk .dkfig img { max-width: 240px; max-height: 170px; border: 1px solid var(--line); background: #fff; } .dk .dkfig figcaption { font-size: 11.5px; color: var(--text-3); line-height: 1.4; }
   .dk .note { color: var(--text-3); font-size: 12.5px; line-height: 1.55; margin-top: 4px; white-space: pre-wrap; } .dk .dkk { color: var(--accent); text-decoration: none; font-size: 11px; margin-left: 2px; }
+  .dklay { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin: 4px 0 8px; } .dklay select { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   .dk .dkimg { display: block; width: 100%; max-width: 760px; border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0 8px; background: #fff; }
   .dk .dkmsg { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); padding: 4px 10px; margin: 2px 0 6px; font-size: 13px; }
   .dk .dkbody li .sub { display: block; color: var(--text-3); font-size: 12px; margin-left: 2px; } .dk .dkstat { display: inline-block; margin: 4px 10px 0 0; padding: 4px 10px; border-top: 2px solid var(--accent); background: var(--bg-2, transparent); } .dk .dkstat b { color: var(--accent); font-size: 15px; margin-right: 6px; }
@@ -674,15 +675,23 @@ function deckHtml() {
   decks.forEach(d => { h += deckOneHtml(d); });
   return h + "</div>";
 }
+// 쪽 배치 메뉴 — pptx_min.LAYOUTS 와 같은 차례·키 (사용자 2026-10-10: '쪽 구성을 내가 정할 수 있게, 배치 종류를 늘려서'). 고르면 Claude 없이 pptx·미리보기만 다시 그린다
+const DK_LAYOUTS = [["auto", "자동 (면적이 큰 배치)", 0, false], ["row", "그림 가로로 나란히", 2, false], ["col", "그림 세로로 쌓기", 2, false], ["big_left", "큰 하나 왼쪽 + 작은 것 오른쪽", 2, false], ["one_top", "위에 하나 크게 + 아래 나란히", 2, false], ["one_bottom", "위에 나란히 + 아래 하나 크게", 2, false],
+  ["kw_top", "키워드 위 · 그림 아래 가로", 1, false], ["kw_bottom", "그림 위 가로 · 키워드 아래", 1, false], ["fig_only", "그림만 크게 (키워드는 메모로)", 1, false], ["kw_only", "키워드만", 0, false], ["table_bottom", "표를 아래 전체 폭에", 0, true], ["table_only", "표만", 0, true]];
+function dkLayHtml(d, s, i) {
+  const nf = (s.figs || []).filter(f => f && f.id).length, hasTab = !!s.table, cur = s.layout || "auto";
+  const opts = DK_LAYOUTS.filter(([k, l, f, t]) => nf >= f && (!t || hasTab)).map(([k, l]) => "<option value='" + k + "'" + (k === cur ? " selected" : "") + ">" + esc(l) + "</option>").join("");
+  return "<div class='dklay noprint'>배치 <select class='dkLay' data-dkd='" + esc(d.id) + "' data-dks='" + i + "'>" + opts + "</select>" + (nf > 1 ? "<button class='act' data-dkrot='" + i + "' data-dkd='" + esc(d.id) + "' title='첫 그림을 맨 뒤로 보냅니다 — 큰 자리에 올 그림을 바꿀 때'>그림 순서 ↻</button>" : "") + "<span class='hint dkLayMsg'></span></div>";
+}
 function deckOneHtml(d) {
   const keyLinks = keys => (keys || []).map(k => "<a href='#' class='dkk' data-unit='" + esc(k) + "' title='본문의 이 문장으로'>¶</a>").join("");
   const fname = (d.title || "발표").replace(/[\\/:*?"<>|]/g, " ") + ".pptx";
-  const img = n => d.previews && n <= d.previews ? "<img class='dkimg' src='/api/study/deckimg?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "&n=" + n + "&t=" + Math.round(d.t || 0) + "' alt='' loading='lazy'>" : "";
+  const img = n => d.previews && n <= d.previews ? "<img class='dkimg' src='/api/study/deckimg?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "&n=" + n + "&t=" + Math.round(d.rev || d.t || 0) + "' alt='' loading='lazy'>" : "";
   const figLine = f => { const p = cur.papers[f.pi] || {}; return "<div class='hint'>그림 " + (f.in_ch ? "(장에 실림) " : "") + esc(f.cap || "") + " — " + esc(p.short || "") + ", " + esc(p.journal || "") + ", Fig. " + esc(String(f.n)) + "</div>"; };
   return "<div class='dk'><div class='dkhead'><b>" + esc(d.title) + "</b><span class='hint'> · " + fmtDate(d.t) + " · 제목 + 내용 " + d.slides.length + "쪽" + (d.refs === true ? " + 참고문헌" : "") + (d.model ? " · " + esc(d.model) : "") + (d.sec ? " · " + fmtDur(d.sec) : "") + (d.pool ? " · 그림 후보 " + d.pool + "장" : "") + "</span>" +
     "<span class='noprint' style='margin-left:auto'><a class='act' href='/api/study/deck?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(d.file) + "' download='" + esc(fname) + "'>pptx 내려받기</a><button class='act warn' data-dkdel='" + esc(d.id) + "'>지우기</button></span></div>" +
     (d.req ? "<div class='hint'>주문: " + esc(d.req) + "</div>" : "") + (d.subtitle ? "<div class='hint'>" + esc(d.subtitle) + "</div>" : "") + img(1) +
-    d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 2) + "</span>" + esc(s.h) + "</div>" + img(i + 2) +
+    d.slides.map((s, i) => "<div class='dks'><div class='dkh'><span class='no'>" + (i + 2) + "</span>" + esc(s.h) + "</div>" + img(i + 2) + dkLayHtml(d, s, i) +
       (s.msg ? "<div class='dkmsg'>" + esc(s.msg) + "</div>" : "") +
       "<div class='dkbody'><ul>" + s.bullets.map(b => "<li>" + esc(b.t) + " " + keyLinks(b.keys) + (b.sub || []).map(x => "<span class='sub'>– " + esc(x) + "</span>").join("") + "</li>").join("") + "</ul></div>" +
       (s.figs || []).filter(f => f && f.id).map(figLine).join("") +
@@ -698,6 +707,10 @@ function bindDeck() {
     const r = await api("/api/study", { op: "deck", id: cur.id, req: $("deckReq").value, n: +$("deckN").value || 0, refs: $("deckRefs").checked, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; $("deckMsg").textContent = ""; return; } deckDraft = ""; await refresh(false); renderMain(); };
   m.querySelectorAll("[data-dkdel]").forEach(b => b.onclick = async () => { if (!confirm("이 발표 자료를 지울까요? (파일도 지웁니다)")) return; const r = await api("/api/study", { op: "deck_delete", id: cur.id, deck: b.dataset.dkdel }); if (r.error) { alert(r.error); return; } await refresh(false); renderMain(); });
   m.querySelectorAll(".dkk[data-unit]").forEach(a => a.onclick = e => { e.preventDefault(); gotoUnit(a.dataset.unit); });
+  const relayout = async (el, body) => { const msg = el.parentElement.querySelector(".dkLayMsg"); if (msg) msg.textContent = "다시 그리는 중…"; el.disabled = true;
+    const r = await api("/api/study", Object.assign({ op: "deck_layout", id: cur.id }, body)); if (r.error) { alert(r.error); el.disabled = false; if (msg) msg.textContent = ""; return; } await refresh(false); renderMain(); };
+  m.querySelectorAll(".dkLay").forEach(sel => sel.onchange = () => relayout(sel, { deck: sel.dataset.dkd, slide: +sel.dataset.dks, layout: sel.value }));
+  m.querySelectorAll("[data-dkrot]").forEach(b => b.onclick = () => { const sel = m.querySelector(".dkLay[data-dkd='" + b.dataset.dkd + "'][data-dks='" + b.dataset.dkrot + "']"); relayout(b, { deck: b.dataset.dkd, slide: +b.dataset.dkrot, layout: sel ? sel.value : "auto", rotate: true }); });
   clearInterval(deckTick);
   if (cur.deck_pending) { const T = 300, tk = () => { const el = Date.now() / 1000 - cur.deck_pending, b = $("deckBar"), e2 = $("deckEta"); if (!b) { clearInterval(deckTick); return; } b.style.width = Math.round(Math.min(0.92, el / T * 0.9) * 100) + "%"; e2.textContent = (el > T ? "예상보다 오래 걸리고 있습니다 · " : "만드는 중 · ") + fmtDur(el) + "째"; }; tk(); deckTick = setInterval(tk, 1000); }
 }
