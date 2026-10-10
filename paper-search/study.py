@@ -49,7 +49,7 @@ _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text
 
 VERSION = "공부 (2026-10-09)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 그림 색인·도식 후보·교과서식 배치(저녁)와 Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
-_STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "verify", "wrap", "comment"]
+_STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "verify", "wrap", "terms", "comment", "quiz"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
 _HIT_CHARS = 16000      # 관련 논문: 맞은 대목만
 
@@ -906,6 +906,9 @@ def _note_block(st, ids, with_src=True):
     return plist, "\n".join(lines)
 
 
+_HAS_NUM = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|[a-zA-Zμ°]{1,6}\b)")   # 단위가 붙은 수치
+
+
 def _claim_block(st, sec):
     """쓰기 물음의 재료: 논지마다 그 메모와 근거 원문, 끝에 번외 메모 → (논문 목록, 글, 논문 순번들)"""
     notes, lines, pset = _all_notes(st), [], []
@@ -926,6 +929,9 @@ def _claim_block(st, sec):
         for nid in c["notes"]:
             if nid in notes:
                 lines += memo(nid, " [대표 — 깊게]" if nid in (c.get("anchor") or []) else " [보기 — 한 문장이나 표의 행]")
+        numd = [nid for nid in c["notes"] if nid in notes and _HAS_NUM.search(notes[nid][1]["pt"])]
+        if len(numd) >= 2 and len({notes[nid][0] for nid in numd}) >= 2:   # 서로 다른 논문의 수치가 둘 이상 → 표로 (사용자 2026-10-11: '리뷰 논문처럼 표로 묶어도 돼, 수치 나열보단 이게 낫고')
+            lines.append("  → 표 후보: %s 는 서로 다른 논문의 수치다 — 본문에 나열하지 말고 '표:' 로 묶는다(행 = 논문·조건, 열 = 재료·조건·값·비고). 본문은 경향 한 문장만." % "·".join(numd))
         lines.append("")
     extra = [x for x in sec.get("extra") or [] if x in notes]
     if extra:
@@ -1012,7 +1018,7 @@ def _fig_list(st, sec):
         return (next((x for x in (d or {}).get("figs") or [] if x.get("n") == n), None) if d else None) or {}
 
     def reading(x):
-        return ("    그림 읽기: %s%s" % (x["what"][:300], (" — " + x["shows"][:160]) if x.get("shows") else "")) if x.get("what") else ""
+        return ("    그림 읽기: %s%s%s" % (x["what"][:300], (" — " + x["shows"][:160]) if x.get("shows") else "", (" · 그래프: " + x["data"][:200]) if x.get("data") else "")) if x.get("what") else ""
     for ci, c in enumerate(sec.get("claims") or [], 1):
         found = {}
         for nid in c.get("notes") or []:
@@ -1103,7 +1109,7 @@ _WRITE_RULES = (
     "10. 절의 첫 문단은 [앞 절]이 끝낸 생각을 받아 시작한다(잇는 문장 한둘로 — '이 절은 …를 다룬다' 같은 안내문이 아니라 내용을 잇는 말). 절의 끝은 [다음 절]의 물음으로 자연스럽게 넘긴다(한 문장, 예고가 아니라 이음). [장의 줄기]와 [이 절의 자리]를 따른다 — 이 절은 줄기의 한 단계이지 주제의 서랍이 아니다. [다른 절이 맡은 개념]은 여기서 다시 설명하지 않고 한 구절로 가리키고 넘어간다('…는 6절에서 본다' 는 괜찮다). "
     "소제목(###)은 절이 길 때만 둘에서 넷, 문단마다 달지 않는다.\n"
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
-    "12. 표: 셋 이상의 연구가 견줄 만한 수치(값과 조건)를 주면 표로 묶는다 — '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
+    "12. 표 — 리뷰 논문의 비교 표처럼: 둘 이상의 연구가 같은 양을 다른 재료·조건에서 재었으면 수치를 본문에 나열하지 말고 표로 묶는다(행 = 논문이나 조건, 열 = 재료·조건·값·비고). 본문에는 경향이나 범위를 말하는 한 문장만 둔다(사용자 2026-10-11: '수치 나열보다 표가 낫다'). '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
     "칸의 수치·단위·조건은 근거 그대로(표의 행도 본문 문장과 똑같이 원문과 대조된다). 표에 넣은 수치를 본문 문장에 되풀이하지 않는다. 절마다 많아야 둘.\n"
     "13. 그림: [그림 목록]에는 두 갈래가 있다 — (가) 설계도의 근거 문장이 가리키는 그림(사진·그래프·도식) (나) 이 절 논문들의 도식·장치 그림(근거 문장이 가리키지 않아도 된다). 교과서처럼 놓는다: "
     "개념·기전·장치를 처음 설명하는 문단에는 그것을 그린 도식 하나(나), 관찰을 말하는 대목 옆에 사진, 경향·수치를 말하는 대목 옆에 그래프(가). 절에 둘에서 넷, 같은 그림을 두 번 싣지 않는다. 그림을 채우려고 고르지 않는다 — 그 그림 없이도 설명이 서면 넣지 않는다. "
@@ -1118,7 +1124,8 @@ _WRITE_RULES = (
     "17. 수치는 전제와 함께: 한 연구의 장치 설정값·계산값(해상도·노출 시간·주파수·장면 크기·화소 크기 같은 것)은 그것을 정한 전제(배율·절삭속도·요구 정확도·가정)가 같은 문장에 있을 때만 싣는다. "
     "'해상도를 512×512 로 두면 장면이 0.58 mm 가 된다' 처럼 전제 없이 결과만 적으면 읽는 사람은 그 수가 어디서 나오는지 따라갈 수 없다 — 그런 수의 나열(짜깁기)은 쓰지 않는다. "
     "방법의 세부는 교과서의 설명이 아니다: 원리(무엇과 무엇 사이의 절충인가, 무엇이 무엇을 정하는가)를 말로 설명하고, 한 연구의 값은 전제가 든 보기 한 문장('예컨대 ×15 배율·절삭속도 3 m/min 에서는 노출 50 μs 가 번짐을 두 화소 안에 묶었다')으로만, 그것도 논지에 필요할 때만. "
-    "전제가 메모·근거에 없으면 수치를 빼고 원리만 쓴다.\n")
+    "전제가 메모·근거에 없으면 수치를 빼고 원리만 쓴다.\n"
+    "18. 용어: [용어]의 한국어를 그대로 쓴다 — 같은 영어 용어를 절마다·문단마다 다른 한국어로 옮기지 않는다(연성 영역 절삭 / 연성 모드 절삭 / 연성역 절삭 가운데 하나만). 처음 나올 때만 영어를 괄호에.\n")
 
 
 # Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
@@ -1487,7 +1494,7 @@ def _fig_file(st, fig):
         except Exception:
             x = {}
     return {"img": name, "page": r["page"], "w": r["w"], "h": r["h"], "cap_en": (r.get("cap") or "")[:600], "cap_ko": ((cap or {}).get("ko") or "")[:400],
-            "ftype": x.get("type") or fig.get("ftype") or "", "desc": (x.get("what") or "")[:400]}
+            "ftype": x.get("type") or fig.get("ftype") or "", "desc": ((x.get("what") or "") + ((" 그래프: " + x["data"]) if x.get("data") else ""))[:600]}
 
 
 def _wrap(st):
@@ -1839,6 +1846,367 @@ def _basics_job(sid):
         _save(st2)
 
 
+def _units_by_id(st):
+    """장의 문장 id → (chapter 의 단위, sections 의 같은 단위 or None)"""
+    out = {}
+    secs_w = st.get("sections") or []
+    for si, sec in enumerate((st.get("chapter") or {}).get("sections") or []):
+        for bi, b in enumerate(sec.get("blocks") or []):
+            for ui, u in enumerate(b.get("units") or []):
+                tw = None
+                if si < len(secs_w):
+                    for b2 in secs_w[si].get("blocks") or []:
+                        for u2 in b2.get("units") or []:
+                            if u2.get("t") == u.get("t"):
+                                tw = u2
+                                break
+                        if tw:
+                            break
+                out["u%d.%d.%d" % (si, bi, ui)] = (u, tw)
+    return out
+
+
+def _termfix(st, model="sonnet"):
+    """용어 통일 — 같은 영어 용어가 절마다 다른 한국어로 옮겨진 곳을 Sonnet 이 찾고 프로그램이 그 문장의 낱말만 바꾼다(뜻은 같고 낱말만이라 근거는 그대로) → 바꾼 수.
+    사용자 2026-10-11: '전부 다' — 절을 셋씩 따로 써서 용어가 갈리던 것."""
+    ch = st.get("chapter") or {}
+    terms = ch.get("terms") or []
+    if not terms or not ch.get("sections"):
+        return 0
+    ttxt = "\n".join("- %s = %s" % (t.get("en"), t.get("ko")) for t in terms)
+    prompt = ("아래 교과서 장에서 [용어표]의 한국어와 다르게 옮겨진 전문 용어를 찾는다 — 같은 뜻의 다른 한국어(예: 'ductile-regime cutting' 이 어떤 문장에는 '연성 모드 절삭', 어떤 문장에는 '연성역 절삭' 으로), 또는 영어 그대로 둔 것. "
+              "JSON 으로만: {\"fixes\": [{\"id\": \"u1.2.3\", \"from\": \"그 문장에 적힌 낱말 그대로\", \"to\": \"용어표의 한국어\"}]}\n"
+              "규칙: 뜻이 다른 말(다른 개념)은 바꾸지 않는다. 처음 나올 때의 '한국어(영어)' 꼴은 그대로 둔다. from 은 문장에 실제로 있는 글자 그대로(띄어쓰기까지). 바꿀 것이 없으면 빈 목록.\n\n[용어표]\n%s\n\n[장]\n%s")
+    d = _ask_json(st, prompt % (ttxt, _chapter_text_ids(st)[:90000]), model, None, 600, need="fixes")
+    byid = _units_by_id(st)
+    n = 0
+    for f in (d.get("fixes") if d and isinstance(d.get("fixes"), list) else [])[:200]:
+        if not isinstance(f, dict):
+            continue
+        uid, a, b = str(f.get("id") or "").strip(), str(f.get("from") or ""), str(f.get("to") or "")
+        if uid not in byid or not a or not b or a == b or len(a) < 2:
+            continue
+        u, uw = byid[uid]
+        if a in (u.get("t") or ""):
+            u["t"] = u["t"].replace(a, b)
+            if uw is not None:
+                uw["t"] = uw["t"].replace(a, b)
+            n += 1
+    st["termfix"] = {"n": n, "t": time.time()}
+    return n
+
+
+def termfix_start(sid):
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만"}
+        if st.get("termfix_pending"):
+            return {"error": "이미 하는 중입니다"}
+        st["termfix_pending"] = time.time()
+        _save(st)
+
+    def job():
+        st1 = _load(sid)
+        try:
+            n = _termfix(st1)
+            err = ""
+        except Exception as e:
+            n, err = 0, str(e)[:200]
+        with _LOCK:
+            st2 = _load(sid)
+            if not st2:
+                return
+            if not err:
+                st2["chapter"], st2["sections"], st2["termfix"] = st1["chapter"], st1["sections"], st1.get("termfix")
+            st2.pop("termfix_pending", None)
+            st2["termfix_error"] = err
+            if not err:
+                st2.pop("termfix_error", None)
+            _save(st2)
+    threading.Thread(target=job, name="study-termfix", daemon=True).start()
+    return {"ok": True}
+
+
+# ---- ③ 확인 물음 (절마다 2~3개 — 답은 그 절의 문장 id 가 받친다)
+def _section_text_ids(st, si):
+    ch = st.get("chapter") or {}
+    P = st.get("papers") or []
+    num = lambda keys: sorted({P[int(k.split(":")[0])].get("n") for k in keys if P[int(k.split(":")[0])].get("n")})
+    cite = lambda u: (" [%s]" % ",".join(str(x) for x in num(u["src"]))) if u.get("src") else ""
+    sec = ch["sections"][si]
+    out = []
+    for bi, b in enumerate(sec.get("blocks") or []):
+        out += _block_text(st, b, cite, ids=lambda ui, si=si, bi=bi: "[u%d.%d.%d]" % (si, bi, ui))
+    return "\n".join(out)
+
+
+def _quiz_prompt(st, k):
+    ch = st["chapter"]
+    sec = ch["sections"][k]
+    return ("아래는 연구자가 자기 서재의 논문만으로 쓴 전공 교과서 한 장의 한 절이다(문장마다 [u…] id). 이 절을 읽은 사람이 스스로 확인할 **확인 물음** 2~3개를 만든다 — 교과서 절 끝의 연습 문제처럼.\n"
+            "JSON 으로만: {\"quiz\": [{\"q\": \"물음 한 문장(한국어)\", \"a\": \"답 두세 문장 — 이 절의 문장이 말하는 것만\", \"keys\": [\"답을 받치는 이 절의 문장 id 1~3개, [u…] 그대로\"]}]}\n"
+            "규칙:\n- 물음은 개념의 뜻·성립 조건·두 설명의 차이·수치의 뜻·연구끼리 엇갈리는 까닭처럼 이 절의 핵심을 짚는 것. '무엇을 다루는가' 같은 겉핥기, 예/아니오 물음, 이 절에 없는 것은 안 된다.\n"
+            "- 답은 keys 의 문장이 말하는 데까지만. 수치는 그 문장에 적힌 그대로. 빈말·인사말 금지.\n\n[장] %s\n[절] %d. %s\n\n%s") % (ch.get("title") or "", k + 1, sec["title"], _section_text_ids(st, k))
+
+
+def _quiz_all(st, model, eff, force=False, sid=None):
+    """절마다 확인 물음. sid 가 없으면(쓰는 흐름 안) st 에 끼우고 저장, 있으면 결과만"""
+    secs = (st.get("chapter") or {}).get("sections") or []
+    todo = [k for k, s in enumerate(secs) if s.get("kind") != "summary" and s.get("blocks") and (force or not s.get("quiz"))]
+    if sid is None:
+        _stage(st, "quiz", done=0, total=len(todo))
+    results = {}
+    if not todo:
+        return results
+
+    def one(k):
+        sec = secs[k]
+        valid = {"u%d.%d.%d" % (k, bi, ui) for bi, b in enumerate(sec.get("blocks") or []) for ui, _u in enumerate(b.get("units") or [])}
+        d = _ask_json(st, _quiz_prompt(st, k), model, eff, 900, need="quiz")
+        items = []
+        for q in (d.get("quiz") if d and isinstance(d.get("quiz"), list) else [])[:4]:
+            if not isinstance(q, dict):
+                continue
+            qq, aa = _clean(str(q.get("q") or "")).strip(), _clean(str(q.get("a") or "")).strip()
+            keys = [re.sub(r"[\[\]\s]", "", str(x)) for x in (q.get("keys") if isinstance(q.get("keys"), list) else [])]
+            keys = [x for x in keys if x in valid][:3]
+            if len(qq) >= 6 and len(aa) >= 10 and keys:    # 받치는 문장이 없는 물음은 버린다 (지어내기 방지는 글과 같은 원리)
+                items.append({"q": qq[:300], "a": aa[:800], "keys": keys})
+        return items
+    done = 0
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {ex.submit(one, k): k for k in todo}
+        for f in as_completed(futs):
+            k = futs[f]
+            try:
+                items = f.result()
+            except _Stop:
+                continue
+            except Exception:
+                items = []
+            done += 1
+            if items:
+                results[k] = {"items": items, "t": time.time(), "model": model}
+            if sid is None:
+                with _LOCK:
+                    if items:
+                        secs[k]["quiz"] = results[k]
+                    st["prog"] = {"done": done, "total": len(todo)}
+                _save(st)
+    if sid is None:
+        with _LOCK:
+            st.setdefault("stats", {})["quiz"] = sum(len((s.get("quiz") or {}).get("items") or []) for s in secs)
+        _save(st)
+        _log(st, "절 %d개에 확인 물음을 달았습니다" % len(results))
+    return results
+
+
+def quiz_start(sid, body):
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만 만들 수 있습니다"}
+        if st.get("quiz_pending"):
+            return {"error": "이미 만드는 중입니다"}
+        st["quiz_pending"] = time.time()
+        st.pop("quiz_error", None)
+        st["quiz_opts"] = {"effort": effort, "force": bool(body.get("force"))}
+        _save(st)
+    threading.Thread(target=_quiz_job, args=(sid,), name="study-quiz", daemon=True).start()
+    return {"ok": True}
+
+
+def _quiz_job(sid):
+    st = _load(sid)
+    if not st:
+        return
+    opts = st.get("quiz_opts") or {}
+    model, eff = _CHAT_EFFORT.get(opts.get("effort"), _CHAT_EFFORT["xhigh"])
+    err = ""
+    try:
+        results = _quiz_all(st, model, eff, force=bool(opts.get("force")), sid=sid)
+        if not results:
+            err = "Claude 가 물음을 주지 않았습니다" + _why()
+    except Exception as e:
+        results, err = {}, "Claude 호출 실패: " + str(e)[:200]
+    with _LOCK:
+        st2 = _load(sid)
+        if not st2:
+            return
+        secs = (st2.get("chapter") or {}).get("sections") or []
+        if opts.get("force") and results:
+            for s_ in secs:
+                s_.pop("quiz", None)
+        for k, c in results.items():
+            if k < len(secs):
+                secs[k]["quiz"] = c
+        st2.setdefault("stats", {})["quiz"] = sum(len((s_.get("quiz") or {}).get("items") or []) for s_ in secs)
+        st2.pop("quiz_pending", None)
+        if err:
+            st2["quiz_error"] = err
+        else:
+            st2.pop("quiz_error", None)
+        st2["calls"], st2["tok"] = st.get("calls", st2.get("calls", 0)), st.get("tok", st2.get("tok"))
+        _save(st2)
+
+
+_SEC_EDIT_RULE = (
+    "[고치기] 연구자가 이 절의 지금 글을 고쳐 달라고 한다. 위의 설계도·그림 목록·규칙은 그대로 적용된다.\n"
+    "- 부탁한 것만 고치고 나머지 문장은 글자 그대로(줄 끝의 근거 번호까지) 둔다. 고친 문장도 설계도의 메모가 받쳐야 하고 메모에 없는 사실·수치는 넣지 못한다 — 부탁이 그런 것이면 글을 고치지 말고 '답:' 줄에 왜 못 하는지 적는다.\n"
+    "- 빼 달라는 문장은 뺀다. 문장을 묶거나 나누면 근거 번호를 다시 단다. 그림·표를 바꾸려면 [그림 목록]과 메모 안에서.\n"
+    "- 출력: 맨 앞 줄에 '답: 무엇을 어떻게 고쳤는지 한 줄', 그 다음 절 전체를 위의 출력 형식(<<<SEC>>> … <<<END>>>)으로 — 고치지 않은 줄도 그대로 포함한다.\n")
+
+
+def _sec_text(st, k):
+    """절의 지금 글을 쓰기 형식으로(줄 끝 ⟦메모⟧ · ¶ · ### 소제목 · 표: · 그림:) — 고치기 물음의 [지금 글]"""
+    out, first_extra = [], True
+    refs = lambda u: "⟦" + (", ".join(u.get("notes") or []) or "-") + "⟧"
+    for b in st["sections"][k].get("blocks") or []:
+        if "h" in b:
+            out.append("### " + b["h"])
+            continue
+        if b.get("kind") == "extra" and first_extra:
+            out.append("### 번외")
+            first_extra = False
+        if out and not out[-1].startswith("###") and out[-1] != "¶":
+            out.append("¶")
+        if b.get("table"):
+            t = b["table"]
+            cols = t.get("cols") or []
+            out.append("표: " + (t.get("cap") or ""))
+            out.append("| " + " | ".join(cols) + " |")
+            for u in b.get("units") or []:
+                out.append("| " + " | ".join(u.get("cells") or [u["t"]]) + " | " + refs(u))
+        elif b.get("fig"):
+            f, u = b["fig"], (b.get("units") or [{}])[0]
+            out.append("그림: P%d %s %d — %s %s" % (f["pi"] + 1, "Fig." if f.get("kind") == "fig" else "Table", f["n"], u.get("t", ""), refs(u)))
+        else:
+            for u in b.get("units") or []:
+                out.append(u["t"] + " " + refs(u))
+    return "\n".join(out)
+
+
+def _sec_edit_jobkey(sid, k, t):
+    return "study:%s:sec:%d:%d" % (sid, k, int(t))
+
+
+def sec_edit(sid, body):
+    """절 하나를 Claude 에게 고쳐 달라고 (사용자 2026-10-11: 장 고치기 대화) — 그 절만 다시 쓰고 대조까지, 장을 다시 묶는다"""
+    effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
+    q = str(body.get("question") or "").strip()[:2000]
+    if not q:
+        return {"error": "무엇을 고칠지 적어 주세요"}
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만 고칠 수 있습니다"}
+        try:
+            k = int(body.get("si"))
+        except (TypeError, ValueError):
+            return {"error": "절 번호가 맞지 않습니다"}
+        secs = st.get("sections") or []
+        if not (0 <= k < len(secs)) or secs[k].get("kind") == "summary":
+            return {"error": "본문 절에서만 고칠 수 있습니다"}
+        if st.get("status") == "running":
+            return {"error": "쓰는 중인 장은 고칠 수 없습니다"}
+        if st.get("sec_edit_pending"):
+            return {"error": "이미 고치는 중입니다"}
+        st["sec_edit_pending"] = {"si": k, "t": time.time(), "effort": effort}
+        st.pop("sec_edit_error", None)
+        st.setdefault("sec_chat", {}).setdefault(str(k), []).append({"role": "user", "text": q, "t": time.time()})
+        _save(st)
+    threading.Thread(target=_sec_edit_job, args=(sid,), name="study-secedit", daemon=True).start()
+    return {"ok": True}
+
+
+def sec_edit_cancel(sid):
+    with _LOCK:
+        st = _load(sid)
+        p = (st or {}).get("sec_edit_pending")
+        if not p:
+            return {"error": "고치는 중이 아닙니다"}
+        key = _sec_edit_jobkey(sid, int(p["si"]), p["t"])
+    cancel = cfg.get("claude_cancel")
+    if cancel:
+        cancel(key)
+    return {"ok": True}
+
+
+def _sec_edit_job(sid):
+    st = _load(sid)
+    p = (st or {}).get("sec_edit_pending") or {}
+    k = int(p.get("si", -1))
+    model, eff = _CHAT_EFFORT.get(p.get("effort"), _CHAT_EFFORT["xhigh"])
+    thread = (st.get("sec_chat") or {}).get(str(k)) or []
+    q = (thread[-1].get("text") if thread else "") or ""
+    t0, err, reply, stats_line, res = time.time(), "", "", "", None
+    try:
+        if not (0 <= k < len(st.get("sections") or [])):
+            raise ValueError("절 번호")
+        prompt, figs = _write_prompt(st, k)
+        valid = set(st["outline"]["sections"][k]["notes"])
+        past = "\n".join(("연구자: " if m.get("role") == "user" else "Claude: ") + str(m.get("text") or "")[:500] for m in thread[:-1][-6:]) or "(없음)"
+        edit = _SEC_EDIT_RULE + "\n[지금 글]\n<<<SEC>>>\n" + _sec_text(st, k) + "\n<<<END>>>\n\n[지난 부탁]\n" + past + "\n\n[부탁] " + q + "\n"
+        run = cfg.get("claude_run")
+        res = run(prompt + "\n\n" + edit, timeout=1800, model=model, effort=eff, tools="", job=_sec_edit_jobkey(sid, k, p.get("t") or 0)) if run else None
+        if res and res.get("cancelled"):
+            err = "취소"
+        elif not res or not (res.get("text") or "").strip():
+            err = "Claude 가 답하지 않았습니다" + _why()
+        else:
+            text = res["text"]
+            m = re.search(r"^\s*답\s*[:：]\s*(.+)$", text, re.M)
+            reply = _clean(m.group(1)).strip()[:600] if m else ""
+            blocks = _parse_units(text, valid, figs)
+            nu = sum(len(b.get("units") or []) for b in blocks)
+            if nu >= 2:
+                before = sum(len(b.get("units") or []) for b in st["sections"][k].get("blocks") or [])
+                st["sections"][k]["blocks"] = blocks
+                blocks2, removed, nfixed = _verify_section(st, k, "opus")     # 고친 글도 원문과 대조 — 쓴 것과 다른 호출
+                st["sections"][k]["blocks"] = blocks2
+                st.setdefault("removed", []).extend(removed)
+                keep = {i: (s_.get("comment"), s_.get("quiz")) for i, s_ in enumerate((st.get("chapter") or {}).get("sections") or [])}
+                _wrap(st)
+                for i, s_ in enumerate(st["chapter"]["sections"]):        # 다른 절의 Claude 의 생각·확인 물음은 지키고, 고친 절 것은 버린다(글이 달라졌다)
+                    if i != k and i in keep:
+                        if keep[i][0]:
+                            s_["comment"] = keep[i][0]
+                        if keep[i][1]:
+                            s_["quiz"] = keep[i][1]
+                after = sum(len(b.get("units") or []) for b in blocks2)
+                stats_line = "문장 %d → %d · 대조에서 고친 문장 %d · 뺀 문장 %d" % (before, after, nfixed, len(removed))
+            elif not reply:
+                err = "고친 글이 돌아오지 않았습니다"
+    except _Stop:
+        err = "취소"
+    except Exception as e:
+        err = "고치기 실패: " + str(e)[:200]
+    with _LOCK:
+        st2 = _load(sid)
+        if not st2:
+            return
+        if not err and stats_line:
+            for key in ("sections", "chapter", "src", "stats", "removed", "papers", "stylus"):
+                if key in st:
+                    st2[key] = st[key]
+            st2["calls"], st2["tok"] = st.get("calls", st2.get("calls", 0)), st.get("tok", st2.get("tok"))
+        ch = st2.setdefault("sec_chat", {}).setdefault(str(k), [])
+        if err == "취소":
+            if ch and ch[-1].get("role") == "user":
+                ch.pop()
+        else:
+            txt = (reply + "\n" if reply else "") + (stats_line or err or "(바뀐 것 없음)")
+            ch.append({"role": "claude", "text": txt, "t": time.time(), "sec": round(time.time() - t0), "model": (res or {}).get("model") or "", "tok": (res or {}).get("tok")})
+        st2.pop("sec_edit_pending", None)
+        if err and err != "취소":
+            st2["sec_edit_error"] = err
+        else:
+            st2.pop("sec_edit_error", None)
+        _save(st2)
+
+
 def comment_start(sid, body):
     effort = body.get("effort") if body.get("effort") in _CHAT_EFFORT else "xhigh"
     with _LOCK:
@@ -1998,7 +2366,16 @@ def _run(st):
     _stage(st, "wrap")
     _wrap(st)
     try:        # Claude 의 생각(해설 층) — 못 달아도 장은 완성이다
+        try:
+            _stage(st, "terms")
+            _termfix(st)
+        except Exception:
+            pass
         _comment_all(st, model, eff)
+        try:
+            _quiz_all(st, model, eff)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -2191,6 +2568,8 @@ def to_md(st):
             out += _block_text(st, b, cite) + [""]
         if (sec.get("comment") or {}).get("parts"):
             out += ["> **Claude 의 생각** — 서재의 문장으로 확인한 것이 아니라 Claude 의 풀이입니다."] + ["> **%s.** %s" % (p["h"], p["t"]) for p in sec["comment"]["parts"]] + [""]
+        if (sec.get("quiz") or {}).get("items"):
+            out += ["**확인 물음**", ""] + ["%d. %s\n   — %s" % (qi + 1, q["q"], q["a"]) for qi, q in enumerate(sec["quiz"]["items"])] + [""]
     if ch.get("gaps"):
         out += ["## 이 서재로는 답하지 못한 것", ""] + ["- " + g for g in ch["gaps"]] + [""]
     if ch.get("terms"):
@@ -2551,7 +2930,7 @@ def _deck_pool(st):
                 path = os.path.join(fi.img_dir(p["file"]), x.get("img") or ("fig%d.png" % n))
                 if not os.path.isfile(path):
                     continue
-                pool[fid] = {"id": fid, "pi": pi, "n": n, "path": path, "ftype": x.get("type") or "", "what": x.get("what") or "", "desc": x.get("what") or "", "shows": x.get("shows") or "",
+                pool[fid] = {"id": fid, "pi": pi, "n": n, "path": path, "ftype": x.get("type") or "", "what": (x.get("what") or "") + ((" · 그래프: " + x["data"]) if x.get("data") else ""), "desc": x.get("what") or "", "shows": x.get("shows") or "",
                              "cap_en": x.get("cap") or "", "page": x.get("page"), "in_ch": False, "quality": x.get("quality") or "ok"}
     return pool
 
@@ -3266,6 +3645,14 @@ def handle_post(h, body):
             return h._send(200, map_start(sid, body))
         if op == "comment":
             return h._send(200, comment_start(sid, body))
+        if op == "quiz":
+            return h._send(200, quiz_start(sid, body))
+        if op == "sec_edit":
+            return h._send(200, sec_edit(sid, body))
+        if op == "sec_edit_cancel":
+            return h._send(200, sec_edit_cancel(sid))
+        if op == "termfix":
+            return h._send(200, termfix_start(sid))
         if op == "basics":
             return h._send(200, basics_start(sid, body))
         if op == "deck":

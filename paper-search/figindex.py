@@ -17,6 +17,7 @@ import figcrop
 cfg = {}
 _LOCK = threading.Lock()
 TYPES = {"schematic": "도식", "photo": "사진", "plot": "그래프", "setup": "장치", "mixed": "복합", "other": "기타"}
+INDEX_V = 2              # 색인의 판 — 본문 언급(refs)·그래프 자료(data)가 든 것이 2 (2026-10-11). 옛 판은 다음에 쓸 때 다시 만든다
 MAX_FIGS = 14            # 논문 하나에서 읽는 그림 수 (뒤쪽 그림은 대개 보조 자료)
 MAX_FIGS_REVIEW = 20     # 리뷰는 뒤쪽 그림도 본문이다 — Beyerlein 2014 의 HCP 쌍정 모드(Fig. 16)·쌍정 배아(Fig. 17)가 14장 상한 밖이었다(2026-10-09)
 _REVIEW_RX = re.compile(r"\b(review|survey|overview|advances in|state[- ]of[- ]the[- ]art|perspectives?|progress in)\b", re.I)
@@ -97,10 +98,11 @@ _PROMPT = (
     "JSON 으로만 답하라: {\"figs\": [{\"n\": 3, \"type\": \"schematic|photo|plot|setup|mixed|other\", "
     "\"what\": \"무엇을 그린 그림인가 — 한국어 한두 문장. (a)(b) 부분이 있으면 부분마다 짧게\", "
     "\"shows\": \"이 그림이 독자에게 보여 주는 것 — 교과서의 어떤 설명 옆에 두면 좋은가, 한 문장\", "
-    "\"labels\": [\"그림 속 주요 글자·기호·화살표의 이름 (영어 그대로, 8개까지)\"], \"quality\": \"good|ok|poor\"}]}\n"
+    "\"labels\": [\"그림 속 주요 글자·기호·화살표의 이름 (영어 그대로, 8개까지)\"], \"data\": \"그래프면 축·단위·범위와 눈에 보이는 경향(축·범례·주석에 적힌 값만; 그래프가 아니면 빈 글)\", \"quality\": \"good|ok|poor\"}]}\n"
     "- type: schematic = 개념·기전·모델을 그린 도식(화살표 도해, 단면 그림, 힘·열의 도해, 공구-공작물 배치 도면), photo = SEM·광학·TEM 같은 실물 사진, plot = 곡선·막대·산점도 같은 그래프, "
     "setup = 실험 장치의 사진·도면, mixed = 도식과 사진·그래프가 섞인 것(주된 것을 what 에 적는다), other = 흐름도·그 밖.\n"
     "- 그림에 실제로 보이는 것만 적는다. 캡션이 말하지 않는 수치·결론을 보태지 않는다. quality 는 잘렸거나 흐리거나 캡션만 보이면 poor.\n"
+    "- 캡션 아래 '본문:' 줄은 논문 본문이 그 그림을 두고 말한 문장이다 — 그림이 무엇을 보이려 한 것인지는 본문이 말해 주니 what·shows 에 반영한다(그림에 없는 수치·결론을 보태지는 않는다).\n"
     "- 논문: %s\n\n[그림 목록 — 파일 이름 — 캡션]\n%s")
 
 
@@ -119,20 +121,44 @@ def _json_of(text):
     return None
 
 
+_FIGREF = lambda n: re.compile(r"(?i)\bfig(?:ure|s)?\.?\s*%d(?![\d.])" % n)
+
+
+def _mentions(f, n, limit=4):
+    """본문에서 Fig. n 을 말한 문장 → ([sid], [원문]). 정렬표(번역\\<stem>.번역.정렬.json)에서, 문장 번호 순서로 limit 개까지"""
+    try:
+        al = cfg["load_json"](os.path.join(cfg["GEN_DIR"], _stem(f) + ".번역.정렬.json"), None) or {}
+    except Exception:
+        al = {}
+    rx = _FIGREF(n)
+    hits = []
+    for k, v in al.items():
+        t = (v.get("t") if isinstance(v, dict) else "") or ""
+        if rx.search(t) and len(t) > 25:
+            try:
+                hits.append((int(str(k).lstrip("sx")), str(k), t))
+            except ValueError:
+                continue
+    hits.sort()
+    return [h[1] for h in hits[:limit]], [h[2] for h in hits[:limit]]
+
+
 def build(f, title="", model="sonnet", force=False):
     """논문 하나의 그림 색인을 만든다(있으면 그대로). Claude 호출 하나 — 그림마다 Read 로 열어 본다(그림 10장이면 1만 5천 토큰쯤)."""
     if not force:
         d = load(f)
-        if d and (d.get("ok") or time.time() - (d.get("t") or 0) < _RETRY_AFTER):
+        if d and d.get("v") == INDEX_V and (d.get("ok") or time.time() - (d.get("t") or 0) < _RETRY_AFTER):
             return d
     t0 = time.time()
     figs = crop_all(f)
-    base = {"file": f, "t": time.time(), "mtime": _mtime(f), "model": model, "n": len(figs), "figs": figs, "ok": False}
+    base = {"file": f, "t": time.time(), "mtime": _mtime(f), "model": model, "n": len(figs), "figs": figs, "ok": False, "v": INDEX_V}
+    for x in figs:            # 본문이 이 그림을 말한 문장 (정렬표에서 'Fig. n') — 색인의 재료이자 refs 로 남긴다
+        x["refs"], x["mention"] = _mentions(f, x["n"])
     if not figs:
         base["ok"] = True
         cfg["save_json"](index_path(f), base)
         return base
-    listing = "\n".join("%s — Fig. %d (p.%d): %s" % (x["img"], x["n"], x["page"], x["cap"][:400]) for x in figs)
+    listing = "\n".join("%s — Fig. %d (p.%d): %s%s" % (x["img"], x["n"], x["page"], x["cap"][:400], "".join("\n    본문 %s: \"%s\"" % (sid, t[:260]) for sid, t in zip(x.get("refs") or [], x.get("mention") or []))) for x in figs)
     res = None
     try:
         run = cfg.get("claude_run")
@@ -151,6 +177,8 @@ def build(f, title="", model="sonnet", force=False):
         x["what"] = re.sub(r"\s+", " ", str(y.get("what") or "")).strip()[:400]
         x["shows"] = re.sub(r"\s+", " ", str(y.get("shows") or "")).strip()[:240]
         x["labels"] = [str(l).strip()[:40] for l in (y.get("labels") or [])[:8] if str(l).strip()] if isinstance(y.get("labels"), list) else []
+        x["data"] = re.sub(r"\s+", " ", str(y.get("data") or "")).strip()[:240]
+        x.pop("mention", None)      # 본문 문장은 정렬표에 있으니 sid(refs)만 남긴다
         x["quality"] = str(y.get("quality") or "").strip().lower() if str(y.get("quality") or "").strip().lower() in ("good", "ok", "poor") else ("ok" if y else "poor")
     base.update(ok=bool(by), sec=round(time.time() - t0), tok=(res or {}).get("tok"), turns=(res or {}).get("turns"))
     cfg["save_json"](index_path(f), base)
@@ -163,7 +191,7 @@ def ensure(items, model="sonnet", workers=4, on_done=None):
     todo = []
     for f, title in items:
         d = load(f)
-        if d and (d.get("ok") or time.time() - (d.get("t") or 0) < _RETRY_AFTER):
+        if d and d.get("v") == INDEX_V and (d.get("ok") or time.time() - (d.get("t") or 0) < _RETRY_AFTER):
             out[f] = d
         else:
             todo.append((f, title))

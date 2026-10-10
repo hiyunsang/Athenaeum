@@ -78,6 +78,7 @@
   .dkstrip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 8px; } .dkthumb { height: 56px; border: 1px solid var(--line); border-radius: 2px; background: #fff; cursor: pointer; opacity: .65; flex: none; } .dkthumb:hover { opacity: 1; } .dkthumb.on { opacity: 1; outline: 2px solid var(--accent); }
   .dkinfo { border-top: 1px solid var(--line); padding-top: 8px; }
   .dkchat { margin: 4px 0 8px; font-size: 13px; line-height: 1.55; } .dkchat .me, .dkchat .cl { padding: 6px 0; border-top: 1px solid var(--line); white-space: pre-wrap; } .dkchat b { display: block; font-size: 11px; color: var(--text-3); margin-bottom: 2px; } .dkchat .cl { color: var(--text); }
+  #srcp #secEditQ { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   #srcp #dkEditQ { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); } #srcp .row { display: flex; gap: var(--s2); align-items: center; margin: 6px 0; }
   .dk .dkimg { display: block; width: 100%; max-width: 760px; border: 1px solid var(--line); border-radius: var(--r); margin: 4px 0 8px; background: #fff; }
   .dk .dkmsg { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); padding: 4px 10px; margin: 2px 0 6px; font-size: 13px; }
@@ -106,6 +107,8 @@
   .ch h2 .no { color: var(--text-3); font-weight: 400; margin-right: .4em; }
   .ch .aim { font-family: var(--font); font-size: 12.5px; color: var(--text-3); margin: 0 0 .7em; }
   /* Claude 의 생각 — 해설 층. 사실 층과 갈라 보인다(앰버 띠 + 마스코트). 사용자 2026-10-08 */
+  .quiz { margin: 1.1em 0 1.2em; padding: 8px 14px 6px; border: 1px solid var(--line); border-radius: var(--r); font-family: var(--font); font-size: .94em; } .quiz .qh { font-weight: 600; margin-bottom: 4px; } .quiz .qh .hint { font-weight: 400; padding: 0; margin-left: 6px; }
+  .quiz .qi { padding: 4px 0; border-top: 1px dashed var(--line); } .quiz .qi summary { cursor: pointer; } .quiz .qa { color: var(--text-2); padding: 4px 0 2px 18px; line-height: 1.6; } .quiz.pending { opacity: .7; }
   .cmt { margin: 1.1em 0 1.4em; padding: 10px 14px 4px; border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 7%, transparent); border-radius: 0 var(--r) var(--r) 0; font-family: var(--font); font-size: .94em; }
   .cmt .ch2 { display: flex; align-items: center; gap: 7px; font-weight: 600; margin-bottom: 4px; } .cmt .ch2 img { width: 18px; height: 18px; image-rendering: pixelated; } .cmt .ch2 .hint { font-weight: 400; padding: 0; }
   .cmt h4 { margin: .7em 0 .15em; font-size: 1em; font-weight: 600; color: var(--text-2); } .cmt p { margin: 0 0 .7em; text-align: left; line-height: 1.65; }
@@ -258,7 +261,7 @@ const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" 
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
-  ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["comment", "절마다 Claude 의 생각 달기"]];
+  ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
@@ -348,14 +351,14 @@ async function refresh(first) {
   if (st.error && !st.id) { cur = null; curId = ""; lsSet("study_last", ""); renderMain(); renderPanel(); renderOutline(); return; }
   const was = cur && cur.id === st.id ? cur.status : "";
   cur = st; got = Date.now();
-  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "") + (st.basics_pending ? "b" : "") + ((st.basics || {}).t || "") + (st.basics_error || "") + (st.deck_pending ? "d" + st.deck_pending : "") + ((st.decks || []).length) + (st.deck_error || "") + (st.decks || []).map(d => (d.edit_pending ? "e" : "") + (d.rev || 0) + ((d.chat || []).length) + (d.edit_error || "")).join("|");
+  const ms = (st.map_pending ? "p" + st.map_pending : "") + ((st.map || {}).t || "") + (st.map_error || "") + (st.comment_pending ? "c" : "") + ((st.stats || {}).comments || 0) + (st.comment_error || "") + (st.basics_pending ? "b" : "") + ((st.basics || {}).t || "") + (st.basics_error || "") + (st.quiz_pending ? "q" : "") + ((st.stats || {}).quiz || 0) + (st.quiz_error || "") + (st.termfix_pending ? "t" : "") + ((st.termfix || {}).t || "") + (st.termfix_error || "") + (st.sec_edit_pending ? "s" + st.sec_edit_pending.t : "") + Object.values(st.sec_chat || {}).reduce((n, a) => n + a.length, 0) + ((st.stats || {}).units || 0) + (st.sec_edit_error || "") + (st.deck_pending ? "d" + st.deck_pending : "") + ((st.decks || []).length) + (st.deck_error || "") + (st.decks || []).map(d => (d.edit_pending ? "e" : "") + (d.rev || 0) + ((d.chat || []).length) + (d.edit_error || "")).join("|");
   if (first || st.status !== "done" || was !== "done") { renderMain(); renderPanel(); }
   else if (ms !== mapStamp) renderMain();
   if (ms !== mapStamp) { mapStamp = ms; renderOutline(); }
   if (first) { renderOutline(); newboxSet(lsGet("study_new_open", st.status === "done" ? "0" : "1") === "1"); }
   if (was && was !== st.status) loadList();
   clearTimeout(pollT);
-  if (st.status === "running" || st.map_pending || st.comment_pending || st.deck_pending || st.basics_pending || (st.decks || []).some(d => d.edit_pending)) pollT = setTimeout(refresh, 4000);
+  if (st.status === "running" || st.map_pending || st.comment_pending || st.deck_pending || st.basics_pending || st.quiz_pending || st.termfix_pending || st.sec_edit_pending || (st.decks || []).some(d => d.edit_pending)) pollT = setTimeout(refresh, 4000);
   if (st.status === "done" && (st.chats || []).some(c => c.pending)) startChatPoll();
 }
 
@@ -527,7 +530,7 @@ function overviewBody(all) {
   const chars = ch.sections.reduce((n, x) => n + x.blocks.reduce((m, b) => m + (b.units || []).reduce((q, u) => q + u.t.length, 0), 0), 0);
   let h = "<h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<p class='scope'>" + esc(ch.scope) + "</p>" : "") +
     "<div class='meta'>내 서재의 논문 " + (s.cited || 0) + "편으로 씀 · 문장 " + (s.units || 0) + "개 가운데 사실을 말하는 " + (s.fact || 0) + "개는 모두 논문의 원문 문장에 묶여 있고 원문과 대조했습니다 · 약 " + fmtTok(chars) + " 자 · " + fmtDate(cur.t) + (cur.stylus ? " · " + esc(cur.stylus) + " 로 씀" : "") +
-    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + basicsBtnHtml() + "<button class='act' id='rwBtn' title='읽은 논문·메모는 그대로 두고 짜기부터 지금 규칙(줄기 먼저 · 리뷰를 뼈대로 · 고르기)으로 다시 씁니다 — 새 장이 생기고 이 장은 남습니다. 40분쯤'>새 규칙으로 다시 쓰기</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
+    "<div class='noprint'><button class='act' id='mdCopy'>md 복사</button><button class='act' id='mdSave'>md 파일로</button><button class='act' id='printBtn'>인쇄</button><button class='act' id='infoBtn'>이 장의 기록</button>" + cmtBtnHtml() + basicsBtnHtml() + quizBtnHtml() + termBtnHtml() + "<button class='act' id='rwBtn' title='읽은 논문·메모는 그대로 두고 짜기부터 지금 규칙(줄기 먼저 · 리뷰를 뼈대로 · 고르기)으로 다시 씁니다 — 새 장이 생기고 이 장은 남습니다. 40분쯤'>새 규칙으로 다시 쓰기</button><button class='act warn' id='delBtn'>지우기</button><span class='hint' id='chMsg'></span></div></div>";
   if (all && cur.basics && (cur.basics.parts || []).length) h += basicsAside(cur.basics);
   if (!all) {
     h += "<ul class='toc'>" + secs.map((x, i) => "<li data-v='sec' data-si='" + x.si + "'><span class='no'>" + (i + 1) + "</span><span>" + esc(x.sec.title) + (x.sec.aim ? " <span class='q'>— " + esc(x.sec.aim) + "</span>" : "") + "</span><span class='n'>" + secUnits(x.sec) + "문장</span></li>").join("") +
@@ -555,8 +558,8 @@ function refsHtml() {
 function sectionHtml(si) {
   const secs = bodySecs(), i = secs.findIndex(x => x.si === si); if (i < 0) return overviewBody(false);
   const sec = secs[i].sec, prev = secs[i - 1], next = secs[i + 1];
-  return crumb((i + 1) + " / " + secs.length + " 절", "<span class='sp'>·</span><a href='#' data-v='map' data-si='" + si + "'>이 절을 그림으로</a>") +
-    "<h2 class='first'><span class='no'>" + (i + 1) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + secPapersHtml(sec) + blocksHtml(sec, si) + commentHtml(sec) +
+  return crumb((i + 1) + " / " + secs.length + " 절", "<span class='sp'>·</span><a href='#' data-v='map' data-si='" + si + "'>이 절을 그림으로</a><span class='sp'>·</span><a href='#' data-secedit='" + si + "' title='오른쪽 칸에서 이 절을 Claude 에게 고쳐 달라고 합니다 — 고친 글도 원문과 대조합니다'>이 절 고치기 (Claude)</a>") +
+    "<h2 class='first'><span class='no'>" + (i + 1) + "</span>" + esc(sec.title) + "</h2>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "") + secPapersHtml(sec) + blocksHtml(sec, si) + commentHtml(sec) + quizHtml(sec) +
     "<div class='pnav noprint'>" + (prev ? "<button class='act' data-v='sec' data-si='" + prev.si + "'>← " + i + ". " + esc(prev.sec.title) + "</button>" : "") +
     (next ? "<button class='act nx' data-v='sec' data-si='" + next.si + "'>" + (i + 2) + ". " + esc(next.sec.title) + " →</button>" : "<button class='act nx' data-v='summary' data-si='-1'>핵심 정리 →</button>") + "</div>";
 }
@@ -598,6 +601,23 @@ function basicsBtnHtml() {
   return "<button class='act basicsBtn' title='이 장이 설명 없이 쓰는 개념(격자·전위·미끄럼계 같은 기초)을 Claude 가 교과서처럼 씁니다 — 서재로 확인한 것이 아니라 따로 표시됩니다. Opus 한 번, 5분쯤'>" + (cur.basics ? "바탕 이론 다시 쓰기" : "바탕 이론 쓰기 (초보용)") + "</button>" +
     (cur.basics_error ? "<span class='hint' style='color:var(--amber)'>" + esc(cur.basics_error) + "</span>" : "");
 }
+// 확인 물음 — 절 끝의 연습 문제 (사용자 2026-10-11 '전부 다'). 답은 그 절의 문장이 받친다 (¶ 로 본문에)
+function quizHtml(sec) {
+  const z = sec.quiz;
+  if (!z || !(z.items || []).length) return cur.quiz_pending ? "<div class='quiz pending noprint'><div class='qh'>확인 물음을 쓰는 중…</div></div>" : "";
+  const kl = keys => (keys || []).map(k => "<a href='#' class='dkk' data-unit='" + esc(k) + "' title='받치는 문장으로'>¶</a>").join("");
+  return "<div class='quiz'><div class='qh'>확인 물음<span class='hint'>— 답을 떠올린 뒤 펼쳐 보세요. ¶ 는 받치는 문장</span></div>" +
+    z.items.map((q, i) => "<details class='qi'><summary>" + (i + 1) + ". " + esc(q.q) + "</summary><div class='qa'>" + esc(q.a) + " " + kl(q.keys) + "</div></details>").join("") + "</div>";
+}
+function quizBtnHtml() {
+  const n = bodySecs().filter(x => x.sec.quiz && (x.sec.quiz.items || []).length).length;
+  if (cur.quiz_pending) return "<span class='hint'>확인 물음을 쓰는 중…</span>";
+  return "<button class='act' id='quizBtn' title='절마다 확인 물음 2~3개를 답과 함께 답니다 — 답은 그 절의 문장이 받칩니다'>" + (n ? "확인 물음 다시 쓰기 (" + n + "절)" : "확인 물음 쓰기") + "</button>" + (cur.quiz_error ? "<span class='hint' style='color:var(--amber)'>" + esc(cur.quiz_error) + "</span>" : "");
+}
+function termBtnHtml() {
+  if (cur.termfix_pending) return "<span class='hint'>용어를 맞추는 중…</span>";
+  return "<button class='act' id='termBtn' title='같은 영어 용어가 절마다 다른 한국어로 옮겨진 곳을 찾아 용어표의 한국어로 맞춥니다 (Sonnet, 1분쯤)'>용어 통일" + (cur.termfix && cur.termfix.n != null ? " (" + cur.termfix.n + "곳 고침)" : "") + "</button>" + (cur.termfix_error ? "<span class='hint' style='color:var(--amber)'>" + esc(cur.termfix_error) + "</span>" : "");
+}
 function cmtBtnHtml() {
   const n = bodySecs().filter(x => x.sec.comment && (x.sec.comment.parts || []).length).length;
   if (cur.comment_pending) return "<span class='hint'>Claude 의 생각을 쓰는 중…</span>";
@@ -622,6 +642,9 @@ function chatsListHtml(list, q) {
       "<div class='noprint' style='margin-top:4px'><button class='act' onclick=\"openChat('" + esc(c.id) + "')\">대화 열기 · 이어 묻기</button>" + ((c.keys || []).length ? "<button class='act' onclick=\"gotoUnit('" + esc(c.keys[0]) + "')\">본문으로</button>" : "") + "</div></div>"; }).join("");
 }
 function bindChapter() {
+  $("main").querySelectorAll("[data-secedit]").forEach(a => a.onclick = e => { e.preventDefault(); secEditSi = +a.dataset.secedit; panel = "secedit"; renderPanel(); });
+  const qb = $("quizBtn"); if (qb) qb.onclick = async () => { const n = bodySecs().filter(x => x.sec.quiz).length; if (n && !confirm("지금 있는 확인 물음을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "quiz", id: cur.id, force: !!n, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); };
+  const tb = $("termBtn"); if (tb) tb.onclick = async () => { const r = await api("/api/study", { op: "termfix", id: cur.id }); if (r.error) { alert(r.error); return; } refresh(); };
   document.querySelectorAll(".basicsBtn").forEach(bb => bb.onclick = async () => { if (cur.basics && !confirm("지금 있는 바탕 이론을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "basics", id: cur.id, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); });
   const cb = $("cmtBtn"); if (cb) cb.onclick = async () => { const n = bodySecs().filter(x => x.sec.comment).length; if (n && !confirm("지금 있는 Claude 의 생각을 지우고 다시 씁니다. 계속할까요?")) return; const r = await api("/api/study", { op: "comment", id: cur.id, force: !!n, effort: lsGet("study_ask_effort", "xhigh") }); if (r.error) { alert(r.error); return; } refresh(); };
   const m = $("main");
@@ -978,6 +1001,32 @@ async function askSend() {
 }
 
 // ---------- 오른쪽: 근거 ----------
+// 절 고치기 대화 — 오른쪽 칸 (사용자 2026-10-11: 장을 읽다가 '이 문단은 사실 나열이야, 하나로 묶어' 하면 그 절만 다시 쓰고 대조)
+let secEditSi = -1, secEditDraft = {};
+function secEditPanel() {
+  const si = secEditSi, sec = (cur.chapter.sections || [])[si]; if (!sec) return "";
+  const thread = ((cur.sec_chat || {})[String(si)]) || [], pend = cur.sec_edit_pending && cur.sec_edit_pending.si === si, other = cur.sec_edit_pending && cur.sec_edit_pending.si !== si;
+  let h = "<div class='sec'>이 절 고치기 — " + esc(sec.title) + "<button class='act' id='secEditClose' style='margin-left:auto'>닫기</button></div>";
+  h += "<div class='dkchat'>" + (thread.length ? thread.map(m => "<div class='" + (m.role === "user" ? "me" : "cl") + "'><b>" + (m.role === "user" ? "나" : "Claude") + "</b>" + esc(m.text) + (m.sec ? "<span class='hint'> · " + fmtDur(m.sec) + "</span>" : "") + "</div>").join("") : "<div class='hint'>이 절에 아직 부탁한 것이 없습니다.</div>") + "</div>";
+  if (pend) h += "<div class='hint'>Claude 가 이 절을 고치는 중… (다시 쓰기 → 원문 대조 → 장 다시 묶기, 3~6분) <button class='act' id='secEditCancel'>취소</button></div>";
+  else if (other) h += "<div class='hint'>다른 절을 고치는 중입니다. 끝나면 이 절도 부탁할 수 있습니다.</div>";
+  else {
+    const eff = lsGet("study_ask_effort", "xhigh");
+    h += "<textarea id='secEditQ' rows='4' placeholder='예: 둘째 문단은 사실 나열이야 — 하나의 설명으로 묶어 / 이 문장 빼 / 수치를 표로 묶어 / 개념을 먼저 설명하고 결과로 가'>" + esc(secEditDraft[cur.id + ":" + si] || "") + "</textarea>" +
+      "<div class='row'><select id='secEditEff'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select><button class='primary' id='secEditGo'>고치기</button></div>" +
+      (cur.sec_edit_error ? "<div class='hint' style='color:var(--amber)'>" + esc(cur.sec_edit_error) + "</div>" : "") +
+      "<div class='hint'>부탁한 것만 고칩니다. 고친 글도 설계도의 메모가 받쳐야 하고, 쓴 뒤 문장마다 원문과 대조해 근거 없는 문장은 뺍니다. 메모에 없는 내용은 넣지 못합니다. 이 절의 「Claude 의 생각」·확인 물음은 글이 바뀌므로 지워집니다(단추로 다시).</div>";
+  }
+  return h;
+}
+function bindSecEdit(el) {
+  const si = secEditSi;
+  const c = $("secEditClose"); if (c) c.onclick = () => { panel = selKey ? "unit" : "info"; renderPanel(); };
+  const q = $("secEditQ"); if (q) q.oninput = () => { secEditDraft[cur.id + ":" + si] = q.value; };
+  const go = $("secEditGo"); if (go) go.onclick = async () => { const text = (q.value || "").trim(); if (!text) return; go.disabled = true; const eff = $("secEditEff").value; lsSet("study_ask_effort", eff);
+    const r = await api("/api/study", { op: "sec_edit", id: cur.id, si: si, question: text, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; return; } secEditDraft[cur.id + ":" + si] = ""; await refresh(false); renderPanel(); };
+  const cc = $("secEditCancel"); if (cc) cc.onclick = async () => { const r = await api("/api/study", { op: "sec_edit_cancel", id: cur.id }); if (r.error) { alert(r.error); return; } cc.textContent = "끊는 중…"; };
+}
 function renderPanel() {
   const el = $("srcp");
   clearInterval(askTick);
@@ -986,6 +1035,7 @@ function renderPanel() {
   if (!cur) { el.innerHTML = ""; return; }
   if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
   if (panel === "ask") { el.innerHTML = askPanel(); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
+  if (panel === "secedit" && secEditSi >= 0) { el.innerHTML = secEditPanel(); bindSecEdit(el); el.scrollTop = 0; return; }
   if (panel === "mapnode" && mapSel) { el.innerHTML = mapNodePanel(); bindChatLinks(el); el.scrollTop = 0; return; }
   if (panel === "paper" && paperSel != null) { el.innerHTML = paperPanel(); bindChatLinks(el); const c = $("paperClose"); if (c) c.onclick = () => { panel = selKey ? "unit" : "info"; renderPanel(); }; el.scrollTop = 0; return; }
   if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey), selKey); bindChatLinks(el); el.scrollTop = 0; return; }
