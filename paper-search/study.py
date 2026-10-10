@@ -49,7 +49,7 @@ _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text
 
 VERSION = "공부 (2026-10-09)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 그림 색인·도식 후보·교과서식 배치(저녁)와 Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
-_STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "verify", "wrap", "terms", "comment", "quiz"]
+_STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "edit", "verify", "wrap", "terms", "comment", "quiz"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
 _HIT_CHARS = 16000      # 관련 논문: 맞은 대목만
 
@@ -2059,6 +2059,48 @@ _SEC_EDIT_RULE = (
     "- 출력: 맨 앞 줄에 '답: 무엇을 어떻게 고쳤는지 한 줄', 그 다음 절 전체를 위의 출력 형식(<<<SEC>>> … <<<END>>>)으로 — 고치지 않은 줄도 그대로 포함한다.\n")
 
 
+_EDITOR_REQUEST = ("편집자로서 이 절을 다듬는다 — 내용이 아니라 글을. ① 사실의 나열로 읽히는 문단은 하나의 설명으로 묶는다: 앞 문장을 받아 다음을 여는 잇는 문장(⟦-⟧)을 자유롭게 넣고, 이어진 사실은 한 호흡으로. "
+                   "② 같은 논문의 수치가 문장마다 이어지면 대표값 하나만 본문에 두고 나머지는 표로 옮기거나 뺀다. ③ 다른 절이 맡은 개념을 다시 설명하는 문장은 가리키는 한 구절로 줄인다. ④ 용어는 [용어] 그대로. "
+                   "⑤ 새 사실·수치·원인은 넣지 않고 근거 번호는 그대로(문장을 묶으면 번호를 합친다). 뺄 문장은 뺀다. 분량은 지금의 70~100%.")
+
+
+def _editor_pass(st, model, eff):
+    """④ 편집자 패스 — 쓰고 이은 뒤, 대조 전에 절마다 글을 다듬는다(사실은 그대로). 결과는 그대로 대조 단계로 간다 (사용자 2026-10-11 '전부 다')"""
+    secs = st["sections"]
+    todo = [k for k, sec in enumerate(secs) if sec.get("kind") != "summary" and sec.get("blocks")]
+    _stage(st, "edit", done=0, total=len(todo))
+
+    def one(k):
+        _check_stop(st)
+        prompt, figs = _write_prompt(st, k)
+        valid = set(st["outline"]["sections"][k]["notes"])
+        before = sum(len(b.get("units") or []) for b in secs[k]["blocks"])
+        text = _ask(st, prompt + "\n\n" + _SEC_EDIT_RULE + "\n[지금 글]\n<<<SEC>>>\n" + _sec_text(st, k) + "\n<<<END>>>\n\n[부탁] " + _EDITOR_REQUEST + "\n", model, eff, 1800)
+        blocks = _parse_units(text, valid, figs)
+        nu = sum(len(b.get("units") or []) for b in blocks)
+        return blocks if nu >= max(2, int(before * 0.5)) else None     # 반 넘게 사라졌으면 다듬은 글을 쓰지 않는다
+    done = 0
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {ex.submit(one, k): k for k in todo}
+        for f in as_completed(futs):
+            k = futs[f]
+            try:
+                blocks = f.result()
+            except _Stop:
+                raise
+            except Exception:
+                blocks = None
+            done += 1
+            with _LOCK:
+                if blocks:
+                    secs[k]["blocks"] = blocks
+                    secs[k]["edited"] = True
+                st["prog"] = {"done": done, "total": len(todo)}
+            _save(st)
+    st["edited"] = True
+    _log(st, "절 %d개를 편집자 패스로 다듬었습니다" % sum(1 for k in todo if secs[k].get("edited")))
+
+
 def _sec_text(st, k):
     """절의 지금 글을 쓰기 형식으로(줄 끝 ⟦메모⟧ · ¶ · ### 소제목 · 표: · 그림:) — 고치기 물음의 [지금 글]"""
     out, first_extra = [], True
@@ -2341,6 +2383,8 @@ def _run(st):
     if not st.get("joined"):      # 절 사이 잇기 — 쓴 뒤, 대조 전에(고친 잇는 문장도 대조가 본다)
         _join_all(st, model)
     todo = [k for k, s in enumerate(st["sections"]) if not s.get("checked")]
+    if (st.get("opts") or {}).get("editor") and not st.get("edited") and todo:
+        _editor_pass(st, model, eff)
     _stage(st, "verify", done=nsec - len(todo), total=nsec)
     if todo:
         err = []
@@ -2445,6 +2489,116 @@ def scope_check(body):
         if not out["options"]:
             out["broad"] = False
     return out
+
+
+def _paper_record(f, role="core"):
+    """서재 파일 하나 → 공부의 논문 기록 (더하기용)"""
+    m = ms.paper_meta(f)
+    return {"file": f, "short": ms.paper_short(f), "title": str(m.get("title") or ""), "year": m.get("year", ""), "journal": m.get("journal", ""),
+            "top": _is_top(m.get("journal", ""), _top_set()), "role": role, "why": "연구자가 더함", "co": 0, "nsent": 0, "notes": [], "read": False}
+
+
+def rebuild_start(sid, body):
+    """다 쓴 장을 새 규칙으로 다시 만든다(사용자 2026-10-11 '확고히 한 뒤 나머지 전부 다시'): reread = core(통째로 읽은 것) | reviews | all | none 을 다시 읽고, add 의 서재 논문을 더해(통째로),
+    그림 색인은 옛 판이면 저절로 다시, 짜기부터 끝까지 → 새 장(rebuild_of). 옛 장은 남는다."""
+    src = _load(sid)
+    if not src or not src.get("papers") or not any(p.get("read") for p in src["papers"]):
+        return {"error": "읽은 논문이 없는 장은 다시 만들 수 없습니다"}
+    if len(_JOBS) >= 2:
+        return {"error": "이미 두 개를 쓰고 있습니다 — 끝난 뒤에 시작하세요"}
+    reread = body.get("reread") if body.get("reread") in ("core", "reviews", "all", "none") else "core"
+    nid = "st_" + time.strftime("%Y%m%d_%H%M%S")
+    st = json.loads(json.dumps({k: src[k] for k in ("topic", "opts", "plan", "scan", "papers") if k in src}, ensure_ascii=False))
+    st.setdefault("opts", {})["editor"] = body.get("editor", True) is not False
+    have = {p["file"] for p in st["papers"]}
+    for p in st["papers"]:
+        p.pop("n", None)
+        rr = reread == "all" or (reread == "core" and p.get("role") == "core") or (reread == "reviews" and (p.get("type") == "review" or _looks_review(p.get("title"))))
+        if rr and p.get("read"):
+            p["read"], p["notes"] = False, []
+            for k in ("about", "type", "parts", "mode", "dropped", "fail"):
+                p.pop(k, None)
+    added = 0
+    for f in (body.get("add") if isinstance(body.get("add"), list) else [])[:12]:
+        f = os.path.basename(str(f))
+        if f and f not in have and os.path.isfile(os.path.join(cfg["ARCHIVE"], f)):
+            st["papers"].append(_paper_record(f, "core"))
+            have.add(f)
+            added += 1
+    st.update(id=nid, t=time.time(), status="running", stage="read" if any(not p.get("read") for p in st["papers"]) else "outline",
+              calls=0, sec=0, tok={"in": 0, "cached": 0}, removed=[], joined=False, log=[], rebuild_of=sid, reread=reread, added=added)
+    _save(st)
+    r = _spawn(nid)
+    r["added"] = added
+    return r
+
+
+# ---------- ⑥ 모두 다시 만들기 대기열 (장을 차례로 하나씩 — 한 번에 하나만 돌려 한도를 지킨다)
+_BATCH = {"queue": [], "cur": None, "done": [], "opts": {}, "stop": False, "t": 0}
+
+
+def batch_start(body):
+    ids = [str(x) for x in (body.get("ids") if isinstance(body.get("ids"), list) else []) if str(x).strip()]
+    ids = [i for i in ids if _load(i)]
+    if not ids:
+        return {"error": "다시 만들 장을 고르세요"}
+    with _LOCK:
+        for i in ids:
+            if i not in _BATCH["queue"] and (not _BATCH["cur"] or _BATCH["cur"]["from"] != i):
+                _BATCH["queue"].append(i)
+        _BATCH["opts"] = {"reread": body.get("reread") or "core", "editor": body.get("editor", True) is not False}
+        _BATCH["stop"] = False
+        running = bool(_BATCH.get("thread") and _BATCH["thread"].is_alive())
+        if not running:
+            _BATCH["t"] = time.time()
+            th = threading.Thread(target=_batch_job, name="study-batch", daemon=True)
+            _BATCH["thread"] = th
+            th.start()
+    return batch_status()
+
+
+def batch_stop():
+    with _LOCK:
+        _BATCH["queue"] = []
+        _BATCH["stop"] = True
+    return batch_status()
+
+
+def batch_status():
+    cur = _BATCH.get("cur")
+    if cur:
+        st = _load(cur["to"])
+        cur = dict(cur, stage=(st or {}).get("stage"), status=(st or {}).get("status"), prog=(st or {}).get("prog"))
+    return {"queue": [{"id": i, "title": ((_load(i) or {}).get("chapter") or {}).get("title") or ""} for i in _BATCH["queue"]], "cur": cur, "done": _BATCH["done"][-20:],
+            "running": bool(_BATCH.get("thread") and _BATCH["thread"].is_alive()), "opts": _BATCH.get("opts")}
+
+
+def _batch_job():
+    while True:
+        with _LOCK:
+            if _BATCH["stop"] or not _BATCH["queue"]:
+                _BATCH["cur"] = None
+                return
+            sid = _BATCH["queue"].pop(0)
+        while len(_JOBS) >= 1:          # 다른 공부가 도는 동안은 기다린다 (한 번에 하나)
+            time.sleep(30)
+            if _BATCH["stop"]:
+                return
+        r = rebuild_start(sid, dict(_BATCH.get("opts") or {}))
+        if r.get("error"):
+            _BATCH["done"].append({"from": sid, "to": "", "status": "error", "error": r["error"], "t": time.time()})
+            continue
+        nid = r["id"]
+        _BATCH["cur"] = {"from": sid, "to": nid, "t0": time.time(), "title": ((_load(sid) or {}).get("chapter") or {}).get("title") or ""}
+        t0 = time.time()
+        while time.time() - t0 < 4 * 3600:
+            time.sleep(30)
+            st = _load(nid)
+            if not st or st.get("status") != "running":
+                break
+        st = _load(nid) or {}
+        _BATCH["done"].append({"from": sid, "to": nid, "status": st.get("status"), "error": st.get("error", ""), "sec": round(time.time() - t0), "title": (st.get("chapter") or {}).get("title") or "", "t": time.time()})
+        _BATCH["cur"] = None
 
 
 def rewrite_start(sid):
@@ -3619,6 +3773,14 @@ def handle_get(h, url):
 def handle_post(h, body):
     try:
         op, sid = body.get("op"), str(body.get("id") or "")
+        if op == "rebuild":
+            return h._send(200, rebuild_start(sid, body))
+        if op == "batch":
+            return h._send(200, batch_start(body))
+        if op == "batch_status":
+            return h._send(200, batch_status())
+        if op == "batch_stop":
+            return h._send(200, batch_stop())
         if op == "start":
             return h._send(200, start(body))
         if op == "scope":
