@@ -285,11 +285,11 @@ def layout_content(s, idx, total, deck_title=""):
         fy = body_top + kw_h + 0.15 if lay == "kw_top" else body_top
         arrange(figs_all, L, fy, full_w, zone_h - kw_h - 0.15, "row" if len(figs_all) > 1 else "auto")
     elif lay == "table_only":
-        kw_w = 3.9
+        kw_w = 5.6 if any(b.get("sub") for b in bullets) else 3.9
         kw_box(L, body_top, kw_w, zone_h)
         boxes.extend(table_block(tab, L + kw_w + 0.3, body_top, full_w - kw_w - 0.3, zone_h))
     elif lay == "table_bottom":
-        kw_w = 3.9
+        kw_w = 5.6 if any(b.get("sub") for b in bullets) else 3.9
         h_top = zone_h * 0.55 - gap
         figs_p = figs_all[:2]
         kw_box(L, body_top, kw_w, h_top)
@@ -299,7 +299,8 @@ def layout_content(s, idx, total, deck_title=""):
     else:
         figs_p = figs_all[:3 if not tab else 2]
         has_right = bool(figs_p or tab)
-        kw_w = (3.4 if len(figs_p) >= 3 else 3.9) if has_right else full_w
+        rich = any(b.get("sub") for b in bullets)   # 설명 항목이 있는 글(강의 자료 꼴)은 글 열을 넓게 — 그림 하나면 글 6.4in + 그림 5.5in (교수님 자료의 글 60% · 사진 35%)
+        kw_w = (((6.4, 6.4, 5.2, 4.4)[min(3, len(figs_p))]) if rich else (3.4 if len(figs_p) >= 3 else 3.9)) if has_right else full_w
         fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
         kw_box(L, body_top, kw_w, zone_h)
         if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에'); 그림이 둘이면 왼쪽 반에 위아래로

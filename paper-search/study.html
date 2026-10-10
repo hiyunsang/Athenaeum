@@ -668,6 +668,7 @@ function deckHtml() {
     h += "<div class='dkform noprint'><textarea id='deckReq' placeholder='발표의 목적과 쪽 구성 — 예: 연구실 세미나용. 1쪽 탄탈럼의 특성과 쓰임, 2쪽 왜 깎기 어려운가, 3쪽 지금까지의 연구 동향(코팅·냉각·기전), 4쪽 남은 물음. (비우면 장의 줄기대로)'>" + esc(deckDraft) + "</textarea>" +
       "<div class='row'><label class='hint' title='제목 쪽을 포함한 전체 쪽 수. 참고문헌 쪽은 따로 붙습니다. 비우면 장의 줄기대로 6~10쪽'>쪽 수(제목 포함) <input id='deckN' type='number' min='2' max='40' placeholder='자동' style='width:64px'></label>" +
       "<label class='hint' title='출처는 쪽마다 아래에 저널·이름·연도로 달립니다. 이 체크를 켜면 마지막에 참고문헌 쪽도 붙입니다'><input type='checkbox' id='deckRefs'> 참고문헌 쪽도</label>" +
+      "<select id='deckText' title='쪽의 글을 어떤 꼴로 둘지'><option value='lecture'" + (lsGet("study_deck_text", "lecture") !== "keywords" ? " selected" : "") + ">설명 포함 — 강의 자료처럼 (주제 → 한 줄 설명 → 원인·대책)</option><option value='keywords'" + (lsGet("study_deck_text", "lecture") === "keywords" ? " selected" : "") + ">키워드만 (설명은 발표자 메모에)</option></select>" +
       "<select id='deckEff'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
       "<button class='primary' id='deckGo'>만들기</button><span class='hint' id='deckMsg'></span></div></div>";
     if (cur.deck_error) h += "<div class='warnbox'>" + esc(cur.deck_error) + "</div>";
@@ -704,7 +705,8 @@ function bindDeck() {
   const m = $("main");
   const t = $("deckReq"); if (t) t.oninput = () => { deckDraft = t.value; };
   const go = $("deckGo"); if (go) go.onclick = async () => { go.disabled = true; $("deckMsg").textContent = "보내는 중…"; const eff = $("deckEff").value; lsSet("study_ask_effort", eff);
-    const r = await api("/api/study", { op: "deck", id: cur.id, req: $("deckReq").value, n: +$("deckN").value || 0, refs: $("deckRefs").checked, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; $("deckMsg").textContent = ""; return; } deckDraft = ""; await refresh(false); renderMain(); };
+    const tx = $("deckText").value; lsSet("study_deck_text", tx);
+    const r = await api("/api/study", { op: "deck", id: cur.id, req: $("deckReq").value, n: +$("deckN").value || 0, refs: $("deckRefs").checked, effort: eff, text: tx }); if (r.error) { alert(r.error); go.disabled = false; $("deckMsg").textContent = ""; return; } deckDraft = ""; await refresh(false); renderMain(); };
   m.querySelectorAll("[data-dkdel]").forEach(b => b.onclick = async () => { if (!confirm("이 발표 자료를 지울까요? (파일도 지웁니다)")) return; const r = await api("/api/study", { op: "deck_delete", id: cur.id, deck: b.dataset.dkdel }); if (r.error) { alert(r.error); return; } await refresh(false); renderMain(); });
   m.querySelectorAll(".dkk[data-unit]").forEach(a => a.onclick = e => { e.preventDefault(); gotoUnit(a.dataset.unit); });
   const relayout = async (el, body) => { const msg = el.parentElement.querySelector(".dkLayMsg"); if (msg) msg.textContent = "다시 그리는 중…"; el.disabled = true;

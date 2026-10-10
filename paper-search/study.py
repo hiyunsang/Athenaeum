@@ -2570,7 +2570,7 @@ def _deck_tables(st):
     return out
 
 
-def _deck_prompt(st, req, nslides, pool=None):
+def _deck_prompt(st, req, nslides, pool=None, text="lecture"):
     P = st.get("papers") or []
     pool = pool if pool is not None else _deck_pool(st)
     tables = _deck_tables(st)
@@ -2593,19 +2593,28 @@ def _deck_prompt(st, req, nslides, pool=None):
     plan = ("[발표의 목적과 쪽 구성 — 연구자가 적은 것]\n" + req) if req else "[발표의 목적] 연구실 세미나에서 이 장의 내용을 발표한다. 쪽 구성은 당신이 장의 줄기대로 짠다."
     nstr = (("정확히 %d쪽 — 더도 덜도 말고. 연구자가 적은 쪽 구성이 이 수와 다르면 이 수를 따르고 내용을 합치거나 나눈다" % nslides) if nslides
             else "연구자가 쪽 구성에 쪽 수를 적었으면 그대로(제목 쪽은 따로 붙으므로 '제목 포함 n쪽' 이면 내용은 n-1쪽), 적지 않았으면 6~10쪽 사이에서 내용에 맞게")
+    if text == "lecture":   # 강의 자료 꼴 (사용자 2026-10-10: 교수님 강의 자료처럼 '설명은 이 정도')
+        intro = "이 발표는 그림과 짧은 설명으로 된 **강의 자료** 꼴이다 — 쪽마다 주제 2~4개를 두고 주제마다 한 줄 설명과 원인·조건·결과·대책 같은 짧은 항목을 단다. 당신은 쪽마다 제목·주제와 설명 항목·그림(둘, 셋도 됨)·표·발표자 메모와, 주제·메모마다 그것을 받치는 장의 문장 id 를 준다.\n"
+        bullet_schema = "   \"bullets\": [{\"t\": \"주제 구절(8~22자)\", \"sub\": [\"한 줄 설명(45자 안팎)\", \"원인: … · …\", \"대책: …\"], \"keys\": [\"u0.1.2\"]}],\n"
+        bullet_rule = ("- bullets 는 쪽마다 주제 2~4개. 주제마다 t(주제 구절 8~22자)와 sub 1~4줄(줄마다 45자 안팎) — 강의 자료처럼 첫 줄은 정의나 한 줄 설명, 그 다음은 '원인: …', '조건: …', '결과: …', '문제: …', '대책: …' 처럼 머리말을 붙인 짧은 항목(항목 안의 나열은 · 로). 긴 문장을 쓰지 않는다. "
+                       "t 와 sub 모두 keys(1~4개, 장에 있는 id 그대로)의 문장이 말하는 것만. 장에 없는 사실·수치·논문은 넣지 않는다. 수치는 문장에 적힌 그대로(단위 포함).\n")
+    else:                   # 키워드만 (v3)
+        intro = "이 발표는 **그림이 주인공**이다 — 연구자는 그림을 보여 주며 말로 설명하고, 글은 키워드만 둔다. 당신은 쪽마다 제목·키워드·그림(둘, 셋도 됨)·표·발표자 메모와, 키워드·메모마다 그것을 받치는 장의 문장 id 를 준다.\n"
+        bullet_schema = "   \"bullets\": [{\"t\": \"키워드 구절(8~22자, 명사형 — 문장이 아니다)\", \"keys\": [\"u0.1.2\"]}],\n"
+        bullet_rule = "- bullets 는 쪽마다 4~6개의 **키워드 구절** — 문장이 아니라 '끈적한 금속(~200 HV)', '칩 두께비 40–50', '사행 유동 → 접힘 칩' 같은 짧은 구절. keys(1~4개, 장에 있는 id 그대로)의 문장이 말하는 것만. 장에 없는 사실·수치·논문은 넣지 않는다. 수치는 문장에 적힌 그대로(단위 포함).\n"
     return (   # 장 글·그림 설명에 % 가 들어 있으므로 % 형식화를 쓰지 않고 이어 붙인다
         "아래 장(연구자가 자기 서재의 논문만으로 쓴 교과서 한 장)을 바탕으로 발표 슬라이드의 재료를 만든다. 슬라이드 파일은 프로그램이 만든다. "
-        "이 발표는 **그림이 주인공**이다 — 연구자는 그림을 보여 주며 말로 설명하고, 글은 키워드만 둔다. 당신은 쪽마다 제목·키워드·그림(둘, 셋도 됨)·표·발표자 메모와, 키워드·메모마다 그것을 받치는 장의 문장 id 를 준다.\n"
+        + intro
         + plan + "\n슬라이드 수: " + nstr + " (제목 쪽은 프로그램이 따로 붙인다)\n"
         "JSON 으로만 답하라:\n"
         "{\"title\": \"발표 제목(장 제목을 바탕으로 20자 안팎)\", \"subtitle\": \"부제 한 줄 — 무엇을 다루는지\",\n"
         " \"slides\": [{\"h\": \"쪽 제목(16자 안팎)\",\n"
-        "   \"bullets\": [{\"t\": \"키워드 구절(8~22자, 명사형 — 문장이 아니다)\", \"keys\": [\"u0.1.2\"]}],\n"
+        + bullet_schema +
         "   \"figs\": [{\"id\": \"F3.5\", \"cap\": \"이 그림이 무엇을 보여 주는지 한 줄(30~70자) — 그림 설명·그림 읽기·캡션이 말하는 것만, 연구자가 가리키며 말할 곳을 담아\"}],\n"
         "   \"table\": 1,\n"
         "   \"note\": {\"t\": \"발표자 메모 — 키워드마다 한두 문장씩 말로 풀고, 그림마다 어디를 보라고 할지 한 문장(4~8문장)\", \"keys\": [\"u0.1.2\"]}}]}\n"
         "규칙:\n"
-        "- bullets 는 쪽마다 4~6개의 **키워드 구절** — 문장이 아니라 '끈적한 금속(~200 HV)', '칩 두께비 40–50', '사행 유동 → 접힘 칩' 같은 짧은 구절. keys(1~4개, 장에 있는 id 그대로)의 문장이 말하는 것만. 장에 없는 사실·수치·논문은 넣지 않는다. 수치는 문장에 적힌 그대로(단위 포함).\n"
+        + bullet_rule +
         "- figs 는 쪽마다 **둘**이 기본이고 **셋**도 된다(연구자가 주문에서 더 달라고 했거나, 셋이 조건 → 관찰 → 결과처럼 한 이야기를 이룰 때). 맞는 것이 하나뿐이면 하나, 없으면 비운다 — 채우려고 고르지 않는다. [그림 목록]에서 **양질**의 그림을 고른다: 무엇을 보여 주는지 분명한 도식·사진·그래프, '좋음' 을 먼저, 장에 실린 것과 색인의 것 모두 후보. 같은 그림을 두 쪽에 쓰지 않는다. 둘을 고를 때는 서로 다른 것을 말하는 짝(개념 도식 + 관찰 사진, 조건 + 결과)으로.\n"
         "- cap 은 그림 아래에 실릴 말 — '무슨 그림인지'(무엇을 어떻게 찍었나·어느 축과 조건인가·어디를 볼 것인가)를 그림 설명·그림 읽기·캡션이 말하는 범위 안에서. 출처는 프로그램이 참고문헌으로 단다.\n"
         "- 연구자가 쪽 구성을 적었으면 그 차례와 제목을 따른다 — 쪽마다 그 주제에 맞는 문장을 장 전체에서 고른다. 적지 않았으면 장의 줄기대로: 배경과 왜 문제인가 → 핵심 개념·기전 → 연구들이 본 것(엇갈림 포함) → 영향 인자·조건 → 남은 물음.\n"
@@ -2633,7 +2642,7 @@ def deck_start(sid, body):
             return {"error": "이미 만드는 중입니다"}
         st["deck_pending"] = time.time()
         st.pop("deck_error", None)
-        st["deck_opts"] = {"effort": effort, "req": req, "n": n, "refs": body.get("refs") is True}   # 참고문헌 쪽은 고른 때만 (출처는 쪽마다 아래에)
+        st["deck_opts"] = {"effort": effort, "req": req, "n": n, "refs": body.get("refs") is True, "text": body.get("text") if body.get("text") in ("lecture", "keywords") else "lecture"}   # 참고문헌 쪽은 고른 때만 (출처는 쪽마다 아래에)
         _save(st)
     threading.Thread(target=_deck_job, args=(sid,), name="study-deck", daemon=True).start()
     return {"ok": True}
@@ -2667,7 +2676,7 @@ def _deck_job(sid):
         pool = _deck_pool(st)
         k = max(1, int(opts.get("n") or 0) - 1) if opts.get("n") else 0   # 내용 쪽 수 (제목 쪽을 뺀 것)
         run = cfg.get("claude_run")
-        res = run(_deck_prompt(st, opts.get("req") or "", k, pool), timeout=1800, model=model, effort=eff, tools="") if run else None
+        res = run(_deck_prompt(st, opts.get("req") or "", k, pool, opts.get("text") or "lecture"), timeout=1800, model=model, effort=eff, tools="") if run else None
         d = _json_of((res or {}).get("text") or "")
         if not d or not isinstance(d.get("slides"), list):
             err = "Claude 가 슬라이드 재료를 주지 않았습니다" + _why()
@@ -2756,7 +2765,17 @@ def _deck_clean(st, d, k=0, pool=None):
             if miss:
                 dropped.append({"slide": h, "t": t, "why": "수치가 근거에 없음: " + ", ".join(sorted(miss)[:4])})
                 continue
-            bullets.append({"t": t, "keys": keys})
+            subs = []
+            for x in (b.get("sub") if isinstance(b.get("sub"), list) else [])[:4]:
+                xs = short(x, 110)
+                if not xs:
+                    continue
+                m2 = _nums_missing(nocite(xs), evidence(keys))
+                if m2:
+                    dropped.append({"slide": h, "t": "(설명) " + xs, "why": "수치가 근거에 없음: " + ", ".join(sorted(m2)[:4])})
+                    continue
+                subs.append(xs)
+            bullets.append({"t": t, "keys": keys, "sub": subs})
         if not h or not bullets:
             continue
         allk = [x for b in bullets for x in b["keys"]]
@@ -2847,7 +2866,7 @@ def _deck_write(st, deck, pool=None):
             note = "키워드: " + " · ".join(b["t"] for b in sl["bullets"]) + ("\n\n" + note if note else "")
         if cs:
             note += ("\n\n" if note else "") + "출처\n" + "\n".join("[%d] %s" % (n, _ref_line(byn[str(n)])) for n in cs if str(n) in byn)
-        slides.append({"h": sl["h"], "bullets": [{"t": b["t"], "sub": []} for b in sl["bullets"]],
+        slides.append({"h": sl["h"], "bullets": [{"t": b["t"], "sub": list(b.get("sub") or [])} for b in sl["bullets"]],
                        "stats": [], "panels": panels, "foot": foot, "note": note, "layout": sl.get("layout") or "auto"})
     refs = ["[%s] %s" % (p.get("n"), _ref_line(p)) for p in sorted((p for p in P if p.get("n") and int(p["n"]) in allc), key=lambda p: int(p["n"]))]
     prev_dir = os.path.join(_deck_dir(), stem)
