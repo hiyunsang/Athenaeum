@@ -745,20 +745,23 @@ document.addEventListener("keydown", e => {   /* 발표 자료 보기에서 ← 
   const tg = e.target, tag = (tg && tg.tagName || "").toLowerCase(); if (tag === "input" || tag === "textarea" || tag === "select" || (tg && tg.isContentEditable)) return;
   if (e.key === "ArrowLeft") { deckGo(-1); e.preventDefault(); } else if (e.key === "ArrowRight") { deckGo(1); e.preventDefault(); }
 });
-// 오른쪽 칸: 이 쪽을 Claude 에게 고쳐 달라는 대화
+// 오른쪽 칸: 이 쪽(또는 여러 쪽·자료 전체)을 Claude 에게 고쳐 달라는 대화
+let dkScope = "this", dkScopeList = "";
 function deckPanel() {
   const d = deckCur();
-  if (!d) return "<div class='sec'>이 쪽 고치기</div><div class='hint'>자료를 만들면 여기에서 쪽마다 Claude 에게 고쳐 달라고 할 수 있습니다.</div>";
-  const pg = deckSel.page, i = pg - 2;
-  let h = "<div class='sec'>이 쪽 고치기 — " + pg + "쪽" + (i >= 0 ? " · " + esc(d.slides[i].h) : " (제목 쪽)") + "</div>";
-  if (i < 0) return h + "<div class='hint'>제목 쪽은 고칠 것이 없습니다. 내용 쪽으로 넘기세요(→).</div>";
-  const thread = (d.chat || []).filter(m => m.slide === i);
-  h += "<div class='dkchat'>" + (thread.length ? thread.map(m => "<div class='" + (m.role === "user" ? "me" : "cl") + "'><b>" + (m.role === "user" ? "나" : "Claude") + "</b>" + esc(m.text) + (m.sec ? "<span class='hint'> · " + fmtDur(m.sec) + "</span>" : "") + "</div>").join("") : "<div class='hint'>이 쪽에 아직 부탁한 것이 없습니다.</div>") + "</div>";
-  if (d.edit_pending && (d.edit_opts || {}).slide === i) h += "<div class='hint' id='dkEditWait'>Claude 가 고치는 중… (1~3분) <button class='act' id='dkEditCancel'>취소</button></div>";
-  else if (d.edit_pending) h += "<div class='hint'>다른 쪽을 고치는 중입니다. 끝나면 이 쪽도 부탁할 수 있습니다.</div>";
+  if (!d) return "<div class='sec'>쪽 고치기</div><div class='hint'>자료를 만들면 여기에서 쪽마다 Claude 에게 고쳐 달라고 할 수 있습니다.</div>";
+  const pg = deckSel.page, i = pg - 2, n = d.slides.length;
+  let h = "<div class='sec'>쪽 고치기 — " + (dkScope === "all" ? "자료 전체" : dkScope === "some" ? "고른 쪽" : pg + "쪽" + (i >= 0 ? " · " + esc(d.slides[i].h) : " (제목 쪽)")) + "</div>";
+  const hit = m => m.scope === "all" || (m.slides || (m.slide != null ? [m.slide] : [])).includes(i) || dkScope !== "this" && (m.scope === "some");
+  const thread = (d.chat || []).filter(hit);
+  h += "<div class='dkchat'>" + (thread.length ? thread.map(m => "<div class='" + (m.role === "user" ? "me" : "cl") + "'><b>" + (m.role === "user" ? "나" : "Claude") + (m.scope === "all" ? " · 자료 전체" : (m.slides || []).length > 1 ? " · " + m.slides.map(x => x + 2).join(",") + "쪽" : "") + "</b>" + esc(m.text) + (m.sec ? "<span class='hint'> · " + fmtDur(m.sec) + "</span>" : "") + "</div>").join("") : "<div class='hint'>아직 부탁한 것이 없습니다.</div>") + "</div>";
+  if (d.edit_pending) h += "<div class='hint' id='dkEditWait'>Claude 가 고치는 중… (" + ((d.edit_opts || {}).scope === "all" ? "자료 전체, 2~5분" : "1~3분") + ") <button class='act' id='dkEditCancel'>취소</button></div>";
   else {
     const eff = lsGet("study_ask_effort", "xhigh");
-    h += "<textarea id='dkEditQ' rows='3' placeholder='예: 둘째 항목 빼 줘 / 그림을 사행 유동 사진으로 바꿔 / 설명을 더 짧게 / 메모에 냉각 조건을 더해'>" + esc(dkEditDraft[d.id + ":" + i] || "") + "</textarea>" +
+    h += "<div class='row' style='flex-wrap:wrap'><label class='hint'><input type='radio' name='dkScope' value='this'" + (dkScope === "this" ? " checked" : "") + (i < 0 ? " disabled" : "") + "> 이 쪽만</label>" +
+      "<label class='hint'><input type='radio' name='dkScope' value='some'" + (dkScope === "some" ? " checked" : "") + "> 쪽 고르기 <input id='dkScopeList' placeholder='예: 2,3' style='width:70px' value='" + esc(dkScopeList) + "'></label>" +
+      "<label class='hint' title='쪽을 합치거나 나누거나 더하거나 빼는 것도 됩니다'><input type='radio' name='dkScope' value='all'" + (dkScope === "all" ? " checked" : "") + "> 자료 전체</label></div>" +
+      "<textarea id='dkEditQ' rows='3' placeholder='예: 둘째 항목 빼 줘 / 그림을 사행 유동 사진으로 바꿔 / 설명을 더 짧게 / (전체) 2쪽과 3쪽을 합쳐 / (전체) 냉각 쪽을 하나 더'>" + esc(dkEditDraft[d.id + ":" + (dkScope === "this" ? i : dkScope)] || "") + "</textarea>" +
       "<div class='row'><select id='dkEditEff'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select><button class='primary' id='dkEditGo'>고치기</button></div>" +
       (d.edit_error ? "<div class='hint' style='color:var(--amber)'>" + esc(d.edit_error) + "</div>" : "") +
       "<div class='hint'>고친 글도 장의 문장이 받쳐야 들어갑니다. 장에 없는 내용은 넣지 못하고, 수치가 근거와 어긋나면 뺍니다. 배치는 왼쪽 메뉴에서.</div>";
@@ -768,9 +771,15 @@ function deckPanel() {
 function bindDeckPanel(el) {
   const d = deckCur(); if (!d) return;
   const i = deckSel.page - 2;
-  const q = $("dkEditQ"); if (q) q.oninput = () => { dkEditDraft[d.id + ":" + i] = q.value; };
-  const go = $("dkEditGo"); if (go) go.onclick = async () => { const text = (q.value || "").trim(); if (!text) return; go.disabled = true; const eff = $("dkEditEff").value; lsSet("study_ask_effort", eff);
-    const r = await api("/api/study", { op: "deck_edit", id: cur.id, deck: d.id, slide: i, question: text, effort: eff }); if (r.error) { alert(r.error); go.disabled = false; return; } dkEditDraft[d.id + ":" + i] = ""; await refresh(false); renderPanel(); };
+  el.querySelectorAll("input[name='dkScope']").forEach(r => r.onchange = () => { dkScope = r.value; renderPanel(); });
+  const sl = $("dkScopeList"); if (sl) sl.oninput = () => { dkScopeList = sl.value; if (dkScope !== "some") { dkScope = "some"; const r = el.querySelector("input[name='dkScope'][value='some']"); if (r) r.checked = true; } };
+  const q = $("dkEditQ"); if (q) q.oninput = () => { dkEditDraft[d.id + ":" + (dkScope === "this" ? i : dkScope)] = q.value; };
+  const go = $("dkEditGo"); if (go) go.onclick = async () => { const text = (q.value || "").trim(); if (!text) return;
+    let body = { op: "deck_edit", id: cur.id, deck: d.id, question: text, effort: $("dkEditEff").value, scope: dkScope };
+    if (dkScope === "this") { if (i < 0) { alert("제목 쪽은 고칠 것이 없습니다 — 내용 쪽으로 넘기거나 범위를 바꾸세요."); return; } body.slides = [i]; }
+    else if (dkScope === "some") { const list = (dkScopeList || "").split(/[,\s]+/).map(x => parseInt(x, 10)).filter(x => x >= 2 && x <= d.slides.length + 1).map(x => x - 2); if (!list.length) { alert("고칠 쪽 번호를 적으세요 (예: 2,3)"); return; } body.slides = list; }
+    go.disabled = true; lsSet("study_ask_effort", body.effort);
+    const r = await api("/api/study", body); if (r.error) { alert(r.error); go.disabled = false; return; } dkEditDraft[d.id + ":" + (dkScope === "this" ? i : dkScope)] = ""; await refresh(false); renderPanel(); };
   const cc = $("dkEditCancel"); if (cc) cc.onclick = async () => { const r = await api("/api/study", { op: "deck_edit_cancel", id: cur.id, deck: d.id }); if (r.error) { alert(r.error); return; } cc.textContent = "끊는 중…"; };
 }
 function mapHtml() {

@@ -227,6 +227,24 @@ def layout_content(s, idx, total, deck_title=""):
         cap = (pn.get("cap") or "") + ((" (…외 %d행은 장에서)" % (allrows - len(rows))) if allrows > len(rows) else "")
         return [text(x, y, w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"), dict(table(x, y + 0.32, w, sum(rhs), pn.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
 
+    def best_mode(figs, w, h):
+        """(w, h) 안에 그림 n장을 놓는 배치 가운데 그림 면적 합이 가장 큰 것 → (mode, 면적). 가로로 긴 그림은 위아래(col)가, 세로로 긴 그림은 나란히(row)가 이긴다 (사용자 2026-10-11: '가로세로비도 생각해서')"""
+        n = len(figs)
+        if n == 0:
+            return "auto", 0.0
+        if n == 1:
+            return "auto", area(figs[0], w, h)
+        wn, hn = (w - gap * (n - 1)) / n, (h - gap * (n - 1)) / n
+        w2, h2 = (w - gap) / 2, (h - gap) / 2
+        wb, ws = (w - gap) * 0.58, (w - gap) * 0.42
+        cand = [(sum(area(pn, wn, h) for pn in figs), "row"), (sum(area(pn, w, hn) for pn in figs), "col")]
+        if n == 3:
+            cand += [(area(figs[0], wb, h) + area(figs[1], ws, h2) + area(figs[2], ws, h2), "big_left"),
+                     (area(figs[0], w2, h2) + area(figs[1], w2, h2) + area(figs[2], w, h2), "one_bottom"),
+                     (area(figs[0], w, h2) + area(figs[1], w2, h2) + area(figs[2], w2, h2), "one_top")]
+        a, m = max(cand)
+        return m, a
+
     def arrange(figs, x, y, w, h, mode):
         """그림 1~3장을 (x, y, w, h) 안에 mode 대로. auto 는 면적이 큰 배치"""
         n = len(figs)
@@ -238,13 +256,7 @@ def layout_content(s, idx, total, deck_title=""):
         w2, h2 = (w - gap) / 2, (h - gap) / 2
         wb, ws = (w - gap) * 0.58, (w - gap) * 0.42
         if mode == "auto":
-            if n == 2:
-                mode = "row" if area(figs[0], w2, h) + area(figs[1], w2, h) >= area(figs[0], w, h2) + area(figs[1], w, h2) else "col"
-            else:
-                cand = [(sum(area(pn, wn, h) for pn in figs), "row"),
-                        (area(figs[0], wb, h) + area(figs[1], ws, h2) + area(figs[2], ws, h2), "big_left"),
-                        (area(figs[0], w2, h2) + area(figs[1], w2, h2) + area(figs[2], w, h2), "one_bottom")]
-                mode = max(cand)[1]
+            mode = best_mode(figs, w, h)[0]
         if mode == "row":
             for k, pn in enumerate(figs):
                 fig_at(pn, x + k * (wn + gap), y, wn, h)
@@ -271,6 +283,15 @@ def layout_content(s, idx, total, deck_title=""):
             fig_at(figs[-1], x, y + h2 + gap, w, h2)
 
     kw_h = 1.5   # 키워드를 위·아래 띠로 둘 때의 높이
+    rich = any(b.get("sub") for b in bullets)
+    if lay == "auto" and figs_all and not tab:   # 자동: 오른쪽 영역의 가장 좋은 배치 vs 키워드 위·그림 아래 가로 — 그림이 모두 가로로 길면 뒤쪽이 훨씬 크다
+        figs_p0 = figs_all[:3]
+        kw_w0 = ((6.4, 6.4, 5.2, 4.4)[min(3, len(figs_p0))]) if rich else (3.4 if len(figs_p0) >= 3 else 3.9)
+        m_r, a_r = best_mode(figs_p0, full_w - kw_w0 - 0.3, zone_h)
+        n0 = len(figs_p0)
+        a_top = sum(area(pn, (full_w - gap * (n0 - 1)) / n0, zone_h - kw_h - 0.15) for pn in figs_p0)
+        if a_top > a_r * 1.15:
+            lay = "kw_top"
     if lay == "kw_only":
         kw_box(L, body_top, full_w, zone_h, sizes=(20, 18, 17, 16, 15, 14, 13, 12))
     elif lay == "fig_only":
@@ -299,7 +320,6 @@ def layout_content(s, idx, total, deck_title=""):
     else:
         figs_p = figs_all[:3 if not tab else 2]
         has_right = bool(figs_p or tab)
-        rich = any(b.get("sub") for b in bullets)   # 설명 항목이 있는 글(강의 자료 꼴)은 글 열을 넓게 — 그림 하나면 글 6.4in + 그림 5.5in (교수님 자료의 글 60% · 사진 35%)
         kw_w = (((6.4, 6.4, 5.2, 4.4)[min(3, len(figs_p))]) if rich else (3.4 if len(figs_p) >= 3 else 3.9)) if has_right else full_w
         fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
         kw_box(L, body_top, kw_w, zone_h)
