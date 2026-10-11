@@ -265,7 +265,7 @@ const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
   ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["edit", "편집자 다듬기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
-const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실" };
+const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실", dup: "같은 절의 다른 문장과 같은 말" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
 let listOpen = false, infoOpen = false;   // 왼쪽 '다른 장' 목록을 펼쳤나 · 오른쪽 '이 장의 기록'을 펼쳐 보이나
 const URLP = new URLSearchParams(location.search);   // ?id=장 &view=sec&si=2&u=2.1.0 — 특정 장·절·문장으로 바로 열기 (튜토리얼 화면 찍기에도 씀)

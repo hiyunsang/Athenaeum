@@ -1315,6 +1315,148 @@ def _write_section(st, k, model, effort):
 _VERDICT = {"over": "근거보다 나아감", "none": "근거가 그 말을 하지 않음", "attr": "누가 한 말인지 다름", "num": "수치가 근거와 다름", "fact": "근거 없는 사실"}
 
 
+# ---- 되풀이 막기 (2026-10-11, 사용자: '탄탈럼 왜 문장이 반복되지? 뿌리를 뽑아야')
+# 대조가 걸린 문장을 고쳐 쓸 때 근거만 보고 이웃 문장은 보지 않아, 고친 글이 바로 앞 문장을 되풀이했다(아홉 장에 15곳 — 토씨까지 같은 것도).
+# 영어 용어·괄호·인용 번호를 떼고 견준다 — 같은 용어(critical resolved shear stress …)만 겹친 문장이 걸리지 않게. 짧은 '…가 ⟨그림⟩에 보인다' 끼리는 ratio 만 높아 lcs 도 본다.
+_DUP_LCS, _DUP_RATIO = 16, 0.5
+
+
+def _dup_norm(t):
+    t = re.sub(r"\[[\d,\s–-]+\]", "", t or "")
+    t = re.sub(r"[⟨〈<](그림|표)[⟩〉>]|(그림|표)\s*\d+", "", t)
+    t = re.sub(r"\([^)]*\)", "", t)
+    t = re.sub(r"[A-Za-z]+", "", t)
+    return re.sub(r"[\s\.,·'\"‘’“”:;—–-]", "", t)
+
+
+def _dup_score(a, b):
+    """두 문장이 같은 말을 하는가 → (ratio, 가장 긴 공통 부분, 한쪽이 다른 쪽에 통째로)"""
+    from difflib import SequenceMatcher
+    a, b = _dup_norm(a), _dup_norm(b)
+    if len(a) < 12 or len(b) < 12:
+        return 0.0, 0, False
+    sm = SequenceMatcher(None, a, b)
+    if sm.quick_ratio() < _DUP_RATIO:
+        return 0.0, 0, False
+    cont = (a in b or b in a) and min(len(a), len(b)) >= 15
+    return sm.ratio(), sm.find_longest_match(0, len(a), 0, len(b)).size, cont
+
+
+def _is_dup(a, b):
+    r, lcs, cont = _dup_score(a, b)
+    return cont or (r >= _DUP_RATIO and lcs >= _DUP_LCS)
+
+
+def _dup_pairs(units):
+    """같은 절의 문장(표의 행·그림 설명 제외) 가운데 같은 말을 하는 쌍 → [(i, j)], i < j"""
+    idx = [i for i, u in enumerate(units) if u.get("t") and not u.get("cells") and not u.get("cap")]
+    out = []
+    for a in range(len(idx)):
+        for b in range(a + 1, len(idx)):
+            i, j = idx[a], idx[b]
+            if _is_dup(units[i]["t"], units[j]["t"]):
+                out.append((i, j))
+    return out
+
+
+def _drop_dups(units, sec_title):
+    """고친 문장(fixed)이 다른 문장과 같은 말을 하면 그 고친 문장을 빼고, 고치지 않은 문장끼리는 토씨까지 같거나 한쪽이 다른 쪽에 통째로 들어 있을 때만 뒤의 것을 뺀다
+    (서로 대비되는 문장 — '음의 경사각에서는 … / 양의 경사각에서는 …' — 은 ratio 가 높아도 남긴다) → (removed 목록, [(뺀 문장, 남긴 문장)])"""
+    removed, pairs = [], []
+    for i, j in _dup_pairs(units):
+        ui, uj = units[i], units[j]
+        if ui.get("drop") or uj.get("drop"):
+            continue
+        if uj.get("fixed"):
+            victim, keep = uj, ui
+        elif ui.get("fixed"):
+            victim, keep = ui, uj
+        else:
+            if not _dup_score(ui["t"], uj["t"])[2]:
+                continue
+            victim, keep = uj, ui
+        victim["drop"] = True
+        rec = {"t": victim.get("was") or victim["t"], "v": "dup", "why": "같은 절의 다른 문장이 이미 하는 말 — '%s'" % keep["t"][:80], "sec": sec_title}
+        if victim.get("was"):
+            rec["tried"] = victim["t"]
+            rec["why2"] = "대조가 고쳐 쓴 문장이 이웃 문장을 되풀이함"
+        removed.append(rec)
+        pairs.append((victim, keep))
+    return removed, pairs
+
+
+def dedup_chapter(st):
+    """다 쓴 장에서 되풀이 문장을 뺀다(이 장치가 없던 때 쓴 장). chapter 와 sections 둘 다 고치고, 문장 id 가 밀리므로 확인 물음·대화·발표 자료·마인드맵의 keys 를 옮긴다(뺀 문장의 key 는 남긴 같은 말 문장으로) → 뺀 수"""
+    ch = st.get("chapter") or {}
+    wsecs = st.get("sections") or []
+    total = 0
+    for si, csec in enumerate(ch.get("sections") or []):
+        blocks = csec.get("blocks") or []
+        flat = [(bi, ui, u) for bi, b in enumerate(blocks) for ui, u in enumerate(b.get("units") or [])]
+        removed, pairs = _drop_dups([u for _b, _u, u in flat], csec.get("title") or "")
+        if not removed:
+            continue
+        keep_of = {id(v): k for v, k in pairs}
+        newpos, new_blocks = {}, []
+        for b in blocks:
+            if not b.get("units"):
+                new_blocks.append(b)
+                continue
+            us = [u for u in b["units"] if not u.get("drop")]
+            if not us:
+                continue
+            for ui, u in enumerate(us):
+                newpos[id(u)] = (len(new_blocks), ui)
+            nb = dict(b)
+            nb["units"] = us
+            new_blocks.append(nb)
+        remap = {}
+        for bi, ui, u in flat:
+            tgt, hops = u, 0
+            while tgt is not None and tgt.get("drop") and hops < 10:
+                tgt, hops = keep_of.get(id(tgt)), hops + 1
+            if tgt is not None and id(tgt) in newpos:
+                remap["%d.%d.%d" % (si, bi, ui)] = "%d.%d.%d" % ((si,) + newpos[id(tgt)])
+        csec["blocks"] = new_blocks
+        if si < len(wsecs):       # 작업 사본에서도 같은 문장을 뺀다 (그림 번호가 풀리기 전의 글이라 정규화해 맞춘다)
+            gone = {_dup_norm(v["t"]) for v, _k in pairs}
+            for b in wsecs[si].get("blocks") or []:
+                if b.get("units"):
+                    b["units"] = [u for u in b["units"] if _dup_norm(u.get("t") or "") not in gone]
+            wsecs[si]["blocks"] = [b for b in wsecs[si].get("blocks") or [] if "h" in b or b.get("units")]
+
+        def fix_key(k):
+            m = re.match(r"^(u?)(\d+\.\d+\.\d+)$", str(k).strip())
+            return (m.group(1) + remap[m.group(2)]) if m and m.group(2) in remap else k
+
+        def walk(x):
+            if isinstance(x, dict):
+                for kk, vv in x.items():
+                    if kk == "keys" and isinstance(vv, list):
+                        out = []
+                        for k in vv:
+                            k2 = fix_key(k)
+                            if k2 not in out:
+                                out.append(k2)
+                        x[kk] = out
+                    else:
+                        walk(vv)
+            elif isinstance(x, list):
+                for vv in x:
+                    walk(vv)
+        for key in ("chats", "decks", "map"):
+            walk(st.get(key))
+        walk(csec.get("quiz"))
+        st.setdefault("removed", []).extend(removed)
+        total += len(removed)
+    if total:
+        stt = st.setdefault("stats", {})
+        stt["units"] = max(0, (stt.get("units") or 0) - total)
+        stt["removed"] = len(st.get("removed") or [])
+        stt["dups"] = (stt.get("dups") or 0) + total
+    return total
+
+
 def _unit_src(st, u):
     """문장의 근거: 메모들의 근거 문장을 차례로(겹치면 한 번), 그림 설명이면 그 그림을 가리키는 원문 문장도. → [(논문 순번, sid, own)]"""
     notes, out, seen = _all_notes(st), [], set()
@@ -1385,6 +1527,8 @@ def _verify_prompt(st, units, terms):
         "- '(프로그램: 수치 … 가 근거에 보이지 않음)' 이 붙은 문장은 ok 로 두지 말고 num 으로 적고, fix 에서 그 수치를 근거 문장에 적힌 그대로 고치거나 뺀다.\n"
         "- 단위가 'mm'·'lm' 인데 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치(PDF 추출 오류)는 num 으로 넣고 fix 에서 그 수치를 뺀다.\n"
         "- fix 는 한 문장, 평서문(~다), 원래 문장의 용어를 그대로. 근거에 없는 것을 보태지 않는다. fact 의 fix 는 사실을 뺀 이음말만 남기거나 빈 문자열.\n"
+        "- fix 는 절의 다른 문장(특히 바로 앞뒤 문장 — 위 목록에 보인다)이 이미 말한 것을 되풀이하지 않는다. 근거가 말하는 것이 이웃 문장에 이미 있으면 fix 를 빈 문자열로 둔다(그 문장은 빠진다 — 근거를 그대로 옮긴 문장을 하나 더 두는 것보다 낫다). "
+        "걸린 문장의 일이 앞을 받아 다음으로 잇는 것이면 사실을 빼고 잇는 말만 남긴다.\n"
         "- 문체·표현의 좋고 나쁨은 판정하지 않는다. 사실이 근거와 맞는지만 본다.\n\n"
         "[용어] %s\n\n[절의 문장과 근거]\n%s") % (terms, "\n".join(lines))
 
@@ -1462,6 +1606,7 @@ def _verify_section(st, k, model):
             else:
                 removed.append({"t": u["t"], "v": (x["v"] if x and x["v"] in _VERDICT else "none"), "why": why2, "sec": sec["title"]})
             u["drop"] = True
+    removed += _drop_dups(units, sec["title"])[0]      # 고친 문장이 이웃과 같은 말이면 뺀다 — 근거만 보고 고친 글이 앞 문장을 되풀이하던 것
     blocks = []
     for b in sec["blocks"]:
         if "h" in b:
@@ -1609,7 +1754,7 @@ def _wrap(st):
     st["chapter"] = {"title": ol["title"], "scope": st["plan"]["scope"], "sections": secs, "terms": ol.get("terms") or [], "gaps": ol.get("gaps") or []}
     st["src"] = src
     st["stylus"] = getattr(ms, "STYLUS", "")
-    st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "cited": len(order),
+    st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "dups": sum(1 for x in st.get("removed") or [] if x.get("v") == "dup"), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
                    "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "schem": nschem, "extra": nextra, "dropped": sum(len(x.get("dropped") or []) for x in st["outline"].get("sections") or []), "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
@@ -2068,7 +2213,7 @@ _SEC_EDIT_RULE = (
 
 _EDITOR_REQUEST = ("편집자로서 이 절을 다듬는다 — 내용이 아니라 글을. ① 사실의 나열로 읽히는 문단은 하나의 설명으로 묶는다: 앞 문장을 받아 다음을 여는 잇는 문장(⟦-⟧)을 자유롭게 넣고, 이어진 사실은 한 호흡으로. "
                    "② 같은 논문의 수치가 문장마다 이어지면 대표값 하나만 본문에 두고 나머지는 표로 옮기거나 뺀다. ③ 다른 절이 맡은 개념을 다시 설명하는 문장은 가리키는 한 구절로 줄인다. ④ 용어는 [용어] 그대로. "
-                   "⑤ 새 사실·수치·원인은 넣지 않고 근거 번호는 그대로(문장을 묶으면 번호를 합친다). 뺄 문장은 뺀다. ⑥ 급히 넘어가는 자리(사실에서 사실로 바로 건너뛰는 곳)에는 왜 그런지·무엇과 이어지는지를 말하는 잇는 문장(⟦-⟧)을 더한다 — 메모와 근거 안에서. 분량은 지금의 90~130%.")
+                   "⑤ 새 사실·수치·원인은 넣지 않고 근거 번호는 그대로(문장을 묶으면 번호를 합친다). 뺄 문장은 뺀다. ⑥ 급히 넘어가는 자리(사실에서 사실로 바로 건너뛰는 곳)에는 왜 그런지·무엇과 이어지는지를 말하는 잇는 문장(⟦-⟧)을 더한다 — 메모와 근거 안에서. ⑦ 같은 말을 두 번 하는 문장은 하나로 묶는다. 분량은 지금의 90~130%.")
 
 
 def _editor_pass(st, model, eff):
@@ -2082,7 +2227,10 @@ def _editor_pass(st, model, eff):
         prompt, figs = _write_prompt(st, k)
         valid = set(st["outline"]["sections"][k]["notes"])
         before = sum(len(b.get("units") or []) for b in secs[k]["blocks"])
-        text = _ask(st, prompt + "\n\n" + _SEC_EDIT_RULE + "\n[지금 글]\n<<<SEC>>>\n" + _sec_text(st, k) + "\n<<<END>>>\n\n[부탁] " + _EDITOR_REQUEST + "\n", model, eff, 1800)
+        units0 = [u for b in secs[k]["blocks"] for u in b.get("units") or []]
+        dups = _dup_pairs(units0)
+        hint = ("\n[같은 말을 두 번 하는 문장 — 하나로 묶거나 하나를 뺀다]\n" + "\n".join("- '%s' ↔ '%s'" % (units0[i]["t"][:80], units0[j]["t"][:80]) for i, j in dups[:8])) if dups else ""
+        text = _ask(st, prompt + "\n\n" + _SEC_EDIT_RULE + "\n[지금 글]\n<<<SEC>>>\n" + _sec_text(st, k) + "\n<<<END>>>\n\n[부탁] " + _EDITOR_REQUEST + hint + "\n", model, eff, 1800)
         blocks = _parse_units(text, valid, figs)
         nu = sum(len(b.get("units") or []) for b in blocks)
         return blocks if nu >= max(2, int(before * 0.5)) else None     # 반 넘게 사라졌으면 다듬은 글을 쓰지 않는다
@@ -3827,6 +3975,15 @@ def handle_post(h, body):
             return h._send(200, sec_edit_cancel(sid))
         if op == "termfix":
             return h._send(200, termfix_start(sid))
+        if op == "dedup":          # 되풀이 문장 빼기 — 이 장치가 없던 때 쓴 장에 (Claude 없음, 바로)
+            with _LOCK:
+                st = _load(sid)
+                if not st or not st.get("chapter"):
+                    return h._send(200, {"error": "다 쓴 장에서만"})
+                n = dedup_chapter(st)
+                if n:
+                    _save(st)
+            return h._send(200, {"ok": True, "n": n})
         if op == "basics":
             return h._send(200, basics_start(sid, body))
         if op == "deck":
