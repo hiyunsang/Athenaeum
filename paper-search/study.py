@@ -58,6 +58,73 @@ def init(**kw):
     cfg.update(kw)
     cfg["DIR"] = os.path.join(os.path.dirname(cfg["ARCHIVE"]), "공부")
     os.makedirs(cfg["DIR"], exist_ok=True)
+    try:
+        sweep_stale()
+    except Exception:
+        pass
+
+
+# 작은 배경 작업의 '하는 중' 표시 — 서버가 다시 켜지면 스레드는 죽는데 표시는 남아 화면이 영원히 기다린다(2026-10-11 탄탈럼 발표 자료, 23분).
+_JOB_FLAGS = (("deck", "발표 자료"), ("basics", "바탕 이론"), ("comment", "Claude 의 생각"), ("quiz", "확인 물음"), ("map", "마인드맵"), ("termfix", "용어 통일"), ("dedup", "되풀이 빼기"))
+_STALE_MSG = "서버가 다시 켜져 끊겼습니다 — 다시 만들어 주세요"
+
+
+def _job_flags(st):
+    """이 장에서 지금 '하는 중' 인 작은 작업 이름들"""
+    out = [name for key, name in _JOB_FLAGS if st.get(key + "_pending")]
+    if st.get("sec_edit_pending"):
+        out.append("절 고치기")
+    if any(d.get("edit_pending") for d in st.get("decks") or [] if isinstance(d, dict)):
+        out.append("발표 자료 쪽 고치기")
+    if any(c.get("pending") for c in st.get("chats") or [] if isinstance(c, dict)):
+        out.append("묻기")
+    return out
+
+
+def busy_jobs():
+    """/api/study?busy=1 — restart_server.py 가 이것도 센다(공부 본체는 status running 으로 따로)"""
+    out = []
+    for f in sorted(os.listdir(cfg["DIR"])):
+        if not f.endswith(".json"):
+            continue
+        st = cfg["load_json"](os.path.join(cfg["DIR"], f), None)
+        if isinstance(st, dict) and st.get("id"):
+            jobs = _job_flags(st)
+            if jobs:
+                out.append({"id": st["id"], "title": (st.get("title") or (st.get("chapter") or {}).get("title") or st.get("topic") or "")[:60], "jobs": jobs})
+    return out
+
+
+def sweep_stale():
+    """서버를 켤 때: 도는 작업이 없으므로 남아 있는 '하는 중' 표시는 전부 끊긴 것 — 지우고 error 로 알린다 → 고친 장 수"""
+    n = 0
+    for f in sorted(os.listdir(cfg["DIR"])):
+        if not f.endswith(".json"):
+            continue
+        p = os.path.join(cfg["DIR"], f)
+        st = cfg["load_json"](p, None)
+        if not (isinstance(st, dict) and st.get("id")):
+            continue
+        hit = False
+        for key, _name in _JOB_FLAGS:
+            if st.pop(key + "_pending", None):
+                st[key + "_error"] = _STALE_MSG
+                hit = True
+        if st.pop("sec_edit_pending", None):
+            st["sec_edit_error"] = _STALE_MSG
+            hit = True
+        for d in st.get("decks") or []:
+            if isinstance(d, dict) and d.pop("edit_pending", None):
+                d["edit_error"] = _STALE_MSG
+                hit = True
+        for c in st.get("chats") or []:
+            if isinstance(c, dict) and c.pop("pending", None):
+                c["error"] = _STALE_MSG
+                hit = True
+        if hit:
+            cfg["save_json"](p, st)
+            n += 1
+    return n
 
 
 class _Stop(Exception):
@@ -3983,7 +4050,10 @@ def handle_get(h, url):
         with open(os.path.join(cfg["BASE"], "study.html"), "rb") as f:
             return h._send(200, f.read(), "text/html; charset=utf-8")
     if p == "/api/study":
-        return h._send(200, {"items": list_studies(), "running": len(_JOBS), "version": VERSION})
+        d = {"items": list_studies(), "running": len(_JOBS), "version": VERSION}
+        if _q(url, "busy"):
+            d["busy"] = busy_jobs()
+        return h._send(200, d)
     if p == "/api/study/get":
         return h._send(200, get(_q(url, "id")))
     if p == "/api/study/chats":

@@ -43,10 +43,13 @@ def running_jobs():
     except Exception:
         pass
     try:   # 쓰는 중인 공부(15~30분짜리) — 끊기면 「이어서」 로 남은 단계부터 다시 쓸 수 있지만 하던 호출은 버려진다
-        d = json.load(urllib.request.urlopen(URL + "/api/study", timeout=5))
+        d = json.load(urllib.request.urlopen(URL + "/api/study?busy=1", timeout=15))
         live = [x for x in d.get("items", []) if x.get("status") == "running"]
         n += len(live)
         names += [(x.get("title") or x.get("topic") or "")[:50] + " (공부)" for x in live]
+        busy = d.get("busy") or []      # 발표 자료·바탕 이론·묻기 같은 작은 배경 작업 — 끊기면 표시만 남아 화면이 영원히 기다린다(2026-10-11)
+        n += len(busy)
+        names += [(x.get("title") or "")[:50] + " (공부 — " + " · ".join(x.get("jobs") or []) + ")" for x in busy]
     except Exception:
         pass
     return n, names
