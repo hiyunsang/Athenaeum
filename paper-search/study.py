@@ -1081,6 +1081,13 @@ def _fig_list(st, sec):
     return "\n".join(lines[:110]), allow
 
 
+_PACE = {"brief": "20~35", "mid": "35~55", "full": "50~75"}   # 절의 문장 수 — 간결 / 보통(기본) / 자세히 (사용자 2026-10-11: '너무 급한 것 같다')
+
+
+def _write_rules(st):
+    return _WRITE_RULES.replace("{PACE}", _PACE.get((st.get("opts") or {}).get("pace") or "mid", "35~55"))
+
+
 _WRITE_RULES = (
     "쓰는 법:\n"
     "1. 교과서답게 쓴다 — 한 절은 한 편의 글이다(유체역학·고체역학 교과서의 한 절처럼). [설계도]는 이 절이 펴는 생각의 차례와 그 받침일 뿐, 문단의 틀이 아니다. "
@@ -1105,7 +1112,7 @@ _WRITE_RULES = (
     "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
     "9. 문장의 크기: 문장은 생각의 단위다. 한 생각을 받치는 사실이 여럿이면 한 문장에 묶고(메모 번호를 모두 적는다), 한 메모가 조건·해석을 길게 담으면 둘로 나눈다. "
     "다만 실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 두고 나머지는 뺀다. 괄호 삽입은 처음 나온 영어 용어에만. "
-    "읽는 사람은 메모가 몇 개였는지 모른다 — 문단을 읽고 나면 사실의 목록이 아니라 하나의 설명이어야 한다. 잇는 문장은 필요한 만큼. 설계도의 메모를 다 쓰지 않는다: 논지마다 [대표] 메모 하나둘을 두세 문장으로 깊게(무엇을 어떤 조건에서 어떻게 보았나), [보기] 메모는 한 문장이나 표의 행으로, 붙을 자리가 없으면 뺀다. 교과서는 서재의 색인이 아니다.\n"
+    "읽는 사람은 메모가 몇 개였는지 모른다 — 문단을 읽고 나면 사실의 목록이 아니라 하나의 설명이어야 한다. 잇는 문장은 필요한 만큼. 설계도의 메모를 다 쓰지 않는다: 논지마다 [대표] 메모 하나둘을 서너 문장으로 깊게(무엇을 어떤 조건에서 어떻게 보았나), [보기] 메모는 한 문장이나 표의 행으로, 붙을 자리가 없으면 뺀다. 교과서는 서재의 색인이 아니다.\n"
     "10. 절의 첫 문단은 [앞 절]이 끝낸 생각을 받아 시작한다(잇는 문장 한둘로 — '이 절은 …를 다룬다' 같은 안내문이 아니라 내용을 잇는 말). 절의 끝은 [다음 절]의 물음으로 자연스럽게 넘긴다(한 문장, 예고가 아니라 이음). [장의 줄기]와 [이 절의 자리]를 따른다 — 이 절은 줄기의 한 단계이지 주제의 서랍이 아니다. [다른 절이 맡은 개념]은 여기서 다시 설명하지 않고 한 구절로 가리키고 넘어간다('…는 6절에서 본다' 는 괜찮다). "
     "소제목(###)은 절이 길 때만 둘에서 넷, 문단마다 달지 않는다.\n"
     "11. 단위가 'mm'·'lm' 로 적혀 있지만 문맥으로 보아 μm 의 글자가 깨진 것이 분명한 수치는 쓰지 않는다(수치 없이 말하거나 그 사실을 뺀다).\n"
@@ -1120,7 +1127,7 @@ _WRITE_RULES = (
     "14. 번외: 설계도에 [번외]가 있을 때만, 절 끝 '### 번외' 아래에 그 메모를 메모마다 한 문장으로(조건과 함께). 논지와 어긋나는 메모는 어긋난다고 적는다.\n"
     "15. 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 설명의 기둥(현상·기전·법칙을 말하는 문장)은 ★ 논문과 리뷰의 메모로 세운다. ★ 가 아닌 저널의 연구 논문의 결과는 그 조건과 수치를 보기로 덧붙이는 자리('…에서도 …가 관찰되었다', 표의 행)에 두고, "
     "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
-    "16. 분량과 수치: 한 절은 20~35문장이다(핵심 정리 제외). 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 두세 문장으로 이 절이 세운 것을 묶고 [다음 절]로 넘긴다(⟦-⟧ 로, 새 사실 없이).\n"
+    "16. 분량과 수치: 한 절은 {PACE}문장이다(핵심 정리 제외). 분량은 사실을 더 넣어 채우는 것이 아니라 설명을 펴는 데 쓴다 — 왜 그런지(기전), 무엇과 이어지는지, 조건이 바뀌면 어떻게 되는지를 한두 문장씩 더 두어, 사실에서 사실로 급히 건너뛰는 자리가 없게. 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 두세 문장으로 이 절이 세운 것을 묶고 [다음 절]로 넘긴다(⟦-⟧ 로, 새 사실 없이).\n"
     "17. 수치는 전제와 함께: 한 연구의 장치 설정값·계산값(해상도·노출 시간·주파수·장면 크기·화소 크기 같은 것)은 그것을 정한 전제(배율·절삭속도·요구 정확도·가정)가 같은 문장에 있을 때만 싣는다. "
     "'해상도를 512×512 로 두면 장면이 0.58 mm 가 된다' 처럼 전제 없이 결과만 적으면 읽는 사람은 그 수가 어디서 나오는지 따라갈 수 없다 — 그런 수의 나열(짜깁기)은 쓰지 않는다. "
     "방법의 세부는 교과서의 설명이 아니다: 원리(무엇과 무엇 사이의 절충인가, 무엇이 무엇을 정하는가)를 말로 설명하고, 한 연구의 값은 전제가 든 보기 한 문장('예컨대 ×15 배율·절삭속도 3 m/min 에서는 노출 50 μs 가 번짐을 두 화소 안에 묶었다')으로만, 그것도 논지에 필요할 때만. "
@@ -1191,7 +1198,7 @@ def _write_prompt(st, k):
         others = [(x["title"], x.get("owns") or []) for x in ol["sections"] if x is not sec and x.get("owns")]
         spine = ("[장의 줄기] %s\n[이 절의 자리] %s\n[이 절이 맡은 개념 — 여기서 설명한다] %s\n[다른 절이 맡은 개념 — 여기서는 가리키기만] %s\n" % (
             ol["spine"], sec.get("role") or "(없음)", ", ".join(sec.get("owns") or []) or "(없음)", " / ".join("%s: %s" % (t, ", ".join(o)) for t, o in others) or "(없음)"))
-    prompt = (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n%s\n" + form + _WRITE_RULES + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n%s") % (
+    prompt = (head + "[장] %s — %s\n[절의 차례] (▶ = 지금 쓸 절)\n%s\n\n[쓸 절] %s%s\n%s\n" + form + _write_rules(st) + "\n%s\n[논문]\n%s\n\n[용어]\n%s\n\n%s") % (
         ol["title"], st["plan"]["scope"], toc, sec["title"], (" — 이 절이 답하는 물음: " + sec["aim"]) if sec.get("aim") else "", spine,
         _stylus_block() if sec.get("kind") != "summary" else "", plist, terms, material)
     return prompt, figs
@@ -2061,7 +2068,7 @@ _SEC_EDIT_RULE = (
 
 _EDITOR_REQUEST = ("편집자로서 이 절을 다듬는다 — 내용이 아니라 글을. ① 사실의 나열로 읽히는 문단은 하나의 설명으로 묶는다: 앞 문장을 받아 다음을 여는 잇는 문장(⟦-⟧)을 자유롭게 넣고, 이어진 사실은 한 호흡으로. "
                    "② 같은 논문의 수치가 문장마다 이어지면 대표값 하나만 본문에 두고 나머지는 표로 옮기거나 뺀다. ③ 다른 절이 맡은 개념을 다시 설명하는 문장은 가리키는 한 구절로 줄인다. ④ 용어는 [용어] 그대로. "
-                   "⑤ 새 사실·수치·원인은 넣지 않고 근거 번호는 그대로(문장을 묶으면 번호를 합친다). 뺄 문장은 뺀다. 분량은 지금의 70~100%.")
+                   "⑤ 새 사실·수치·원인은 넣지 않고 근거 번호는 그대로(문장을 묶으면 번호를 합친다). 뺄 문장은 뺀다. ⑥ 급히 넘어가는 자리(사실에서 사실로 바로 건너뛰는 곳)에는 왜 그런지·무엇과 이어지는지를 말하는 잇는 문장(⟦-⟧)을 더한다 — 메모와 근거 안에서. 분량은 지금의 90~130%.")
 
 
 def _editor_pass(st, model, eff):
@@ -2510,6 +2517,7 @@ def rebuild_start(sid, body):
     nid = "st_" + time.strftime("%Y%m%d_%H%M%S")
     st = json.loads(json.dumps({k: src[k] for k in ("topic", "opts", "plan", "scan", "papers") if k in src}, ensure_ascii=False))
     st.setdefault("opts", {})["editor"] = body.get("editor", True) is not False
+    st["opts"]["pace"] = body.get("pace") if body.get("pace") in _PACE else "mid"
     have = {p["file"] for p in st["papers"]}
     for p in st["papers"]:
         p.pop("n", None)
@@ -2546,7 +2554,8 @@ def batch_start(body):
         for i in ids:
             if i not in _BATCH["queue"] and (not _BATCH["cur"] or _BATCH["cur"]["from"] != i):
                 _BATCH["queue"].append(i)
-        _BATCH["opts"] = {"reread": body.get("reread") or "core", "editor": body.get("editor", True) is not False}
+        _BATCH["opts"] = {"reread": body.get("reread") or "core", "editor": body.get("editor", True) is not False, "pace": body.get("pace") if body.get("pace") in _PACE else "mid"}
+        _BATCH["rereads"] = dict(_BATCH.get("rereads") or {}, **(body.get("rereads") if isinstance(body.get("rereads"), dict) else {}))   # 장마다 다시 읽기 방식을 달리 (쌍정·전위는 none)
         _BATCH["stop"] = False
         running = bool(_BATCH.get("thread") and _BATCH["thread"].is_alive())
         if not running:
@@ -2584,7 +2593,10 @@ def _batch_job():
             time.sleep(30)
             if _BATCH["stop"]:
                 return
-        r = rebuild_start(sid, dict(_BATCH.get("opts") or {}))
+        o = dict(_BATCH.get("opts") or {})
+        if sid in (_BATCH.get("rereads") or {}):
+            o["reread"] = _BATCH["rereads"][sid]
+        r = rebuild_start(sid, o)
         if r.get("error"):
             _BATCH["done"].append({"from": sid, "to": "", "status": "error", "error": r["error"], "t": time.time()})
             continue
@@ -2625,7 +2637,7 @@ def start(body):
         return {"error": "이미 두 개를 쓰고 있습니다 — 끝난 뒤에 시작하세요"}
     sid = "st_" + time.strftime("%Y%m%d_%H%M%S")
     st = {"id": sid, "topic": topic[:800], "t": time.time(), "status": "running", "stage": "plan",
-          "opts": {"depth": body.get("depth") if body.get("depth") in _DEPTH else "mid", "effort": body.get("effort") if body.get("effort") in ms._SEL_EFFORT else "xhigh"}}
+          "opts": {"depth": body.get("depth") if body.get("depth") in _DEPTH else "mid", "effort": body.get("effort") if body.get("effort") in ms._SEL_EFFORT else "xhigh", "pace": body.get("pace") if body.get("pace") in _PACE else "mid"}}
     _save(st)
     return _spawn(sid)
 
