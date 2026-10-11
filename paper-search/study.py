@@ -1385,7 +1385,45 @@ def _drop_dups(units, sec_title):
     return removed, pairs
 
 
-def dedup_chapter(st):
+_REP_PROMPT = ("전공 교과서 한 절의 문장들이다(번호 순서대로). ★ 표시한 문장은 원문과 대조하며 고쳐 쓴 문장이라, 이웃 문장이 이미 한 말을 말만 바꿔 되풀이하게 됐을 수 있다. "
+               "★ 문장마다 묻는다: 이 절의 다른 문장들이 이미 말한 것 밖에 새로운 사실(새 대상·조건·수치·원인·관계·결과)을 하나라도 더하는가? "
+               "더하는 것이 없으면 rep — 말만 바꾼 되풀이, 앞 문장의 일부를 다시 말한 것, 앞 문장들을 요약한 것, 같은 사실을 다른 수치 표현으로 적은 것. 새 사실이 하나라도 있으면 적지 않는다. "
+               "★ 가 아닌 문장은 판정하지 않는다.\n"
+               "JSON 으로만: {\"rep\": [{\"u\": ★ 문장 번호, \"same\": 같은 말을 이미 한 문장 번호}]} — 없으면 빈 목록.\n\n[절의 문장]\n%s")
+
+
+def _rep_check(st, units, sec_title, model="sonnet"):
+    """고친 문장(fixed)이 말만 바꿔 이웃 문장을 되풀이한 것을 Claude 가 가려낸다 — 글자 겹침(`_drop_dups`)으로는 못 잡는 것. ★ 문장만 뺄 수 있다 → (removed, [(뺀 문장, 남긴 문장)])"""
+    live = [u for u in units if u.get("t") and not u.get("drop") and not u.get("cells") and not u.get("cap")]
+    fixed = {i for i, u in enumerate(live, 1) if u.get("fixed")}
+    if not fixed or len(live) < 2:
+        return [], []
+    lines = ["u%d: %s%s" % (i, "★ " if u.get("fixed") else "", u["t"]) for i, u in enumerate(live, 1)]
+    d = _ask_json(st, _REP_PROMPT % "\n".join(lines), model, None, 600, need="rep")
+    removed, pairs = [], []
+    for x in (d.get("rep") if d and isinstance(d.get("rep"), list) else [])[:20]:
+        if not isinstance(x, dict):
+            continue
+        try:
+            i, j = int(str(x.get("u")).strip().lstrip("u")), int(str(x.get("same")).strip().lstrip("u"))
+        except (TypeError, ValueError):
+            continue
+        if i not in fixed or j < 1 or j > len(live) or j == i:
+            continue
+        v, k = live[i - 1], live[j - 1]
+        if v.get("drop") or k.get("drop"):
+            continue
+        v["drop"] = True
+        rec = {"t": v.get("was") or v["t"], "v": "rep", "why": "같은 절의 다른 문장이 이미 하는 말(말만 바꾼 되풀이) — '%s'" % k["t"][:80], "sec": sec_title}
+        if v.get("was"):
+            rec["tried"] = v["t"]
+            rec["why2"] = "대조가 고쳐 쓴 문장이 이웃 문장을 되풀이함"
+        removed.append(rec)
+        pairs.append((v, k))
+    return removed, pairs
+
+
+def dedup_chapter(st, model=None):
     """다 쓴 장에서 되풀이 문장을 뺀다(이 장치가 없던 때 쓴 장). chapter 와 sections 둘 다 고치고, 문장 id 가 밀리므로 확인 물음·대화·발표 자료·마인드맵의 keys 를 옮긴다(뺀 문장의 key 는 남긴 같은 말 문장으로) → 뺀 수"""
     ch = st.get("chapter") or {}
     wsecs = st.get("sections") or []
@@ -1394,6 +1432,9 @@ def dedup_chapter(st):
         blocks = csec.get("blocks") or []
         flat = [(bi, ui, u) for bi, b in enumerate(blocks) for ui, u in enumerate(b.get("units") or [])]
         removed, pairs = _drop_dups([u for _b, _u, u in flat], csec.get("title") or "")
+        if model:       # 말만 바꾼 되풀이도 — Claude 에게 ★(고친 문장)만 묻는다
+            r2, p2 = _rep_check(st, [u for _b, _u, u in flat], csec.get("title") or "", model)
+            removed, pairs = removed + r2, pairs + p2
         if not removed:
             continue
         keep_of = {id(v): k for v, k in pairs}
@@ -1607,6 +1648,10 @@ def _verify_section(st, k, model):
                 removed.append({"t": u["t"], "v": (x["v"] if x and x["v"] in _VERDICT else "none"), "why": why2, "sec": sec["title"]})
             u["drop"] = True
     removed += _drop_dups(units, sec["title"])[0]      # 고친 문장이 이웃과 같은 말이면 뺀다 — 근거만 보고 고친 글이 앞 문장을 되풀이하던 것
+    try:                                                # 말만 바꾼 되풀이는 Claude(Sonnet)가 — 못 물어도 대조는 끝난 것
+        removed += _rep_check(st, units, sec["title"], "sonnet")[0]
+    except Exception:
+        pass
     blocks = []
     for b in sec["blocks"]:
         if "h" in b:
@@ -2046,6 +2091,47 @@ def _termfix(st, model="sonnet"):
             n += 1
     st["termfix"] = {"n": n, "t": time.time()}
     return n
+
+
+def dedup_start(sid, body):
+    model = "sonnet" if body.get("claude") else None
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("chapter"):
+            return {"error": "다 쓴 장에서만"}
+        if st.get("dedup_pending"):
+            return {"error": "이미 하는 중입니다"}
+        if not model:
+            n = dedup_chapter(st)
+            st["dedup"] = {"n": n, "t": time.time()}
+            _save(st)
+            return {"ok": True, "n": n}
+        st["dedup_pending"] = time.time()
+        _save(st)
+
+    def job():
+        st1 = _load(sid)
+        try:
+            n = dedup_chapter(st1, model)
+            err = ""
+        except Exception as e:
+            n, err = 0, str(e)[:200]
+        with _LOCK:
+            st2 = _load(sid)
+            if not st2:
+                return
+            if not err:
+                for key in ("chapter", "sections", "removed", "stats", "chats", "decks", "map"):
+                    if key in st1:
+                        st2[key] = st1[key]
+                st2["dedup"] = {"n": n, "t": time.time()}
+                st2.pop("dedup_error", None)
+            else:
+                st2["dedup_error"] = err
+            st2.pop("dedup_pending", None)
+            _save(st2)
+    threading.Thread(target=job, name="study-dedup", daemon=True).start()
+    return {"ok": True, "pending": True}
 
 
 def termfix_start(sid):
@@ -3975,15 +4061,8 @@ def handle_post(h, body):
             return h._send(200, sec_edit_cancel(sid))
         if op == "termfix":
             return h._send(200, termfix_start(sid))
-        if op == "dedup":          # 되풀이 문장 빼기 — 이 장치가 없던 때 쓴 장에 (Claude 없음, 바로)
-            with _LOCK:
-                st = _load(sid)
-                if not st or not st.get("chapter"):
-                    return h._send(200, {"error": "다 쓴 장에서만"})
-                n = dedup_chapter(st)
-                if n:
-                    _save(st)
-            return h._send(200, {"ok": True, "n": n})
+        if op == "dedup":          # 되풀이 문장 빼기 — 이 장치가 없던 때 쓴 장에 (claude: true 면 말만 바꾼 되풀이도, 배경 스레드)
+            return h._send(200, dedup_start(sid, body))
         if op == "basics":
             return h._send(200, basics_start(sid, body))
         if op == "deck":
