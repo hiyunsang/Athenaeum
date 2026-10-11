@@ -767,7 +767,7 @@ function deckHtml() {
 }
 // 쪽 배치 메뉴 — pptx_min.LAYOUTS 와 같은 차례·키 (사용자 2026-10-10: '쪽 구성을 내가 정할 수 있게, 배치 종류를 늘려서'). 고르면 Claude 없이 pptx·미리보기만 다시 그린다
 const DK_LAYOUTS = [["auto", "자동 (면적이 큰 배치)", 0, false], ["row", "그림 가로로 나란히", 2, false], ["col", "그림 세로로 쌓기", 2, false], ["big_left", "큰 하나 왼쪽 + 작은 것 오른쪽", 2, false], ["one_top", "위에 하나 크게 + 아래 나란히", 2, false], ["one_bottom", "위에 나란히 + 아래 하나 크게", 2, false],
-  ["kw_top", "키워드 위 · 그림 아래 가로", 1, false], ["kw_bottom", "그림 위 가로 · 키워드 아래", 1, false], ["fig_only", "그림만 크게 (키워드는 메모로)", 1, false], ["kw_only", "키워드만", 0, false], ["table_bottom", "표를 아래 전체 폭에", 0, true], ["table_only", "표만", 0, true]];
+  ["kw_top", "키워드 위 · 그림 아래 가로", 1, false], ["kw_bottom", "그림 위 가로 · 키워드 아래", 1, false], ["fig_only", "그림만 크게 (키워드는 메모로)", 1, false], ["kw_only", "키워드만", 0, false], ["table_bottom", "표를 아래 전체 폭에", 0, true], ["fig_top_table", "그림 위 · 표 아래 (오른쪽 영역)", 1, true], ["fig_side_table", "그림 왼쪽 반 · 표 오른쪽 반", 1, true], ["table_only", "표만", 0, true]];
 function dkLayHtml(d, s, i) {
   const nf = (s.figs || []).filter(f => f && f.id).length, hasTab = !!s.table, cur = s.layout || "auto";
   const opts = DK_LAYOUTS.filter(([k, l, f, t]) => nf >= f && (!t || hasTab)).map(([k, l]) => "<option value='" + k + "'" + (k === cur ? " selected" : "") + ">" + esc(l) + "</option>").join("");

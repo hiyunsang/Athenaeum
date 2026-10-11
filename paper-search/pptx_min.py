@@ -118,13 +118,26 @@ def _row_heights(cols, rows, width_in, sz):
         lines = 1
         for ci, w in enumerate(ws):
             t = str(row[ci]) if ci < len(row) else ""
-            lines = max(lines, _lines(t, max(4, int((w - 0.12) * 72 / (sz * 1.08)))))   # 굵은 글꼴·한글은 넓다 — 보수적으로
+            k = 1.08 if any("가" <= ch <= "힣" for ch in t) else 0.7      # 한글은 넓고(굵은 글꼴·보수적으로) 영문·수치만인 칸은 좁다
+            per = max(3, int((w - 0.12) * 72 / (sz * k)))               # _lines 의 '한 줄 8자' 바닥을 거치지 않는다(좁은 열에서 행이 겹쳤다, 2026-10-11)
+            lines = max(lines, -(-len(t) // per))
         out.append(lines * sz * 1.25 / 72.0 + 0.09)
     return out
 
 
+def _cap_sizes(w):
+    """캡션·참고문헌 글자 크기 — 2in 미만의 좁은 칸은 한 단계 작게(캡션이 대여섯 줄로 늘어 그림 높이를 먹지 않게, 2026-10-11)"""
+    return (9.5, 8.5) if w >= 2.0 else (8.5, 7.5)
+
+
 def _cap_h(cap, width_in):
-    return 0.12 + 0.165 * _lines(cap, int(width_in * 72 / (9.5 * 0.95)))
+    cs = _cap_sizes(width_in)[0]
+    return 0.12 + 0.165 * (cs / 9.5) * _lines(cap, int(width_in * 72 / (cs * 0.95)))
+
+
+def _ref_h(ref, width_in):
+    rs = _cap_sizes(width_in)[1]
+    return (0.1 + 0.15 * (rs / 8.5) * _lines(ref, int(width_in * 72 / (rs * 0.95)))) if ref else 0
 
 
 def layout_title(deck):
@@ -140,13 +153,14 @@ def layout_title(deck):
 def _fig_block(pn, x, y, w, h_max):
     """그림 하나를 (x, y) 에서 폭 w 안에 비율대로, 아래에 캡션(무슨 그림인지)과 참고문헌 줄. 돌려주는 값: (상자들, 쓴 높이)"""
     cap, ref = pn.get("caption") or "", pn.get("ref") or ""
-    ch = _cap_h(cap, w) + (0.1 + 0.15 * _lines(ref, int(w * 72 / (8.5 * 0.95))) if ref else 0)
+    ch = _cap_h(cap, w) + _ref_h(ref, w)
     iw, ih = png_size(pn.get("path") or "")
     fw, fh = fit(iw, ih, w, max(0.6, h_max - ch - 0.05))
     out = [pic(x + (w - fw) / 2, y, fw, fh, pn.get("path"))]
-    paras = [P(cap, 9.5, color="3A3A3A", line=1.12, after=1)]
+    cs, rs = _cap_sizes(w)
+    paras = [P(cap, cs, color="3A3A3A", line=1.12, after=1)]
     if ref:
-        paras.append(P(ref, 8.5, color=GRAY2, line=1.1))
+        paras.append(P(ref, rs, color=GRAY2, line=1.1))
     out.append(text(x, y + fh + 0.05, w, ch, paras, anchor="t"))
     return out, fh + 0.05 + ch
 
@@ -154,7 +168,7 @@ def _fig_block(pn, x, y, w, h_max):
 def _figs_need(pn, w):
     """폭 w 일 때 그림 블록의 자연 높이"""
     cap, ref = pn.get("caption") or "", pn.get("ref") or ""
-    ch = _cap_h(cap, w) + (0.1 + 0.15 * _lines(ref, int(w * 72 / (8.5 * 0.95))) if ref else 0)
+    ch = _cap_h(cap, w) + _ref_h(ref, w)
     iw, ih = png_size(pn.get("path") or "")
     return w * ih / float(iw) + 0.05 + ch, ch
 
@@ -172,6 +186,8 @@ LAYOUTS = [
     ("fig_only", "그림만 크게 (키워드는 메모로)", 1, False),
     ("kw_only", "키워드만", 0, False),
     ("table_bottom", "표를 아래 전체 폭에", 0, True),
+    ("fig_top_table", "그림 위 · 표 아래 (오른쪽 영역)", 1, True),
+    ("fig_side_table", "그림 왼쪽 반 · 표 오른쪽 반", 1, True),
     ("table_only", "표만", 0, True),
 ]
 LAYOUT_KEYS = [k for k, _l, _f, _t in LAYOUTS]
@@ -227,23 +243,41 @@ def layout_content(s, idx, total, deck_title=""):
         cap = (pn.get("cap") or "") + ((" (…외 %d행은 장에서)" % (allrows - len(rows))) if allrows > len(rows) else "")
         return [text(x, y, w, 0.3, [P(cap, 10, True, line=1.05)], anchor="t"), dict(table(x, y + 0.32, w, sum(rhs), pn.get("cols") or [], rows, sz=sz_t), rhs=rhs)]
 
-    def best_mode(figs, w, h):
-        """(w, h) 안에 그림 n장을 놓는 배치 가운데 그림 면적 합이 가장 큰 것 → (mode, 면적). 가로로 긴 그림은 위아래(col)가, 세로로 긴 그림은 나란히(row)가 이긴다 (사용자 2026-10-11: '가로세로비도 생각해서')"""
+    def tab_h(pn, w):
+        """표의 자연 높이(캡션 포함, 8행까지) — 폭이 좁을수록 칸이 여러 줄로 늘어 높아진다"""
+        cap_c = 70 if w > 6 else 44
+        rows = [[(str(c)[:cap_c] + "…") if len(str(c)) > cap_c else str(c) for c in r] for r in (pn.get("rows") or [])[:8]]
+        return 0.32 + sum(_row_heights(pn.get("cols") or [], rows, w, 9))
+
+    def mode_areas(figs, w, h):
+        """(w, h) 안에 그림 n장을 놓는 배치마다 그림 면적 합 → {mode: 면적} — arrange 와 같은 자리로 센다"""
         n = len(figs)
         if n == 0:
-            return "auto", 0.0
+            return {}
         if n == 1:
-            return "auto", area(figs[0], w, h)
+            return {"auto": area(figs[0], w, h)}
         wn, hn = (w - gap * (n - 1)) / n, (h - gap * (n - 1)) / n
         w2, h2 = (w - gap) / 2, (h - gap) / 2
         wb, ws = (w - gap) * 0.58, (w - gap) * 0.42
-        cand = [(sum(area(pn, wn, h) for pn in figs), "row"), (sum(area(pn, w, hn) for pn in figs), "col")]
-        if n == 3:
-            cand += [(area(figs[0], wb, h) + area(figs[1], ws, h2) + area(figs[2], ws, h2), "big_left"),
-                     (area(figs[0], w2, h2) + area(figs[1], w2, h2) + area(figs[2], w, h2), "one_bottom"),
-                     (area(figs[0], w, h2) + area(figs[1], w2, h2) + area(figs[2], w2, h2), "one_top")]
-        a, m = max(cand)
-        return m, a
+        rest = figs[1:]
+        hr = (h - gap * (len(rest) - 1)) / len(rest)
+        wr = (w - gap * (len(rest) - 1)) / len(rest)
+        head = figs[:-1]
+        wh = (w - gap * (len(head) - 1)) / len(head)
+        return {"row": sum(area(pn, wn, h) for pn in figs), "col": sum(area(pn, w, hn) for pn in figs),
+                "big_left": area(figs[0], wb, h) + sum(area(pn, ws, hr) for pn in rest),
+                "one_top": area(figs[0], w, h2) + sum(area(pn, wr, h2) for pn in rest),
+                "one_bottom": sum(area(pn, wh, h2) for pn in head) + area(figs[-1], w, h2)}
+
+    def best_mode(figs, w, h):
+        """(w, h) 안에 그림 n장을 놓는 배치 가운데 그림 면적 합이 가장 큰 것 → (mode, 면적). 가로로 긴 그림은 위아래(col)가, 세로로 긴 그림은 나란히(row)가 이긴다 (사용자 2026-10-11: '가로세로비도 생각해서')"""
+        ar = mode_areas(figs, w, h)
+        if not ar:
+            return "auto", 0.0
+        if len(figs) == 1:
+            return "auto", ar["auto"]
+        best = max((a, m) for m, a in ar.items() if m in ("row", "col") or len(figs) == 3)
+        return best[1], best[0]
 
     def arrange(figs, x, y, w, h, mode):
         """그림 1~3장을 (x, y, w, h) 안에 mode 대로. auto 는 면적이 큰 배치"""
@@ -323,10 +357,34 @@ def layout_content(s, idx, total, deck_title=""):
         kw_w = (((6.4, 6.4, 5.2, 4.4)[min(3, len(figs_p))]) if rich else (3.4 if len(figs_p) >= 3 else 3.9)) if has_right else full_w
         fig_x, fig_w = L + kw_w + 0.3, full_w - kw_w - 0.3
         kw_box(L, body_top, kw_w, zone_h)
-        if tab and figs_p:            # 그림 + 표: 옆으로 나란히 (사용자: '표는 그림 옆에'); 그림이 둘이면 왼쪽 반에 위아래로
-            w2 = (fig_w - gap) / 2
-            arrange(figs_p, fig_x, body_top, w2, zone_h, "col" if len(figs_p) > 1 else "auto")
-            boxes.extend(table_block(tab, fig_x + w2 + gap, body_top, w2, zone_h))
+        if tab and figs_p:            # 그림 + 표 (사용자: '표는 그림 옆에'): 옆으로(그림 왼쪽 반 · 표 오른쪽 반) 와 위아래(그림 위 · 표 아래, 오른쪽 영역 안) 가운데 그림 면적이 큰 쪽.
+            # 전에는 왼쪽 반에 'col' 로 굳혀 세로로 긴 그림 둘이 콩알만 해졌다(사용자 2026-10-11: '가로로 연달아 배치하는 게 나았을 텐데'). 표에는 자연 높이(행 수·줄 수)만큼만 내준다
+            mode = lay if lay in ("row", "col", "big_left", "one_top", "one_bottom") else "auto"
+            pick = lambda ar: (ar.get(mode) or 0.0) if mode != "auto" else (max(ar.values()) if ar else 0.0)
+            cands = []            # (그림 면적, 꼴, 그림 폭 비율) — 옆으로는 표가 짧으면 그림에 더 내준다(50/60/67%), 위아래는 표의 자연 높이만큼만
+            ncol = max(1, len(tab.get("cols") or []))
+            for frac in (0.5, 0.6, 0.67):
+                wf = (fig_w - gap) * frac
+                wt = fig_w - gap - wf
+                if wt < 0.75 * ncol or (frac > 0.5 and tab_h(tab, wt) > zone_h):     # 열마다 0.75in 은 있어야 읽힌다 — 안 되면 위아래로(표는 넓게, 넘치는 행은 덜어 낸다)
+                    continue
+                cands.append((pick(mode_areas(figs_p, wf, zone_h)), "side", frac))
+            th = min(tab_h(tab, fig_w), zone_h * 0.6)
+            fh = zone_h - th - gap
+            if fh >= 1.5:
+                cands.append((pick(mode_areas(figs_p, fig_w, fh)) / 1.1, "stack", None))      # 비슷하면 옆으로
+            if lay == "fig_top_table":
+                cands = [c for c in cands if c[1] == "stack"] or cands
+            elif lay == "fig_side_table":
+                cands = [c for c in cands if c[1] == "side"] or cands
+            _a, kind, frac = max(cands) if cands else (0.0, "side", 0.5)
+            if kind == "stack":
+                arrange(figs_p, fig_x, body_top, fig_w, fh, mode)
+                boxes.extend(table_block(tab, fig_x, body_top + fh + gap, fig_w, th))
+            else:
+                wf = (fig_w - gap) * frac
+                arrange(figs_p, fig_x, body_top, wf, zone_h, mode)
+                boxes.extend(table_block(tab, fig_x + wf + gap, body_top, fig_w - gap - wf, zone_h))
         elif tab:
             boxes.extend(table_block(tab, fig_x, body_top, fig_w, zone_h))
         else:
