@@ -185,7 +185,11 @@ def list_studies():
             c = (mt, {"id": st["id"], "topic": st.get("topic", ""), "title": (st.get("chapter") or {}).get("title") or (st.get("plan") or {}).get("title") or "",
                       "t": st.get("t", 0), "status": st.get("status") or "", "stage": st.get("stage", ""), "error": st.get("error", ""),
                       "papers": len([p for p in st.get("papers") or [] if p.get("read")]), "stats": st.get("stats"),
-                      "chats": [_chat_brief(c) for c in st.get("chats") or []]})
+                      "chats": [_chat_brief(c) for c in st.get("chats") or []],
+                      # 발표 자료 요약 — 공부 창 머리줄의 「발표 자료」 모음 보기(모든 장의 자료를 한눈에, 2026-10-12)
+                      "decks": [{"id": d.get("id"), "title": d.get("title") or "", "t": d.get("t", 0), "n": len(d.get("slides") or []),
+                                 "file": d.get("file") or "", "rev": d.get("rev") or 0, "previews": bool(d.get("previews"))}
+                                for d in st.get("decks") or [] if isinstance(d, dict) and d.get("file")]})
             _LIST_CACHE[f] = c
         out.append(dict(c[1], status=_status(c[1])))
     for f in [f for f in _LIST_CACHE if f not in files]:
