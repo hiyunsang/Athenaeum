@@ -110,6 +110,8 @@ def sweep_stale():
             if st.pop(key + "_pending", None):
                 st[key + "_error"] = _STALE_MSG
                 hit = True
+        if st.pop("deck_cancel", None):
+            hit = True
         if st.pop("sec_edit_pending", None):
             st["sec_edit_error"] = _STALE_MSG
             hit = True
@@ -833,6 +835,7 @@ def _outline(st, model, effort):
         "- 물음은 겹치지 않게: 한 물음은 한 절이 답한다. 같은 개념·변수가 여러 절에서 다시 설명되지 않도록, 개념마다 집이 되는 절을 하나 정해 owns 에 적는다(예: '절삭속도의 영향' 은 한 절에만). 다른 절은 그 개념을 한 구절로 가리키고 넘어간다.\n"
         "- 메모는 그 절의 물음에 꼭 필요한 것만 고른다. 모든 메모를 어느 절엔가 넣으려 하지 않는다 — 교과서는 서재의 색인이 아니다. 쓰지 않은 메모는 그냥 둔다. 한 메모는 한 절에만.\n"
         "- 절의 차례는 배우는 사람이 따라갈 논리다(무엇인가 → 무슨 일이 일어나는가 → 왜 → 무엇이 바꾸는가 → 어떻게 아는가 → 어디까지 아는가)를 줄기에 맞게 쓰되, 메모가 셋이 안 되는 절은 만들지 말고 가까운 절에 합친다.\n"
+        "- 첫 절은 입문이다: 읽는 사람은 이 분야에 처음 들어온 대학원생이다. 첫 절의 owns 는 재료·현상·용어의 정의와 큰 그림(무엇이 문제인가)까지만 — 결정 소성의 세부(슬립계의 종류·CRSS·쌍정 모드), 모델의 파라미터, 실험의 세부(시편 종류·온도별 값)는 그것이 처음 필요한 뒤 절의 owns 로 보내고, 첫 절의 notes 는 정의·배경(def·bg) 메모 위주로 고른다.\n"
         "- [리뷰의 짜임]이 있으면 그것은 이 분야를 정리한 사람의 차례다. 절의 차례와 범위를 거기서 빌려 출발점으로 삼고(리뷰의 절 제목을 그대로 베끼지는 않는다), 이 장의 물음에 맞게 고친 뒤 리뷰 뒤의 논문과 리뷰가 다루지 않은 메모를 그 틀에 얹는다.\n"
         "- 절 제목은 내용을 말하는 명사구로(예: '임계 절삭 깊이와 취성–연성 전이'). '서론'·'결론'·'기타' 같은 제목은 쓰지 않는다.\n"
         "- summary 는 장 끝의 '핵심 정리'에 쓸 메모 6~10개(이 장에서 가장 중요한 사실). [논문]의 ★ 는 연구자가 정한 우선 저널 — summary 는 ★ 논문과 리뷰의 메모를 먼저, ★ 가 아닌 저널의 연구 논문 결론은 그것뿐일 때만.\n"
@@ -900,6 +903,7 @@ def _claims(st, k, model, effort):
         "- 논지 = 이 절의 물음에 답하는 한 문장으로 적은 사실. 3~5개, 배우는 사람이 따라갈 차례로. 첫 논지는 물음에 대한 답이다 — 정설이 있으면 정설을 먼저 세우고 반론은 뒤의 논지나 how 에 둔다.\n"
         "- 고른다: 이 절의 물음에 꼭 필요한 메모만 notes 에 넣는다. 모든 메모를 어느 논지엔가 넣으려 하지 않는다 — 교과서는 서재의 색인이 아니다. 같은 사실을 되풀이하는 메모는 하나만. 한 메모는 한 논지에만.\n"
         "- anchor = 그 논지를 가장 잘 받치는 대표 연구의 메모 1~2개(★·리뷰·직접 실험·기전을 말하는 것 먼저). 글은 대표 메모를 깊게 펴고 나머지 notes 는 한 문장이나 표의 행으로만 쓴다.\n"
+        "- 첫 절(입문)에서는 논지와 대표 메모를 정의·배경(def·bg)·기전의 큰 그림 메모로 세운다. 시편 종류·온도별 측정값·모델 파라미터 같은 세부 결과·방법 메모는 첫 절의 논지로 세우지 않고 보기로도 두지 않는다(뒤 절이 다룬다).\n"
         "- rel: agree 여러 연구가 같은 것을 본다 / cond 조건(재료·방위·공구·깊이·속도·방법)이 달라 값이나 양상이 다르다 — how 에 무엇이 다른지 / "
         "conflict 연구끼리 엇갈린다 — 양쪽을 다 두되 how 에 정설과 반론을 가른다(엇갈리는 것은 배우는 사람에게 가장 중요한 정보다) / extend 한 연구가 다른 연구를 넓히거나 기전을 더한다 / single.\n"
         "- 논지 문장은 메모들이 말하는 것을 묶은 것이다. 메모에 없는 사실·수치·원인을 넣지 않고, 조건을 떼고 일반 법칙처럼 넓히지 않는다. 수치는 메모 그대로. 교과서적 상식을 보태지 않는다.\n"
@@ -1179,7 +1183,7 @@ _WRITE_RULES = (
     "6. 연구자 이름은 문장의 주어가 아니라 인용이다. 사실·현상·기전·수치는 사실을 주어로 쓴다('절삭 깊이가 커지면 가공면은 … 을 차례로 거친다'). 연구자를 주어로 세우는 문장('Yan 등(2003)은 …')과 이름을 조건 자리에 끼운 꼴('Liu 등(2019)의 테이퍼 절삭에서는')은 "
     "그 연구만의 장치·방법을 말해야 할 때만, 절에 두셋까지. 그때는 [논문]에 적힌 이름과 연도만 쓴다. 인용 번호는 쓰지 않는다(프로그램이 붙인다).\n"
     "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다. 연구들이 같은 것을 보았는지, 어디서 갈리는지는 설명의 흐름 속에서 말하고, 그 문장에는 관계된 메모를 모두 ⟦ ⟧ 에 적는다 — "
-    "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 문단마다 두지 않는다(절 끝에 한 번 — 규칙 16).\n"
+    "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 두지 않는다 — 문단 끝에도, 절 끝에도('정리하면 …' 문단은 이미 한 말의 되풀이다). 절의 끝은 규칙 16 대로 [다음 절]로 잇는 한 문장이다.\n"
     "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
     "9. 문장의 크기: 문장은 생각의 단위다. 한 생각을 받치는 사실이 여럿이면 한 문장에 묶고(메모 번호를 모두 적는다), 한 메모가 조건·해석을 길게 담으면 둘로 나눈다. "
     "다만 실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 두고 나머지는 뺀다. 괄호 삽입은 처음 나온 영어 용어에만. "
@@ -1198,12 +1202,14 @@ _WRITE_RULES = (
     "14. 번외: 설계도에 [번외]가 있을 때만, 절 끝 '### 번외' 아래에 그 메모를 메모마다 한 문장으로(조건과 함께). 논지와 어긋나는 메모는 어긋난다고 적는다.\n"
     "15. 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 설명의 기둥(현상·기전·법칙을 말하는 문장)은 ★ 논문과 리뷰의 메모로 세운다. ★ 가 아닌 저널의 연구 논문의 결과는 그 조건과 수치를 보기로 덧붙이는 자리('…에서도 …가 관찰되었다', 표의 행)에 두고, "
     "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
-    "16. 분량과 수치: 한 절은 {PACE}문장이다(핵심 정리 제외). 분량은 사실을 더 넣어 채우는 것이 아니라 설명을 펴는 데 쓴다 — 왜 그런지(기전), 무엇과 이어지는지, 조건이 바뀌면 어떻게 되는지를 한두 문장씩 더 두어, 사실에서 사실로 급히 건너뛰는 자리가 없게. 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 두세 문장으로 이 절이 세운 것을 묶고 [다음 절]로 넘긴다(⟦-⟧ 로, 새 사실 없이).\n"
+    "16. 분량과 수치: 한 절은 {PACE}문장이다(핵심 정리 제외). 분량은 사실을 더 넣어 채우는 것이 아니라 설명을 펴는 데 쓴다 — 왜 그런지(기전), 무엇과 이어지는지, 조건이 바뀌면 어떻게 되는지를 한두 문장씩 더 두어, 사실에서 사실로 급히 건너뛰는 자리가 없게. 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 [다음 절]로 넘기는 잇는 문장 한둘이다(⟦-⟧ 로, 새 사실 없이) — 이 절이 말한 것을 다시 늘어놓는 '정리하면 …' 문단은 두지 않는다. 같은 사실(재료의 한 성질, 한 수치, 한 기전)은 절 안에서 한 번만 말한다 — 다시 필요하면 앞을 가리키는 한 구절('앞서 본 낮은 열전도도 탓에')로 받는다.\n"
     "17. 수치는 전제와 함께: 한 연구의 장치 설정값·계산값(해상도·노출 시간·주파수·장면 크기·화소 크기 같은 것)은 그것을 정한 전제(배율·절삭속도·요구 정확도·가정)가 같은 문장에 있을 때만 싣는다. "
     "'해상도를 512×512 로 두면 장면이 0.58 mm 가 된다' 처럼 전제 없이 결과만 적으면 읽는 사람은 그 수가 어디서 나오는지 따라갈 수 없다 — 그런 수의 나열(짜깁기)은 쓰지 않는다. "
     "방법의 세부는 교과서의 설명이 아니다: 원리(무엇과 무엇 사이의 절충인가, 무엇이 무엇을 정하는가)를 말로 설명하고, 한 연구의 값은 전제가 든 보기 한 문장('예컨대 ×15 배율·절삭속도 3 m/min 에서는 노출 50 μs 가 번짐을 두 화소 안에 묶었다')으로만, 그것도 논지에 필요할 때만. "
     "전제가 메모·근거에 없으면 수치를 빼고 원리만 쓴다.\n"
-    "18. 용어: [용어]의 한국어를 그대로 쓴다 — 같은 영어 용어를 절마다·문단마다 다른 한국어로 옮기지 않는다(연성 영역 절삭 / 연성 모드 절삭 / 연성역 절삭 가운데 하나만). 처음 나올 때만 영어를 괄호에.\n")
+    "18. 용어: [용어]의 한국어를 그대로 쓴다 — 같은 영어 용어를 절마다·문단마다 다른 한국어로 옮기지 않는다(연성 영역 절삭 / 연성 모드 절삭 / 연성역 절삭 가운데 하나만). 처음 나올 때만 영어를 괄호에.\n"
+    "19. 읽는 사람은 이 분야에 처음 들어온 대학원생이다. 처음 나오는 전문 개념은 그 자리에서 한 문장으로 풀어 준 뒤 쓴다(이름과 괄호 속 영어만으로 지나가지 않는다) — 정의 → 왜 그것이 여기서 중요한가 → 그것을 보인 연구의 차례로, 쉬운 것에서 어려운 것으로. "
+    "첫 절(입문)에는 실험의 세부(시편 종류·온도별 측정값·모델 파라미터·외삽값)를 싣지 않는다 — 그런 메모는 뒤 절의 몫이다.\n")
 
 
 # Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
@@ -1463,24 +1469,40 @@ _REP_PROMPT = ("전공 교과서 한 절의 문장들이다(번호 순서대로)
                "JSON 으로만: {\"rep\": [{\"u\": ★ 문장 번호, \"same\": 같은 말을 이미 한 문장 번호}]} — 없으면 빈 목록.\n\n[절의 문장]\n%s")
 
 
-def _rep_check(st, units, sec_title, model="sonnet"):
-    """고친 문장(fixed)이 말만 바꿔 이웃 문장을 되풀이한 것을 Claude 가 가려낸다 — 글자 겹침(`_drop_dups`)으로는 못 잡는 것. ★ 문장만 뺄 수 있다 → (removed, [(뺀 문장, 남긴 문장)])"""
+_REP_PROMPT_ALL = ("전공 교과서 한 절의 문장들이다(번호 순서대로). 같은 절 안에서 앞 문장(들)이 이미 말한 것을 말만 바꿔 되풀이하는 문장을 찾는다 — 앞 문장의 일부를 다시 말한 것, 앞 문장들을 요약한 '정리하면' 꼴의 문장, "
+                   "같은 성질·수치·기전을 다른 표현으로 다시 적은 것. 새 사실(새 대상·조건·수치·원인·관계·결과)이 하나라도 있으면 적지 않는다. 앞을 한 구절로 받고 새 내용으로 넘어가는 잇는 문장은 되풀이가 아니다.\n"
+                   "JSON 으로만: {\"rep\": [{\"u\": 되풀이하는(뒤의) 문장 번호, \"same\": 그 말을 먼저 한 문장 번호}]} — 없으면 빈 목록.\n\n[절의 문장]\n%s")
+
+
+def _rep_pairs(st, units, model="sonnet", all_sents=False):
+    """Claude 가 뜻으로 가려낸 되풀이 쌍 → (live 목록, [(되풀이 i, 먼저 말한 j)]) — 번호는 live 의 1부터. ★(고친 문장)만 보거나(all_sents=False) 모든 문장을 본다(편집자 패스의 힌트·dedup all)"""
     live = [u for u in units if u.get("t") and not u.get("drop") and not u.get("cells") and not u.get("cap")]
-    fixed = {i for i, u in enumerate(live, 1) if u.get("fixed")}
-    if not fixed or len(live) < 2:
-        return [], []
-    lines = ["u%d: %s%s" % (i, "★ " if u.get("fixed") else "", u["t"]) for i, u in enumerate(live, 1)]
-    d = _ask_json(st, _REP_PROMPT % "\n".join(lines), model, None, 600, need="rep")
-    removed, pairs = [], []
-    for x in (d.get("rep") if d and isinstance(d.get("rep"), list) else [])[:20]:
+    marks = {i for i, u in enumerate(live, 1) if all_sents or u.get("fixed")}
+    if not marks or len(live) < 2:
+        return live, []
+    lines = ["u%d: %s%s" % (i, "★ " if (i in marks and not all_sents) else "", u["t"]) for i, u in enumerate(live, 1)]
+    d = _ask_json(st, (_REP_PROMPT_ALL if all_sents else _REP_PROMPT) % "\n".join(lines), model, None, 600, need="rep")
+    out = []
+    for x in (d.get("rep") if d and isinstance(d.get("rep"), list) else [])[:30]:
         if not isinstance(x, dict):
             continue
         try:
             i, j = int(str(x.get("u")).strip().lstrip("u")), int(str(x.get("same")).strip().lstrip("u"))
         except (TypeError, ValueError):
             continue
-        if i not in fixed or j < 1 or j > len(live) or j == i:
+        if all_sents and j > i:
+            i, j = j, i          # 뒤의 것이 되풀이다
+        if i not in marks or j < 1 or j > len(live) or i < 1 or i > len(live) or j == i:
             continue
+        out.append((i, j))
+    return live, out
+
+
+def _rep_check(st, units, sec_title, model="sonnet", all_sents=False):
+    """말만 바꿔 이웃 문장을 되풀이한 문장을 Claude 가 가려내 뺀다 — 글자 겹침(`_drop_dups`)으로는 못 잡는 것. 기본은 ★(고친 문장)만, all_sents 면 모든 문장(뒤의 것을 뺀다) → (removed, [(뺀 문장, 남긴 문장)])"""
+    live, prs = _rep_pairs(st, units, model, all_sents)
+    removed, pairs = [], []
+    for i, j in prs:
         v, k = live[i - 1], live[j - 1]
         if v.get("drop") or k.get("drop"):
             continue
@@ -1494,7 +1516,7 @@ def _rep_check(st, units, sec_title, model="sonnet"):
     return removed, pairs
 
 
-def dedup_chapter(st, model=None):
+def dedup_chapter(st, model=None, all_sents=False):
     """다 쓴 장에서 되풀이 문장을 뺀다(이 장치가 없던 때 쓴 장). chapter 와 sections 둘 다 고치고, 문장 id 가 밀리므로 확인 물음·대화·발표 자료·마인드맵의 keys 를 옮긴다(뺀 문장의 key 는 남긴 같은 말 문장으로) → 뺀 수"""
     ch = st.get("chapter") or {}
     wsecs = st.get("sections") or []
@@ -1504,7 +1526,7 @@ def dedup_chapter(st, model=None):
         flat = [(bi, ui, u) for bi, b in enumerate(blocks) for ui, u in enumerate(b.get("units") or [])]
         removed, pairs = _drop_dups([u for _b, _u, u in flat], csec.get("title") or "")
         if model:       # 말만 바꾼 되풀이도 — Claude 에게 ★(고친 문장)만 묻는다
-            r2, p2 = _rep_check(st, [u for _b, _u, u in flat], csec.get("title") or "", model)
+            r2, p2 = _rep_check(st, [u for _b, _u, u in flat], csec.get("title") or "", model, all_sents)
             removed, pairs = removed + r2, pairs + p2
         if not removed:
             continue
@@ -2166,6 +2188,7 @@ def _termfix(st, model="sonnet"):
 
 def dedup_start(sid, body):
     model = "sonnet" if body.get("claude") else None
+    all_s = bool(body.get("all"))        # 모든 문장을 뜻으로 — 고친 문장이 아닌 되풀이('정리하면' 문단, 같은 성질을 세 번)도 뺀다
     with _LOCK:
         st = _load(sid)
         if not st or not st.get("chapter"):
@@ -2183,7 +2206,7 @@ def dedup_start(sid, body):
     def job():
         st1 = _load(sid)
         try:
-            n = dedup_chapter(st1, model)
+            n = dedup_chapter(st1, model, all_s)
             err = ""
         except Exception as e:
             n, err = 0, str(e)[:200]
@@ -2385,8 +2408,13 @@ def _editor_pass(st, model, eff):
         valid = set(st["outline"]["sections"][k]["notes"])
         before = sum(len(b.get("units") or []) for b in secs[k]["blocks"])
         units0 = [u for b in secs[k]["blocks"] for u in b.get("units") or []]
-        dups = _dup_pairs(units0)
-        hint = ("\n[같은 말을 두 번 하는 문장 — 하나로 묶거나 하나를 뺀다]\n" + "\n".join("- '%s' ↔ '%s'" % (units0[i]["t"][:80], units0[j]["t"][:80]) for i, j in dups[:8])) if dups else ""
+        pairs = [(units0[i]["t"], units0[j]["t"]) for i, j in _dup_pairs(units0)]
+        try:                      # 말만 바꾼 되풀이('정리하면' 문단, 같은 성질을 세 번)는 Sonnet 이 — 글자 겹침으로는 못 잡는다 (사용자 2026-10-14: '계속 같은 내용 반복 중')
+            live, prs = _rep_pairs(st, units0, "sonnet", all_sents=True)
+            pairs += [(live[i - 1]["t"], live[j - 1]["t"]) for i, j in prs]
+        except Exception:
+            pass
+        hint = ("\n[같은 말을 두 번 하는 문장 — 뒤의 것을 빼거나 앞의 것과 하나로 묶는다]\n" + "\n".join("- '%s' ↔ 먼저 한 말 '%s'" % (a[:80], b[:80]) for a, b in pairs[:10])) if pairs else ""
         text = _ask(st, prompt + "\n\n" + _SEC_EDIT_RULE + "\n[지금 글]\n<<<SEC>>>\n" + _sec_text(st, k) + "\n<<<END>>>\n\n[부탁] " + _EDITOR_REQUEST + hint + "\n", model, eff, 1800)
         blocks = _parse_units(text, valid, figs)
         nu = sum(len(b.get("units") or []) for b in blocks)
@@ -3513,6 +3541,25 @@ def _deck_index(st):
     return len(items)
 
 
+def _deck_jobkey(sid, st):
+    return "study:%s:deck:new:%d" % (sid, int(st.get("deck_pending") or 0))
+
+
+def deck_cancel(sid):
+    """만드는 중인 발표 자료를 끊는다 (사용자 2026-10-14: '자료 만들기 하면 취소가 안 됨') — 그림 색인 단계면 다음 논문 전에, Opus 단계면 호출을 끊어서"""
+    with _LOCK:
+        st = _load(sid)
+        if not st or not st.get("deck_pending"):
+            return {"error": "만드는 중이 아닙니다"}
+        st["deck_cancel"] = time.time()
+        _save(st)
+        key = _deck_jobkey(sid, st)
+    cancel = cfg.get("claude_cancel")
+    if cancel:
+        cancel(key)
+    return {"ok": True}
+
+
 def _deck_job(sid):
     st = _load(sid)
     if not st:
@@ -3520,13 +3567,21 @@ def _deck_job(sid):
     opts = st.get("deck_opts") or {}
     model, eff = _CHAT_EFFORT.get(opts.get("effort"), _CHAT_EFFORT["xhigh"])
     t0 = time.time()
-    res, err, deck = None, "", None
+    res, err, deck, cancelled = None, "", None, False
     try:
         nidx = _deck_index(st)
+        if (_load(sid) or {}).get("deck_cancel"):
+            raise _Stop()
         pool = _deck_pool(st)
         k = max(1, int(opts.get("n") or 0) - 1) if opts.get("n") else 0   # 내용 쪽 수 (제목 쪽을 뺀 것)
         run = cfg.get("claude_run")
-        res = run(_deck_prompt(st, opts.get("req") or "", k, pool, opts.get("text") or "lecture"), timeout=1800, model=model, effort=eff, tools="") if run else None
+        prompt = _deck_prompt(st, opts.get("req") or "", k, pool, opts.get("text") or "lecture")
+        try:
+            res = run(prompt, timeout=1800, model=model, effort=eff, tools="", job=_deck_jobkey(sid, st)) if run else None
+        except TypeError:          # 시험 틀의 claude_run 은 job 을 모른다
+            res = run(prompt, timeout=1800, model=model, effort=eff, tools="") if run else None
+        if (res or {}).get("cancelled") or (_load(sid) or {}).get("deck_cancel"):
+            raise _Stop()
         d = _json_of((res or {}).get("text") or "")
         if not d or not isinstance(d.get("slides"), list):
             err = "Claude 가 슬라이드 재료를 주지 않았습니다" + _why()
@@ -3539,6 +3594,8 @@ def _deck_job(sid):
                 deck.update(id="d%d" % int(time.time() * 1000), t=time.time(), sec=round(time.time() - t0), model=res.get("model", ""), tok=res.get("tok"), req=opts.get("req") or "", effort=opts.get("effort"), n=opts.get("n") or 0,
                             indexed=nidx, pool=len(pool))
                 deck["file"] = _deck_write(st, deck, pool)
+    except _Stop:
+        cancelled = True
     except Exception as e:
         err = "만들지 못했습니다: " + str(e)[:200]
     with _LOCK:
@@ -3546,7 +3603,10 @@ def _deck_job(sid):
         if not st:
             return
         st.pop("deck_pending", None)
-        if err:
+        st.pop("deck_cancel", None)
+        if cancelled:
+            st.pop("deck_error", None)
+        elif err:
             st["deck_error"] = err
         else:
             st.setdefault("decks", []).append(deck)
@@ -4141,6 +4201,8 @@ def handle_post(h, body):
             return h._send(200, basics_start(sid, body))
         if op == "deck":
             return h._send(200, deck_start(sid, body))
+        if op == "deck_cancel":
+            return h._send(200, deck_cancel(sid))
         if op == "deck_delete":
             return h._send(200, deck_delete(sid, str(body.get("deck") or "")))
         if op == "deck_layout":

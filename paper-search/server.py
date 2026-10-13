@@ -990,6 +990,8 @@ def journal_abbr_map():
 
 def journal_abbr(venue):
     n = _jnorm(venue)
+    if len(n) < 6:        # 저널 이름이 비거나 너무 짧으면(OpenAlex 에 source 가 없는 논문) 맞추지 않는다 — 빈 이름이 첫 키(IJMTM)의 접두어로 맞아 KJMM 논문이 IJMTM 으로 보였다(2026-10-14)
+        return ""
     m = journal_abbr_map()
     if n in m:
         return m[n]

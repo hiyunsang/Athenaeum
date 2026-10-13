@@ -774,7 +774,7 @@ function deckHtml() {
   let h = "<div class='page ch dkpage'>" + crumb("발표 자료", "<span class='sp'>·</span><a href='#' data-v='decks' data-si='-1' title='모든 장의 발표 자료를 한눈에'>모든 장의 발표 자료</a>") + "<h2 class='first'>발표 자료 (PPT) — " + esc(cur.chapter.title) + "</h2>";
   h += "<details class='dkmake noprint'" + (d && !cur.deck_pending ? "" : " open") + "><summary>새 자료 만들기" + (cur.deck_pending ? " — 만드는 중" : "") + "</summary>" +
     "<div class='aim'>장을 바탕으로 발표 슬라이드(.pptx)를 만듭니다. 쪽마다 장이 인용한 논문의 그림 둘(주문에 '그림 셋' 이라 적으면 셋)과 그 아래 '무슨 그림인지' 한 줄·참고문헌, 글은 「설명 포함」이면 주제 → 한 줄 설명 → 원인·대책 항목, 「키워드만」이면 키워드 구절. 글마다 장의 문장이 받치고(¶ 를 누르면 본문으로), 수치는 근거 문장과 대조해 어긋나면 뺍니다. 만든 뒤에는 쪽마다 배치를 고르고, 오른쪽 칸에서 Claude 에게 고쳐 달라고 할 수 있습니다.</div>";
-  if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>색인이 없는 논문의 그림을 먼저 읽고(편당 45초쯤, 처음 한 번), 장 전체를 읽어 쪽마다 재료를 고릅니다(2~6분). 창을 닫아도 계속 만듭니다.</div>";
+  if (cur.deck_pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='deckBar' style='width:2%'></i></span><span class='eta' id='deckEta'>만드는 중</span></div><div class='hint'>색인이 없는 논문의 그림을 먼저 읽고(편당 45초쯤, 처음 한 번), 장 전체를 읽어 쪽마다 재료를 고릅니다(2~6분). 창을 닫아도 계속 만듭니다. <button class='act' id='deckCancel' title='색인 단계면 다음 논문 전에, Claude 단계면 호출을 끊습니다'>만들기 취소</button></div>";
   else {
     h += "<div class='dkform'><textarea id='deckReq' placeholder='발표의 목적과 쪽 구성 — 예: 연구실 세미나용. 1쪽 탄탈럼의 특성과 쓰임, 2쪽 왜 깎기 어려운가, 3쪽 지금까지의 연구 동향(코팅·냉각·기전), 4쪽 남은 물음. (비우면 장의 줄기대로)'>" + esc(deckDraft) + "</textarea>" +
       "<div class='row'><label class='hint' title='제목 쪽을 포함한 전체 쪽 수. 참고문헌 쪽은 따로 붙습니다. 비우면 장의 줄기대로 6~10쪽'>쪽 수(제목 포함) <input id='deckN' type='number' min='2' max='40' placeholder='자동' style='width:64px'></label>" +
@@ -835,6 +835,7 @@ function bindDeck() {
   m.querySelectorAll(".dkLay").forEach(sel => sel.onchange = () => relayout(sel, { deck: sel.dataset.dkd, slide: +sel.dataset.dks, layout: sel.value }));
   m.querySelectorAll("[data-dkrot]").forEach(b => b.onclick = () => { const sel = m.querySelector(".dkLay[data-dkd='" + b.dataset.dkd + "'][data-dks='" + b.dataset.dkrot + "']"); relayout(b, { deck: b.dataset.dkd, slide: +b.dataset.dkrot, layout: sel ? sel.value : "auto", rotate: true }); });
   clearInterval(deckTick);
+  const dc = $("deckCancel"); if (dc) dc.onclick = async () => { dc.disabled = true; dc.textContent = "끊는 중…"; const r = await api("/api/study", { op: "deck_cancel", id: cur.id }); if (r.error) { alert(r.error); dc.disabled = false; dc.textContent = "만들기 취소"; return; } setTimeout(refresh, 1500); };
   if (cur.deck_pending) { const T = 300, tk = () => { const el = Date.now() / 1000 - cur.deck_pending, b = $("deckBar"), e2 = $("deckEta"); if (!b) { clearInterval(deckTick); return; } b.style.width = Math.round(Math.min(0.92, el / T * 0.9) * 100) + "%"; e2.textContent = (el > T ? "예상보다 오래 걸리고 있습니다 · " : "만드는 중 · ") + fmtDur(el) + "째"; }; tk(); deckTick = setInterval(tk, 1000); }
   renderPanel();
 }
@@ -1021,7 +1022,14 @@ function askPanel() {
   const ctx = chat || askCtx; if (!ctx) { panel = "info"; return infoPanel(); }
   const keys = ctx.keys || [], srcKeys = [...new Set(keys.flatMap(k => { try { return unitAt(k).src || []; } catch (e) { return []; } }))];
   const src = srcKeys.map(k => [k, cur.src[k]]).filter(x => x[1]);
-  let h = "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span></div><div class='spq'>" + esc(ctx.quote) + "</div>" +
+  /* 이 장에서 물은 것 — 같은 대목의 대화를 먼저 (사용자 2026-10-14: '고른 대목밖에 안 뜨는데, 그 위에 내가 했던 질문들 볼 수 있게') */
+  const others = (cur.chats || []).filter(c => !chat || c.id !== chat.id), kset = new Set(keys);
+  const near = others.filter(c => (c.keys || []).some(k => kset.has(k)));
+  const list = (near.length ? near : others.slice().reverse()).slice(0, near.length ? 20 : 8);
+  const qOf = c => ((c.thread || []).find(m => m.role === "user") || {}).text || "";
+  const prevHtml = others.length ? "<details class='evd'" + (chat ? "" : " open") + "><summary>이 장에서 물은 것 " + others.length + "개" + (near.length ? " — 같은 대목 " + near.length : "") + "</summary>" +
+    list.map(c => "<div class='ixc' data-chat='" + esc(c.id) + "' title='" + esc((c.quote || "").slice(0, 200)) + "'><div class='ixq'>" + esc(qOf(c).slice(0, 110)) + "</div><div class='hint'>" + esc(c.sec || "") + " · " + fmtDate(c.t || ((c.thread || [])[0] || {}).t) + " · 답 " + (c.thread || []).filter(m => m.role === "claude").length + "</div></div>").join("") + "</details>" : "";
+  let h = prevHtml + "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span></div><div class='spq'>" + esc(ctx.quote) + "</div>" +
     "<details class='evd'" + (chat ? "" : " open") + "><summary>이 대목의 근거 원문 " + src.length + "개 — Claude 에게 같이 갑니다</summary>" + (src.length ? srcItemsHtml(src) : "<div class='hint'>근거 표시가 없는 이음 문장입니다.</div>") + "</details>";
   if (chat) h += (chat.thread || []).map(msgHtml).join("");
   if (chat && chat.pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 대화에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div>";
@@ -1037,6 +1045,7 @@ function askPanel() {
   return "<div class='askwrap' style='font-size:" + (+lsGet("ui_chat_font", "13") || 13) + "px'>" + h + "</div>";   // 글씨 크기는 탐색의 대화와 같은 값(ui_chat_font)
 }
 function bindAsk() {
+  $("srcp").querySelectorAll(".ixc[data-chat]").forEach(el => el.onclick = () => openChat(el.dataset.chat));
   $("srcp").querySelectorAll(".fsz button").forEach(b => b.onclick = () => { const v = Math.min(20, Math.max(11, (+lsGet("ui_chat_font", "13") || 13) + (+b.dataset.f))); lsSet("ui_chat_font", String(v)); renderPanel(); });
   const t = $("askIn");
   if (t) {
