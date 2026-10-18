@@ -3127,8 +3127,8 @@ def _library_candidates(journals, topic):
     return [c for _, c in cands]
 
 
-def _pdf_sections(name):
-    """보유 PDF 본문을 1단계 절로 나눈다: [(종류 또는 None, 절 제목, [{sub, text}])]. 그림·표 모음·감사의 글·참고문헌 뒤는 버린다."""
+def _pdf_sections(name, nums=False):
+    """보유 PDF 본문을 1단계 절로 나눈다: [(종류 또는 None, 절 제목, [{sub, text}])] — nums 면 절 번호를 넷째로. 그림·표 모음·감사의 글·참고문헌 뒤는 버린다."""
     try:
         body = cfg["paper_body"](name) if cfg.get("paper_body") else ""
     except Exception:
@@ -3148,7 +3148,7 @@ def _pdf_sections(name):
             if re.search(_END_RX, low):
                 cur = None; continue
             kind = next((k for k in ("conclusion", "intro", "results", "methods") if re.search(_SEC_RX[k], low)), None)
-            cur = [kind, head, []]; secs.append(cur); sub = ""
+            cur = [kind, head, [], (m1.group(1) if m1 else "")]; secs.append(cur); sub = ""
             continue
         if re.search(r"^(" + _END_RX + r")", one.lower()) and len(one) < 60:
             cur = None; continue
@@ -3159,7 +3159,7 @@ def _pdf_sections(name):
         if one.startswith("[[EQ:") or len(one.split()) < 20:
             continue
         cur[2].append({"sub": sub, "text": one})
-    return secs
+    return secs if nums else [x[:3] for x in secs]
 
 
 def _section_paras(name, kind):
@@ -3269,6 +3269,13 @@ def _exemplar_cache_path():
     return os.path.join(cfg["MS_DIR"], "_본보기캐시.json")
 
 
+def _gist_ok(v, level):
+    """문단 단위 답은 요지가 60% 넘게 차 있어야 받는다 — 역할만 주고 요지를 비운 답이 캐시에 남으면 그 논문은 영영 요지 없이 나온다(2026-10-18)"""
+    if level != "para":
+        return True
+    return sum(1 for x in v if isinstance(x, list) and len(x) >= 2 and str(x[1]).strip()) >= max(1, int(0.6 * len(v)))
+
+
 def _label(kind, texts):
     """{키: 단위 목록(문장 또는 문단)} → {키: [[역할, 요지], …]}. 캐시 먼저, 나머지는 Claude(sonnet) 한 번에. 안 되면 규칙.
     문단은 앞 90단어만 보여 역할과 한국어 한 줄 요지를 받는다. 문장은 역할만(요지는 빈 문자열)."""
@@ -3285,7 +3292,7 @@ def _label(kind, texts):
         if kind == "abstract" and v is None:   # 예전 캐시(초록, 역할만) 호환
             v = cache.get(hashlib.md5("\n".join(units).encode("utf-8")).hexdigest())
             v = [[x, ""] for x in v] if isinstance(v, list) and v and isinstance(v[0], str) else None
-        if isinstance(v, list) and len(v) == len(units):
+        if isinstance(v, list) and len(v) == len(units) and _gist_ok(v, level):
             res[k] = v
         elif units:
             todo[k] = (h, units)
@@ -3317,7 +3324,7 @@ def _label(kind, texts):
                     v = [[x[0], str(x[1])[:60]] if isinstance(x, list) and len(x) >= 2 and x[0] in roles else None for x in v]
                 else:
                     v = [[x, ""] if x in roles else None for x in v]
-                if all(v):
+                if all(v) and _gist_ok(v, level):
                     res[k] = v; cache[h] = v
     for k, (h, units) in todo.items():
         if k not in res:
@@ -3427,6 +3434,229 @@ def exemplars(body):
                 "roles": {r: {"avg": round(sum(units_of(it).count(r) for it in items) / k, 1), "share": round(100 * sum(1 for it in items if r in units_of(it)) / k)} for r in spec["roles"]}}
     return {"section": kind, "level": spec["level"], "unit": "문단" if spec["level"] == "para" else "문장", "roles": spec["roles"],
             "items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
+
+
+# ---------- 구성 보기: 선행 연구의 결과·논의·결론 절이 어떻게 짜였나 (2026-10-18, 사용자: '4장 5장을 써야 하는데 막힌다 — 선행 연구들의 4·5장 구성을 참고하면서 쓰고 싶다') ----------
+# 본보기(위)는 저널·주제로 논문을 자동으로 골라 문단 역할만 보였다. 여기서는 저자가 논문을 고르고(참고문헌 가운데 서재에 있는 선행 연구가 먼저), 절을 번호·소절·문단(역할·요지·가리키는 그림)의 뼈대로 나란히 놓고,
+# Opus 가 공통 흐름과 내 장의 소절 구성을 제안한다(개요에 바로 넣을 수 있게). 결과와 논의를 따로 둔 논문과 한 절에 둔 논문을 구별한다(_fine_kind).
+_ST_KINDS = {"results": "결과", "discussion": "논의", "rd": "결과·논의(한 절)", "conclusion": "결론"}
+_FIG_RX = re.compile(r"\b(?:Fig(?:ure)?s?\.?)\s*(\d{1,2})(?:\s*(?:,|and|\u2013|-)\s*(\d{1,2}))?", re.I)
+_TAB_RX = re.compile(r"\bTables?\s+(\d{1,2})", re.I)
+
+
+def _fine_kind(head):
+    low = (head or "").lower()
+    if re.search(r"result", low) and re.search(r"discuss", low):
+        return "rd"
+    if re.search(r"discuss", low):
+        return "discussion"
+    if re.search(r"result", low):
+        return "results"
+    if re.search(r"conclu|closing remarks|^summary", low):
+        return "conclusion"
+    if re.search(r"introduc", low):
+        return "intro"
+    return "methods" if re.search(_SEC_RX["methods"], low) else ""
+
+
+def _strong_methods(head):
+    """제목만으로 방법 절이 분명한 것 — 이것의 뒤가 결과다 ('experiments' 한 낱말은 결과 절 제목에도 흔해 여기 넣지 않는다)"""
+    low = (head or "").lower()
+    return bool(re.search(r"procedure|set-?up|methodolog|materials? and methods?|experimental (?:details|methods?|setup|procedure|work|technique|system|apparatus|section)|apparatus|specimen|fabrication|design|preparation|configuration|^experimental$|^experiments?$|^methods?$", low))
+
+
+def _refs_in(text):
+    figs, tabs = [], []
+    for m in _FIG_RX.finditer(text or ""):
+        for g in m.groups():
+            if g and g not in figs:
+                figs.append(g)
+    for m in _TAB_RX.finditer(text or ""):
+        if m.group(1) not in tabs:
+            tabs.append(m.group(1))
+    return figs, tabs
+
+
+def _lib_meta(f, tags=None):
+    m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_(.+)\.pdf$", f, re.I)
+    if tags is None:
+        tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
+    title = (tags.get(f) or {}).get("title") or (m.group(4) if m else os.path.splitext(f)[0])
+    return {"file": f, "journal": m.group(2) if m else "", "year": int(m.group(1)) if m else 0, "author": m.group(3) if m else "", "title": title}
+
+
+def structure_candidates(doc, q=""):
+    """고를 수 있는 논문: 원고의 참고문헌 가운데 서재에 있는 것(선행 연구, 번호와 함께) · 주제가 가까운 서재 논문 12편 · 찾기(q — 제목·파일 이름의 낱말 전부)"""
+    refs = doc.get("refs_text") or []
+    lines = refs if isinstance(refs, list) else str(refs).splitlines()
+    tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
+    seen, out = set(), []
+    for i, line in enumerate(lines, 1):
+        f = _ref_file(line)
+        if f and f not in seen:
+            seen.add(f)
+            out.append(dict(_lib_meta(f, tags), via="ref", ref=i))
+    topic = _topic_words(doc)
+    try:
+        names = [f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf")]
+    except OSError:
+        names = []
+    tset, scored = set(topic), []
+    ql = re.findall(r"[a-z0-9\uac00-\ud7a3]{2,}", (q or "").lower())
+    for f in names:
+        if f in seen:
+            continue
+        meta = _lib_meta(f, tags)
+        if ql and not all(w in meta["title"].lower() or w in f.lower() for w in ql):
+            continue
+        tw = set(re.findall(r"[a-z][a-z\-]{3,}", meta["title"].lower()))
+        scored.append((len(tw & tset) * 3 + (meta["year"] - 2000) * 0.05, meta))
+    scored.sort(key=lambda x: -x[0])
+    out += [dict(m, via="search" if ql else "topic") for _s, m in scored[: 40 if ql else 12]]
+    return {"items": out, "topic": topic}
+
+
+def _my_chapters(doc, ids):
+    """내 원고의 장(1단계 절) — 고른 id, 없으면 제목이 결과·논의·결론인 것: 제목·요지·초안 길이·소절·초안이 가리키는 그림"""
+    outl = doc.get("outline") or []
+    want = set(str(x) for x in (ids or []))
+    if not want:
+        for nd in outl:
+            if nd.get("level", 1) == 1 and re.search(_MINE_RX["results"] + "|" + _MINE_RX["conclusion"], (nd.get("heading") or "").lower()):
+                want.add(nd["id"])
+    res, cur = [], None
+    for nd in outl:
+        if nd.get("level", 1) == 1:
+            cur = None
+            if nd["id"] in want:
+                cur = {"id": nd["id"], "heading": nd.get("heading", ""), "claim": nd.get("claim", ""), "words": len((nd.get("draft_en") or nd.get("draft") or "").split()), "children": [], "figs": []}
+                res.append(cur)
+        elif cur is not None:
+            cur["children"].append({"id": nd["id"], "heading": nd.get("heading", ""), "claim": nd.get("claim", ""), "words": len((nd.get("draft_en") or nd.get("draft") or "").split())})
+        if cur is not None:
+            for g in re.findall(r"(?:Fig\.?|\uadf8\ub9bc)\s*(\d{1,2})", (nd.get("draft_en") or "") + " " + (nd.get("draft") or "")):
+                if g not in cur["figs"]:
+                    cur["figs"].append(g)
+    return res
+
+
+def _label_chunked(kind, texts, cap=45):
+    """_label 을 한 호출에 cap 문단까지만 — 많이 넣으면 답의 길이가 안 맞아 규칙 역할·빈 요지로 떨어진다(2026-10-18, 네 편 75문단). 긴 절은 반으로 나눠 묻고 잇는다. 요지가 빈 키는 하나씩 한 번 더."""
+    parts = {}
+    for k, units in texts.items():
+        if len(units) <= cap:
+            parts[k] = units
+        else:
+            half = (len(units) + 1) // 2
+            parts[k + "#a"], parts[k + "#b"] = units[:half], units[half:]
+    chunk, size, res = [], 0, {}
+    for k in parts:
+        n = len(parts[k])
+        if chunk and size + n > cap:
+            res.update(_label(kind, {x: parts[x] for x in chunk})); chunk, size = [], 0
+        chunk.append(k); size += n
+    if chunk:
+        res.update(_label(kind, {x: parts[x] for x in chunk}))
+    for k in list(parts):
+        if parts[k] and not any(str(x[1]).strip() for x in res.get(k) or [] if isinstance(x, list) and len(x) >= 2):
+            res.update(_label(kind, {k: parts[k]}))
+    return {k: (res.get(k) if k in res else (res.get(k + "#a") or []) + (res.get(k + "#b") or [])) for k in texts}
+
+
+def section_structure(doc, body):
+    """고른 논문마다 그 종류의 절들을 뼈대로: {num, head, kind, words, subs, pattern, figs, paras[{sub, role, gist, figs, tabs, words, text}]} + 내 장(_my_chapters)"""
+    files = [os.path.basename(str(x)) for x in (body.get("files") or []) if str(x).strip()][:10]
+    kinds = [k for k in (body.get("kinds") or []) if k in _ST_KINDS] or ["results", "discussion", "rd"]
+    tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
+    items, texts = [], {}
+    for i, f in enumerate(files):
+        if not os.path.isfile(os.path.join(cfg["ARCHIVE"], f)):
+            continue
+        secs_all = [(head, paras, num, _fine_kind(head)) for _k, head, paras, num in _pdf_sections(f, nums=True)]
+        last_meth = max([i for i, x in enumerate(secs_all) if x[3] == "intro" or _strong_methods(x[0])] or [-1])
+        first_conc = min([i for i, x in enumerate(secs_all) if x[3] == "conclusion"] or [len(secs_all)])
+        want_res = bool({"results", "discussion", "rd"} & set(kinds))
+        secs = []
+        for si, (head, paras, num, fk) in enumerate(secs_all):     # (i 는 바깥의 논문 번호 — 2026-10-18 여기서 i 를 덮어써 texts 키가 어긋났었다)
+            inferred = False
+            if fk in ("", "methods") and num and last_meth < si < first_conc:    # 제목이 내용으로 된 결과 절(Oliaei 2016 '4. Force measurements …') — 마지막 방법 절 뒤·결론 앞의 자리로 결과로 본다
+                fk, inferred = "rd", True
+            if paras and (fk in kinds or (inferred and want_res)):
+                secs.append({"num": num, "head": head, "kind": fk, "inferred": inferred, "paras": paras})
+        items.append(dict(_lib_meta(f, tags), sections=secs))
+        for j, sec in enumerate(secs):
+            texts["E%d_%d" % (i, j)] = [p["text"] for p in sec["paras"]]
+    labels = _label_chunked("results", texts) if texts else {}
+    for i, it in enumerate(items):
+        for j, sec in enumerate(it["sections"]):
+            lb = labels.get("E%d_%d" % (i, j)) or []
+            if len(lb) != len(sec["paras"]):
+                lb = [[r, ""] for r in _heuristic_roles("results", [p["text"] for p in sec["paras"]])]
+            out, subs, figs = [], [], []
+            for p, l in zip(sec["paras"], lb):
+                pf, pt = _refs_in(p["text"])
+                out.append({"sub": p["sub"], "role": l[0], "gist": l[1], "figs": pf, "tabs": pt, "words": len(p["text"].split()), "text": p["text"]})
+                if p["sub"] and p["sub"] not in subs:
+                    subs.append(p["sub"])
+                for g in pf:
+                    if g not in figs:
+                        figs.append(g)
+            sec.update(paras=out, subs=subs, figs=figs, words=sum(x["words"] for x in out), pattern=_pattern([x["role"] for x in out]))
+    return {"items": items, "kinds": kinds, "mine": _my_chapters(doc, body.get("mine") or [])}
+
+
+_ST_ADVICE = ("당신은 기계가공 분야 논문의 공저자다. [선행 연구의 구성]은 저자가 고른 논문들의 결과·논의·결론 절을 절 번호·소절·문단(역할 · 한 줄 요지 · 가리키는 그림)으로 요약한 뼈대이고, [내 원고]는 저자가 지금 쓰는 장의 차례·요지·초안 길이·그림이다.\n"
+              "JSON 하나로만 답하라: {\"answer\": \"한국어 글\", \"suggest\": [{\"chapter\": \"내 장의 id (대괄호 안의 것)\", \"heading\": \"소절 제목\", \"aim\": \"이 소절이 하는 일 한 문장\", \"figs\": [\"내 그림 번호\"], \"like\": \"어느 선행 연구의 어느 자리를 본뜬 것인가 — '저자 연도' 로\"}]}\n"
+              "answer 는 두괄식 한국어 글로 세 대목: ① 이 논문들이 결과와 논의를 어떻게 나누고 어떤 차례로 펴는가 — 공통 흐름(관찰을 먼저 모으는가, 조건별로 가는가, 그림마다 한 문단인가, 문헌과의 견줌과 기전은 어디에 두는가, 결과 절과 논의 절의 분량 비)과 논문마다 다른 점을 '저자 연도' 로 짚어 ② 내 원고가 그 흐름에서 갖춘 것과 빈 것 ③ 그래서 내 장을 어떻게 짜면 되는가.\n"
+              "suggest 는 내 장마다 소절 3~6개를 차례대로 — 내 원고의 요지·그림·초안에 실제로 있는 재료로만 세운다. 없는 결과를 지어내지 않는다(그 자리가 필요하면 aim 에 '아직 결과 없음 — …를 재면' 처럼 적는다). 선행 연구의 문장을 베끼지 않는다. 잘된 점 나열·인사말 금지.\n\n")
+
+
+def structure_peek(f):
+    """절을 못 찾은 PDF 들여다보기: 찾은 제목 줄 전부와 Results·Discussion 을 품은 문단의 첫머리 — 제목 판정(_pdf_sections)을 고칠 때 본다"""
+    f = os.path.basename(str(f or ""))
+    try:
+        body = cfg["paper_body"](f) if cfg.get("paper_body") else ""
+    except Exception:
+        body = ""
+    paras = [re.sub(r"\s+", " ", p).strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    hits = [p[:220] for p in paras if re.search(r"\b(Results?|Discussion|Conclusions?)\b", p[:120])]
+    return {"file": f, "chars": len(body or ""), "nparas": len(paras), "heads": [{"kind": k, "head": h, "num": n, "paras": len(p)} for k, h, p, n in _pdf_sections(f, nums=True)],
+            "hits": hits[:12], "short": [p for p in paras if len(p) < 90][:40]}
+
+
+def structure_advice(doc, body):
+    """고른 논문의 뼈대 + 내 장 → Opus 가 공통 흐름과 내 장의 소절 구성을 제안 (내 그림 목록도 같이)"""
+    data = body.get("data") or {}
+    lines = []
+    for it in data.get("items") or []:
+        lines.append("## %s %s · %s — %s" % (it.get("author"), it.get("year"), it.get("journal"), (it.get("title") or "")[:100]))
+        for sec in it.get("sections") or []:
+            lines.append("### %s %s (%s · %s 낱말 · 그림 %s)" % (sec.get("num") or "", sec.get("head"), _ST_KINDS.get(sec.get("kind"), sec.get("kind")) + (" — 제목이 내용으로 된 절, 자리로 보아 결과" if sec.get("inferred") else ""), sec.get("words", 0), ",".join(sec.get("figs") or []) or "-"))
+            for p in sec.get("paras") or []:
+                lines.append("- [%s] %s%s%s" % (p.get("role"), p.get("gist") or "", (" · " + p["sub"]) if p.get("sub") else "", (" · Fig " + ",".join(p["figs"])) if p.get("figs") else ""))
+    ml, ids = [], set()
+    for c in data.get("mine") or []:
+        ids.add(str(c.get("id")))
+        ml.append("## [%s] %s (초안 %s 낱말 · 그림 %s)%s" % (c.get("id"), c.get("heading"), c.get("words", 0), ",".join(c.get("figs") or []) or "-", (" — 요지: " + c["claim"]) if c.get("claim") else ""))
+        for ch in c.get("children") or []:
+            ml.append("- [%s] %s (%s 낱말)%s" % (ch.get("id"), ch.get("heading"), ch.get("words", 0), (" — " + ch["claim"]) if ch.get("claim") else ""))
+    figs = "\n".join("Fig. %s — %s" % (f.get("num"), (f.get("caption") or f.get("caption_en") or "")[:140]) for f in (doc.get("figures") or []))
+    eff = body.get("effort") if body.get("effort") in _SEL_EFFORT else "xhigh"
+    model, effort = _SEL_EFFORT[eff]
+    prompt = (_ST_ADVICE + "[선행 연구의 구성]\n" + "\n".join(lines)[:70000] + "\n\n[내 원고] 제목: " + (doc.get("title") or "") + "\n" + ("\n".join(ml) or "(고른 장이 없음)") +
+              "\n\n[내 그림]\n" + (figs or "(없음)") + "\n\n" + _ANSWER_RULE)
+    t0 = time.time()
+    raw = (cfg["claude_text"](prompt, timeout=900, model=model, effort=effort) or "").strip()
+    d = _json_in(raw) or {}
+    sug = []
+    for x in (d.get("suggest") if isinstance(d.get("suggest"), list) else [])[:40]:
+        if not isinstance(x, dict):
+            continue
+        ch = str(x.get("chapter") or "").strip().strip("[]")
+        hd, aim = str(x.get("heading") or "").strip()[:80], str(x.get("aim") or "").strip()[:300]
+        if ch in ids and hd:
+            sug.append({"chapter": ch, "heading": hd, "aim": aim, "figs": [str(g) for g in (x.get("figs") if isinstance(x.get("figs"), list) else []) if str(g).strip()][:6], "like": str(x.get("like") or "").strip()[:160]})
+    return {"answer": str(d.get("answer") or raw[:4000]), "suggest": sug, "model": model, "sec": round(time.time() - t0)}
 
 
 # ---------- 자료: 원고에 같이 넣어 두는 작업 자료(.md 등) — Claude 에게 물을 때 함께 보여 준다 ----------
@@ -5232,6 +5462,16 @@ def handle_post(h, body):
                 return h._send(200, sync_docx(doc, mark=bool((doc.get("word_sync") or {}).get("mark")), check_only=(op == "check")))
         if p == "/api/ms/exemplars":   # 본보기: 잘 쓴 논문의 초록 구조
             return h._send(200, exemplars(body))
+        if p == "/api/ms/structure":   # 구성 보기: 고른 선행 연구의 결과·논의·결론 절 뼈대 (candidates · build · advice)
+            doc = load_ms(body.get("id")) or {"title": "", "front": {}, "outline": []}
+            op = body.get("op")
+            if op == "candidates":
+                return h._send(200, structure_candidates(doc, str(body.get("q") or "")))
+            if op == "advice":
+                return h._send(200, structure_advice(doc, body))
+            if op == "peek":
+                return h._send(200, structure_peek(body.get("file")))
+            return h._send(200, section_structure(doc, body))
         if p == "/api/ms/claude":
             doc = load_ms(body.get("id"))
             mode = body.get("mode")

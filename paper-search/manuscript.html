@@ -78,6 +78,7 @@
   .tabs div.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
   .tab { display: none; padding: var(--s2) var(--s3) var(--s8); }
   .tab.on { display: block; }
+  .stc { display: block; font-size: 12px; padding: 1px 0; }   /* 구성 보기: 논문 고르기 줄 */
   /* 본보기: 잘 쓴 초록의 문장 역할 */
   .exctl { padding: 4px 12px 8px; font-size: 12px; color: var(--text-2); }
   .exctl .jl { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 4px 0 6px; }
@@ -995,6 +996,7 @@ async function renderEx() {
   const el = $("tab-ex"); if (!el) return;
   if (!doc) { el.innerHTML = "<div class='hint' style='padding:12px'>원고를 먼저 고르세요</div>"; return; }
   if (exState.forDoc !== doc.id) { exState.data = {}; exState.forDoc = doc.id; }
+  if (exState.section === "structure") { renderSt(el); return; }
   if (!window._msJournals) { try { window._msJournals = (await api("/api/ms/journals")).journals || []; } catch (e) { window._msJournals = []; } }
   const def = ["IJMTM", "JMPT", "IJEM"]; if (doc.meta.journal && !def.includes(doc.meta.journal)) def.unshift(doc.meta.journal);
   if (!exState.journals) exState.journals = def.slice();
@@ -1002,7 +1004,7 @@ async function renderEx() {
   const cnt = {}; window._msJournals.forEach(j => cnt[j.abbr] = j.count);
   const body = exIsBody(exState.section), has = !!exState.data[exState.section];
   el.innerHTML = "<div class='sec'>본보기 — 잘 쓴 논문의 " + esc(exKindName(exState.section)) + " 구조</div>" +
-    "<div class='exctl'><div class='exkinds'>" + EX_KINDS.map(([k, nm]) => "<a href='#' class='act" + (k === exState.section ? " on" : "") + "' data-k='" + k + "'>" + nm + "</a>").join("") + "</div>" +
+    "<div class='exctl'>" + exKindsRow() +
       "저널 <span class='hint' style='display:inline'>(숫자 = 내 서재 편수" + (body ? " · 본문은 내 서재 PDF 에서만" : ", 없으면 Scopus 에서") + ")</span><div class='jl'>" +
       all.map(a => "<label><input type='checkbox' value='" + esc(a) + "'" + (exState.journals.includes(a) ? " checked" : "") + "> " + esc(a) + (cnt[a] ? " <span class='hint' style='display:inline'>" + cnt[a] + "</span>" : "") + "</label>").join("") + "</div>" +
       (body ? "" : "<select id='exSrc'><option value='both'>내 서재 + Scopus</option><option value='library'>내 서재만</option><option value='scopus'>Scopus 만 (피인용 순)</option></select> ") +
@@ -1011,12 +1013,7 @@ async function renderEx() {
   if ($("exSrc")) { $("exSrc").value = exState.source; $("exSrc").onchange = e => exState.source = e.target.value; }
   $("exN").value = String(exState.n); $("exN").onchange = e => exState.n = +e.target.value;
   el.querySelectorAll(".jl input").forEach(c => c.onchange = () => { exState.journals = [...el.querySelectorAll(".jl input:checked")].map(x => x.value); });
-  el.querySelectorAll(".exkinds a").forEach(a => a.onclick = e => {
-    e.preventDefault(); exState.section = a.dataset.k;
-    if (exIsBody(exState.section) && exState.n > 8) exState.n = 6;   // 본문은 길어 기본 6편
-    if (exState.section === "results" && exState.n > 4) exState.n = 4;   // 결과·논의는 논문마다 30문단 넘게 — 기본 4편
-    renderEx(); if (!exState.data[exState.section]) loadEx();
-  });
+  bindExKinds(el);
   $("exGo").onclick = () => loadEx(true);
   if (exState.busy) { $("exOut").innerHTML = exBusyHtml(); animateBars($("exOut")); } else if (has) drawEx();
 }
@@ -1026,7 +1023,7 @@ function exBusyHtml() {
     (exState.section === "title" ? "제목 목록이라 금방 끝납니다 " : (body ? "내 서재 PDF 에서 그 절을 찾아 Claude 가 문단마다 역할·요지를 붙입니다. 처음 1~3분(결과·논의는 더), 한 번 본 것은 다음부터 바로 " : "내 서재 PDF·Scopus 에서 모아 Claude 가 문장 역할을 붙입니다. 처음 1~2분, 한 번 본 것은 다음부터 바로 ")) + pbarHtml(0.92, 0, "slow") + "</div>";
 }
 async function loadEx(force) {
-  if (!doc || exState.busy) return;
+  if (!doc || exState.busy || exState.section === "structure") return;
   const sec = exState.section;
   exState.busy = true; const out = $("exOut"); if (out) { out.innerHTML = exBusyHtml(); animateBars(out); }
   try { exState.data[sec] = await api("/api/ms/exemplars", { id: doc.id, section: sec, journals: exState.journals, source: exState.source, n: exState.n }); }
@@ -1069,6 +1066,125 @@ function drawEx() {
   out.innerHTML = h;
   out.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
   out.querySelectorAll(".exp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); o.hidden = !o.hidden; });
+}
+
+// ---------- 구성 보기: 고른 선행 연구의 결과·논의·결론 절이 어떻게 짜였나 (2026-10-18, 사용자: '4장 5장을 써야 하는데 막힌다 — 선행 연구들의 4·5장 구성을 참고하면서 쓰고 싶다') ----------
+const ST_KINDS = [["results", "결과"], ["discussion", "논의"], ["rd", "결과·논의 한 절"], ["conclusion", "결론"]];
+let stState = { kinds: ["results", "discussion", "rd"], files: [], mine: null, cands: null, q: "", data: null, advice: null, busy: "", forDoc: null };
+function exKindsRow() {
+  return "<div class='exkinds'>" + EX_KINDS.map(([k, nm]) => "<a href='#' class='act" + (k === exState.section ? " on" : "") + "' data-k='" + k + "'>" + nm + "</a>").join("") +
+    "<a href='#' class='act" + (exState.section === "structure" ? " on" : "") + "' data-k='structure' title='고른 선행 연구들의 결과·논의·결론 절을 절·소절·문단 뼈대로 나란히 놓고, 내 장의 구성을 제안받습니다'>구성 보기 (4·5장)</a></div>";
+}
+function bindExKinds(el) {
+  el.querySelectorAll(".exkinds a").forEach(a => a.onclick = e => {
+    e.preventDefault(); exState.section = a.dataset.k;
+    if (exState.section === "structure") { renderEx(); return; }
+    if (exIsBody(exState.section) && exState.n > 8) exState.n = 6;   /* 본문은 길어 기본 6편 */
+    if (exState.section === "results" && exState.n > 4) exState.n = 4;   /* 결과·논의는 논문마다 30문단 넘게 — 기본 4편 */
+    renderEx(); if (!exState.data[exState.section]) loadEx();
+  });
+}
+function stMineDefault() { return (doc.outline || []).filter(n => (n.level || 1) === 1 && /결과|고찰|논의|result|discussion|결론|conclu/i.test(n.heading || "")).map(n => n.id); }
+function renderSt(el) {
+  if (stState.forDoc !== doc.id) { Object.assign(stState, { cands: null, data: null, advice: null, files: [], mine: null, busy: "", forDoc: doc.id }); }
+  if (!stState.mine) stState.mine = stMineDefault();
+  const l1 = (doc.outline || []).filter(n => (n.level || 1) === 1);
+  el.innerHTML = "<div class='sec'>구성 보기 — 선행 연구의 결과·논의·결론은 어떻게 짜였나</div><div class='exctl'>" + exKindsRow() +
+    "<div class='hint'>고른 논문의 그 절을 절 번호 · 소절 · 문단(역할 · 한 줄 요지 · 가리키는 그림)으로 펼쳐 나란히 놓습니다. 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
+    "<div style='margin:6px 0'>볼 절 " + ST_KINDS.map(([k, nm]) => "<label><input type='checkbox' class='stk' value='" + k + "'" + (stState.kinds.includes(k) ? " checked" : "") + "> " + nm + "</label>").join(" ") + "</div>" +
+    "<div style='margin:6px 0'>내 장 " + l1.map(n => "<label><input type='checkbox' class='stm' value='" + esc(n.id) + "'" + (stState.mine.includes(n.id) ? " checked" : "") + "> " + esc((n.heading || "").slice(0, 28)) + "</label>").join(" ") + "</div>" +
+    "<div id='stCands' class='hint'>논문 목록을 불러오는 중…</div>" +
+    "<div style='margin:6px 0'><input id='stQ' placeholder='서재에서 제목으로 찾기' value='" + esc(stState.q) + "' style='width:220px'> <button class='act' id='stFind'>찾기</button> <button class='btn' id='stGo'>구성 보기</button> <span class='hint' id='stMsg' style='display:inline'></span></div></div><div id='stOut'></div>";
+  bindExKinds(el);
+  el.querySelectorAll(".stk").forEach(c => c.onchange = () => { stState.kinds = [...el.querySelectorAll(".stk:checked")].map(x => x.value); });
+  el.querySelectorAll(".stm").forEach(c => c.onchange = () => { stState.mine = [...el.querySelectorAll(".stm:checked")].map(x => x.value); });
+  $("stFind").onclick = () => { stState.q = $("stQ").value.trim(); stState.cands = null; stLoadCands(); };
+  $("stQ").addEventListener("keydown", e => { if (e.key === "Enter") $("stFind").onclick(); });
+  $("stGo").onclick = stBuild;
+  if (!stState.cands) stLoadCands(); else stDrawCands();
+  if (stState.busy) $("stOut").innerHTML = "<div class='hint' style='padding:6px 12px'>" + esc(stState.busy) + "</div>";
+  else if (stState.data) stDraw();
+}
+async function stLoadCands() {
+  const box = $("stCands"); if (!box) return;
+  try { stState.cands = await api("/api/ms/structure", { id: doc.id, op: "candidates", q: stState.q }); } catch (e) { stState.cands = { items: [] }; }
+  stDrawCands();
+}
+function stDrawCands() {
+  const box = $("stCands"); if (!box) return;
+  const items = (stState.cands || {}).items || [], refs = items.filter(x => x.via === "ref"), rest = items.filter(x => x.via !== "ref");
+  const row = x => "<label class='stc'><input type='checkbox' class='stf' value='" + esc(x.file) + "'" + (stState.files.includes(x.file) ? " checked" : "") + "> " + (x.ref ? "<b>[" + x.ref + "]</b> " : "") + esc(x.author || "") + " " + (x.year || "") + " <span class='hint' style='display:inline'>" + esc(x.journal || "") + "</span> · " + esc((x.title || "").slice(0, 70)) + "</label>";
+  box.className = "";
+  box.innerHTML = (refs.length ? "<div class='hint'>참고문헌 가운데 내 서재에 있는 선행 연구 " + refs.length + "편</div>" + refs.map(row).join("") : "<div class='hint'>참고문헌 목록의 논문이 서재에 없거나 아직 참고문헌이 없습니다</div>") +
+    (rest.length ? "<div class='hint' style='margin-top:4px'>" + (stState.q ? "찾은 논문" : "주제가 가까운 서재 논문") + " " + rest.length + "편</div>" + rest.map(row).join("") : "");
+  box.querySelectorAll(".stf").forEach(c => c.onchange = () => { stState.files = [...document.querySelectorAll("#stCands .stf:checked")].map(x => x.value); });
+}
+async function stBuild() {
+  if (!stState.files.length) { $("stMsg").textContent = "논문을 하나 이상 고르세요"; return; }
+  if (stState.busy) return;
+  stState.busy = "고른 논문에서 그 절을 찾아 문단마다 역할·요지를 붙이는 중 — 처음은 1~3분, 한 번 본 논문은 바로"; stState.advice = null; renderEx();
+  try { stState.data = await api("/api/ms/structure", { id: doc.id, op: "build", files: stState.files, kinds: stState.kinds, mine: stState.mine }); }
+  catch (e) { stState.data = { items: [], error: "불러오기 실패" }; }
+  stState.busy = ""; if (activeTab() === "ex") renderEx();
+}
+function stDraw() {
+  const d = stState.data || {}, out = $("stOut"); if (!out) return;
+  const kn = k => (ST_KINDS.find(x => x[0] === k) || [k, k])[1];
+  let h = "";
+  for (const it of d.items || []) {
+    h += "<details class='ex' open><summary class='exh'>" + esc(it.author || "") + " " + (it.year || "") + " · " + esc(it.journal || "") + " · " + esc((it.title || "").slice(0, 80)) + " <a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a></summary>";
+    if (!(it.sections || []).length) h += "<div class='hint' style='padding:4px 12px'>이 PDF 에서 고른 종류의 절을 찾지 못했습니다 — 절 제목에 번호가 없는 편집이거나 결과·논의가 다른 이름일 수 있습니다</div>";
+    for (const s of it.sections || []) {
+      h += "<div class='ttl'>" + esc((s.num ? s.num + ". " : "") + s.head) + " <span class='hint' style='display:inline'>" + esc(kn(s.kind)) + (s.inferred ? " (제목이 내용으로 된 절 — 자리로 보아 결과)" : "") + " · " + s.words + " 낱말 · 문단 " + (s.paras || []).length + ((s.figs || []).length ? " · 그림 " + esc(s.figs.join(", ")) : "") + "</span></div>" +
+        ((s.subs || []).length ? "<div class='pat'>소절: " + s.subs.map(esc).join(" → ") + "</div>" : "") + "<div class='pat'>" + esc(s.pattern || "") + "</div>" +
+        (s.paras || []).map(p => "<div class='exs exp' data-m='" + esc(p.role) + "' title='누르면 원문 문단'><span class='mv'>" + esc(p.role) + "</span><div class='bd'><div>" + esc(p.gist || "") +
+          ((p.figs || []).length ? " <span class='hint' style='display:inline'>· Fig. " + esc(p.figs.join(", ")) + "</span>" : "") + ((p.tabs || []).length ? " <span class='hint' style='display:inline'>· Table " + esc(p.tabs.join(", ")) + "</span>" : "") +
+          (p.sub ? " <span class='hint' style='display:inline'>· " + esc(p.sub) + "</span>" : "") + "</div><div class='orig' hidden>" + esc(p.text || "") + "</div></div></div>").join("");
+    }
+    h += "</details>";
+  }
+  const mine = d.mine || [];
+  if (mine.length) h += "<div class='ex mine'><div class='exh'>내 장</div>" + mine.map(c => "<div class='ttl'>" + esc(c.heading) + " <span class='hint' style='display:inline'>초안 " + c.words + " 낱말" + ((c.figs || []).length ? " · 그림 " + esc(c.figs.join(", ")) : "") + "</span></div>" +
+    ((c.children || []).length ? "<div class='pat'>소절: " + c.children.map(x => esc(x.heading)).join(" → ") + "</div>" : "<div class='hint' style='padding:0 12px'>소절이 아직 없습니다</div>")).join("") + "</div>";
+  if ((d.items || []).length) h += "<div style='padding:6px 12px'><button class='btn' id='stAdvice'>공통 흐름과 내 장 제안 (Opus 엑스트라 · 2~4분)</button></div>";
+  if (stState.advice) h += stAdviceHtml(stState.advice);
+  if (d.error) h += "<div class='warnbox'>" + esc(d.error) + "</div>";
+  out.innerHTML = h;
+  out.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
+  out.querySelectorAll(".exp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); o.hidden = !o.hidden; });
+  const ab = $("stAdvice"); if (ab) ab.onclick = stAdvise;
+  out.querySelectorAll("[data-stins]").forEach(b => b.onclick = () => stInsert(b.dataset.stins));
+}
+async function stAdvise() {
+  if (stState.busy || !stState.data) return;
+  stState.busy = "선행 연구의 뼈대와 내 장의 차례를 Opus 에게 주고 공통 흐름과 내 장의 소절 구성을 받는 중 — 2~4분"; renderEx();
+  const data = { items: (stState.data.items || []).map(it => Object.assign({}, it, { sections: (it.sections || []).map(s => Object.assign({}, s, { paras: (s.paras || []).map(p => ({ role: p.role, gist: p.gist, sub: p.sub, figs: p.figs })) })) })), mine: stState.data.mine || [] };
+  try { stState.advice = await api("/api/ms/structure", { id: doc.id, op: "advice", data, effort: "xhigh" }); } catch (e) { stState.advice = { answer: "불러오기 실패", suggest: [] }; }
+  stState.busy = ""; if (activeTab() === "ex") renderEx();
+}
+function stAdviceHtml(a) {
+  const paras = String(a.answer || "").split(/\n{2,}|\n(?=\S)/).map(x => x.trim()).filter(Boolean);
+  let h = "<div class='ex'><div class='exh'>공통 흐름과 내 장 제안 · " + esc(a.model || "") + (a.sec ? " · " + a.sec + "초" : "") + "</div>" + paras.map(p => "<p style='margin:4px 12px;line-height:1.5'>" + esc(p) + "</p>").join("");
+  const by = {};
+  (a.suggest || []).forEach(s => { (by[s.chapter] = by[s.chapter] || []).push(s); });
+  for (const ch of Object.keys(by)) {
+    const n = node(ch);
+    h += "<div class='ttl'>" + esc(n ? n.heading : ch) + " — 제안하는 소절</div>" +
+      by[ch].map(s => "<div class='exs'><span class='mv'>소절</span><div class='bd'><div><b>" + esc(s.heading) + "</b> — " + esc(s.aim) + ((s.figs || []).length ? " <span class='hint' style='display:inline'>· Fig. " + esc(s.figs.join(", ")) + "</span>" : "") + (s.like ? "<div class='hint'>" + esc(s.like) + "</div>" : "") + "</div></div></div>").join("") +
+      (n ? "<div style='padding:4px 12px'><button class='act' data-stins='" + esc(ch) + "'>이 소절들을 개요에 넣기 (" + by[ch].length + ")</button></div>" : "");
+  }
+  return h + "</div>";
+}
+function stInsert(chId) {
+  if (!doc || !stState.advice) return;
+  const items = (stState.advice.suggest || []).filter(s => s.chapter === chId), i = doc.outline.findIndex(x => x.id === chId);
+  if (!items.length || i < 0) return;
+  if (!confirm(items.length + "개 소절을 '" + ((node(chId) || {}).heading || "") + "' 아래에 빈 초안으로 넣을까요? (지우기는 개요에서)")) return;
+  let j = i + 1; while (j < doc.outline.length && (doc.outline[j].level || 1) > 1) j++;
+  const tmp = doc.outline.slice(), nodes = [];
+  for (const s of items) { const n = { id: nextId(tmp, "n"), level: 2, heading: s.heading, claim: s.aim + ((s.figs || []).length ? " (Fig. " + s.figs.join(", ") + ")" : ""), cards: [], draft: "", draft_en: "", status: "todo" }; tmp.push(n); nodes.push(n); }
+  doc.outline.splice(j, 0, ...nodes); save(); renderTree(); renderEditor();
+  const m = $("stMsg"); if (m) m.textContent = nodes.length + "개 소절을 개요에 넣었습니다";
 }
 
 // ---------- 서랍 ----------
