@@ -996,12 +996,12 @@ async function renderEx() {
   const el = $("tab-ex"); if (!el) return;
   if (!doc) { el.innerHTML = "<div class='hint' style='padding:12px'>원고를 먼저 고르세요</div>"; return; }
   if (exState.forDoc !== doc.id) { exState.data = {}; exState.forDoc = doc.id; }
-  if (exState.section === "structure") { renderSt(el); return; }
   if (!window._msJournals) { try { window._msJournals = (await api("/api/ms/journals")).journals || []; } catch (e) { window._msJournals = []; } }
   const def = ["IJMTM", "JMPT", "IJEM"]; if (doc.meta.journal && !def.includes(doc.meta.journal)) def.unshift(doc.meta.journal);
   if (!exState.journals) exState.journals = def.slice();
   const all = [...new Set(def.concat(window._msJournals.map(j => j.abbr)))].slice(0, 16);
   const cnt = {}; window._msJournals.forEach(j => cnt[j.abbr] = j.count);
+  if (exState.section === "structure") { renderSt(el, all, cnt); return; }   /* 구성 보기도 같은 저널 고르기(exState.journals)를 쓴다 */
   const body = exIsBody(exState.section), has = !!exState.data[exState.section];
   el.innerHTML = "<div class='sec'>본보기 — 잘 쓴 논문의 " + esc(exKindName(exState.section)) + " 구조</div>" +
     "<div class='exctl'>" + exKindsRow() +
@@ -1070,10 +1070,10 @@ function drawEx() {
 
 // ---------- 구성 보기: 고른 선행 연구의 결과·논의·결론 절이 어떻게 짜였나 (2026-10-18, 사용자: '4장 5장을 써야 하는데 막힌다 — 선행 연구들의 4·5장 구성을 참고하면서 쓰고 싶다') ----------
 const ST_KINDS = [["results", "결과"], ["discussion", "논의"], ["rd", "결과·논의 한 절"], ["conclusion", "결론"]];
-let stState = { kinds: ["results", "discussion", "rd"], files: [], mine: null, cands: null, q: "", data: null, advice: null, busy: "", forDoc: null };
+let stState = { kinds: ["results", "discussion", "rd"], pick: "auto", n: 4, files: [], mine: null, cands: null, q: "", data: null, advice: null, busy: "", forDoc: null };   /* pick: auto = 서재에서 알아서(저널·주제·편수), manual = 직접 고르기 */
 function exKindsRow() {
   return "<div class='exkinds'>" + EX_KINDS.map(([k, nm]) => "<a href='#' class='act" + (k === exState.section ? " on" : "") + "' data-k='" + k + "'>" + nm + "</a>").join("") +
-    "<a href='#' class='act" + (exState.section === "structure" ? " on" : "") + "' data-k='structure' title='고른 선행 연구들의 결과·논의·결론 절을 절·소절·문단 뼈대로 나란히 놓고, 내 장의 구성을 제안받습니다'>구성 보기 (4·5장)</a></div>";
+    "<a href='#' class='act" + (exState.section === "structure" ? " on" : "") + "' data-k='structure' title='서재의 논문(저널·주제로 알아서, 또는 직접 고른)의 결과·논의·결론 절을 절·소절·문단 뼈대로 나란히 놓고, 내 장의 구성을 제안받습니다'>구성 보기 (4·5장)</a></div>";
 }
 function bindExKinds(el) {
   el.querySelectorAll(".exkinds a").forEach(a => a.onclick = e => {
@@ -1085,23 +1085,32 @@ function bindExKinds(el) {
   });
 }
 function stMineDefault() { return (doc.outline || []).filter(n => (n.level || 1) === 1 && /결과|고찰|논의|result|discussion|결론|conclu/i.test(n.heading || "")).map(n => n.id); }
-function renderSt(el) {
+function renderSt(el, all, cnt) {
   if (stState.forDoc !== doc.id) { Object.assign(stState, { cands: null, data: null, advice: null, files: [], mine: null, busy: "", forDoc: doc.id }); }
   if (!stState.mine) stState.mine = stMineDefault();
-  const l1 = (doc.outline || []).filter(n => (n.level || 1) === 1);
-  el.innerHTML = "<div class='sec'>구성 보기 — 선행 연구의 결과·논의·결론은 어떻게 짜였나</div><div class='exctl'>" + exKindsRow() +
-    "<div class='hint'>고른 논문의 그 절을 절 번호 · 소절 · 문단(역할 · 한 줄 요지 · 가리키는 그림)으로 펼쳐 나란히 놓습니다. 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
+  const l1 = (doc.outline || []).filter(n => (n.level || 1) === 1), auto = stState.pick === "auto";
+  const jl = (all || exState.journals || []).map(x => "<label><input type='checkbox' value='" + esc(x) + "'" + ((exState.journals || []).includes(x) ? " checked" : "") + "> " + esc(x) + ((cnt || {})[x] ? " <span class='hint' style='display:inline'>" + cnt[x] + "</span>" : "") + "</label>").join("");
+  el.innerHTML = "<div class='sec'>구성 보기 — 다른 논문의 결과·논의·결론은 어떻게 짜였나</div><div class='exctl'>" + exKindsRow() +
+    "<div class='hint'>논문의 그 절을 절 번호 · 소절 · 문단(역할 · 한 줄 요지 · 가리키는 그림)으로 펼쳐 나란히 놓습니다. 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
     "<div style='margin:6px 0'>볼 절 " + ST_KINDS.map(([k, nm]) => "<label><input type='checkbox' class='stk' value='" + k + "'" + (stState.kinds.includes(k) ? " checked" : "") + "> " + nm + "</label>").join(" ") + "</div>" +
     "<div style='margin:6px 0'>내 장 " + l1.map(n => "<label><input type='checkbox' class='stm' value='" + esc(n.id) + "'" + (stState.mine.includes(n.id) ? " checked" : "") + "> " + esc((n.heading || "").slice(0, 28)) + "</label>").join(" ") + "</div>" +
-    "<div id='stCands' class='hint'>논문 목록을 불러오는 중…</div>" +
-    "<div style='margin:6px 0'><input id='stQ' placeholder='서재에서 제목으로 찾기' value='" + esc(stState.q) + "' style='width:220px'> <button class='act' id='stFind'>찾기</button> <button class='btn' id='stGo'>구성 보기</button> <span class='hint' id='stMsg' style='display:inline'></span></div></div><div id='stOut'></div>";
+    "<div style='margin:6px 0'><label><input type='radio' name='stpick' value='auto'" + (auto ? " checked" : "") + "> 서재에서 알아서 고르기</label> <label><input type='radio' name='stpick' value='manual'" + (auto ? "" : " checked") + "> 직접 고르기</label></div>" +
+    (auto ? "저널 <span class='hint' style='display:inline'>(숫자 = 내 서재 편수 · 본보기와 같은 잣대: 주제가 가까운 순 · 최근 순, 원고가 인용한 논문은 앞에)</span><div class='jl'>" + jl + "</div>" +
+            "<select id='stN'><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select>편 "
+          : "<div id='stCands' class='hint'>논문 목록을 불러오는 중…</div><div style='margin:6px 0'><input id='stQ' placeholder='서재에서 제목으로 찾기' value='" + esc(stState.q) + "' style='width:220px'> <button class='act' id='stFind'>찾기</button></div>") +
+    "<button class='btn' id='stGo'>구성 보기</button> <span class='hint' id='stMsg' style='display:inline'></span></div><div id='stOut'></div>";
   bindExKinds(el);
   el.querySelectorAll(".stk").forEach(c => c.onchange = () => { stState.kinds = [...el.querySelectorAll(".stk:checked")].map(x => x.value); });
   el.querySelectorAll(".stm").forEach(c => c.onchange = () => { stState.mine = [...el.querySelectorAll(".stm:checked")].map(x => x.value); });
-  $("stFind").onclick = () => { stState.q = $("stQ").value.trim(); stState.cands = null; stLoadCands(); };
-  $("stQ").addEventListener("keydown", e => { if (e.key === "Enter") $("stFind").onclick(); });
+  el.querySelectorAll("input[name=stpick]").forEach(r => r.onchange = () => { stState.pick = r.value; renderEx(); });
+  el.querySelectorAll(".jl input").forEach(c => c.onchange = () => { exState.journals = [...el.querySelectorAll(".jl input:checked")].map(x => x.value); });
+  if ($("stN")) { $("stN").value = String(stState.n); $("stN").onchange = e => stState.n = +e.target.value; }
+  if ($("stFind")) {
+    $("stFind").onclick = () => { stState.q = $("stQ").value.trim(); stState.cands = null; stLoadCands(); };
+    $("stQ").addEventListener("keydown", e => { if (e.key === "Enter") $("stFind").onclick(); });
+    if (!stState.cands) stLoadCands(); else stDrawCands();
+  }
   $("stGo").onclick = stBuild;
-  if (!stState.cands) stLoadCands(); else stDrawCands();
   if (stState.busy) $("stOut").innerHTML = "<div class='hint' style='padding:6px 12px'>" + esc(stState.busy) + "</div>";
   else if (stState.data) stDraw();
 }
@@ -1120,10 +1129,13 @@ function stDrawCands() {
   box.querySelectorAll(".stf").forEach(c => c.onchange = () => { stState.files = [...document.querySelectorAll("#stCands .stf:checked")].map(x => x.value); });
 }
 async function stBuild() {
-  if (!stState.files.length) { $("stMsg").textContent = "논문을 하나 이상 고르세요"; return; }
+  const auto = stState.pick === "auto";
+  if (!auto && !stState.files.length) { $("stMsg").textContent = "논문을 하나 이상 고르세요"; return; }
+  if (auto && !(exState.journals || []).length) { $("stMsg").textContent = "저널을 하나 이상 고르세요"; return; }
   if (stState.busy) return;
-  stState.busy = "고른 논문에서 그 절을 찾아 문단마다 역할·요지를 붙이는 중 — 처음은 1~3분, 한 번 본 논문은 바로"; stState.advice = null; renderEx();
-  try { stState.data = await api("/api/ms/structure", { id: doc.id, op: "build", files: stState.files, kinds: stState.kinds, mine: stState.mine }); }
+  stState.busy = (auto ? "저널·주제로 논문 " + stState.n + "편을 고르고 " : "고른 논문에서 ") + "그 절을 찾아 문단마다 역할·요지를 붙이는 중 — 처음은 1~3분, 한 번 본 논문은 바로"; stState.advice = null; renderEx();
+  const req = auto ? { auto: true, n: stState.n, journals: exState.journals } : { files: stState.files };
+  try { stState.data = await api("/api/ms/structure", Object.assign({ id: doc.id, op: "build", kinds: stState.kinds, mine: stState.mine }, req)); }
   catch (e) { stState.data = { items: [], error: "불러오기 실패" }; }
   stState.busy = ""; if (activeTab() === "ex") renderEx();
 }
@@ -1131,6 +1143,8 @@ function stDraw() {
   const d = stState.data || {}, out = $("stOut"); if (!out) return;
   const kn = k => (ST_KINDS.find(x => x[0] === k) || [k, k])[1];
   let h = "";
+  if (d.picked) h += "<div class='hint' style='padding:4px 12px'>" + ((d.items || []).length ? "서재에서 고른 " + d.items.length + "편 — 저널 " + esc((d.journals || []).join("·") || "전체") + " · 주제가 가까운 순(원고가 인용한 논문 먼저) · 그 절이 있는 것만. 다른 논문을 보려면 「직접 고르기」"
+    : "고른 저널에서 그 절을 찾은 논문이 없습니다 — 저널을 늘리거나 「직접 고르기」 로") + "</div>";
   for (const it of d.items || []) {
     h += "<details class='ex' open><summary class='exh'>" + esc(it.author || "") + " " + (it.year || "") + " · " + esc(it.journal || "") + " · " + esc((it.title || "").slice(0, 80)) + " <a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a></summary>";
     if (!(it.sections || []).length) h += "<div class='hint' style='padding:4px 12px'>이 PDF 에서 고른 종류의 절을 찾지 못했습니다 — 절 제목에 번호가 없는 편집이거나 결과·논의가 다른 이름일 수 있습니다</div>";
@@ -1157,7 +1171,7 @@ function stDraw() {
 }
 async function stAdvise() {
   if (stState.busy || !stState.data) return;
-  stState.busy = "선행 연구의 뼈대와 내 장의 차례를 Opus 에게 주고 공통 흐름과 내 장의 소절 구성을 받는 중 — 2~4분"; renderEx();
+  stState.busy = "고른 논문의 뼈대와 내 장의 차례를 Opus 에게 주고 공통 흐름과 내 장의 소절 구성을 받는 중 — 2~4분"; renderEx();
   const data = { items: (stState.data.items || []).map(it => Object.assign({}, it, { sections: (it.sections || []).map(s => Object.assign({}, s, { paras: (s.paras || []).map(p => ({ role: p.role, gist: p.gist, sub: p.sub, figs: p.figs })) })) })), mine: stState.data.mine || [] };
   try { stState.advice = await api("/api/ms/structure", { id: doc.id, op: "advice", data, effort: "xhigh" }); } catch (e) { stState.advice = { answer: "불러오기 실패", suggest: [] }; }
   stState.busy = ""; if (activeTab() === "ex") renderEx();
