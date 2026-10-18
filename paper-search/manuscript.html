@@ -1103,24 +1103,35 @@ function bindExKinds(el) {
     renderEx(); if (!exState.data[exState.section]) loadEx();
   });
 }
-function stMineDefault() { return (doc.outline || []).filter(n => (n.level || 1) === 1 && /결과|고찰|논의|result|discussion|결론|conclu/i.test(n.heading || "")).map(n => n.id); }
+function stMineDefault(kinds) {   /* 볼 절의 짝이 되는 내 장 — 결과 → 결과 장, 논의 → Discussion, 결론 → Conclusion. 번호 붙은 제목이 있으면 그것만(옛 초안의 '결과 및 고찰' 같은 꼬리 절은 빼고) */
+  kinds = kinds || stState.kinds; const rx = [];
+  if (kinds.includes("results") || kinds.includes("rd")) rx.push(/결과|result/i);
+  if (kinds.includes("discussion") || kinds.includes("rd")) rx.push(/고찰|논의|discussion/i);
+  if (kinds.includes("conclusion")) rx.push(/결론|conclu/i);
+  const all = (doc.outline || []).filter(n => (n.level || 1) === 1 && rx.some(r => r.test(n.heading || "")));
+  const numbered = all.filter(n => /^\s*\d/.test(n.heading || ""));
+  return (numbered.length ? numbered : all).map(n => n.id);
+}
 function renderSt(el, all, cnt) {
-  if (stState.forDoc !== doc.id) { Object.assign(stState, { cands: null, data: null, advice: null, files: [], mine: null, busy: "", forDoc: doc.id }); }
-  if (!stState.mine) stState.mine = stMineDefault();
+  if (stState.forDoc !== doc.id) { Object.assign(stState, { cands: null, data: null, advice: null, files: [], mine: null, mineManual: false, mineEdit: false, busy: "", forDoc: doc.id }); }
+  if (!stState.mine || !stState.mineManual) stState.mine = stMineDefault();
+  const mineNames = stState.mine.map(id => { const n = node(id); return n ? esc((n.heading || "").slice(0, 32)) : ""; }).filter(Boolean).join(", ");
   const l1 = (doc.outline || []).filter(n => (n.level || 1) === 1), auto = stState.pick === "auto";
   const jl = (all || exState.journals || []).map(x => "<label><input type='checkbox' value='" + esc(x) + "'" + ((exState.journals || []).includes(x) ? " checked" : "") + "> " + esc(x) + ((cnt || {})[x] ? " <span class='hint' style='display:inline'>" + cnt[x] + "</span>" : "") + "</label>").join("");
   el.innerHTML = "<div class='sec'>구성 보기 — 다른 논문의 결과·논의·결론은 어떻게 짜였나</div><div class='exctl'>" + exKindsRow() +
     "<div class='hint'>논문의 그 절을 번역문으로 펼치고, 오른쪽에 } 로 묶은 대목마다 무엇을 말하는지 적습니다(문단을 누르면 원문). 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
-    "<div style='margin:6px 0'>볼 절 " + ST_KINDS.map(([k, nm]) => "<label><input type='checkbox' class='stk' value='" + k + "'" + (stState.kinds.includes(k) ? " checked" : "") + "> " + nm + "</label>").join(" ") + "</div>" +
-    "<div style='margin:6px 0'>내 장 " + l1.map(n => "<label><input type='checkbox' class='stm' value='" + esc(n.id) + "'" + (stState.mine.includes(n.id) ? " checked" : "") + "> " + esc((n.heading || "").slice(0, 28)) + "</label>").join(" ") + "</div>" +
+    "<div style='margin:6px 0'>볼 절 " + ST_KINDS.map(([k, nm]) => "<label><input type='checkbox' class='stk' value='" + k + "'" + (stState.kinds.includes(k) ? " checked" : "") + "> " + nm + "</label>").join(" ") +
+      " <span class='hint' style='display:inline'>↔ 내 장: " + (mineNames || "짝이 되는 장을 못 찾음") + " <a href='#' class='act' id='stMineEdit'>" + (stState.mineEdit ? "닫기" : "바꾸기") + "</a></span></div>" +
+    (stState.mineEdit ? "<div style='margin:2px 0 6px'>내 장 " + l1.map(n => "<label><input type='checkbox' class='stm' value='" + esc(n.id) + "'" + (stState.mine.includes(n.id) ? " checked" : "") + "> " + esc((n.heading || "").slice(0, 28)) + "</label>").join(" ") + "</div>" : "") +
     "<div style='margin:6px 0'><label><input type='radio' name='stpick' value='auto'" + (auto ? " checked" : "") + "> 서재에서 알아서 고르기</label> <label><input type='radio' name='stpick' value='manual'" + (auto ? "" : " checked") + "> 직접 고르기</label></div>" +
     (auto ? "저널 <span class='hint' style='display:inline'>(숫자 = 내 서재 편수 · 본보기와 같은 잣대: 주제가 가까운 순 · 최근 순, 원고가 인용한 논문은 앞에)</span><div class='jl'>" + jl + "</div>" +
             "<select id='stN'><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select>편 "
           : "<div id='stCands' class='hint'>논문 목록을 불러오는 중…</div><div style='margin:6px 0'><input id='stQ' placeholder='서재에서 제목으로 찾기' value='" + esc(stState.q) + "' style='width:220px'> <button class='act' id='stFind'>찾기</button></div>") +
     "<button class='btn' id='stGo'>구성 보기</button> <span class='hint' id='stMsg' style='display:inline'></span></div><div id='stOut'></div>";
   bindExKinds(el);
-  el.querySelectorAll(".stk").forEach(c => c.onchange = () => { stState.kinds = [...el.querySelectorAll(".stk:checked")].map(x => x.value); });
-  el.querySelectorAll(".stm").forEach(c => c.onchange = () => { stState.mine = [...el.querySelectorAll(".stm:checked")].map(x => x.value); });
+  el.querySelectorAll(".stk").forEach(c => c.onchange = () => { stState.kinds = [...el.querySelectorAll(".stk:checked")].map(x => x.value); if (!stState.mineManual) { stState.mine = stMineDefault(); renderEx(); } });
+  el.querySelectorAll(".stm").forEach(c => c.onchange = () => { stState.mine = [...el.querySelectorAll(".stm:checked")].map(x => x.value); stState.mineManual = true; });
+  $("stMineEdit").onclick = e => { e.preventDefault(); stState.mineEdit = !stState.mineEdit; renderEx(); };
   el.querySelectorAll("input[name=stpick]").forEach(r => r.onchange = () => { stState.pick = r.value; renderEx(); });
   el.querySelectorAll(".jl input").forEach(c => c.onchange = () => { exState.journals = [...el.querySelectorAll(".jl input:checked")].map(x => x.value); });
   if ($("stN")) { $("stN").value = String(stState.n); $("stN").onchange = e => stState.n = +e.target.value; }
