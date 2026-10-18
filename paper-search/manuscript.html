@@ -18,6 +18,24 @@
   #center { flex: 1; min-width: 0; overflow-y: auto; background: var(--surface); padding: var(--s4) var(--s6) var(--s8); }
   #drawer { width: 340px; min-width: 340px; background: var(--panel); border-left: 1px solid var(--line-2); overflow-y: auto; display: flex; flex-direction: column; }
   #drawer.wide { width: 480px; min-width: 480px; }   /* 본보기 탭: 초록 문장을 읽기 좋게 넓게 */
+  #drawer.wide.stwide { width: 50vw; min-width: 50vw; }   /* 구성 보기: 창의 절반 — 번역문을 읽으며 오른쪽 } 묶음의 설명을 본다 (2026-10-18) */
+  .stg { display: grid; grid-template-columns: minmax(0, 1fr) 14px minmax(170px, 36%); column-gap: 6px; align-items: stretch; padding: 2px 12px 8px; }
+  .stg .stp { grid-column: 1; margin: 0; padding: 4px 0; font-size: 12.5px; line-height: 1.55; border-top: 1px solid var(--line-2); cursor: pointer; }
+  .stg .stp.en { color: var(--text-2); }
+  .stg .stp .pn { color: var(--text-3); font-size: 10px; margin-right: 5px; }
+  .stg .stp .orig { display: block; color: var(--text-3); font-size: 11.5px; margin-top: 3px; }
+  .stg .stp .orig[hidden] { display: none; }   /* display:block 이 hidden 속성을 이긴다 */
+  .stg .brc { grid-column: 2; display: flex; padding: 6px 0; }
+  .br { display: flex; flex-direction: column; width: 12px; flex: 1; }
+  .br i { display: block; box-sizing: border-box; }
+  .br .c1 { height: 8px; width: 6px; border-top: 1.5px solid var(--text-3); border-right: 1.5px solid var(--text-3); border-top-right-radius: 8px; }
+  .br .ln { flex: 1; width: 6px; border-right: 1.5px solid var(--text-3); }
+  .br .t1 { height: 8px; width: 6px; margin-left: 5.5px; border-left: 1.5px solid var(--text-3); border-bottom-left-radius: 8px; }
+  .br .t2 { height: 8px; width: 6px; margin-left: 5.5px; border-left: 1.5px solid var(--text-3); border-top-left-radius: 8px; }
+  .br .c2 { height: 8px; width: 6px; border-bottom: 1.5px solid var(--text-3); border-right: 1.5px solid var(--text-3); border-bottom-right-radius: 8px; }
+  .stg .lbl { grid-column: 3; align-self: stretch; font-size: 11.5px; line-height: 1.4; color: var(--text-2); padding: 6px 4px; }
+  .stg .lbl .lblin { position: sticky; top: 6px; }   /* 긴 대목에서는 설명이 위에 붙어 따라온다 */
+  .stg .lbl b { display: block; color: var(--text); font-size: 12px; margin-bottom: 1px; }
   .sec { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); padding: var(--s3) var(--s3) var(--s1); display: flex; justify-content: space-between; align-items: center; }
   .sec .act { font-weight: 400; letter-spacing: 0; }
   .node { padding: 5px 10px 5px 12px; cursor: pointer; display: flex; align-items: baseline; gap: 6px; line-height: 1.4; font-size: 13px; color: var(--text); }
@@ -1001,6 +1019,7 @@ async function renderEx() {
   if (!exState.journals) exState.journals = def.slice();
   const all = [...new Set(def.concat(window._msJournals.map(j => j.abbr)))].slice(0, 16);
   const cnt = {}; window._msJournals.forEach(j => cnt[j.abbr] = j.count);
+  $("drawer").classList.toggle("stwide", exState.section === "structure");
   if (exState.section === "structure") { renderSt(el, all, cnt); return; }   /* 구성 보기도 같은 저널 고르기(exState.journals)를 쓴다 */
   const body = exIsBody(exState.section), has = !!exState.data[exState.section];
   el.innerHTML = "<div class='sec'>본보기 — 잘 쓴 논문의 " + esc(exKindName(exState.section)) + " 구조</div>" +
@@ -1091,7 +1110,7 @@ function renderSt(el, all, cnt) {
   const l1 = (doc.outline || []).filter(n => (n.level || 1) === 1), auto = stState.pick === "auto";
   const jl = (all || exState.journals || []).map(x => "<label><input type='checkbox' value='" + esc(x) + "'" + ((exState.journals || []).includes(x) ? " checked" : "") + "> " + esc(x) + ((cnt || {})[x] ? " <span class='hint' style='display:inline'>" + cnt[x] + "</span>" : "") + "</label>").join("");
   el.innerHTML = "<div class='sec'>구성 보기 — 다른 논문의 결과·논의·결론은 어떻게 짜였나</div><div class='exctl'>" + exKindsRow() +
-    "<div class='hint'>논문의 그 절을 절 번호 · 소절 · 문단(역할 · 한 줄 요지 · 가리키는 그림)으로 펼쳐 나란히 놓습니다. 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
+    "<div class='hint'>논문의 그 절을 번역문으로 펼치고, 오른쪽에 } 로 묶은 대목마다 무엇을 말하는지 적습니다(문단을 누르면 원문). 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
     "<div style='margin:6px 0'>볼 절 " + ST_KINDS.map(([k, nm]) => "<label><input type='checkbox' class='stk' value='" + k + "'" + (stState.kinds.includes(k) ? " checked" : "") + "> " + nm + "</label>").join(" ") + "</div>" +
     "<div style='margin:6px 0'>내 장 " + l1.map(n => "<label><input type='checkbox' class='stm' value='" + esc(n.id) + "'" + (stState.mine.includes(n.id) ? " checked" : "") + "> " + esc((n.heading || "").slice(0, 28)) + "</label>").join(" ") + "</div>" +
     "<div style='margin:6px 0'><label><input type='radio' name='stpick' value='auto'" + (auto ? " checked" : "") + "> 서재에서 알아서 고르기</label> <label><input type='radio' name='stpick' value='manual'" + (auto ? "" : " checked") + "> 직접 고르기</label></div>" +
@@ -1133,12 +1152,13 @@ async function stBuild() {
   if (!auto && !stState.files.length) { $("stMsg").textContent = "논문을 하나 이상 고르세요"; return; }
   if (auto && !(exState.journals || []).length) { $("stMsg").textContent = "저널을 하나 이상 고르세요"; return; }
   if (stState.busy) return;
-  stState.busy = (auto ? "저널·주제로 논문 " + stState.n + "편을 고르고 " : "고른 논문에서 ") + "그 절을 찾아 문단마다 역할·요지를 붙이는 중 — 처음은 1~3분, 한 번 본 논문은 바로"; stState.advice = null; renderEx();
+  stState.busy = (auto ? "저널·주제로 논문 " + stState.n + "편을 고르고 " : "고른 논문에서 ") + "그 절을 번역문으로 펼치고 대목마다 무엇을 말하는지 붙이는 중 — 처음은 1~3분, 한 번 본 논문은 바로"; stState.advice = null; renderEx();
   const req = auto ? { auto: true, n: stState.n, journals: exState.journals } : { files: stState.files };
   try { stState.data = await api("/api/ms/structure", Object.assign({ id: doc.id, op: "build", kinds: stState.kinds, mine: stState.mine }, req)); }
   catch (e) { stState.data = { items: [], error: "불러오기 실패" }; }
   stState.busy = ""; if (activeTab() === "ex") renderEx();
 }
+function stBrace() { return "<div class='br'><i class='c1'></i><i class='ln'></i><i class='t1'></i><i class='t2'></i><i class='ln'></i><i class='c2'></i></div>"; }
 function stDraw() {
   const d = stState.data || {}, out = $("stOut"); if (!out) return;
   const kn = k => (ST_KINDS.find(x => x[0] === k) || [k, k])[1];
@@ -1146,14 +1166,21 @@ function stDraw() {
   if (d.picked) h += "<div class='hint' style='padding:4px 12px'>" + ((d.items || []).length ? "서재에서 고른 " + d.items.length + "편 — 저널 " + esc((d.journals || []).join("·") || "전체") + " · 주제가 가까운 순(원고가 인용한 논문 먼저) · 그 절이 있는 것만. 다른 논문을 보려면 「직접 고르기」"
     : "고른 저널에서 그 절을 찾은 논문이 없습니다 — 저널을 늘리거나 「직접 고르기」 로") + "</div>";
   for (const it of d.items || []) {
-    h += "<details class='ex' open><summary class='exh'>" + esc(it.author || "") + " " + (it.year || "") + " · " + esc(it.journal || "") + " · " + esc((it.title || "").slice(0, 80)) + " <a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a></summary>";
+    h += "<details class='ex' open><summary class='exh'>" + esc(it.author || "") + " " + (it.year || "") + " · " + esc(it.journal || "") + " · " + esc((it.title || "").slice(0, 80)) + " <a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a>" +
+      (it.has_ko ? "" : " <span class='hint' style='display:inline'>번역 없음 — 원문으로</span>") + "</summary>";
     if (!(it.sections || []).length) h += "<div class='hint' style='padding:4px 12px'>이 PDF 에서 고른 종류의 절을 찾지 못했습니다 — 절 제목에 번호가 없는 편집이거나 결과·논의가 다른 이름일 수 있습니다</div>";
     for (const s of it.sections || []) {
-      h += "<div class='ttl'>" + esc((s.num ? s.num + ". " : "") + s.head) + " <span class='hint' style='display:inline'>" + esc(kn(s.kind)) + (s.inferred ? " (제목이 내용으로 된 절 — 자리로 보아 결과)" : "") + " · " + s.words + " 낱말 · 문단 " + (s.paras || []).length + ((s.figs || []).length ? " · 그림 " + esc(s.figs.join(", ")) : "") + "</span></div>" +
-        ((s.subs || []).length ? "<div class='pat'>소절: " + s.subs.map(esc).join(" → ") + "</div>" : "") + "<div class='pat'>" + esc(s.pattern || "") + "</div>" +
-        (s.paras || []).map(p => "<div class='exs exp' data-m='" + esc(p.role) + "' title='누르면 원문 문단'><span class='mv'>" + esc(p.role) + "</span><div class='bd'><div>" + esc(p.gist || "") +
-          ((p.figs || []).length ? " <span class='hint' style='display:inline'>· Fig. " + esc(p.figs.join(", ")) + "</span>" : "") + ((p.tabs || []).length ? " <span class='hint' style='display:inline'>· Table " + esc(p.tabs.join(", ")) + "</span>" : "") +
-          (p.sub ? " <span class='hint' style='display:inline'>· " + esc(p.sub) + "</span>" : "") + "</div><div class='orig' hidden>" + esc(p.text || "") + "</div></div></div>").join("");
+      const ps = s.paras || [], gs = (s.groups || []).filter(g => g.a >= 1 && g.b >= g.a && g.b <= ps.length);
+      h += "<div class='ttl'>" + esc((s.num ? s.num + ". " : "") + s.head) + " <span class='hint' style='display:inline'>" + esc(kn(s.kind)) + (s.inferred ? " (제목이 내용으로 된 절 — 자리로 보아 결과)" : "") + " · " + s.words + " 낱말 · 문단 " + ps.length + ((s.figs || []).length ? " · Fig. " + esc(s.figs.join(", ")) : "") + "</span></div>" +
+        ((s.subs || []).length ? "<div class='pat'>소절: " + s.subs.map(esc).join(" → ") + "</div>" : "") + "<div class='stg'>";
+      ps.forEach((p, i) => {
+        h += "<p class='stp" + (p.ko ? "" : " en") + "' style='grid-row:" + (i + 1) + "' title='" + esc((p.role || "") + (p.gist ? " · " + p.gist : "") + (p.ko ? " · 누르면 원문" : "")) + "'><span class='pn'>" + (i + 1) + "</span>" + esc(p.ko || p.text || "").replace(/&lt;(\/?su[bp])&gt;/g, "<$1>") +
+          ((p.figs || []).length ? " <span class='hint' style='display:inline'>Fig. " + esc(p.figs.join(", ")) + "</span>" : "") + ((p.tabs || []).length ? " <span class='hint' style='display:inline'>Table " + esc(p.tabs.join(", ")) + "</span>" : "") +
+          (p.ko ? "<span class='orig' hidden>" + esc(p.text || "") + "</span>" : "") + "</p>";
+      });
+      if (gs.length) gs.forEach(g => { h += "<div class='brc' style='grid-row:" + g.a + " / " + (g.b + 1) + "'>" + stBrace() + "</div><div class='lbl' style='grid-row:" + g.a + " / " + (g.b + 1) + "'><div class='lblin'><b>" + esc(g.head || "") + "</b>" + esc(g.what || "") + "</div></div>"; });
+      else ps.forEach((p, i) => { h += "<div class='lbl' style='grid-row:" + (i + 1) + "'><b>" + esc(p.role || "") + "</b>" + esc(p.gist || "") + "</div>"; });
+      h += "</div>";
     }
     h += "</details>";
   }
@@ -1165,7 +1192,7 @@ function stDraw() {
   if (d.error) h += "<div class='warnbox'>" + esc(d.error) + "</div>";
   out.innerHTML = h;
   out.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
-  out.querySelectorAll(".exp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); o.hidden = !o.hidden; });
+  out.querySelectorAll(".stp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); if (o) o.hidden = !o.hidden; });
   const ab = $("stAdvice"); if (ab) ab.onclick = stAdvise;
   out.querySelectorAll("[data-stins]").forEach(b => b.onclick = () => stInsert(b.dataset.stins));
 }
@@ -1229,6 +1256,7 @@ function switchTab(name) {
   try { localStorage.setItem("ms_tab", name); localStorage.setItem("ms_tab_g" + gi, name); } catch (e) {}
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name));
   $("drawer").classList.toggle("wide", ["ex", "rev", "chat", "lib", "stylus"].includes(name));
+  $("drawer").classList.toggle("stwide", name === "ex" && exState.section === "structure");   /* 구성 보기는 창의 절반 */
   renderTabs();
   // 그림 탭이면 가운데를 그림 작업대로. 다른 탭끼리 오갈 때는 가운데를 다시 그리지 않는다 (쓰던 자리를 잃지 않게)
   if (doc && name === "figs" && was !== "figs") renderFigWorkspace();

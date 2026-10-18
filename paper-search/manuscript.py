@@ -3563,6 +3563,126 @@ def _label_chunked(kind, texts, cap=45):
     return {k: (res.get(k) if k in res else (res.get(k + "#a") or []) + (res.get(k + "#b") or [])) for k in texts}
 
 
+def _para_ko(f, paras):
+    """PDF 절의 문단마다 번역문(한국어) — 번역 정렬표의 원문 문장이 그 문단에 들어 있으면 그 문장들의 번역을 자리 순서로 잇는다.
+    번역이 없거나 문단 낱말의 반도 못 맞추면 빈 문자열(화면은 원문으로)."""
+    sents = _translation_sentences(f)
+    if not sents:
+        return [""] * len(paras)
+    norm = lambda t: re.sub(r"[^a-z0-9]+", "", t.lower())
+    keyed = []
+    for k, t, _p, ko in sents:
+        nt = norm(t)
+        if len(nt) >= 20 and ko:
+            keyed.append((nt, ko, len(t.split())))
+    out = []
+    for p in paras:
+        np_ = norm(p["text"]); hits = []
+        for nt, ko, nw in keyed:
+            at = np_.find(nt)
+            if at >= 0:
+                hits.append((at, ko, nw))
+        hits.sort()
+        covered = sum(h[2] for h in hits)
+        out.append(" ".join(h[1] for h in hits) if hits and covered >= 0.5 * len(p["text"].split()) else "")
+    return out
+
+
+_SEG_PROMPT = ("아래는 논문의 결과·논의·결론 절들이다. 절마다 문단이 '[번호] (소절) 앞부분 — 역할 · 요지' 꼴로 있다.\n"
+               "절마다 문단들을 3~8개의 '대목' 으로 묶어라 — 대목은 같은 것을 말하는 이어진 문단들(보통 소절 경계를 넘지 않는다; 문단이 셋 이하인 절은 대목 하나여도 된다).\n"
+               "JSON 한 줄만 출력: {\"<키>\": [{\"a\": 첫 문단 번호, \"b\": 끝 문단 번호, \"head\": \"이름표 — 한국어 14자 안팎, 무엇에 관한 대목인가\", "
+               "\"what\": \"이 대목이 무엇을 보이고 무엇을 말하는가 — 한국어 1~2문장, 근거로 든 그림·표가 있으면 (Fig. 4) 처럼\"}, ...]}\n"
+               "모든 문단이 어느 대목엔가 꼭 한 번 들고, 대목은 번호 순서대로, 서로 겹치지 않는다. 논문의 문장을 옮기지 말고 무엇을 말하는지를 적는다.\n\n")
+
+
+def _seg_clean(v, n):
+    """Sonnet 의 대목 답 → [{a, b, head, what}] (1부터, 이어지고 겹치지 않게 손봄). 못 쓰면 None."""
+    if not isinstance(v, list) or not v:
+        return None
+    gs = []
+    for x in v:
+        if not isinstance(x, dict):
+            continue
+        try:
+            a, b = int(x.get("a")), int(x.get("b"))
+        except (TypeError, ValueError):
+            continue
+        a, b = max(1, min(n, a)), max(1, min(n, b))
+        if a <= b:
+            gs.append({"a": a, "b": b, "head": str(x.get("head") or "").strip()[:40], "what": str(x.get("what") or "").strip()[:300]})
+    gs.sort(key=lambda g: g["a"])
+    if not gs:
+        return None
+    gs[0]["a"] = 1
+    for i in range(len(gs) - 1):
+        gs[i]["b"] = max(gs[i]["a"], gs[i + 1]["a"] - 1)   # 겹침·빈틈은 다음 대목의 시작에 맞춘다
+    gs[-1]["b"] = n
+    return [g for g in gs if g["a"] <= g["b"]]
+
+
+def _seg_fallback(ps):
+    """Claude 없이: 소절이 있으면 소절마다, 없으면 같은 역할이 이어지는 만큼 한 대목."""
+    gs, key = [], None
+    for i, p in enumerate(ps, 1):
+        k = p.get("sub") or p.get("role") or ""
+        if gs and k == key:
+            gs[-1]["b"] = i
+            if p.get("gist") and len(gs[-1]["_g"]) < 2:
+                gs[-1]["_g"].append(p["gist"])
+        else:
+            gs.append({"a": i, "b": i, "head": k[:40], "_g": [p["gist"]] if p.get("gist") else []}); key = k
+    for g in gs:
+        g["what"] = " / ".join(g.pop("_g"))
+    return gs
+
+
+def _segments(texts):
+    """{키: [{t 앞 글, role, gist, sub, figs}]} → {키: [{a, b, head, what}]} — 절을 '대목'(같은 것을 말하는 이어진 문단들)으로 나누고
+    대목마다 이름표와 무엇을 말하는지. 캐시(_본보기캐시, 'seg' 해시) → Sonnet(절 여럿을 한 번에, 120문단까지) → 안 되면 _seg_fallback."""
+    import hashlib
+    path = _exemplar_cache_path()
+    try:
+        cache = json.load(io.open(path, encoding="utf-8"))
+    except Exception:
+        cache = {}
+    res, todo = {}, {}
+    for k, ps in texts.items():
+        if not ps:
+            res[k] = []; continue
+        h = hashlib.md5(("seg\n" + "\n".join(p["t"] for p in ps)).encode("utf-8")).hexdigest()
+        v = _seg_clean(cache.get(h), len(ps))
+        if v:
+            res[k] = v
+        else:
+            todo[k] = (h, ps)
+    if todo and cfg.get("claude_text"):
+        keys, pos, changed = list(todo), 0, False
+        while pos < len(keys):
+            chunk, cnt = [], 0
+            while pos < len(keys) and (not chunk or cnt + len(todo[keys[pos]][1]) <= 120):
+                chunk.append(keys[pos]); cnt += len(todo[keys[pos]][1]); pos += 1
+            blocks = ["<%s>\n" % k + "\n".join("[%d]%s %s — %s · %s%s" % (i + 1, (" (" + p["sub"] + ")") if p.get("sub") else "", p["t"], p.get("role") or "", p.get("gist") or "",
+                                                                       (" · Fig " + ",".join(p["figs"])) if p.get("figs") else "") for i, p in enumerate(todo[k][1])) for k in chunk]
+            out = cfg["claude_text"](_SEG_PROMPT + "\n\n".join(blocks), timeout=300, model="sonnet") or ""
+            parsed = _json_in(out) or {}
+            for k in chunk:
+                v = _seg_clean(parsed.get(k), len(todo[k][1]))
+                if v:
+                    res[k] = v; cache[todo[k][0]] = v; changed = True
+        if changed:
+            try:
+                if cfg.get("save_json"):
+                    cfg["save_json"](path, cache)
+                else:
+                    io.open(path, "w", encoding="utf-8").write(json.dumps(cache, ensure_ascii=False))
+            except Exception:
+                pass
+    for k, (h, ps) in todo.items():
+        if k not in res:
+            res[k] = _seg_fallback(ps)
+    return res
+
+
 def _paper_secs(f, kinds):
     """논문 하나에서 그 종류의 절들 [{num, head, kind, inferred, paras}] — 제목이 내용으로 된 결과 절(Oliaei 2016 '4. Force measurements …')은
     마지막 서론·방법 절 뒤·결론 앞의 번호 절이면 결과로 본다(inferred)."""
@@ -3635,21 +3755,29 @@ def section_structure(doc, body):
         for j, sec in enumerate(secs):
             texts["E%d_%d" % (i, j)] = [p["text"] for p in sec["paras"]]
     labels = _label_chunked("results", texts) if texts else {}
+    segtexts = {}
     for i, it in enumerate(items):
         for j, sec in enumerate(it["sections"]):
             lb = labels.get("E%d_%d" % (i, j)) or []
             if len(lb) != len(sec["paras"]):
                 lb = [[r, ""] for r in _heuristic_roles("results", [p["text"] for p in sec["paras"]])]
             out, subs, figs = [], [], []
-            for p, l in zip(sec["paras"], lb):
+            kos = _para_ko(it["file"], sec["paras"])   # 문단마다 번역문 — 화면은 번역으로 읽는다(없으면 원문)
+            for p, l, ko in zip(sec["paras"], lb, kos):
                 pf, pt = _refs_in(p["text"])
-                out.append({"sub": p["sub"], "role": l[0], "gist": l[1], "figs": pf, "tabs": pt, "words": len(p["text"].split()), "text": p["text"]})
+                out.append({"sub": p["sub"], "role": l[0], "gist": l[1], "figs": pf, "tabs": pt, "words": len(p["text"].split()), "text": p["text"], "ko": ko})
                 if p["sub"] and p["sub"] not in subs:
                     subs.append(p["sub"])
                 for g in pf:
                     if g not in figs:
                         figs.append(g)
             sec.update(paras=out, subs=subs, figs=figs, words=sum(x["words"] for x in out), pattern=_pattern([x["role"] for x in out]))
+            it["has_ko"] = bool(it.get("has_ko")) or any(x["ko"] for x in out)
+            segtexts["E%d_%d" % (i, j)] = [{"t": " ".join(x["text"].split()[:60]), "role": x["role"], "gist": x["gist"], "sub": x["sub"], "figs": x["figs"]} for x in out]
+    groups = _segments(segtexts) if segtexts else {}   # 절마다 '대목' — 화면의 } 묶음
+    for i, it in enumerate(items):
+        for j, sec in enumerate(it["sections"]):
+            sec["groups"] = groups.get("E%d_%d" % (i, j)) or []
     return {"items": items, "kinds": kinds, "mine": _my_chapters(doc, body.get("mine") or []), "picked": picked, "journals": journals, "n": n}
 
 _ST_ADVICE = ("당신은 기계가공 분야 논문의 공저자다. [고른 논문의 구성]은 저자가(또는 프로그램이 저널·주제로) 고른 논문들의 결과·논의·결론 절을 절 번호·소절·문단(역할 · 한 줄 요지 · 가리키는 그림)으로 요약한 뼈대이고, [내 원고]는 저자가 지금 쓰는 장의 차례·요지·초안 길이·그림이다.\n"
@@ -3679,6 +3807,8 @@ def structure_advice(doc, body):
         lines.append("## %s %s · %s — %s" % (it.get("author"), it.get("year"), it.get("journal"), (it.get("title") or "")[:100]))
         for sec in it.get("sections") or []:
             lines.append("### %s %s (%s · %s 낱말 · 그림 %s)" % (sec.get("num") or "", sec.get("head"), _ST_KINDS.get(sec.get("kind"), sec.get("kind")) + (" — 제목이 내용으로 된 절, 자리로 보아 결과" if sec.get("inferred") else ""), sec.get("words", 0), ",".join(sec.get("figs") or []) or "-"))
+            for g in sec.get("groups") or []:
+                lines.append("대목 [문단 %s–%s] %s: %s" % (g.get("a"), g.get("b"), g.get("head") or "", g.get("what") or ""))
             for p in sec.get("paras") or []:
                 lines.append("- [%s] %s%s%s" % (p.get("role"), p.get("gist") or "", (" · " + p["sub"]) if p.get("sub") else "", (" · Fig " + ",".join(p["figs"])) if p.get("figs") else ""))
     ml, ids = [], set()
