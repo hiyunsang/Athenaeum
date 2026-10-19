@@ -3443,7 +3443,8 @@ def exemplars(body):
 # ---------- 구성 보기: 선행 연구의 결과·논의·결론 절이 어떻게 짜였나 (2026-10-18, 사용자: '4장 5장을 써야 하는데 막힌다 — 선행 연구들의 4·5장 구성을 참고하면서 쓰고 싶다') ----------
 # 본보기(위)는 저널·주제로 논문을 자동으로 골라 문단 역할만 보였다. 여기서는 저자가 논문을 고르고(참고문헌 가운데 서재에 있는 선행 연구가 먼저), 절을 번호·소절·문단(역할·요지·가리키는 그림)의 뼈대로 나란히 놓고,
 # Opus 가 공통 흐름과 내 장의 소절 구성을 제안한다(개요에 바로 넣을 수 있게). 결과와 논의를 따로 둔 논문과 한 절에 둔 논문을 구별한다(_fine_kind).
-_ST_KINDS = {"results": "결과", "discussion": "논의", "rd": "결과·논의(한 절)", "conclusion": "결론"}
+_ST_KINDS = {"abstract": "초록", "intro": "서론", "methods": "방법", "results": "결과", "discussion": "논의", "rd": "결과·논의(한 절)", "conclusion": "결론"}
+_ST_LABEL = {"abstract": "abstract", "intro": "intro", "methods": "methods"}   # 역할 붙이기에 쓸 부분 — 나머지(결과·논의·결론)는 results 의 문단 역할
 _FIG_RX = re.compile(r"\b(?:Fig(?:ure)?s?\.?)\s*(\d{1,2})(?:\s*(?:,|and|\u2013|-)\s*(\d{1,2}))?", re.I)
 _TAB_RX = re.compile(r"\bTables?\s+(\d{1,2})", re.I)
 
@@ -3562,7 +3563,7 @@ def _label_chunked(kind, texts, cap=45):
     if chunk:
         res.update(_label(kind, {x: parts[x] for x in chunk}))
     for k in list(parts):
-        if parts[k] and not any(str(x[1]).strip() for x in res.get(k) or [] if isinstance(x, list) and len(x) >= 2):
+        if SECTION_KINDS[kind]["level"] == "para" and parts[k] and not any(str(x[1]).strip() for x in res.get(k) or [] if isinstance(x, list) and len(x) >= 2):
             res.update(_label(kind, {k: parts[k]}))
     return {k: (res.get(k) if k in res else (res.get(k + "#a") or []) + (res.get(k + "#b") or [])) for k in texts}
 
@@ -3739,10 +3740,44 @@ def _abstract_of(f):
     return out
 
 
+def _abstract_section(f):
+    """초록을 문장 단위의 가짜 절로. 단위는 번역 정렬표의 문장(초록 안에 든 것, 자리 순서) — 내가 다시 자르면 번역 문장과 경계가 달라 반만 맞는다.
+    정렬표가 없으면 초록 통째 한 단위(ko 는 요약의 초록), 그것도 없으면 영어 문장들."""
+    a = _abstract_of(f)
+    en, ko = a.get("en") or "", a.get("ko") or ""
+    if not en and not ko:
+        return None
+    units = []
+    if en:
+        norm = lambda t: re.sub(r"[^a-z0-9]+", "", t.lower())
+        ne, hits = norm(en), []
+        for _k, t, _p, kot in _translation_sentences(f):
+            nt = norm(t)
+            if len(nt) >= 20:
+                at = ne.find(nt)
+                if at >= 0:
+                    hits.append((at, t, kot))
+        hits.sort()
+        if hits and sum(len(h[1].split()) for h in hits) >= 0.5 * len(en.split()):
+            units = [{"sub": "", "text": h[1], "ko": h[2]} for h in hits]
+        elif ko:
+            units = [{"sub": "", "text": en, "ko": ko}]
+        else:
+            units = [{"sub": "", "text": x, "ko": ""} for x in _sentences(en) if len(x.split()) >= 3]
+    else:
+        units = [{"sub": "", "text": ko, "ko": ko}]
+    return {"num": "", "head": "Abstract", "kind": "abstract", "inferred": False, "paras": units} if units else None
+
+
 def _paper_secs(f, kinds):
     """논문 하나에서 그 종류의 절들 [{num, head, kind, inferred, paras}] — 제목이 내용으로 된 결과 절(Oliaei 2016 '4. Force measurements …')은
     마지막 서론·방법 절 뒤·결론 앞의 번호 절이면 결과로 본다(inferred)."""
     secs_all = [(head, paras, num, _fine_kind(head)) for _k, head, paras, num in _pdf_sections(f, nums=True)]
+    pre = []
+    if "abstract" in kinds:   # 초록은 본문의 절이 아니라 첫 쪽의 글 — 문장 하나를 한 단위로 한 가짜 절을 맨 앞에(2026-10-19)
+        sec0 = _abstract_section(f)
+        if sec0:
+            pre.append(sec0)
     last_meth = max([k for k, x in enumerate(secs_all) if _strong_methods(x[0])] or [len(secs_all)])   # 제목이 분명한 방법 절의 마지막 — 그 뒤가 결과
     first_res = min([k for k, x in enumerate(secs_all) if x[3] in ("results", "discussion", "rd")] or [len(secs_all)])   # 제목에 결과·논의가 있는 첫 절 — 그 뒤의 내용 제목 절('5. Experimental comparisons')도 결과
     first_conc = min([k for k, x in enumerate(secs_all) if x[3] == "conclusion"] or [len(secs_all)])
@@ -3755,7 +3790,7 @@ def _paper_secs(f, kinds):
             fk, inferred = "rd", True
         if paras and (fk in kinds or (inferred and want_res)):
             secs.append({"num": num, "head": head, "kind": fk, "inferred": inferred, "paras": paras})
-    return secs
+    return pre + secs
 
 
 def _structure_auto(doc, journals, kinds, n):
@@ -3805,20 +3840,22 @@ def section_structure(doc, body):
         pairs = _structure_auto(doc, journals, kinds, n)
     else:
         pairs = [(f, _paper_secs(f, kinds)) for f in files if os.path.isfile(os.path.join(cfg["ARCHIVE"], f))]
-    items, texts = [], {}
+    items, texts = [], {}   # texts: 역할 붙이기에 쓸 부분마다 {키: 단위들} — 초록은 문장 역할, 서론·방법은 그 부분의 문단 역할, 나머지는 결과의 문단 역할
     for i, (f, secs) in enumerate(pairs):
         items.append(dict(_lib_meta(f, tags), sections=secs, abstract=_abstract_of(f)))
         for j, sec in enumerate(secs):
-            texts["E%d_%d" % (i, j)] = [p["text"] for p in sec["paras"]]
-    labels = _label_chunked("results", texts) if texts else {}
+            texts.setdefault(_ST_LABEL.get(sec["kind"], "results"), {})["E%d_%d" % (i, j)] = [p["text"] for p in sec["paras"]]
+    labels = {}
+    for lk, tx in texts.items():
+        labels.update(_label_chunked(lk, tx))
     segtexts = {}
     for i, it in enumerate(items):
         for j, sec in enumerate(it["sections"]):
             lb = labels.get("E%d_%d" % (i, j)) or []
             if len(lb) != len(sec["paras"]):
-                lb = [[r, ""] for r in _heuristic_roles("results", [p["text"] for p in sec["paras"]])]
+                lb = [[r, ""] for r in _heuristic_roles(_ST_LABEL.get(sec["kind"], "results"), [p["text"] for p in sec["paras"]])]
             out, subs, figs = [], [], []
-            kos = _para_ko(it["file"], sec["paras"])   # 문단마다 번역문 — 화면은 번역으로 읽는다(없으면 원문)
+            kos = [p.get("ko") or k for p, k in zip(sec["paras"], _para_ko(it["file"], sec["paras"]))]   # 문단마다 번역문 — 화면은 번역으로 읽는다(없으면 원문); 요약에서 온 초록은 ko 를 미리 지녔다
             for p, l, ko in zip(sec["paras"], lb, kos):
                 pf, pt = _refs_in(p["text"])
                 out.append({"sub": p["sub"], "role": l[0], "gist": l[1], "figs": pf, "tabs": pt, "words": len(p["text"].split()), "text": p["text"], "ko": ko})

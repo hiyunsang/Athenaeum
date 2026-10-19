@@ -1093,7 +1093,7 @@ function drawEx() {
 }
 
 // ---------- 구성 보기: 고른 선행 연구의 결과·논의·결론 절이 어떻게 짜였나 (2026-10-18, 사용자: '4장 5장을 써야 하는데 막힌다 — 선행 연구들의 4·5장 구성을 참고하면서 쓰고 싶다') ----------
-const ST_KINDS = [["results", "결과"], ["discussion", "논의"], ["rd", "결과·논의 한 절"], ["conclusion", "결론"]];
+const ST_KINDS = [["abstract", "초록"], ["intro", "서론"], ["methods", "방법"], ["results", "결과"], ["discussion", "논의"], ["rd", "결과·논의 한 절"], ["conclusion", "결론"]];   /* 초록·서론·방법은 2026-10-19 */
 let stState = { kinds: ["results", "discussion", "rd"], pick: "auto", n: 4, files: [], mine: null, cands: null, q: "", data: null, advice: null, busy: "", forDoc: null };   /* pick: auto = 서재에서 알아서(저널·주제·편수), manual = 직접 고르기 */
 function exKindsRow() {
   return "<div class='exkinds'>" + EX_KINDS.map(([k, nm]) => "<a href='#' class='act" + (k === exState.section ? " on" : "") + "' data-k='" + k + "'>" + nm + "</a>").join("") +
@@ -1109,7 +1109,9 @@ function bindExKinds(el) {
   });
 }
 function stMineDefault(kinds) {   /* 볼 절의 짝이 되는 내 장 — 결과 → 결과 장, 논의 → Discussion, 결론 → Conclusion. 번호 붙은 제목이 있으면 그것만(옛 초안의 '결과 및 고찰' 같은 꼬리 절은 빼고) */
-  kinds = kinds || stState.kinds; const rx = [];
+  kinds = (kinds || stState.kinds); if (!kinds.length) kinds = ["results", "discussion", "rd"]; const rx = [];
+  if (kinds.includes("intro")) rx.push(/서론|introduc/i);
+  if (kinds.includes("methods")) rx.push(/방법|method|experimental|setup|procedure/i);
   if (kinds.includes("results") || kinds.includes("rd")) rx.push(/결과|result/i);
   if (kinds.includes("discussion") || kinds.includes("rd")) rx.push(/고찰|논의|discussion/i);
   if (kinds.includes("conclusion")) rx.push(/결론|conclu/i);
@@ -1124,7 +1126,7 @@ function renderSt(el, all, cnt) {
   const l1 = (doc.outline || []).filter(n => (n.level || 1) === 1), auto = stState.pick === "auto";
   const jl = (all || exState.journals || []).map(x => "<label><input type='checkbox' value='" + esc(x) + "'" + ((exState.journals || []).includes(x) ? " checked" : "") + "> " + esc(x) + ((cnt || {})[x] ? " <span class='hint' style='display:inline'>" + cnt[x] + "</span>" : "") + "</label>").join("");
   el.innerHTML = "<div class='sec'>구성 보기 — 다른 논문의 결과·논의·결론은 어떻게 짜였나</div><div class='exctl'>" + exKindsRow() +
-    "<div class='hint'>논문의 그 절을 번역문으로 펼치고, 오른쪽에 } 로 묶은 대목마다 무엇을 말하는지 적습니다(문단을 누르면 원문). 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
+    "<div class='hint'>논문의 그 절(초록·서론·방법·결과·논의·결론)을 번역문으로 펼치고, 오른쪽에 } 로 묶은 대목마다 무엇을 말하는지 적습니다(문단을 누르면 원문). 그 다음 「공통 흐름과 내 장 제안」 이 내 장의 소절 구성을 세워 주고, 개요에 바로 넣을 수 있습니다.</div>" +
     "<div style='margin:6px 0'>볼 절 " + ST_KINDS.map(([k, nm]) => "<label><input type='checkbox' class='stk' value='" + k + "'" + (stState.kinds.includes(k) ? " checked" : "") + "> " + nm + "</label>").join(" ") +
       " <span class='hint' style='display:inline'>↔ 내 장: " + (mineNames || "짝이 되는 장을 못 찾음") + " <a href='#' class='act' id='stMineEdit'>" + (stState.mineEdit ? "닫기" : "바꾸기") + "</a></span></div>" +
     (stState.mineEdit ? "<div style='margin:2px 0 6px'>내 장 " + l1.map(n => "<label><input type='checkbox' class='stm' value='" + esc(n.id) + "'" + (stState.mine.includes(n.id) ? " checked" : "") + "> " + esc((n.heading || "").slice(0, 28)) + "</label>").join(" ") + "</div>" : "") +
@@ -1135,7 +1137,7 @@ function renderSt(el, all, cnt) {
     "<button class='btn' id='stGo'>구성 보기</button> <span class='hint' id='stMsg' style='display:inline'></span></div><div id='stOut'></div>";
   bindExKinds(el);
   el.querySelectorAll(".stk").forEach(c => c.onchange = () => { stState.kinds = [...el.querySelectorAll(".stk:checked")].map(x => x.value); if (!stState.mineManual) { stState.mine = stMineDefault(); renderEx(); } });
-  el.querySelectorAll(".stm").forEach(c => c.onchange = () => { stState.mine = [...el.querySelectorAll(".stm:checked")].map(x => x.value); stState.mineManual = true; });
+  el.querySelectorAll(".stm").forEach(c => c.onchange = () => { stState.mine = [...el.querySelectorAll(".stm:checked")].map(x => x.value); stState.mineManual = stState.mine.length > 0; });   /* 다 끄면 다시 알아서 */
   $("stMineEdit").onclick = e => { e.preventDefault(); stState.mineEdit = !stState.mineEdit; renderEx(); };
   el.querySelectorAll("input[name=stpick]").forEach(r => r.onchange = () => { stState.pick = r.value; renderEx(); });
   el.querySelectorAll(".jl input").forEach(c => c.onchange = () => { exState.journals = [...el.querySelectorAll(".jl input:checked")].map(x => x.value); });
@@ -1190,7 +1192,7 @@ function stDraw() {
     : "고른 저널에서 그 절을 찾은 논문이 없습니다 — 저널을 늘리거나 「직접 고르기」 로") + "</div>";
   for (const it of d.items || []) {
     h += "<details class='ex' open><summary class='exh'>" + esc(it.author || "") + " " + (it.year || "") + " · " + esc(it.journal || "") + " · " + esc((it.title || "").slice(0, 80)) + " <a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a>" +
-      (it.has_ko ? "" : " <span class='hint' style='display:inline'>번역 없음 — 원문으로</span>") + "</summary>" + absHtml(it.abstract);
+      (it.has_ko ? "" : " <span class='hint' style='display:inline'>번역 없음 — 원문으로</span>") + "</summary>" + ((it.sections || []).some(s => s.kind === "abstract") ? "" : absHtml(it.abstract));
     if (!(it.sections || []).length) h += "<div class='hint' style='padding:4px 12px'>이 PDF 에서 고른 종류의 절을 찾지 못했습니다 — 절 제목에 번호가 없는 편집이거나 결과·논의가 다른 이름일 수 있습니다</div>";
     for (const s of it.sections || []) {
       const ps = s.paras || [], gs = (s.groups || []).filter(g => g.a >= 1 && g.b >= g.a && g.b <= ps.length);
