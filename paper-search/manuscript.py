@@ -3402,6 +3402,10 @@ def exemplars(body):
                 "colon_share": round(100 * sum(1 for it in items if it["colon"]) / len(items)) if items else 0}
         return {"section": kind, "level": "title", "roles": [], "items": items, "mine": mine, "summary": summ, "topic": topic, "journals": journals, "notes": notes}
     texts = {"E%d" % i: _units(kind, it.get("text"), it.get("paras")) for i, it in enumerate(items)}
+    if kind != "abstract":   # 본문 부분의 본보기에는 그 논문의 초록을 머리에(2026-10-19, 사용자: '본보기도 구성 보기도 초록은 없냐')
+        for it in items:
+            if it.get("src") == "library" and it.get("file"):
+                it["abstract"] = _abstract_of(it["file"])
     if mine_text:
         texts["ME"] = _units(kind, mine_text)
     labels = _label(kind, texts) if texts else {}
@@ -3683,6 +3687,58 @@ def _segments(texts):
     return res
 
 
+_ABS_CACHE = {}
+
+
+def _summary_abstract(f):
+    """요약 파일(번역\<stem>.요약.md)의 '초록' 제목 아래 글 — 다음 제목 전까지, 한국어."""
+    try:
+        stem = os.path.splitext(os.path.basename(f))[0]
+        lines = io.open(os.path.join(cfg["GEN_DIR"], stem + ".요약.md"), encoding="utf-8").read().splitlines()
+    except Exception:
+        return ""
+    out, on = [], False
+    for l in lines:
+        if l.startswith("#"):
+            if on:
+                break
+            on = "초록" in l or re.search(r"\babstract\b", l, re.I) is not None
+            continue
+        if on and l.strip():
+            out.append(l.strip())
+    return " ".join(out)[:2500]
+
+
+def _abstract_of(f):
+    """논문의 초록 {en, ko} — en 은 PDF 첫 2쪽(extract_abstract), ko 는 번역 정렬표에서 그 문장들의 번역(_para_ko). 파일 mtime 으로 캐시."""
+    f = os.path.basename(str(f or ""))
+    path = os.path.join(cfg["ARCHIVE"], f)
+    try:
+        key = (f, os.path.getmtime(path))
+    except OSError:
+        return {"en": "", "ko": ""}
+    if key in _ABS_CACHE:
+        return _ABS_CACHE[key]
+    try:
+        en = (cfg["extract_abstract"](f) if cfg.get("extract_abstract") else "") or ""
+    except Exception:
+        en = ""
+    en = " ".join(en.split())
+    ko = ""
+    if en:
+        try:
+            ko = _para_ko(f, [{"text": en}])[0]
+        except Exception:
+            ko = ""
+    if not ko:   # 번역에서 못 맞추면(번역이 없거나 초록 문장이 정렬표에 없음) 요약 파일의 '초록' 절 — 요약은 초록을 꼭 담는다
+        ko = _summary_abstract(f)
+    out = {"en": en, "ko": ko}
+    if len(_ABS_CACHE) > 400:
+        _ABS_CACHE.clear()
+    _ABS_CACHE[key] = out
+    return out
+
+
 def _paper_secs(f, kinds):
     """논문 하나에서 그 종류의 절들 [{num, head, kind, inferred, paras}] — 제목이 내용으로 된 결과 절(Oliaei 2016 '4. Force measurements …')은
     마지막 서론·방법 절 뒤·결론 앞의 번호 절이면 결과로 본다(inferred)."""
@@ -3751,7 +3807,7 @@ def section_structure(doc, body):
         pairs = [(f, _paper_secs(f, kinds)) for f in files if os.path.isfile(os.path.join(cfg["ARCHIVE"], f))]
     items, texts = [], {}
     for i, (f, secs) in enumerate(pairs):
-        items.append(dict(_lib_meta(f, tags), sections=secs))
+        items.append(dict(_lib_meta(f, tags), sections=secs, abstract=_abstract_of(f)))
         for j, sec in enumerate(secs):
             texts["E%d_%d" % (i, j)] = [p["text"] for p in sec["paras"]]
     labels = _label_chunked("results", texts) if texts else {}

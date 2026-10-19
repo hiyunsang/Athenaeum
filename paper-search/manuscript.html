@@ -33,6 +33,10 @@
   .br .t1 { height: 8px; width: 6px; margin-left: 5.5px; border-left: 1.5px solid var(--text-3); border-bottom-left-radius: 8px; }
   .br .t2 { height: 8px; width: 6px; margin-left: 5.5px; border-left: 1.5px solid var(--text-3); border-top-left-radius: 8px; }
   .br .c2 { height: 8px; width: 6px; border-bottom: 1.5px solid var(--text-3); border-right: 1.5px solid var(--text-3); border-bottom-right-radius: 8px; }
+  .stabs { padding: 4px 12px 6px; font-size: 12px; line-height: 1.5; color: var(--text-2); border-bottom: 1px solid var(--line-2); }
+  .stabs .pn { color: var(--text-3); font-size: 10.5px; margin-right: 5px; }
+  .stabs .orig { display: block; margin-top: 3px; color: var(--text-3); font-size: 11.5px; }
+  .stabs .orig[hidden] { display: none; }
   .stg .lbl { grid-column: 3; align-self: stretch; font-size: 11.5px; line-height: 1.4; color: var(--text-2); padding: 6px 4px; }
   .stg .lbl .lblin { position: sticky; top: 6px; }   /* 긴 대목에서는 설명이 위에 붙어 따라온다 */
   .stg .lbl b { display: block; color: var(--text); font-size: 12px; margin-bottom: 1px; }
@@ -1076,7 +1080,7 @@ function drawEx() {
     else if (exIsBody(exState.section)) h += "<div class='hint' style='padding:4px 12px'>내 원고의 '" + esc(exKindName(exState.section)) + "' 절에 아직 초안이 없어 비교는 건너뜁니다 (개요의 절 제목으로 찾음)</div>";
     for (const it of d.items || []) {
       h += "<div class='ex'><div class='exh'>" + head(it) + " · " + it.words + "단어" + (exIsBody(exState.section) ? " · 인용 " + it.cites + "개" : "") + " " + openLink(it) + "</div>" +
-        "<div class='ttl'>" + esc(it.title) + "</div><div class='pat'>" + esc(it.pattern) + "</div>" + unitsHtml(it) + "</div>";
+        "<div class='ttl'>" + esc(it.title) + "</div>" + absHtml(it.abstract) + "<div class='pat'>" + esc(it.pattern) + "</div>" + unitsHtml(it) + "</div>";
     }
   }
   if (!(d.items || []).length) h += "<div class='hint' style='padding:6px 12px'>본보기를 찾지 못했습니다. 저널을 더 고르거나 출처를 바꿔 보세요.</div>";
@@ -1085,6 +1089,7 @@ function drawEx() {
   out.innerHTML = h;
   out.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
   out.querySelectorAll(".exp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); o.hidden = !o.hidden; });
+  bindAbs(out);
 }
 
 // ---------- 구성 보기: 고른 선행 연구의 결과·논의·결론 절이 어떻게 짜였나 (2026-10-18, 사용자: '4장 5장을 써야 하는데 막힌다 — 선행 연구들의 4·5장 구성을 참고하면서 쓰고 싶다') ----------
@@ -1169,6 +1174,13 @@ async function stBuild() {
   catch (e) { stState.data = { items: [], error: "불러오기 실패" }; }
   stState.busy = ""; if (activeTab() === "ex") renderEx();
 }
+function absHtml(a) {   /* 논문의 초록 — 번역이 있으면 번역, 「원문」 으로 영어 (본보기·구성 보기 공용) */
+  if (!a || !(a.ko || a.en)) return "";
+  const ko = a.ko, en = a.en || "";
+  return "<div class='stabs'><span class='pn'>초록</span>" + esc(ko || en).replace(/&lt;(\/?su[bp])&gt;/g, "<$1>") +
+    (ko && en ? " <a href='#' class='act' data-abs>원문</a><span class='orig' hidden>" + esc(en) + "</span>" : (ko ? "" : " <span class='hint' style='display:inline'>(번역 없음)</span>")) + "</div>";
+}
+function bindAbs(out) { out.querySelectorAll("[data-abs]").forEach(a => a.onclick = e => { e.preventDefault(); const o = a.parentNode.querySelector(".orig"); if (o) o.hidden = !o.hidden; }); }
 function stBrace() { return "<div class='br'><i class='c1'></i><i class='ln'></i><i class='t1'></i><i class='t2'></i><i class='ln'></i><i class='c2'></i></div>"; }
 function stDraw() {
   const d = stState.data || {}, out = $("stOut"); if (!out) return;
@@ -1178,7 +1190,7 @@ function stDraw() {
     : "고른 저널에서 그 절을 찾은 논문이 없습니다 — 저널을 늘리거나 「직접 고르기」 로") + "</div>";
   for (const it of d.items || []) {
     h += "<details class='ex' open><summary class='exh'>" + esc(it.author || "") + " " + (it.year || "") + " · " + esc(it.journal || "") + " · " + esc((it.title || "").slice(0, 80)) + " <a href='#' class='act' data-open='" + esc(it.file) + "'>PDF</a>" +
-      (it.has_ko ? "" : " <span class='hint' style='display:inline'>번역 없음 — 원문으로</span>") + "</summary>";
+      (it.has_ko ? "" : " <span class='hint' style='display:inline'>번역 없음 — 원문으로</span>") + "</summary>" + absHtml(it.abstract);
     if (!(it.sections || []).length) h += "<div class='hint' style='padding:4px 12px'>이 PDF 에서 고른 종류의 절을 찾지 못했습니다 — 절 제목에 번호가 없는 편집이거나 결과·논의가 다른 이름일 수 있습니다</div>";
     for (const s of it.sections || []) {
       const ps = s.paras || [], gs = (s.groups || []).filter(g => g.a >= 1 && g.b >= g.a && g.b <= ps.length);
@@ -1204,6 +1216,7 @@ function stDraw() {
   out.innerHTML = h;
   out.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
   out.querySelectorAll(".stp").forEach(p => p.onclick = () => { const o = p.querySelector(".orig"); if (o) o.hidden = !o.hidden; });
+  bindAbs(out);
   const ab = $("stAdvice"); if (ab) ab.onclick = stAdvise;
   out.querySelectorAll("[data-stins]").forEach(b => b.onclick = () => stInsert(b.dataset.stins));
 }

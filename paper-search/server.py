@@ -1725,7 +1725,7 @@ def extract_abstract_from_pdf(name):
     except Exception:
         return ""
     t = re.sub(r"[ \t]+", " ", text)
-    m = re.search(r"(?is)\b(?:a\s?b\s?s\s?t\s?r\s?a\s?c\s?t)\b[\s:.\-–]*\n?(.{200,4000}?)"
+    m = re.search(r"(?is)\b(?:a\s*b\s*s\s*t\s*r\s*a\s*c\s*t)\b[\s:.\-–]*\n?(.{200,4000}?)"   # \s* — 낱말마다 줄을 바꾸는 옛 Elsevier PDF 는 'a\n b\n s…' (2026-10-19)
                   r"(?:\n\s*(?:keywords?|key words|index terms|1\.?\s+introduction|introduction\b|©|nomenclature|article info|\d\.\s+introduction))", t)
     if not m:
         return ""
