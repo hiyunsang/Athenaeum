@@ -49,7 +49,7 @@ _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text
 
 VERSION = "공부 (2026-10-09)"   # 이름에 판 번호를 붙이지 않는다(사용자). 날짜 = 그림 색인·도식 후보·교과서식 배치(저녁)와 Claude 의 생각(해설 층)·절 사이 잇기·묶어 쓰기를 넣은 날. 그 전: 논지 층·번외·표·그림(10-07), 그 전: Stylus 적용(10-06) · 절마다 보기 · 마인드맵 · 드래그해 묻기
 _DEPTH = {"small": (6, 10), "mid": (12, 20), "wide": (20, 36)}   # (통째로 읽는 논문, 읽는 논문 전체)
-_STAGES = ["plan", "scan", "select", "read", "figs", "outline", "write", "join", "edit", "verify", "wrap", "terms", "comment", "quiz"]
+_STAGES = ["plan", "scan", "select", "prep", "read", "figs", "outline", "write", "join", "edit", "verify", "wrap", "terms", "comment", "quiz"]
 _PART_CHARS = 95000     # 한 번에 읽히는 원문 글자 수 (넘으면 나눠 읽는다)
 _HIT_CHARS = 16000      # 관련 논문: 맞은 대목만
 
@@ -725,6 +725,70 @@ def _read_paper(st, pi, model, effort):
             notes.append({"pt": pt[:600], "s": sids[:6], "kind": n.get("kind") if n.get("kind") in _KINDS else "result", "own": n.get("own") is not False})
     return {"about": about, "type": typ, "notes": notes, "parts": len(chunks), "mode": mode, "dropped": dropped, "fail": fail, "all_fail": bool(chunks) and fail == len(chunks),
             "unitwarn": paper["unitwarn"]}
+
+
+def _needs_prep(p):
+    """통째로 읽을 논문에 없는 재료: translation(번역 정렬표·번역문) · summary(요약)"""
+    stem = os.path.splitext(p["file"])[0]
+    out = []
+    if not (os.path.isfile(os.path.join(cfg["GEN_DIR"], stem + ".번역.정렬.json")) and os.path.isfile(os.path.join(cfg["GEN_DIR"], stem + ".번역.md"))):
+        out.append("translation")
+    if not os.path.isfile(os.path.join(cfg["GEN_DIR"], stem + ".요약.md")):
+        out.append("summary")
+    return out
+
+
+def _prep_all(st, limit_sec=3600):
+    """읽기 전 재료 준비(2026-10-19, 사용자: 사파이어 장이 번역 없이 써진 것을 보고 '하나도 안 되어 있던데 어떻게 공부를 만든겨'):
+    통째로 읽을 논문(core)에 번역·요약이 없으면 서버에 만들어 달라고 하고(서버의 생성 줄 — 요약·번역 동시 3개) 10초마다 살피며 기다린다.
+    한 시간을 넘기거나 실패한 것은 그대로 두고 읽는다(그 논문은 PDF 본문으로). 기록은 st['prep']."""
+    ens, state = cfg.get("gen_ensure"), cfg.get("gen_state")
+    want = []
+    for p in st["papers"]:
+        if p.get("role") != "core" or p.get("read"):
+            continue
+        for k in _needs_prep(p):
+            want.append((p["file"], k))
+    rec = {"asked": len(want), "files": sorted({f for f, _k in want}), "done": 0, "failed": [], "t0": time.time(), "sec": 0}
+    st["prep"] = rec
+    if not want or not ens or not state:
+        return
+    _log(st, "통째로 읽을 논문 가운데 번역·요약이 없는 %d편의 재료를 먼저 만듭니다 (번역 %d · 요약 %d) — 편당 5~10분" % (
+        len(rec["files"]), sum(1 for _f, k in want if k == "translation"), sum(1 for _f, k in want if k == "summary")))
+    _stage(st, "prep", done=0, total=len(want))
+    pending = set()
+    for f, k in want:
+        try:
+            r = ens(f, k)
+            if r == "done":
+                rec["done"] += 1
+            elif r == "none":
+                rec["failed"].append("%s %s: 만들 수 없음" % (f[:40], k))
+            else:
+                pending.add((f, k))
+        except Exception as e:
+            rec["failed"].append("%s %s: %s" % (f[:40], k, str(e)[:80]))
+    t0 = time.time()
+    while pending and time.time() - t0 < limit_sec:
+        _check_stop(st)
+        time.sleep(10)
+        for f, k in list(pending):
+            try:
+                r = state(f, k)
+            except Exception as e:
+                r = "error:" + str(e)[:80]
+            if r == "done":
+                pending.discard((f, k)); rec["done"] += 1
+            elif r == "none" or r.startswith("error"):
+                pending.discard((f, k)); rec["failed"].append("%s %s: %s" % (f[:40], k, r[6:] if r.startswith("error") else "만들지 못함"))
+        with _LOCK:
+            st["prog"] = {"done": len(want) - len(pending), "total": len(want), "last": ""}
+        _save(st)
+    for f, k in pending:
+        rec["failed"].append("%s %s: 시간 초과" % (f[:40], k))
+    rec["sec"] = round(time.time() - t0)
+    _SENT_CACHE.clear()   # 새로 생긴 번역을 읽게
+    _log(st, "재료 준비 끝 — 만든 것 %d · 못 만든 것 %d · %d초" % (rec["done"], len(rec["failed"]), rec["sec"]))
 
 
 def _read_all(st, model):
@@ -2668,6 +2732,10 @@ def _run(st):
     for p in st["papers"]:
         if "top" not in p:
             p["top"] = _is_top(p.get("journal", ""), tops)
+    if (st.get("opts") or {}).get("prep", True) and not st.get("prep") and any(not p.get("read") for p in st["papers"]):   # 읽기 전 재료 준비 (2026-10-19)
+        _prep_all(st)
+        _save(st)
+    _check_stop(st)
     _read_all(st, model)
     if not st.get("figidx"):       # 읽은 논문의 그림 색인(Sonnet 이 그림을 보고 종류·설명) — 쓰기가 도식을 고르고 풀어 쓰는 재료. 못 만들어도 장은 쓴다
         _stage(st, "figs")
@@ -2970,7 +3038,8 @@ def start(body):
         return {"error": "이미 두 개를 쓰고 있습니다 — 끝난 뒤에 시작하세요"}
     sid = "st_" + time.strftime("%Y%m%d_%H%M%S")
     st = {"id": sid, "topic": topic[:800], "t": time.time(), "status": "running", "stage": "plan",
-          "opts": {"depth": body.get("depth") if body.get("depth") in _DEPTH else "mid", "effort": body.get("effort") if body.get("effort") in ms._SEL_EFFORT else "xhigh", "pace": body.get("pace") if body.get("pace") in _PACE else "mid"}}
+          "opts": {"depth": body.get("depth") if body.get("depth") in _DEPTH else "mid", "effort": body.get("effort") if body.get("effort") in ms._SEL_EFFORT else "xhigh", "pace": body.get("pace") if body.get("pace") in _PACE else "mid",
+                   "prep": body.get("prep", True) is not False}}
     _save(st)
     return _spawn(sid)
 

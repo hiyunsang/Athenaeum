@@ -249,6 +249,7 @@
           <select id="depth" title="읽을 논문의 수"><option value="small">핵심만 · 10편까지</option><option value="mid">보통 · 20편까지</option><option value="wide">넓게 · 36편까지</option></select>
           <select id="pace" title="절의 분량 — 늘어난 분량은 설명(왜·무엇과 이어지는지)에 씁니다"><option value="mid">보통 · 절 35~55문장</option><option value="brief">간결 · 20~35</option><option value="full">자세히 · 50~75</option></select>
           <select id="effort" title="쓰는 모델"><option value="xhigh">Opus · 엑스트라</option><option value="high">Opus · 보통</option><option value="max">Opus · 최대</option><option value="fable">Fable · 엑스트라</option><option value="fast">Sonnet · 빠름 (대조는 Opus)</option></select>
+          <label class="hint" title="통째로 읽을 논문에 번역·요약이 없으면 읽기 전에 먼저 만듭니다(편당 5~10분). 끄면 그 논문은 PDF 본문으로 읽습니다 — 근거 문장의 번역·쪽이 없고 묻기의 배경도 얕아집니다"><input type="checkbox" id="prep" checked> 번역·요약이 없는 핵심 논문은 먼저 만든다</label>
         </div>
         <button class="primary" id="go">쓰기 시작</button>
         <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
@@ -274,7 +275,7 @@ const fmtDate = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric",
 const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" + (Math.round(s % 60) ? " " + Math.round(s % 60) + "초" : "");
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
-const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["read", "논문을 읽고 메모 뽑기"],
+const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["prep", "번역·요약이 없는 핵심 논문의 재료 만들기"], ["read", "논문을 읽고 메모 뽑기"],
   ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["edit", "편집자 다듬기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실", dup: "같은 절의 다른 문장과 같은 말", rep: "같은 절의 다른 문장과 같은 말 (말만 바꿈)" };
@@ -383,6 +384,10 @@ async function refresh(first) {
 
 // ---------- 가운데 ----------
 // 「이 서재로는 답하지 못한 것」 → 연구 노트의 새 주제로 (사용자 2026-10-08: '이런 연구 주제는 어때? 하고 같이 토의')
+function exploreGap(i) {   /* 답하지 못한 것 → 바로 논문 탐색 (2026-10-19) */
+  const g = ((cur.chapter || {}).gaps || [])[i]; if (!g) return;
+  window.open("/explore?q=" + encodeURIComponent(g.slice(0, 220)) + "&go=1", "athenaeum_explore", "width=1280,height=900");
+}
 function noteFromGap(i) {
   const g = ((cur.chapter || {}).gaps || [])[i]; if (!g) return; const t = (cur.chapter || {}).title || cur.topic || "";
   window.open("/notes?new=1&from=study&fid=" + encodeURIComponent(cur.id) + "&ftitle=" + encodeURIComponent(t) + "&title=" + encodeURIComponent(g.slice(0, 80)) +
@@ -594,7 +599,7 @@ function viewHtml() {
   if (k === "all") return "<div class='page ch'>" + crumb("전체를 한 번에") + overviewBody(true) + "</div>";
   if (k === "sec") return "<div class='page ch'>" + sectionHtml(view.si) + "</div>";
   if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
-  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다. 「토의」 를 누르면 그 물음을 연구 노트의 새 주제로 열어 Claude 와 따집니다.</div><ul>" + ch.gaps.map((g, i) => "<li>" + esc(g) + " <button class='act noprint' onclick='noteFromGap(" + i + ")' title='이 물음을 연구 노트의 새 주제로 열어 Claude 와 토의합니다 (서재 전체를 알고 답합니다)'>토의 ↗</button></li>").join("") + "</ul></div>";
+  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다. 「토의」 를 누르면 그 물음을 연구 노트의 새 주제로 열어 Claude 와 따집니다.</div><ul>" + ch.gaps.map((g, i) => "<li>" + esc(g) + " <button class='act noprint' onclick='noteFromGap(" + i + ")' title='이 물음을 연구 노트의 새 주제로 열어 Claude 와 토의합니다 (서재 전체를 알고 답합니다)'>토의 ↗</button> <button class='act noprint' onclick='exploreGap(" + i + ")' title='이 물음으로 논문 탐색 창을 엽니다 — 세상의 문헌에서 찾아 서재에 더하면 「다시 만들기」 로 이 장을 채울 수 있습니다'>탐색 ↗</button></li>").join("") + "</ul></div>";
   if (k === "terms") return "<div class='page ch'>" + crumb("용어") + "<h2 class='first'>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div></div>";
   if (k === "chats") return "<div class='page ch'>" + crumb("Claude 에게 물은 것") + "<h2 class='first'>Claude 에게 물은 것</h2>" + chatsViewHtml() + "</div>";
   if (k === "refs") return "<div class='page ch'>" + crumb("참고문헌") + "<h2 class='first'>참고문헌</h2>" + refsHtml() + "</div>";
@@ -1209,7 +1214,7 @@ function infoPanel() {
 // 쓰기 시작 — 먼저 주제가 한 장에 담기에 넓은지 본다(Sonnet 20초쯤). 넓으면 좁힌 주제를 골라 시작 (사용자 2026-10-09: '분야가 너무 넓으면 알아서 좁히거나 되물음 하나')
 async function startStudy(topic) {
   $("go").disabled = true;
-  let r; try { r = await api("/api/study", { op: "start", topic, depth: $("depth").value, effort: $("effort").value, pace: $("pace").value }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/study", { op: "start", topic, depth: $("depth").value, effort: $("effort").value, pace: $("pace").value, prep: $("prep") ? $("prep").checked : true }); } catch (e) { r = { error: "서버 연결 실패" }; }
   $("go").disabled = false;
   if (r.error) { $("newMsg").textContent = "⚠ " + r.error; return; }
   $("topic").value = ""; $("newMsg").innerHTML = "서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다."; await loadList(); openStudy(r.id);

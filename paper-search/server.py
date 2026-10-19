@@ -3240,12 +3240,42 @@ vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, loa
 
 # ---------- 공부 (내 서재의 논문만으로 쓰는 교과서 한 장 — 문장마다 논문의 원문 문장에 묶는다) ----------
 import study
-study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel, pref_abbrs=pref_file_abbrs)
+def gen_ensure(name, kind):
+    """공부가 읽기 전에 번역·요약을 만들어 달라고 할 때(2026-10-19) — 있으면 done, 돌고 있으면 running, 아니면 시작해서 started. /api/generate 와 같은 길."""
+    name = os.path.basename(str(name or ""))
+    if kind not in ("summary", "translation") or not os.path.isfile(os.path.join(ARCHIVE, name)):
+        return "none"
+    if os.path.isfile(gen_path(name, kind)):
+        return "done"
+    key = (name, kind)
+    job = _jobs.get(key)
+    if job and job.get("status") == "running":
+        return "running"
+    _jobs[key] = {"status": "running"}
+    threading.Thread(target=run_generation, args=(name, kind, None), daemon=True).start()
+    return "started"
+
+
+def gen_state(name, kind):
+    """done · running · none(작업이 없고 파일도 없음) · 'error:까닭'"""
+    name = os.path.basename(str(name or ""))
+    if os.path.isfile(gen_path(name, kind)):
+        return "done"
+    job = _jobs.get((name, kind))
+    if job is None:
+        return "none"
+    if job.get("status") == "error":
+        return "error:" + str(job.get("error") or "")[:160]
+    return "running"
+
+
+study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel, pref_abbrs=pref_file_abbrs,
+           gen_ensure=gen_ensure, gen_state=gen_state)
 
 # ---------- 연구 노트 (연구 주제를 놓고 Claude 와 토의 — 서재 전체·공부 장·탐색 기록·인용 이웃·원고를 알고 답한다. 사용자 2026-10-08) ----------
 import notes
 notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
-           paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
+           paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, ms_new=ms.new_ms, ms_save=ms.save_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
 
 
 def settings_view():

@@ -19,7 +19,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-10-08)"
+VERSION = "연구 노트 (2026-10-19)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 _EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None)}
@@ -28,6 +28,12 @@ CARD_KEYS = ["question", "hypothesis", "design", "expected", "risks", "papers", 
 CARD_KO = {"question": "연구 물음", "hypothesis": "가설", "design": "실험·해석 설계", "expected": "예상 결과와 그 뜻", "risks": "위험·약점·반론",
            "papers": "관련 논문", "groups": "비슷한 일을 하는 연구 그룹", "journals": "맞는 저널", "next": "다음에 할 일"}
 _LIST_KEYS = ("papers", "groups", "journals", "next")
+PLAN_KEYS = [("background", "배경과 공백"), ("question", "연구 물음과 가설"), ("material", "재료·시편"), ("setup", "장비·측정"), ("design", "실험 설계 — 변수와 수준"),
+             ("analysis", "해석·모델"), ("expected", "예상 결과와 판정 기준"), ("risks", "위험과 대안"), ("schedule", "일정"), ("venue", "저널과 독자")]   # 실험 설계서의 열 칸 (2026-10-19)
+PLAN_KO = dict(PLAN_KEYS)
+REVIEWERS = [("exp", "실험 전문가"), ("theory", "이론·모델 전문가"), ("editor", "저널 심사위원")]
+REVIEWER_KO = dict(REVIEWERS)
+_JOBKINDS = ("plan", "review", "draft")
 
 
 def init(**kw):
@@ -66,6 +72,8 @@ def _brief(nt):
     return {"id": nt["id"], "title": nt.get("title") or "", "status": nt.get("status") or "idea", "t": nt.get("t", 0), "updated": nt.get("updated", 0),
             "asks": sum(1 for m in th if m.get("role") == "user"), "answers": sum(1 for m in th if m.get("role") == "claude"),
             "pending": bool(nt.get("pending")), "card": bool(nt.get("card")), "last": (last["text"][:90] if last else ""),
+            "plan": bool(nt.get("plan")), "open": sum(1 for o in nt.get("objections") or [] if o.get("status") == "open"), "ms": bool(nt.get("ms")),
+            "busy": any(nt.get(k + "_pending") for k in _JOBKINDS),
             "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", "")}
 
 
@@ -116,6 +124,11 @@ def save_fields(nid, body):
         if isinstance(body.get("card"), dict):
             nt["card"] = _clean_card(body["card"], nt.get("card") or {})
             nt["card_edited"] = time.time()
+        if isinstance(body.get("plan"), dict) and nt.get("plan"):   # 설계서의 칸을 손으로 고침 (인용 검증은 그대로)
+            for sec in nt["plan"].get("sections") or []:
+                if sec.get("k") in body["plan"]:
+                    sec["t"] = str(body["plan"][sec["k"]] or "").strip()[:2500]
+            nt["plan_edited"] = time.time()
         _save(nt)
         return {"note": nt}
 
@@ -367,6 +380,11 @@ def _prompt(nt, question, lib, others):
     if len(th) > 1:
         past = "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", m["text"][:2200 if m.get("role") == "user" else 3200]) for m in th[-11:-1])
         out += "\n[지난 대화]\n" + past + "\n"
+    if nt.get("plan"):
+        out += "\n[실험 설계서 — 지금까지 세운 것]\n" + _plan_text(nt["plan"], cap=700) + "\n"
+    opens = [o for o in nt.get("objections") or [] if o.get("status") == "open"]
+    if opens:
+        out += "\n[아직 답하지 않은 반론]\n" + "\n".join("- [%s] %s" % (REVIEWER_KO.get(o.get("who"), o.get("who")), o.get("t")) for o in opens[:10]) + "\n"
     if others:
         out += "\n[연구 노트의 다른 주제] " + " · ".join("%s(%s)" % (o["title"][:50], STATUS_KO.get(o["status"], "")) for o in others[:30]) + "\n"
     out += "\n[물음]\n" + question + "\n\n" + _RULE
@@ -542,6 +560,321 @@ def _card_job(nid):
         _save(nt)
 
 
+# ---------- 실험 설계서 · 심사위원 반론 · 원고 초안 (2026-10-19) ----------
+def _lib_index():
+    """서재 파일 → [(연도, 첫 저자 성(소문자 글자만), 파일)] — 설계서의 '(저자 연도)' 를 서재 파일에 맞출 때. 파일 수가 바뀌면 다시."""
+    try:
+        files = sorted(f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf"))
+    except OSError:
+        files = []
+    c = _BG.get("libidx")
+    if c and c[0] == len(files):
+        return c[1]
+    idx = []
+    for f in files:
+        m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_", f)
+        if m:
+            idx.append((m.group(1), re.sub(r"[^a-z]", "", m.group(3).lower()), f))
+    _BG["libidx"] = (len(files), idx)
+    return idx
+
+
+def _cite_file(key):
+    """'Zan 2026' · '(Zan et al., 2026)' · 'Kümmel 2015' → 서재 파일 또는 None (연도 같고 성이 앞부분부터 같으면)"""
+    k = str(key or "")
+    m = re.search(r"((?:19|20)\d{2})", k)
+    if not m:
+        return None
+    yr = m.group(1)
+    norm = lambda w: re.sub(r"[^a-z]", "", w.lower().replace("ü", "u").replace("ö", "o").replace("ä", "a").replace("é", "e"))
+    words = [norm(w) for w in re.findall(r"[A-Za-zÀ-ž][A-Za-zÀ-ž'\-]*", k[:m.start()])]
+    words = [w for w in words if w and w not in ("et", "al", "and", "the")]
+    cands = []
+    for i in range(len(words) - 1, -1, -1):   # 뒤에서부터 이어 붙인다: monaca → lamonaca → delamonaca (성이 두 낱말인 저자)
+        cands.append("".join(words[i:]))
+    idx = _lib_index()
+    for au in cands[:3]:
+        if len(au) < 2:
+            continue
+        for y, a, f in idx:
+            if y == yr and (a == au or (len(au) >= 3 and (a.startswith(au) or au.startswith(a)))):
+                return f
+    return None
+
+
+def _plan_text(plan, cap=1200):
+    out = []
+    for sec in (plan or {}).get("sections") or []:
+        if sec.get("t"):
+            out.append("%s: %s" % (sec.get("h") or PLAN_KO.get(sec.get("k"), sec.get("k")), sec["t"][:cap]))
+    for k, nm in (("gaps", "서재에 없어 확인할 것"), ("checks", "연구자가 정할 것")):
+        if (plan or {}).get(k):
+            out.append("%s: %s" % (nm, " / ".join(str(x) for x in plan[k][:8])))
+    return "\n".join(out)
+
+
+def _thread_text(nt, n=24, cap=3000):
+    th = [m for m in nt.get("thread") or [] if m.get("text")]
+    return "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", m["text"][:cap]) for m in th[-n:])
+
+
+def _answered_text(nt):
+    done = [o for o in nt.get("objections") or [] if o.get("status") in ("answered", "dropped")]
+    return "\n".join("- [%s] %s%s" % (REVIEWER_KO.get(o.get("who"), o.get("who")), o.get("t"), (" → 답: " + o["reply"][:300]) if o.get("reply") else (" (보류)" if o.get("status") == "dropped" else " (답함)")) for o in done[:12])
+
+
+_PLAN_RULE = (
+    "연구자와 나눈 토의·주제 카드·(있으면) 손으로 고친 설계서를 바탕으로 실험 설계서를 쓴다. 토의에서 정해진 것은 그대로 쓰고, 정해지지 않은 칸은 배경(서재·공부 장·탐색)에 비추어 가장 그럴듯한 안을 '제안: ' 으로 시작해 적는다(연구자가 알아보게). "
+    "지어낸 수치·인용은 쓰지 않는다. 서재의 논문을 들 때는 '(첫 저자 연도)' 로, 서재 밖의 지식으로 보태는 문장은 '서재 밖: ' 으로 시작한다. 답하지 않은 반론이 있으면 그것을 설계에 반영하거나 위험 칸에 적는다.\n"
+    "JSON 으로만 답하라(한국어, 마크다운 없이): {\"sections\": {\"background\": {\"t\": \"글\", \"cites\": [\"첫 저자 연도\", ...]}, \"question\": {...}, \"material\": {...}, \"setup\": {...}, \"design\": {...}, "
+    "\"analysis\": {...}, \"expected\": {...}, \"risks\": {...}, \"schedule\": {...}, \"venue\": {...}}, \"gaps\": [\"서재에 없어 연구자가 확인해야 할 것\"], \"checks\": [\"연구자가 정해야 할 것 — 선택지와 함께\"]}\n"
+    "칸마다 2~6문장(design 은 변수마다 한 줄 — '변수: 수준1 / 수준2 / 수준3 (고정: …), 반복 n'). "
+    "background 배경과 공백(무엇이 알려졌고 무엇이 비었나 — 서재 논문으로) · question 연구 물음과 가설(검증 가능한 꼴로, 맞으면/틀리면 무엇이 보이나) · material 재료·시편(규격·상태·수) · setup 장비·측정(무엇을 무엇으로 재나, 분해능·범위) · "
+    "design 실험 설계(독립 변수와 수준, 고정 조건, 반복 수, 대조군) · analysis 해석·모델(측정값을 가설의 판정으로 바꾸는 길) · expected 예상 결과와 판정 기준 · risks 위험과 대안(실패할 자리와 대비) · schedule 일정(단계와 기간) · venue 저널과 독자(어느 저널, 심사자가 볼 것). "
+    "cites 는 그 칸에서 든 서재 논문의 '첫 저자 연도' 목록(없으면 빈 목록).")
+
+_REVIEW_RULE = (
+    "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수), "
+    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
+    "반론은 구체적으로(어느 칸의 무엇이 왜 문제인가), 서재 논문을 들 수 있으면 '(첫 저자 연도)' 로. 이미 답한 반론은 되풀이하지 않는다. 연구자가 답하면 풀릴 수 있게 물음을 한 줄 단다.\n"
+    "JSON 으로만: {\"items\": [{\"who\": \"exp|theory|editor\", \"sec\": \"설계서 칸 이름(background·question·material·setup·design·analysis·expected·risks·schedule·venue) 또는 빈 문자열\", \"sev\": \"high|mid|low\", \"t\": \"반론 1~3문장\", \"ask\": \"연구자가 답해야 할 물음 한 줄\"}]}")
+
+_DRAFT_RULE = (
+    "아래 연구 계획으로 논문 원고의 뼈대를 세운다 — 제목·초록·키워드·절 차례. 절은 1단계 4~6개(서론·방법·결과·논의·결론 꼴을 이 연구에 맞게), 1단계마다 2단계 소절 2~5개. "
+    "절·소절마다 요지(claim) 한 문장 = 그 절이 독자에게 세울 주장. 결과·논의의 요지는 예상 결과를 가정한 것이므로 앞에 '(예상) ' 을 붙인다. 서론의 요지는 배경 → 공백 → 목적의 논리로 서재 논문을 '(첫 저자 연도)' 로 든다. 지어낸 수치는 쓰지 않는다.\n"
+    "JSON 으로만: {\"title\": \"제목(영어)\", \"title_ko\": \"제목(한국어)\", \"abstract\": \"초록 한국어 150~250자 — 예상 결과는 '…할 것으로 본다' 꼴\", \"keywords\": [\"영어 키워드 4~6개\"], \"journal\": \"저널 약어\", "
+    "\"sections\": [{\"heading\": \"1. 서론\", \"claim\": \"요지\", \"children\": [{\"heading\": \"1.1 …\", \"claim\": \"요지\"}]}]}")
+
+
+def _plan_prompt(nt):
+    out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))
+    seed = nt.get("seed") or {}
+    if seed.get("text"):
+        out += "[출발점]\n" + seed["text"][:3000] + "\n"
+    ct = _card_text(nt.get("card"))
+    if ct:
+        out += "\n[주제 카드]\n" + ct + "\n"
+    if nt.get("plan") and nt.get("plan_edited"):
+        out += "\n[연구자가 손으로 고친 설계서 — 이것을 바탕으로 고친다]\n" + _plan_text(nt["plan"]) + "\n"
+    opens = [o for o in nt.get("objections") or [] if o.get("status") == "open"]
+    if opens:
+        out += "\n[아직 답하지 않은 반론]\n" + "\n".join("- [%s] %s" % (REVIEWER_KO.get(o.get("who"), o.get("who")), o.get("t")) for o in opens[:10]) + "\n"
+    ans = _answered_text(nt)
+    if ans:
+        out += "\n[답한 반론]\n" + ans + "\n"
+    out += "\n[토의]\n" + _thread_text(nt) + "\n\n" + _PLAN_RULE
+    return out
+
+
+def _review_prompt(nt):
+    out = "[이 주제] %s\n" % (nt.get("title") or "")
+    ct = _card_text(nt.get("card"))
+    if ct:
+        out += "\n[주제 카드]\n" + ct + "\n"
+    if nt.get("plan"):
+        out += "\n[실험 설계서]\n" + _plan_text(nt["plan"]) + "\n"
+    else:
+        out += "\n[토의 — 설계서가 아직 없어 토의를 놓고 심사한다]\n" + _thread_text(nt, n=12, cap=2500) + "\n"
+    ans = _answered_text(nt)
+    if ans:
+        out += "\n[이미 답한 반론 — 되풀이하지 않는다]\n" + ans + "\n"
+    return out + "\n" + _REVIEW_RULE
+
+
+def _draft_prompt(nt):
+    out = "[이 주제] %s\n" % (nt.get("title") or "")
+    if nt.get("plan"):
+        out += "\n[실험 설계서]\n" + _plan_text(nt["plan"], cap=2500) + "\n"
+    ct = _card_text(nt.get("card"))
+    if ct:
+        out += "\n[주제 카드]\n" + ct + "\n"
+    ans = _answered_text(nt)
+    if ans:
+        out += "\n[심사위원의 반론과 답 — 서론·논의의 논리에 반영한다]\n" + ans + "\n"
+    if not nt.get("plan"):
+        out += "\n[토의]\n" + _thread_text(nt, n=12, cap=2500) + "\n"
+    return out + "\n" + _DRAFT_RULE
+
+
+def _apply_plan(nt, d, res, t0):
+    secs = d.get("sections") if isinstance(d.get("sections"), dict) else {}
+    out = []
+    for k, h in PLAN_KEYS:
+        v = secs.get(k)
+        if isinstance(v, str):
+            v = {"t": v}
+        if not isinstance(v, dict):
+            v = {}
+        t = re.sub(r"[ \t]+", " ", str(v.get("t") or "")).strip()[:2500]
+        cites = []
+        for c in (v.get("cites") if isinstance(v.get("cites"), list) else [])[:12]:
+            c = str(c).strip()[:60]
+            if c:
+                cites.append({"key": c, "file": _cite_file(c)})
+        out.append({"k": k, "h": h, "t": t, "cites": cites})
+    if sum(1 for x in out if x["t"]) < 4:
+        raise RuntimeError("설계서가 비어 왔습니다")
+    nt["plan"] = {"sections": out, "gaps": [str(x).strip()[:300] for x in (d.get("gaps") or [])[:10] if str(x).strip()],
+                  "checks": [str(x).strip()[:300] for x in (d.get("checks") or [])[:10] if str(x).strip()],
+                  "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
+    nt.pop("plan_edited", None)
+
+
+def _apply_review(nt, d, res, t0):
+    items = d.get("items") if isinstance(d.get("items"), list) else []
+    keep = [o for o in nt.get("objections") or [] if o.get("status") in ("answered", "dropped")]   # 답한 것·보류한 것은 남기고 열린 것은 새 반론으로 바꾼다
+    n = 0
+    for o in nt.get("objections") or []:
+        m = re.match(r"^r(\d+)$", str(o.get("id") or ""))
+        if m:
+            n = max(n, int(m.group(1)))
+    new = []
+    for it in items[:14]:
+        if not isinstance(it, dict) or not str(it.get("t") or "").strip():
+            continue
+        n += 1
+        who = it.get("who") if it.get("who") in REVIEWER_KO else "editor"
+        new.append({"id": "r%d" % n, "who": who, "sec": it.get("sec") if it.get("sec") in PLAN_KO else "", "sev": it.get("sev") if it.get("sev") in ("high", "mid", "low") else "mid",
+                    "t": str(it["t"]).strip()[:800], "ask": str(it.get("ask") or "").strip()[:300], "status": "open", "t0": time.time()})
+    if not new:
+        raise RuntimeError("반론이 비어 왔습니다")
+    nt["objections"] = keep + new
+    nt["review_t"] = time.time()
+    nt["review_model"] = res.get("model", "")
+    nt["review_sec"] = round(time.time() - t0)
+
+
+def _apply_draft(nt, d, res, t0):
+    secs = d.get("sections") if isinstance(d.get("sections"), list) else []
+    if not secs or not cfg.get("ms_new") or not cfg.get("ms_save"):
+        raise RuntimeError("절 차례가 비어 왔습니다" if secs else "원고를 만들 수 없는 서버입니다")
+    title_ko = re.sub(r"\s+", " ", str(d.get("title_ko") or d.get("title") or nt.get("title") or "")).strip()[:200]
+    doc = cfg["ms_new"](title_ko)
+    outline, n = [], 0
+    for sct in secs[:8]:
+        if not isinstance(sct, dict) or not str(sct.get("heading") or "").strip():
+            continue
+        n += 1
+        outline.append({"id": "n%d" % n, "level": 1, "heading": str(sct["heading"]).strip()[:120], "claim": str(sct.get("claim") or "").strip()[:600], "cards": [], "draft": "", "draft_en": "", "status": "todo"})
+        for c in (sct.get("children") if isinstance(sct.get("children"), list) else [])[:6]:
+            if not isinstance(c, dict) or not str(c.get("heading") or "").strip():
+                continue
+            n += 1
+            outline.append({"id": "n%d" % n, "level": 2, "heading": str(c["heading"]).strip()[:120], "claim": str(c.get("claim") or "").strip()[:600], "cards": [], "draft": "", "draft_en": "", "status": "todo"})
+    if not outline:
+        raise RuntimeError("절 차례가 비어 왔습니다")
+    doc["outline"] = outline
+    doc["front"] = {"title": str(d.get("title") or title_ko).strip()[:300], "abstract": re.sub(r"[ \t]+", " ", str(d.get("abstract") or "")).strip()[:3000],
+                    "keywords": [str(x).strip()[:40] for x in (d.get("keywords") if isinstance(d.get("keywords"), list) else [])[:8] if str(x).strip()]}
+    doc.setdefault("meta", {})["journal"] = str(d.get("journal") or "").strip()[:40]
+    q = next((x["t"] for x in (nt.get("plan") or {}).get("sections") or [] if x.get("k") == "question" and x.get("t")), "") or (nt.get("card") or {}).get("question") or ""
+    doc.setdefault("idea", {})["question"] = str(q)[:1000]
+    doc["note_id"] = nt["id"]
+    cfg["ms_save"](doc)
+    nt["ms"] = {"id": doc["id"], "title": doc["title"], "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "nodes": len(outline)}
+
+
+def _job_key(nid, kind, t):
+    return "notes:%s:%s:%d" % (nid, kind, int(t or 0))
+
+
+def job_start(nid, kind, body):
+    """설계서(plan) · 반론(review) · 원고 초안(draft) — 배경 스레드 하나, 상태는 <kind>_pending·<kind>_error"""
+    if kind not in _JOBKINDS:
+        return {"error": "unknown"}
+    effort = body.get("effort") if body.get("effort") in _EFFORT else "xhigh"
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return {"error": "주제를 찾지 못했습니다"}
+        if nt.get(kind + "_pending"):
+            return {"error": "이미 만드는 중입니다"}
+        if kind != "draft" and not any(m.get("role") == "claude" for m in nt.get("thread") or []):
+            return {"error": "먼저 한 번은 토의해야 합니다"}
+        if kind == "draft" and not (nt.get("plan") or nt.get("card")):
+            return {"error": "먼저 설계서(또는 카드)를 만들어야 원고 초안을 세울 수 있습니다"}
+        nt[kind + "_pending"] = time.time()
+        nt.pop(kind + "_error", None)
+        nt[kind + "_opts"] = {"effort": effort}
+        _save(nt)
+    threading.Thread(target=_bg_job, args=(nid, kind), name="notes-" + kind, daemon=True).start()
+    return {"ok": True}
+
+
+def job_cancel(nid, kind):
+    if kind not in _JOBKINDS:
+        return {"error": "unknown"}
+    with _LOCK:
+        nt = _load(nid)
+        if not nt or not nt.get(kind + "_pending"):
+            return {"error": "만드는 중이 아닙니다"}
+        job = _job_key(nid, kind, nt.get(kind + "_pending"))
+    cancel = cfg.get("claude_cancel")
+    if not cancel:
+        return {"error": "이 서버는 취소를 지원하지 않습니다"}
+    cancel(job)
+    return {"ok": True}
+
+
+def _bg_job(nid, kind):
+    nt = _load(nid)
+    if not nt:
+        return
+    model, eff = _EFFORT.get((nt.get(kind + "_opts") or {}).get("effort"), _EFFORT["xhigh"])
+    prompt = {"plan": _plan_prompt, "review": _review_prompt, "draft": _draft_prompt}[kind](nt)
+    t0 = time.time()
+    res, err, d, cancelled = None, "", None, False
+    try:
+        system, _st = _background()
+        run = cfg.get("claude_run")
+        res = run(prompt, timeout=1500, model=model, effort=eff, tools="", system=system, job=_job_key(nid, kind, nt.get(kind + "_pending"))) if run else None
+        cancelled = bool((res or {}).get("cancelled"))
+        if not cancelled:
+            d = _json_of((res or {}).get("text"))
+            if not isinstance(d, dict):
+                err = {"plan": "설계서를", "review": "반론을", "draft": "원고 초안을"}[kind] + " 받지 못했습니다" + _why()
+    except Exception as e:
+        err = "Claude 호출 실패: " + str(e)[:200]
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return
+        nt.pop(kind + "_pending", None)
+        if cancelled:
+            nt.pop(kind + "_error", None)
+            _save(nt)
+            return
+        if not err:
+            try:
+                {"plan": _apply_plan, "review": _apply_review, "draft": _apply_draft}[kind](nt, d, res, t0)
+            except Exception as e:
+                err = str(e)[:300]
+        if err:
+            nt[kind + "_error"] = err
+        else:
+            nt.pop(kind + "_error", None)
+        _save(nt)
+
+
+def objection_set(nid, body):
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return {"error": "주제를 찾지 못했습니다"}
+        rid, status = str(body.get("rid") or ""), body.get("status")
+        for o in nt.get("objections") or []:
+            if o.get("id") == rid:
+                if status in ("open", "answered", "dropped"):
+                    o["status"] = status
+                if "reply" in body:
+                    o["reply"] = str(body.get("reply") or "").strip()[:1500]
+                break
+        else:
+            return {"error": "그 반론을 찾지 못했습니다"}
+        _save(nt)
+        return {"note": nt}
+
+
 # ---------- 내보내기 ----------
 def to_md(nt):
     out = ["# " + (nt.get("title") or ""), "상태: %s · %s" % (STATUS_KO.get(nt.get("status"), ""), time.strftime("%Y-%m-%d", time.localtime(nt.get("t") or 0))), ""]
@@ -556,6 +889,19 @@ def to_md(nt):
                 continue
             out.append("**%s**" % CARD_KO[k])
             out += (["- " + str(x) for x in v] if isinstance(v, list) else [str(v)]) + [""]
+    if nt.get("plan"):
+        out += ["## 실험 설계서"]
+        for sec in nt["plan"].get("sections") or []:
+            if sec.get("t"):
+                out += ["**%s**" % sec.get("h"), sec["t"], ""]
+        for k, nm in (("gaps", "서재에 없어 확인할 것"), ("checks", "연구자가 정할 것")):
+            if nt["plan"].get(k):
+                out += ["**%s**" % nm] + ["- " + str(x) for x in nt["plan"][k]] + [""]
+    if nt.get("objections"):
+        out += ["## 심사위원의 반론"]
+        for o in nt["objections"]:
+            out += ["- [%s · %s] %s%s%s" % (REVIEWER_KO.get(o.get("who"), ""), {"open": "열림", "answered": "답함", "dropped": "보류"}.get(o.get("status"), ""), o.get("t"), (" — 물음: " + o["ask"]) if o.get("ask") else "", (" — 답: " + o["reply"]) if o.get("reply") else "")]
+        out.append("")
     th = [m for m in nt.get("thread") or [] if m.get("text")]
     if th:
         out += ["## 토의"]
@@ -576,7 +922,8 @@ def handle_get(h, url):
         with open(os.path.join(cfg["BASE"], "notes.html"), "rb") as f:
             return h._send(200, f.read(), "text/html; charset=utf-8")
     if p == "/api/notes":
-        return h._send(200, {"items": list_notes(), "version": VERSION, "status": STATUS, "status_ko": STATUS_KO, "card_keys": CARD_KEYS, "card_ko": CARD_KO})
+        return h._send(200, {"items": list_notes(), "version": VERSION, "status": STATUS, "status_ko": STATUS_KO, "card_keys": CARD_KEYS, "card_ko": CARD_KO,
+                             "plan_keys": PLAN_KEYS, "reviewers": REVIEWERS})
     if p == "/api/notes/get":
         nt = _load(_q(url, "id"))
         return h._send(200, {"note": nt, "now": time.time()} if nt else {"error": "찾지 못했습니다"})
@@ -600,6 +947,12 @@ def handle_post(h, body):
             return h._send(200, ask_cancel(nid))
         if op == "card":
             return h._send(200, card_start(nid, body))
+        if op in _JOBKINDS:                      # plan · review · draft (2026-10-19)
+            return h._send(200, job_start(nid, op, body))
+        if op == "cancel_job":
+            return h._send(200, job_cancel(nid, str(body.get("kind") or "")))
+        if op == "objection":
+            return h._send(200, objection_set(nid, body))
         if op == "save":
             return h._send(200, save_fields(nid, body))
         if op == "delete":
