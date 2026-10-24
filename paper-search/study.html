@@ -249,7 +249,7 @@
           <select id="depth" title="읽을 논문의 수"><option value="small">핵심만 · 10편까지</option><option value="mid">보통 · 20편까지</option><option value="wide">넓게 · 36편까지</option></select>
           <select id="pace" title="절의 분량 — 늘어난 분량은 설명(왜·무엇과 이어지는지)에 씁니다"><option value="mid">보통 · 절 35~55문장</option><option value="brief">간결 · 20~35</option><option value="full">자세히 · 50~75</option></select>
           <select id="effort" title="쓰는 모델"><option value="xhigh">Opus · 엑스트라</option><option value="high">Opus · 보통</option><option value="max">Opus · 최대</option><option value="fable">Fable · 엑스트라</option><option value="fast">Sonnet · 빠름 (대조는 Opus)</option></select>
-          <label class="hint" title="통째로 읽을 논문에 번역·요약이 없으면 읽기 전에 먼저 만듭니다(편당 5~10분). 끄면 그 논문은 PDF 본문으로 읽습니다 — 근거 문장의 번역·쪽이 없고 묻기의 배경도 얕아집니다"><input type="checkbox" id="prep" checked> 번역·요약이 없는 핵심 논문은 먼저 만든다</label>
+          <label class="hint" title="통째로 읽을 논문에 번역이 없으면 읽기 전에 먼저 번역합니다 — 편당 3~8분, 번역 한 번 값(요약은 만들지 않습니다). 끄면 그 논문은 PDF 본문으로 읽습니다 — 근거 문장의 번역·쪽이 없습니다"><input type="checkbox" id="prep" checked> 번역이 없는 핵심 논문은 먼저 번역한다 (편마다 번역 한 번 값)</label>
         </div>
         <button class="primary" id="go">쓰기 시작</button>
         <div class="hint" id="newMsg">서재에 있는 논문만 읽고 씁니다. 논문 20편이면 30~40분쯤 걸리고(핵심만 고르면 절반), 창을 닫아도 계속 씁니다.</div>
@@ -275,7 +275,7 @@ const fmtDate = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric",
 const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" + (Math.round(s % 60) ? " " + Math.round(s % 60) + "초" : "");
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
-const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["prep", "번역·요약이 없는 핵심 논문의 재료 만들기"], ["read", "논문을 읽고 메모 뽑기"],
+const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["prep", "번역이 없는 핵심 논문 먼저 번역하기"], ["read", "논문을 읽고 메모 뽑기"],
   ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["edit", "편집자 다듬기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실", dup: "같은 절의 다른 문장과 같은 말", rep: "같은 절의 다른 문장과 같은 말 (말만 바꿈)" };

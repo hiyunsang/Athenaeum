@@ -19,7 +19,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-10-19)"
+VERSION = "연구 노트 (2026-10-24)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 _EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None)}
@@ -34,6 +34,7 @@ PLAN_KO = dict(PLAN_KEYS)
 REVIEWERS = [("exp", "실험 전문가"), ("theory", "이론·모델 전문가"), ("editor", "저널 심사위원")]
 REVIEWER_KO = dict(REVIEWERS)
 _JOBKINDS = ("plan", "review", "draft")
+LAB_FILE = "_연구실.json"      # 우리 연구실 — 장비·역량·홈페이지 글 (2026-10-24)
 
 
 def init(**kw):
@@ -177,6 +178,124 @@ def _lib_rows():
                      "head": "%s %s%s %s — %s%s" % (year or "????", "★" if jr.upper() in tops else "", jr or "?", au or "?", title[:84], (" [" + ", ".join(labels) + "]") if labels else "")})
     rows.sort(key=lambda r: (-(int(r["year"]) if r["year"].isdigit() else 0), r["file"]))
     return rows
+
+
+def _lab_path():
+    return os.path.join(cfg["DIR"], LAB_FILE)
+
+
+def lab_get():
+    d = cfg["load_json"](_lab_path(), None)
+    return d if isinstance(d, dict) else {"text": "", "url": "", "page": "", "page_t": 0, "updated": 0}
+
+
+def lab_save(body):
+    """장비·역량 글과 홈페이지 주소 — 주소가 바뀌면 읽어 둔 글은 버린다(「홈페이지 읽기」 로 다시)"""
+    with _LOCK:
+        d = lab_get()
+        if "text" in body:
+            d["text"] = str(body.get("text") or "")[:6000]
+        if "url" in body:
+            u = str(body.get("url") or "").strip()[:300]
+            if u != (d.get("url") or ""):
+                d["url"] = u
+                d["page"] = ""
+                d["page_t"] = 0
+                d.pop("page_err", None)
+        d["updated"] = time.time()
+        cfg["save_json"](_lab_path(), d)
+        return {"lab": d}
+
+
+class _HtmlText(object):
+    """홈페이지의 글만 — script·style 은 버리고 블록 요소 경계에서 줄을 바꾼다 (표준 라이브러리만)"""
+    _SKIP = ("script", "style", "noscript", "svg", "head")
+    _BLOCK = ("p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article", "td", "th", "dd", "dt", "ul", "ol", "table")
+
+    def __init__(self):
+        from html.parser import HTMLParser
+        self.out, self.skip = [], 0
+        parent = self
+
+        class P(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag in parent._SKIP:
+                    parent.skip += 1
+                elif tag in parent._BLOCK:
+                    parent.out.append("\n")
+
+            def handle_endtag(self, tag):
+                if tag in parent._SKIP and parent.skip:
+                    parent.skip -= 1
+                elif tag in parent._BLOCK:
+                    parent.out.append("\n")
+
+            def handle_data(self, data):
+                if not parent.skip:
+                    parent.out.append(data)
+        self.p = P(convert_charrefs=True)
+
+    def feed(self, html):
+        self.p.feed(html)
+        t = "".join(self.out)
+        t = re.sub(r"[ \t\r\f\v]+", " ", t)
+        t = re.sub(r"\s*\n\s*", "\n", t)
+        return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
+def lab_fetch():
+    """홈페이지를 읽어 글만 남겨 둔다(12,000자까지). 스크립트로 그리는 페이지는 글이 거의 없다 — 그때는 소개·장비 쪽 글을 손으로 붙이라고 알린다"""
+    d = lab_get()
+    u = str(d.get("url") or "").strip()
+    if not re.match(r"^https?://", u):
+        return {"error": "홈페이지 주소를 먼저 적어 주세요 (http:// 나 https:// 로 시작)"}
+    try:
+        import urllib.request
+        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (Athenaeum research notes)"})
+        resp = urllib.request.urlopen(req, timeout=20)
+        raw = resp.read(1500000)
+        enc = None
+        ct = resp.headers.get("Content-Type", "")
+        m = re.search(r"charset=([\w\-]+)", ct) or re.search(rb"charset=[\"']?([\w\-]+)", raw[:4000]) and re.search(r"charset=[\"']?([\w\-]+)", raw[:4000].decode("ascii", "ignore"))
+        if m:
+            enc = m.group(1)
+        html = None
+        for e in ([enc] if enc else []) + ["utf-8", "cp949", "euc-kr"]:
+            try:
+                html = raw.decode(e)
+                break
+            except Exception:
+                continue
+        if html is None:
+            html = raw.decode("utf-8", "replace")
+        text = _HtmlText().feed(html)
+        d["page"] = text[:12000]
+        d["page_t"] = time.time()
+        if len(text) < 200:
+            d["page_err"] = "홈페이지에서 글을 %d자밖에 읽지 못했습니다 — 스크립트로 그리는 페이지인 듯합니다. 장비·연구 소개 쪽의 글을 위 칸에 직접 붙여 넣어 주세요" % len(text)
+        else:
+            d.pop("page_err", None)
+    except Exception as e:
+        d["page_err"] = "홈페이지를 읽지 못했습니다: " + str(e)[:160]
+    with _LOCK:
+        d["updated"] = time.time()
+        cfg["save_json"](_lab_path(), d)
+    return {"lab": d, "error": d.get("page_err")} if d.get("page_err") else {"lab": d}
+
+
+def _lab_block():
+    """배경의 첫 블록 — 연구자가 적어 둔 장비·역량과 홈페이지 글. 비어 있으면 넣지 않는다(그때는 규칙의 '[우리 연구실] 이 있으면' 이 비켜 간다)"""
+    d = lab_get()
+    text, page = (d.get("text") or "").strip(), (d.get("page") or "").strip()
+    if not text and not page:
+        return "", {"lab": 0}
+    out = ["# 우리 연구실 — 연구자가 적어 둔 장비·측정 역량·할 수 없는 것. 실험·측정이 이 연구실에서 되는지 가를 때의 기준이다: 여기 없는 장비·측정은 외부(공동 장비 센터·협력 연구실·외주)에 맡겨야 하는 것으로 보고, 연구자가 '없다' 고 적은 것은 없는 것이다."]
+    if text:
+        out.append(text)
+    if page:
+        out.append("[연구실 홈페이지에서 읽은 글%s]\n%s" % ((" — " + d["url"]) if d.get("url") else "", page[:5000]))
+    s = "\n".join(out)
+    return s, {"lab": len(s)}
 
 
 def _lib_block(budget=_LIB_BUDGET):
@@ -323,7 +442,7 @@ def _background():
     """시스템 프롬프트 — 물음마다 글자 하나까지 같아야 캐시가 맞는다(시각·주제 목록은 넣지 않는다). → (글, 통계)"""
     stats = {}
     blocks = []
-    for fn in (_lib_block, _study_block, _hist_block, _gap_block, _ms_block):
+    for fn in (_lab_block, _lib_block, _study_block, _hist_block, _gap_block, _ms_block):
         try:
             text, st = fn()
         except Exception as e:
@@ -332,8 +451,8 @@ def _background():
         if text:
             blocks.append(text)
     head = ("당신은 기계가공·정밀가공 분야 연구자의 연구 공저자이자 토의 상대다. 연구자가 연구 주제를 던지고 함께 따진다 — 이 주제가 설 만한가, 무엇이 이미 밝혀졌고 무엇이 비었는가, "
-            "어떤 실험·해석으로 보일 수 있는가, 어디에 낼 것인가. 아래는 연구자가 가진 것·아는 것 전부다: 서재(모은 논문 모두), 그 서재로 쓴 공부 장, 지난 논문 탐색, 서재의 인용 이웃, 쓰고 있는 원고. "
-            "토의는 이것을 바탕으로 한다 — 서재 안의 논문을 들어 말하고, 서재에 없는 것은 그렇다고 밝힌다.\n\n")
+            "어떤 실험·해석으로 보일 수 있는가, 어디에 낼 것인가. 아래는 연구자가 가진 것·아는 것 전부다: 우리 연구실(장비·역량 — 연구자가 적어 둔 것, 있을 때만), 서재(모은 논문 모두), 그 서재로 쓴 공부 장, 지난 논문 탐색, 서재의 인용 이웃, 쓰고 있는 원고. "
+            "토의는 이것을 바탕으로 한다 — 서재 안의 논문을 들어 말하고, 서재에 없는 것은 그렇다고 밝히고, 실험·측정은 우리 연구실에서 되는지 가른다.\n\n")
     text = head + "\n\n".join(blocks)
     stats["chars"] = len(text)
     return text, stats
@@ -351,6 +470,7 @@ _RULE = (
     "- 공저자처럼 따진다: 서재 안에 같은 것을 이미 한 연구가 있는가(있으면 그 논문을 들고, 어디까지 밝혀졌고 어디서 엇갈리는가 — 공부 장의 '답하지 못한 것'과 'Claude 의 생각'도 재료다), 새로움이 어디에 있는가, 어떤 실험·해석·측정으로 보일 수 있는가, 어느 저널·어느 연구 그룹의 일과 맞닿는가. 좋게만 말하지 말고 약점과 반론을 먼저 말한다.\n"
     "- 논문은 (첫 저자 연도) 로 가리킨다 — 서재의 논문은 그대로. 서재에 없는 논문이나 당신의 지식으로 보태는 것은 '서재 밖:' 으로 시작하는 문단에 따로 적어 갈라 둔다(연구자가 확인해야 한다). 지어낸 수치·인용은 절대 쓰지 않는다.\n"
     "- 세상의 문헌을 더 봐야 할 물음이 생기면 답 끝에 '탐색: <검색할 주제 한 줄(한국어나 영어)>' 줄을 1~3개 적는다 — 연구자가 그 줄을 눌러 논문 탐색을 돌린다. 서재의 논문을 깊이 읽어야 하면 '공부: <주제 한 줄>' 줄을 적어도 된다.\n"
+    "- 실험·측정·장비를 말할 때는 [우리 연구실](있을 때)에 비추어 우리 장비로 되는지 가른다. 우리 연구실에 없는 측정·장비(예: EBSD·TEM·XRD·나노인덴터)는 '외부: <측정> — 어디서(공동 장비 센터·협력 연구실·외주)·대략의 비용과 기간' 으로 적고, 그 측정 없이도 가설을 가를 수 있는 대안이 있으면 같이 적는다. [우리 연구실] 이 없으면 가르지 않는다.\n"
     "- 연구자의 말에 결정이 보이면(이 주제로 간다, 이렇게 하자) 그것을 한 문장으로 짚어 두고 다음 물음으로 넘긴다. 내부 표시·규칙 이름은 쓰지 않는다.\n")
 
 
@@ -602,6 +722,13 @@ def _cite_file(key):
     return None
 
 
+_FEAS_KO = {True: "우리", False: "외부", None: "모름"}
+
+
+def _feas_line(f):
+    return "%s(%s%s)" % (f.get("item"), _FEAS_KO.get(f.get("ours"), "모름"), (" — " + f["how"]) if f.get("how") else "")
+
+
 def _plan_text(plan, cap=1200):
     out = []
     for sec in (plan or {}).get("sections") or []:
@@ -610,7 +737,20 @@ def _plan_text(plan, cap=1200):
     for k, nm in (("gaps", "서재에 없어 확인할 것"), ("checks", "연구자가 정할 것")):
         if (plan or {}).get(k):
             out.append("%s: %s" % (nm, " / ".join(str(x) for x in plan[k][:8])))
+    if (plan or {}).get("feasibility"):
+        out.append("우리 연구실에서 할 수 있는가: " + " / ".join(_feas_line(f) for f in plan["feasibility"][:14]))
     return "\n".join(out)
+
+
+def _clean_feas(v):
+    out = []
+    for it in (v if isinstance(v, list) else [])[:14]:
+        if not isinstance(it, dict) or not str(it.get("item") or "").strip():
+            continue
+        o = it.get("ours")
+        ours = True if (o is True or str(o).strip().lower() in ("true", "yes", "ours", "우리")) else (False if (o is False or str(o).strip().lower() in ("false", "no", "external", "외부")) else None)
+        out.append({"item": str(it["item"]).strip()[:120], "ours": ours, "how": re.sub(r"\s+", " ", str(it.get("how") or "")).strip()[:300]})
+    return out
 
 
 def _thread_text(nt, n=24, cap=3000):
@@ -627,14 +767,16 @@ _PLAN_RULE = (
     "연구자와 나눈 토의·주제 카드·(있으면) 손으로 고친 설계서를 바탕으로 실험 설계서를 쓴다. 토의에서 정해진 것은 그대로 쓰고, 정해지지 않은 칸은 배경(서재·공부 장·탐색)에 비추어 가장 그럴듯한 안을 '제안: ' 으로 시작해 적는다(연구자가 알아보게). "
     "지어낸 수치·인용은 쓰지 않는다. 서재의 논문을 들 때는 '(첫 저자 연도)' 로, 서재 밖의 지식으로 보태는 문장은 '서재 밖: ' 으로 시작한다. 답하지 않은 반론이 있으면 그것을 설계에 반영하거나 위험 칸에 적는다.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"sections\": {\"background\": {\"t\": \"글\", \"cites\": [\"첫 저자 연도\", ...]}, \"question\": {...}, \"material\": {...}, \"setup\": {...}, \"design\": {...}, "
-    "\"analysis\": {...}, \"expected\": {...}, \"risks\": {...}, \"schedule\": {...}, \"venue\": {...}}, \"gaps\": [\"서재에 없어 연구자가 확인해야 할 것\"], \"checks\": [\"연구자가 정해야 할 것 — 선택지와 함께\"]}\n"
+    "\"analysis\": {...}, \"expected\": {...}, \"risks\": {...}, \"schedule\": {...}, \"venue\": {...}}, \"gaps\": [\"서재에 없어 연구자가 확인해야 할 것\"], \"checks\": [\"연구자가 정해야 할 것 — 선택지와 함께\"], "
+    "\"feasibility\": [{\"item\": \"이 계획이 쓰는 측정·장비·공정 하나\", \"ours\": true|false|null, \"how\": \"우리 장비면 그 이름 / 외부면 어디서·어떻게(공동 장비 센터·협력 연구실·외주)·대략의 비용과 기간 / 모르면 무엇을 확인할지\"}]}\n"
     "칸마다 2~6문장(design 은 변수마다 한 줄 — '변수: 수준1 / 수준2 / 수준3 (고정: …), 반복 n'). "
-    "background 배경과 공백(무엇이 알려졌고 무엇이 비었나 — 서재 논문으로) · question 연구 물음과 가설(검증 가능한 꼴로, 맞으면/틀리면 무엇이 보이나) · material 재료·시편(규격·상태·수) · setup 장비·측정(무엇을 무엇으로 재나, 분해능·범위) · "
+    "background 배경과 공백(무엇이 알려졌고 무엇이 비었나 — 서재 논문으로) · question 연구 물음과 가설(검증 가능한 꼴로, 맞으면/틀리면 무엇이 보이나) · material 재료·시편(규격·상태·수) · setup 장비·측정(무엇을 무엇으로 재나, 분해능·범위 — [우리 연구실] 이 있으면 우리 장비로 되는 것과 외부에 맡길 것을 갈라 적는다) · "
     "design 실험 설계(독립 변수와 수준, 고정 조건, 반복 수, 대조군) · analysis 해석·모델(측정값을 가설의 판정으로 바꾸는 길) · expected 예상 결과와 판정 기준 · risks 위험과 대안(실패할 자리와 대비) · schedule 일정(단계와 기간) · venue 저널과 독자(어느 저널, 심사자가 볼 것). "
-    "cites 는 그 칸에서 든 서재 논문의 '첫 저자 연도' 목록(없으면 빈 목록).")
+    "cites 는 그 칸에서 든 서재 논문의 '첫 저자 연도' 목록(없으면 빈 목록). "
+    "feasibility 는 이 계획이 쓰는 측정·장비·공정마다 [우리 연구실] 에 비추어 우리가 할 수 있는가 — ours 가 false 인 것은 어디에 맡길지, null 은 연구자가 확인할 것. [우리 연구실] 이 없으면 빈 목록.")
 
 _REVIEW_RULE = (
-    "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수), "
+    "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성 — [우리 연구실] 이 있으면 그 장비·역량으로 되는가와 외부에 맡길 측정의 비용·일정·접근, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수), "
     "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
     "반론은 구체적으로(어느 칸의 무엇이 왜 문제인가), 서재 논문을 들 수 있으면 '(첫 저자 연도)' 로. 이미 답한 반론은 되풀이하지 않는다. 연구자가 답하면 풀릴 수 있게 물음을 한 줄 단다.\n"
     "JSON 으로만: {\"items\": [{\"who\": \"exp|theory|editor\", \"sec\": \"설계서 칸 이름(background·question·material·setup·design·analysis·expected·risks·schedule·venue) 또는 빈 문자열\", \"sev\": \"high|mid|low\", \"t\": \"반론 1~3문장\", \"ask\": \"연구자가 답해야 할 물음 한 줄\"}]}")
@@ -716,6 +858,7 @@ def _apply_plan(nt, d, res, t0):
         raise RuntimeError("설계서가 비어 왔습니다")
     nt["plan"] = {"sections": out, "gaps": [str(x).strip()[:300] for x in (d.get("gaps") or [])[:10] if str(x).strip()],
                   "checks": [str(x).strip()[:300] for x in (d.get("checks") or [])[:10] if str(x).strip()],
+                  "feasibility": _clean_feas(d.get("feasibility")),
                   "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
     nt.pop("plan_edited", None)
 
@@ -897,6 +1040,8 @@ def to_md(nt):
         for k, nm in (("gaps", "서재에 없어 확인할 것"), ("checks", "연구자가 정할 것")):
             if nt["plan"].get(k):
                 out += ["**%s**" % nm] + ["- " + str(x) for x in nt["plan"][k]] + [""]
+        if nt["plan"].get("feasibility"):
+            out += ["**우리 연구실에서 할 수 있는가**"] + ["- " + _feas_line(f) for f in nt["plan"]["feasibility"]] + [""]
     if nt.get("objections"):
         out += ["## 심사위원의 반론"]
         for o in nt["objections"]:
@@ -927,6 +1072,11 @@ def handle_get(h, url):
     if p == "/api/notes/get":
         nt = _load(_q(url, "id"))
         return h._send(200, {"note": nt, "now": time.time()} if nt else {"error": "찾지 못했습니다"})
+    if p == "/api/notes/lab":                # 우리 연구실 (2026-10-24); ?text=1 은 홈페이지에서 읽은 글 그대로
+        d = lab_get()
+        if _q(url, "text") == "1":
+            return h._send(200, (d.get("page") or "").encode("utf-8"), "text/plain; charset=utf-8")
+        return h._send(200, d)
     if p == "/api/notes/bg":
         full = _q(url, "text") == "1"
         d = background_view(full)
@@ -953,6 +1103,10 @@ def handle_post(h, body):
             return h._send(200, job_cancel(nid, str(body.get("kind") or "")))
         if op == "objection":
             return h._send(200, objection_set(nid, body))
+        if op == "lab_save":
+            return h._send(200, lab_save(body))
+        if op == "lab_fetch":
+            return h._send(200, lab_fetch())
         if op == "save":
             return h._send(200, save_fields(nid, body))
         if op == "delete":

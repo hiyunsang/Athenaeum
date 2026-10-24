@@ -72,6 +72,8 @@
   /* 실험 설계서 · 반론 (2026-10-19) */
   .cites { margin-top: 3px; font-size: 11.5px; line-height: 1.6; } .cite { display: inline-block; margin-right: 6px; } .cite.ok { color: var(--accent); cursor: pointer; } .cite.no { color: var(--amber); }
   .pl { margin: 2px 0 0; padding-left: 1.1em; font-size: 12.5px; line-height: 1.55; } .pl li { margin-bottom: 3px; } .pl .act { padding: 0 4px; }
+  .feas .fm { font-weight: 600; margin-right: 4px; } .feas .fm.ok { color: var(--accent); } .feas .fm.no { color: var(--amber); } .feas .fm.unk { color: var(--text-3); } .feas .fh { color: var(--text-2); }
+  .labrow { display: flex; gap: 6px; align-items: center; } .labrow input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   .obj { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .obj .oh { display: flex; gap: 6px; align-items: center; font-size: 11px; flex-wrap: wrap; }
   .obj .who { font-weight: 600; color: var(--text-2); } .obj .sev { color: var(--text-3); } .obj .sev.high { color: var(--amber); font-weight: 600; }
   .obj .ot { margin-top: 3px; } .obj .oa { color: var(--text-2); margin-top: 2px; } .obj .or { color: var(--accent); margin-top: 2px; white-space: pre-wrap; } .obj .ob { margin-top: 3px; } .obj .ob .act { padding: 0 8px 0 0; }
@@ -118,7 +120,7 @@ const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" 
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 const EFFORT = { xhigh: "Opus · 엑스트라", max: "Opus · 최대", high: "Opus · 보통", fast: "Sonnet · 빠름" };
 let META = { status: ["idea", "review", "adopt", "hold"], status_ko: { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" }, card_keys: [], card_ko: {}, plan_ko: {}, reviewer_ko: {} };
-let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null;
+let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null;
 const URLP = new URLSearchParams(location.search);
 
 // ---------- 목록 ----------
@@ -281,7 +283,7 @@ async function send() {
 // ---------- 오른쪽: 주제 카드 ----------
 function renderCard() {
   const el = $("cardp");
-  if (!cur) { el.innerHTML = "<div class='sec'>주제 카드</div><div class='hint' style='line-height:1.6'>주제를 열면 여기에 토의에서 정해진 것을 카드로 정리합니다 — 연구 물음 · 가설 · 설계 · 예상 결과 · 위험 · 관련 논문 · 연구 그룹 · 저널 · 다음 할 일.</div>" + bgHtml(); bindBg(); return; }
+  if (!cur) { el.innerHTML = "<div class='sec'>주제 카드</div><div class='hint' style='line-height:1.6'>주제를 열면 여기에 토의에서 정해진 것을 카드로 정리합니다 — 연구 물음 · 가설 · 설계 · 예상 결과 · 위험 · 관련 논문 · 연구 그룹 · 저널 · 다음 할 일.</div>" + labHtml() + bgHtml(); bindLab(); bindBg(); return; }
   const c = cur.card, answered = (cur.thread || []).some(m => m.role === "claude");
   let h = "<div class='sec' style='display:flex;align-items:center;gap:6px'>주제 카드<span style='margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0'>" +
     (cur.card_pending ? "<span style='color:var(--accent)'>정리하는 중…</span>" : "<button class='act' id='cardGo'" + (answered ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + ">" + (c ? "대화로 다시 정리" : "대화에서 정리") + "</button>") + "</span></div>";
@@ -300,7 +302,7 @@ function renderCard() {
     (cur.draft_error ? "<div class='warnbox'>" + esc(cur.draft_error) + "</div>" : "") +
     "<button class='act' id='goExplore' title='이 주제 이름으로 논문 탐색 창을 엽니다 — 세상의 문헌'>이 주제로 논문 탐색 ↗</button>" +
     "<button class='act' id='goStudy' title='이 주제 이름으로 공부 창을 엽니다 — 서재의 논문만으로 교과서 한 장'>이 주제로 공부 ↗</button><a class='act' href='/ms' target='athenaeum_ms' title='원고 창'>원고로 ↗</a></div>";
-  h += bgHtml();
+  h += labHtml() + bgHtml();
   el.innerHTML = h;
   const g = $("cardGo"); if (g) g.onclick = async () => { g.disabled = true; const r = await api("/api/notes", { op: "card", id: cur.id, effort: lsGet("notes_effort", "xhigh") === "fast" ? "fast" : "xhigh" }); if (r.error) { alert(r.error); g.disabled = false; return; } cur.card_pending = Date.now() / 1000; renderCard(); schedulePoll(); };
   el.querySelectorAll(".cf textarea").forEach(t => { fit(t); t.oninput = () => { fit(t); clearTimeout(cardSaveT); cardSaveT = setTimeout(saveCard, 800); }; });
@@ -325,7 +327,7 @@ function renderCard() {
     const r = await api("/api/notes", { op: "objection", id: cur.id, rid, status }); if (r.error) { alert(r.error); return; }
     cur.objections = r.note.objections; renderCard(); renderListSoon();
   });
-  bindBg();
+  bindLab(); bindBg();
 }
 let planSaveT = null;
 async function startJob(kind, btn) {
@@ -355,6 +357,8 @@ function planHtml(answered) {
     });
     if ((p.gaps || []).length) h += "<div class='cf'><div class='k'>서재에 없어 확인할 것</div><ul class='pl'>" + p.gaps.map(x => "<li>" + esc(x) + " <button class='act' data-q=\"" + esc(x.slice(0, 200)) + "\" title='이것으로 논문 탐색'>탐색 ↗</button></li>").join("") + "</ul></div>";
     if ((p.checks || []).length) h += "<div class='cf'><div class='k'>연구자가 정할 것</div><ul class='pl'>" + p.checks.map(x => "<li>" + esc(x) + " <button class='act' data-ask=\"" + esc(x.slice(0, 300)) + "\" title='이것을 묻는 칸에 채웁니다'>대화로 ↗</button></li>").join("") + "</ul></div>";
+    if ((p.feasibility || []).length) h += "<div class='cf'><div class='k'>우리 연구실에서 할 수 있는가</div><ul class='pl feas'>" + p.feasibility.map(f => "<li><span class='fm " + (f.ours === true ? "ok" : f.ours === false ? "no" : "unk") + "'>" + (f.ours === true ? "우리 ✓" : f.ours === false ? "외부" : "확인") + "</span>" + esc(f.item) + (f.how ? " <span class='fh'>— " + esc(f.how) + "</span>" : "") + "</li>").join("") + "</ul>" +
+      ((labInfo && (labInfo.text || labInfo.page)) ? "" : "<div class='hint'>「우리 연구실」 칸이 비어 있어 Claude 가 일반 지식으로 가른 것입니다 — 장비를 적어 두면 우리 장비 기준으로 가릅니다.</div>") + "</div>";
   } else if (!pend) {
     h += "<div class='hint' style='line-height:1.6'>토의와 카드를 바탕으로 열 칸 — 배경과 공백 · 물음과 가설 · 재료 · 장비·측정 · 설계(변수와 수준) · 해석 · 예상 결과와 판정 · 위험 · 일정 · 저널 — 을 채웁니다. 정해지지 않은 칸은 '제안:' 으로 갈라 적고, 든 논문이 서재에 있는지 확인합니다.</div>";
   }
@@ -382,10 +386,38 @@ async function saveCard() {
   const r = await api("/api/notes", { op: "save", id: cur.id, card });
   if (r.note) { cur.card = r.note.card; cur.card_edited = r.note.card_edited; }
 }
+function labHtml() {   /* 우리 연구실 — 장비·역량·홈페이지 (2026-10-24) */
+  const L = labInfo || {};
+  const live = $("labText"), liveU = $("labUrl");
+  const text = live ? live.value : (L.text || ""), url = liveU ? liveU.value : (L.url || "");
+  let h = "<div class='sec secline'>우리 연구실<span class='r'>" + (L.updated ? "<span class='hint' style='display:inline'>" + fmtDate(L.updated) + "</span>" : "") + "</span></div>";
+  if (labInfo === null) return h + "<div class='hint'>불러오는 중…</div>";
+  h += "<div class='hint' style='line-height:1.6;margin-bottom:4px'>장비 · 측정 역량 · 할 수 없는 것 · 협력할 곳을 적어 두면, 토의·설계서·반론이 우리 연구실에서 되는 것과 밖에 맡길 것(예: EBSD → 공동기기원)을 갈라 말합니다. 배경에 그대로 들어가므로 짧고 구체적으로.</div>";
+  h += "<div class='cf'><div class='k'>장비 · 역량 · 못 하는 것</div><textarea id='labText' placeholder='예: 초정밀 선반(…), 3성분 동력계, 고속 카메라(측면 PIV) · 측정: 광학 현미경, 표면 거칠기 측정기 · 없는 것: EBSD · SEM 은 ○○센터에 의뢰(1주) · 협력: ○○ 연구실(열처리)'>" + esc(text) + "</textarea></div>";
+  h += "<div class='cf'><div class='k'>연구실 홈페이지</div><div class='labrow'><input id='labUrl' type='text' placeholder='https://…' value='" + esc(url) + "'><button class='act' id='labFetch' title='홈페이지의 글을 읽어 배경에 넣습니다 (장비·연구 분야 소개 쪽 주소가 좋습니다)'>홈페이지 읽기</button></div>" +
+    (L.page_err ? "<div class='warnbox'>" + esc(L.page_err) + "</div>" : "") +
+    (L.page ? "<div class='cm'>읽은 글 " + fmtTok(L.page.length) + " 자 · " + fmtDate(L.page_t) + " <a class='act' href='/api/notes/lab?text=1' target='_blank' title='홈페이지에서 읽은 글 그대로'>보기</a></div>" : "") + "</div>";
+  return h;
+}
+function bindLab() {
+  const t = $("labText"), u = $("labUrl"), b = $("labFetch");
+  if (t) { fit(t, 56); t.oninput = () => { fit(t, 56); clearTimeout(labSaveT); labSaveT = setTimeout(saveLab, 900); }; }
+  if (u) u.onchange = () => { clearTimeout(labSaveT); saveLab(); };
+  if (b) b.onclick = async () => {
+    clearTimeout(labSaveT); await saveLab(); b.disabled = true; b.textContent = "읽는 중…";
+    try { const r = await api("/api/notes", { op: "lab_fetch" }); if (r.lab) labInfo = r.lab; if (r.error && !r.lab) alert(r.error); } catch (e) { alert("서버 연결 실패"); }
+    renderCard();
+  };
+}
+async function saveLab() {
+  const t = $("labText"), u = $("labUrl"); if (!t) return;
+  try { const r = await api("/api/notes", { op: "lab_save", text: t.value, url: u ? u.value : "" }); if (r.lab) labInfo = r.lab; } catch (e) {}
+}
+(async () => { try { labInfo = await api("/api/notes/lab"); } catch (e) { labInfo = {}; } renderCard(); })();
 function bgHtml() {
   let h = "<div class='sec'>Claude 가 아는 것</div>";
   if (!bgStats) return h + "<div class='hint'><button class='act' id='bgLoad'>세어 보기</button> — 묻는 순간 Claude 에게 가는 배경의 크기</div>";
-  h += "<div class='kv'><span>서재</span><span>논문 " + (bgStats.papers || 0) + "편 (요약 " + (bgStats.summaries || 0) + "편)</span></div><div class='kv'><span>공부 장</span><span>" + (bgStats.studies || 0) + "개</span></div>" +
+  h += (bgStats.lab ? "<div class='kv'><span>우리 연구실</span><span>" + fmtTok(bgStats.lab) + " 자</span></div>" : "") + "<div class='kv'><span>서재</span><span>논문 " + (bgStats.papers || 0) + "편 (요약 " + (bgStats.summaries || 0) + "편)</span></div><div class='kv'><span>공부 장</span><span>" + (bgStats.studies || 0) + "개</span></div>" +
     "<div class='kv'><span>탐색 기록</span><span>" + (bgStats.searches || 0) + "건</span></div><div class='kv'><span>인용 이웃</span><span>서재에 없는 논문 " + (bgStats.gaps || 0) + "편</span></div><div class='kv'><span>원고</span><span>" + (bgStats.manuscripts || 0) + "편</span></div>" +
     "<div class='kv'><span>배경 글</span><span>" + fmtTok(bgStats.chars || 0) + " 자 <a class='act' href='/api/notes/bg?text=1' target='_blank' title='Claude 에게 가는 배경 글 그대로'>보기</a></span></div>" +
     "<div class='hint' style='margin-top:6px;line-height:1.5'>첫 물음에 이만큼을 읽고, 한 시간 안의 다음 물음은 캐시에서 읽습니다. 서재·공부·탐색이 바뀌면 다시 읽습니다.</div>";

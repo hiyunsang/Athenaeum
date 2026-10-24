@@ -728,19 +728,16 @@ def _read_paper(st, pi, model, effort):
 
 
 def _needs_prep(p):
-    """통째로 읽을 논문에 없는 재료: translation(번역 정렬표·번역문) · summary(요약)"""
+    """통째로 읽을 논문에 없는 재료: translation(번역 정렬표·번역문). 요약은 만들지 않는다(2026-10-24, 사용자가 비용을 줄이려 고름 — 읽기에는 정렬표만 필요하고 요약은 묻기 배경에만 쓰인다)"""
     stem = os.path.splitext(p["file"])[0]
-    out = []
     if not (os.path.isfile(os.path.join(cfg["GEN_DIR"], stem + ".번역.정렬.json")) and os.path.isfile(os.path.join(cfg["GEN_DIR"], stem + ".번역.md"))):
-        out.append("translation")
-    if not os.path.isfile(os.path.join(cfg["GEN_DIR"], stem + ".요약.md")):
-        out.append("summary")
-    return out
+        return ["translation"]
+    return []
 
 
 def _prep_all(st, limit_sec=3600):
     """읽기 전 재료 준비(2026-10-19, 사용자: 사파이어 장이 번역 없이 써진 것을 보고 '하나도 안 되어 있던데 어떻게 공부를 만든겨'):
-    통째로 읽을 논문(core)에 번역·요약이 없으면 서버에 만들어 달라고 하고(서버의 생성 줄 — 요약·번역 동시 3개) 10초마다 살피며 기다린다.
+    통째로 읽을 논문(core)에 번역이 없으면 서버에 만들어 달라고 하고(서버의 생성 줄 — 요약·번역 동시 3개; 요약은 만들지 않는다) 10초마다 살피며 기다린다.
     한 시간을 넘기거나 실패한 것은 그대로 두고 읽는다(그 논문은 PDF 본문으로). 기록은 st['prep']."""
     ens, state = cfg.get("gen_ensure"), cfg.get("gen_state")
     want = []
@@ -753,8 +750,7 @@ def _prep_all(st, limit_sec=3600):
     st["prep"] = rec
     if not want or not ens or not state:
         return
-    _log(st, "통째로 읽을 논문 가운데 번역·요약이 없는 %d편의 재료를 먼저 만듭니다 (번역 %d · 요약 %d) — 편당 5~10분" % (
-        len(rec["files"]), sum(1 for _f, k in want if k == "translation"), sum(1 for _f, k in want if k == "summary")))
+    _log(st, "통째로 읽을 논문 가운데 번역이 없는 %d편을 먼저 번역합니다 (요약은 만들지 않음) — 편당 3~8분, 편마다 번역 한 번 값" % len(rec["files"]))
     _stage(st, "prep", done=0, total=len(want))
     pending = set()
     for f, k in want:

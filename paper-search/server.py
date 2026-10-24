@@ -1923,6 +1923,23 @@ def _inside(bb, box, frac=0.6):
     return (ix * iy) / area >= frac
 
 
+_SYMFONT = re.compile(r"MT-Symbol|SymbolMT|(?:^|\+)Symbol|Greek")
+_SYMBOL_MAP = str.maketrans("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                            "αβχδεφγηιϕκλμνοπθρστυϖωξψζΑΒΧΔΕΦΓΗΙϑΚΛΜΝΟΠΘΡΣΤΥςΩΞΨΖ")   # Adobe Symbol 인코딩: 'm' 자리가 μ, 'q' 가 θ, 'a' 가 α …
+
+
+def _span_text(sp):
+    """Symbol 글꼴(ToUnicode 가 없는 옛 PDF)의 짧은 라틴 글자는 그리스 글자다 — 'm' → μ (2026-10-24, 사용자: '번역할 때 μm 이 m 로').
+    세 글자 넘는 라틴 글은 진짜 글로 보고 두며, 수식 글꼴(…Math…)은 인코딩이 달라 건너뛴다."""
+    t = sp.get("text", "")
+    if not t:
+        return t
+    font = sp.get("font", "") or ""
+    if "Math" in font or not _SYMFONT.search(font) or len(t.strip()) > 3:
+        return t
+    return t.translate(_SYMBOL_MAP)
+
+
 def pdf_blocks(name):
     """페이지별 문단 목록. 각 문단 = {t, bbox, size, chars, in_fig, col} (읽기 순서로 정렬)"""
     try:
@@ -1952,7 +1969,7 @@ def pdf_blocks(name):
             sizes = {}
             linfo = []   # (줄 글자, x0, bbox)
             for ln in b.get("lines", []):
-                txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
+                txt = "".join(_span_text(sp) for sp in ln.get("spans", []))   # Symbol 글꼴의 'm' → μ
                 for sp in ln.get("spans", []):
                     k = round(float(sp.get("size", 0)), 1)
                     sizes[k] = sizes.get(k, 0) + len(sp.get("text", ""))
@@ -2006,6 +2023,35 @@ def pdf_blocks(name):
             b["col"] = 1 if (two_col and b["bbox"][0] > pg["half"]) else 0
         out.append(sorted(pg["blocks"], key=lambda b: (b["col"], b["bbox"][1], b["bbox"][0])))
     return out
+
+
+_MU_UNITS = r"(m|N|s|J|W|A|L|g|rad|mol)"
+
+
+def fix_mu_glyphs(text, decide_on=None):
+    """PDF 글꼴이 μ 를 다른 글자로 꺼낸 것을 되돌린다(2026-10-24, 사용자: '번역할 때 종종 μm 이 m 로'): 옛 Elsevier(AdvPSMP 글꼴)는 'l' 로('28 lm'),
+    Symbol 글꼴은 'm' 으로('4.4 m m'). 그런 꼴이 문서에 둘 이상일 때만(영어에 'lm'·'m m' 낱말은 없다). decide_on 이 있으면 판정은 그 글로, 고침은 text 에."""
+    probe = decide_on if decide_on is not None else text
+
+    def ok(m, s):   # 1000 이상(1040 lm 은 LED 의 루멘)·조명 문맥은 μ 가 아니다
+        try:
+            if float(m.group(1)) >= 1000:
+                return False
+        except ValueError:
+            return False
+        return not re.search(r"\bLEDs?\b|(?i:lamp|light|lumin|illumin|lux)", s[max(0, m.start() - 25):m.start()])   # 'annealed' 가 LED 에 걸리지 않게 대소문자 구분
+
+    def count(pat, s):
+        return sum(1 for m in re.finditer(pat, s) if ok(m, s))
+
+    def sub(pat, s, mark):
+        return re.sub(pat, lambda m: (m.group(1) + " " + mark + m.group(2)) if ok(m, s) else m.group(0), s)
+    if count(r"(\d+(?:\.\d+)?)\s?lm\b", probe) >= 2:
+        text = sub(r"(\d+(?:\.\d+)?)\s?l" + _MU_UNITS + r"\b", text, "μ")
+        text = re.sub(r"(?<![A-Za-z\d])l(m|N|s)\b(?!\s*[/(])", r"μ\1", text)   # 'lm-scale' 처럼 홀로 선 것 ('lm/W'·'lm (' 는 루멘)
+    if count(r"(\d+(?:\.\d+)?)\s?m m\b", probe) >= 2:
+        text = sub(r"(\d+(?:\.\d+)?)\s?m " + _MU_UNITS + r"\b", text, "μ")
+    return text
 
 
 def pdf_body_and_asides(name):
@@ -2131,7 +2177,13 @@ def pdf_body_and_asides(name):
             out.append(t)
     flush_run()
     joined = out
-    return "\n\n".join(joined), "\n\n".join(aside)
+    body_t, aside_t = "\n\n".join(joined), "\n\n".join(aside)
+    try:
+        both = body_t + "\n\n" + aside_t
+        body_t, aside_t = fix_mu_glyphs(body_t, both), fix_mu_glyphs(aside_t, both)   # μ 가 'l'·'m ' 로 깨진 글꼴 되돌리기 (판정은 문서 전체로)
+    except Exception:
+        pass
+    return body_t, aside_t
 
 
 def paper_text(name):
@@ -2794,6 +2846,8 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
         "- 이 구간이 참고문헌 목록이면 '(참고문헌 생략)'만 출력.\n- " + GLOSSARY_RULE + "\n"
         "- '[[EQ:파일명]]' 표식은 원문 수식이 있던 자리(그림으로 넣음)다. 번역하거나 지우지 말고 그 줄을 표식 그대로 출력하라.\n"
         "- 아래 첨자·위 첨자는 <sub>…</sub>, <sup>…</sup> 로 써라 (예: R<sub>e</sub>, 10<sup>-3</sup>). 그 밖의 HTML 은 쓰지 마라.\n"
+        "- 단위는 원문 그대로 옮긴다(μm 은 μm, nm 은 nm). 길이 단위를 바꾸거나(μm → m) 빠뜨리지 않는다. PDF 추출이 μ 글자를 깨뜨린 '28 lm'·'4.4 m m' 는 μm 로 바로잡는다. "
+        "그 밖에 문맥(마이크로·나노 가공의 절삭 깊이·입자·거칠기)으로 μm 가 분명한데 원문이 '10 m' 로 보이면 '10 μm(원문 표기 m)' 으로 옮긴다.\n"
         "- 원문 문장마다 [s번호]가 붙어 있다. 번역문에서도 각 문장 앞에 같은 번호를 그대로 붙여라 (예: '[s12] 번역문'). "
         "번호를 빠뜨리거나 바꾸지 마라. 두 문장을 한 문장으로 합쳐 옮기면 '[s12][s13] 번역문'처럼 둘 다 붙이고, 한 문장을 둘로 나누면 둘 다 같은 번호를 붙여라. "
         "소제목·캡션 줄도 번호를 유지하라.\n"
@@ -2801,6 +2855,35 @@ def chunk_prompt(header, kind, i, n, ch, prev_src, front=False, mode="research")
         "문장마다 줄을 바꾸면 안 된다.\n"
         "- 번역 외 다른 말은 절대 쓰지 마라. 제목 줄도 쓰지 마라.\n"
         + "\n[원문 구간 - 문장마다 번호]\n" + ch)
+
+
+def _unit_guard(results, table):
+    """번역이 μm 를 m 로 떨어뜨렸으면 되돌린다(2026-10-24): 원문 문장에 'X μm' 가 있는데 번역의 같은 번호 문장에 μ 없이 'X m' 만 있으면 μ 를 끼운다. → 고친 문장 수"""
+    mk = re.compile(r"\[s(\d+)\]")
+    fixed = 0
+    for i, out in enumerate(results):
+        if not out:
+            continue
+        parts = mk.split(out)        # [앞글, 번호, 글, 번호, 글, ...]
+        if len(parts) < 3:
+            continue
+        ch_fixed = 0
+        for j in range(1, len(parts), 2):
+            sid, ko = parts[j], parts[j + 1]
+            src = (table.get(sid) or {}).get("t", "") if isinstance(table, dict) else ""
+            nums = re.findall(r"(\d+(?:\.\d+)?)\s?[µμ]m\b", src)
+            if not nums or re.search(r"[µμ㎛]\s?m|마이크로", ko):
+                continue
+            new = ko
+            for x in set(nums):
+                new = re.sub(r"(?<![\d.])" + re.escape(x) + r"\s?m(?![a-zA-Z/²³])", x + " μm", new)
+            if new != ko:
+                parts[j + 1] = new
+                ch_fixed += 1
+        if ch_fixed:
+            results[i] = "".join(p if k % 2 == 0 else "[s%s]" % p for k, p in enumerate(parts))
+            fixed += ch_fixed
+    return fixed
 
 
 def generate_document(name, kind, text):
@@ -2915,6 +2998,12 @@ def generate_document(name, kind, text):
                     note.append("재시도 실패(coverage %.2f)" % cov)
             if note:
                 repairs.append("구간 {} {}".format(i + 1, ", ".join(note)))
+        try:
+            nfix = _unit_guard(results, align_table)    # μm → m 으로 떨어진 문장 되살리기 (2026-10-24)
+            if nfix:
+                repairs.append("단위 μm 되살림 %d문장" % nfix)
+        except Exception:
+            pass
         if repairs:  # 보정 내역은 야간작업 기록에 한 줄 남긴다 (batch_generate.py 와 같은 시각 형식)
             try:
                 with open(os.path.join(GEN_DIR, "야간작업_기록.txt"), "a", encoding="utf-8") as f:
