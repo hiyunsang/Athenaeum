@@ -72,6 +72,11 @@
   /* 실험 설계서 · 반론 (2026-10-19) */
   .cites { margin-top: 3px; font-size: 11.5px; line-height: 1.6; } .cite { display: inline-block; margin-right: 6px; } .cite.ok { color: var(--accent); cursor: pointer; } .cite.no { color: var(--amber); }
   .pl { margin: 2px 0 0; padding-left: 1.1em; font-size: 12.5px; line-height: 1.55; } .pl li { margin-bottom: 3px; } .pl .act { padding: 0 4px; }
+  .ipara { padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .ipara .ih { display: flex; gap: 6px; align-items: baseline; } .ipara .no { color: var(--text-3); font-size: 11px; }
+  .ipara .role { font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; } .ipara .len { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; }
+  .ipara textarea { width: 100%; min-height: 34px; font: inherit; font-size: 12.5px; line-height: 1.5; padding: 3px 6px; border: 1px solid transparent; border-radius: var(--r); background: transparent; color: var(--text); resize: none; } .ipara textarea:focus { border-color: var(--line); background: var(--bg); }
+  .ipara ul { margin: 2px 0 0; padding-left: 1.1em; } .ipara li { margin-bottom: 2px; color: var(--text-2); } .ipara li.beyond { color: var(--amber); } .ipara .ib { margin-top: 3px; } .ipara .ib .act { padding: 0 8px 0 0; }
+  .iflow { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 4px 0 6px; } .ireq { width: 100%; font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); margin: 4px 0; }
   .feas .fm { font-weight: 600; margin-right: 4px; } .feas .fm.ok { color: var(--accent); } .feas .fm.no { color: var(--amber); } .feas .fm.unk { color: var(--text-3); } .feas .fh { color: var(--text-2); }
   .labrow { display: flex; gap: 6px; align-items: center; } .labrow input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   .obj { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .obj .oh { display: flex; gap: 6px; align-items: center; font-size: 11px; flex-wrap: wrap; }
@@ -136,7 +141,7 @@ function renderList() {
     const xs = items.filter(x => x.status === s); if (!xs.length) return;
     h += "<div class='sideh'>" + esc(META.status_ko[s] || s) + " <span class='n'>" + xs.length + "</span></div>";
     h += xs.map(x => "<a class='oi" + (cur && x.id === cur.id ? " on" : "") + "' data-id='" + esc(x.id) + "'><div class='t'>" + esc(x.title) + "</div><div class='m'>" + fmtDate(x.updated || x.t) +
-      (x.pending ? " · <span class='run'>Claude 생각 중</span>" : x.answers ? " · 답 " + x.answers : " · 아직 묻지 않음") + (x.card ? " · 카드" : "") + (x.plan ? " · 설계서" : "") + (x.open ? " · 반론 " + x.open : "") + (x.ms ? " · 원고" : "") + (x.busy ? " · <span class='run'>만드는 중</span>" : "") + "</div></a>").join("");
+      (x.pending ? " · <span class='run'>Claude 생각 중</span>" : x.answers ? " · 답 " + x.answers : " · 아직 묻지 않음") + (x.card ? " · 카드" : "") + (x.plan ? " · 설계서" : "") + (x.intro ? " · 서론" : "") + (x.open ? " · 반론 " + x.open : "") + (x.ms ? " · 원고" : "") + (x.busy ? " · <span class='run'>만드는 중</span>" : "") + "</div></a>").join("");
   });
   el.innerHTML = h;
   el.querySelectorAll(".oi").forEach(a => a.onclick = () => open(a.dataset.id));
@@ -155,7 +160,7 @@ async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 
   if (!cur) return;
   let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(cur.id)); } catch (e) { return; }
   if (!cur || r.error || !r.note || r.note.id !== cur.id) return;
-  const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error];
+  const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error, n.intro, n.intro_pending, n.intro_error, n.intro_edited];
   const before = JSON.stringify(keys(cur)), after = JSON.stringify(keys(r.note));
   const wasPending = !!cur.pending;
   cur = r.note;
@@ -169,7 +174,7 @@ let listT = null;
 function renderListSoon() { clearTimeout(listT); listT = setTimeout(loadList, 300); }
 function schedulePoll() {
   clearTimeout(pollT);
-  const busy = () => cur && (cur.pending || cur.card_pending || cur.plan_pending || cur.review_pending || cur.draft_pending);
+  const busy = () => cur && (cur.pending || cur.card_pending || cur.plan_pending || cur.review_pending || cur.draft_pending || cur.intro_pending);
   const loop = async () => { await refresh(); if (busy()) pollT = setTimeout(loop, 4000); };
   if (busy()) pollT = setTimeout(loop, 4000);
 }
@@ -294,7 +299,7 @@ function renderCard() {
   } else if (!cur.card_pending) {
     h += "<div class='hint' style='line-height:1.6'>토의가 한 번 이상 오가면 「대화에서 정리」 로 카드를 만듭니다. 그 뒤로는 칸을 직접 고치고, 토의가 더 쌓이면 다시 정리합니다.</div>";
   }
-  h += planHtml(answered) + objHtml(answered);
+  h += planHtml(answered) + objHtml(answered) + introHtml(answered);
   h += "<div class='sec'>이어서</div><div class='links'>" +
     (cur.ms ? "<a class='act' href='/ms?id=" + esc(cur.ms.id) + "' target='athenaeum_ms' title='이 주제로 세운 원고 — 절 " + (cur.ms.nodes || 0) + "개'>원고 「" + esc(cur.ms.title) + "」 열기 ↗</a>" : "") +
     (cur.draft_pending ? "<span class='hint' style='display:block;padding:5px 0'>원고 초안을 세우는 중… <button class='act' data-cancel='draft'>취소</button></span>"
@@ -310,7 +315,14 @@ function renderCard() {
   $("goStudy").onclick = () => openBig("/study?topic=" + encodeURIComponent(cur.title), "athenaeum_study", "width=1440,height=920");
   /* 설계서 · 반론 · 원고 초안 (2026-10-19) */
   const jobBtn = (id, kind) => { const b = $(id); if (b) b.onclick = () => startJob(kind, b); };
-  jobBtn("planGo", "plan"); jobBtn("revGo", "review"); jobBtn("draftGo", "draft");
+  jobBtn("planGo", "plan"); jobBtn("revGo", "review"); jobBtn("draftGo", "draft"); jobBtn("introGo", "intro");
+  el.querySelectorAll(".ipara textarea[data-ik]").forEach(t => { fit(t, 34); t.oninput = () => { fit(t, 34); clearTimeout(introSaveT); introSaveT = setTimeout(saveIntro, 800); }; });
+  el.querySelectorAll("[data-iask]").forEach(b => b.onclick = () => {
+    if (cur.pending) return;
+    const p = ((cur.intro || {}).paras || [])[+b.dataset.iask]; if (!p) return;
+    draft = "서론 " + (+b.dataset.iask + 1) + "문단(" + p.role + "): " + p.gist + "\n이 문단을 이렇게 짜는 것이 맞나? 할 말의 차례와 근거 논문이 충분한지, 빠진 선행 연구가 있는지 따져 줘.";
+    renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView(); }
+  });
   el.querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { b.disabled = true; const r = await api("/api/notes", { op: "cancel_job", id: cur.id, kind: b.dataset.cancel }); if (r.error) alert(r.error); setTimeout(refresh, 800); });
   el.querySelectorAll(".cf textarea[data-pk]").forEach(t => { fit(t); t.oninput = () => { fit(t); clearTimeout(planSaveT); planSaveT = setTimeout(savePlan, 800); }; });
   el.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
@@ -329,10 +341,41 @@ function renderCard() {
   });
   bindLab(); bindBg();
 }
-let planSaveT = null;
+let planSaveT = null, introSaveT = null;
+async function saveIntro() {
+  if (!cur || !cur.intro) return;
+  const intro = {}; $("cardp").querySelectorAll(".ipara textarea[data-ik]").forEach(t => intro[t.dataset.ik] = t.value);
+  const r = await api("/api/notes", { op: "save", id: cur.id, intro });
+  if (r.note) { cur.intro = r.note.intro; cur.intro_edited = r.note.intro_edited; }
+}
+function introHtml(answered) {   /* 서론 구조 (2026-10-24) */
+  const it = cur.intro, pend = cur.intro_pending, can = answered || cur.plan || cur.card;
+  let h = "<div class='sec secline'>서론 구조<span class='r'>" +
+    (pend ? "<span style='color:var(--accent)'>뽑는 중…</span> <button class='act' data-cancel='intro'>취소</button>"
+      : "<button class='act' id='introGo'" + (can ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + " title='토의·카드·설계서·답한 반론에 서재의 그 저널 논문 서론이 실제로 짜인 차례(본보기)를 더해 — 문단마다 역할·요지·할 말·받칠 서재 논문을 세웁니다. 글은 아직 쓰지 않습니다. Opus 2~4분'>" + (it ? "다시 뽑기" : "서론 구조 뽑기") + "</button>") + "</span></div>";
+  if (!pend) h += "<input class='ireq' id='introReq' type='text' placeholder='요청 (선택) — 예: 5문단으로, 결정 소성 쪽 배경은 짧게, Zan 2026 을 공백 문단에' value='" + esc(((cur.intro_opts || {}).req) || "") + "'>";
+  if (cur.intro_error) h += "<div class='warnbox'>" + esc(cur.intro_error) + "</div>";
+  if (it) {
+    h += "<div class='cm'>" + fmtDate(it.t) + " · " + esc(it.model || "Claude") + (it.sec ? " · " + fmtDur(it.sec) : "") + (cur.intro_edited ? " · 요지를 손으로 고침" : "") +
+      ((it.models || []).length ? " · 본보기: " + esc(it.models.join(", ")) : " · 본보기 없음(그 저널 논문의 서론을 못 찾음)") + " · 요지는 고치면 바로 저장</div>";
+    if (it.flow) h += "<div class='iflow'>" + esc(it.flow) + "</div>";
+    (it.paras || []).forEach((p, i) => {
+      h += "<div class='ipara'><div class='ih'><span class='no'>" + (i + 1) + "문단</span><span class='role'>" + esc(p.role) + "</span>" + (p.len ? "<span class='len'>" + p.len + "문장쯤</span>" : "") + "</div>" +
+        "<textarea data-ik='" + i + "' title='이 문단이 세울 말 — 고치면 바로 저장되고, 다시 뽑을 때 바탕이 됩니다'>" + esc(p.gist || "") + "</textarea>" +
+        "<ul>" + (p.points || []).map(pt => "<li" + (/^서재 밖/.test(pt.t) ? " class='beyond'" : "") + ">" + esc(pt.t) + " " + (pt.cites || []).map(c => c.file ? "<a class='cite ok' data-open='" + esc(c.file) + "' title='서재에 있음 — 누르면 PDF: " + esc(c.file) + "'>" + esc(c.key) + " ✓</a>" : "<span class='cite no' title='서재에서 못 찾음'>" + esc(c.key) + " ?</span>").join(" ") + "</li>").join("") + "</ul>" +
+        "<div class='ib'><button class='act' data-iask='" + i + "' title='이 문단의 짜임·근거를 묻는 칸에 채워 Claude 와 따집니다'>대화로 ↗</button></div></div>";
+    });
+    if ((it.gaps || []).length) h += "<div class='cf'><div class='k'>서재에 없어 채워야 할 근거</div><ul class='pl'>" + it.gaps.map(x => "<li>" + esc(x) + " <button class='act' data-q=\"" + esc(x.slice(0, 200)) + "\" title='이것으로 논문 탐색'>탐색 ↗</button></li>").join("") + "</ul></div>";
+  } else if (!pend) {
+    h += "<div class='hint' style='line-height:1.6'>서론을 쓰기 전에 뼈대만 — 문단마다 역할(배경 · 선행연구 · 공백 · 목적·접근 · 기여·구성)과 요지, 그 문단이 차례로 할 말과 받칠 서재 논문(✓ = 서재에 있음). 서재의 그 저널 논문 서론이 실제로 짜인 차례를 본보기로 봅니다. 글은 다음 단계에서 문단마다 씁니다.</div>";
+  }
+  return h;
+}
 async function startJob(kind, btn) {
   if (btn) btn.disabled = true;
-  const r = await api("/api/notes", { op: kind, id: cur.id, effort: lsGet("notes_effort", "xhigh") === "fast" ? "fast" : "xhigh" });
+  const body = { op: kind, id: cur.id, effort: lsGet("notes_effort", "xhigh") === "fast" ? "fast" : "xhigh" };
+  if (kind === "intro") { const q = $("introReq"); body.req = q ? q.value : ""; }
+  const r = await api("/api/notes", body);
   if (r.error) { alert(r.error); if (btn) btn.disabled = false; return; }
   cur[kind + "_pending"] = Date.now() / 1000; renderCard(); renderListSoon(); schedulePoll();
 }
