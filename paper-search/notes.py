@@ -21,7 +21,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-10-24b)"
+VERSION = "연구 노트 (2026-10-25)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 _EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None)}
@@ -36,7 +36,7 @@ PLAN_KO = dict(PLAN_KEYS)
 REVIEWERS = [("exp", "실험 전문가"), ("theory", "이론·모델 전문가"), ("editor", "저널 심사위원")]
 REVIEWER_KO = dict(REVIEWERS)
 _JOBKINDS = ("plan", "review", "draft", "intro")
-INTRO_ROLES = ["배경", "선행연구", "공백", "목적·접근", "기여·구성"]   # 서론 문단의 역할 (manuscript SECTION_KINDS["intro"] 와 같은 이름)
+INTRO_ROLES = list(ms.SECTION_KINDS["intro"]["roles"])   # 서론 문단의 역할 — 원고의 본보기·구성 보기와 같은 이름표(한 곳에만 둔다, 2026-10-25)
 LAB_FILE = "_연구실.json"      # 우리 연구실 — 장비·역량·홈페이지 글 (2026-10-24)
 
 
@@ -77,7 +77,8 @@ def _brief(nt):
             "asks": sum(1 for m in th if m.get("role") == "user"), "answers": sum(1 for m in th if m.get("role") == "claude"),
             "pending": bool(nt.get("pending")), "card": bool(nt.get("card")), "last": (last["text"][:90] if last else ""),
             "plan": bool(nt.get("plan")), "open": sum(1 for o in nt.get("objections") or [] if o.get("status") == "open"), "ms": bool(nt.get("ms")), "intro": bool(nt.get("intro")),
-            "busy": any(nt.get(k + "_pending") for k in _JOBKINDS),
+            "intro_drafts": sum(1 for q in (nt.get("intro") or {}).get("paras") or [] if (q.get("draft") or {}).get("text")),
+            "busy": any(nt.get(k + "_pending") for k in _JOBKINDS) or bool((nt.get("intro") or {}).get("writing")),
             "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", "")}
 
 
@@ -857,7 +858,7 @@ def _draft_prompt(nt):
 _INTRO_RULE = (
     "이 연구의 논문 서론(Introduction)을 쓰기 전에 그 구조를 세운다 — 문단마다 역할·요지·그 문단이 할 말과 받칠 서재 논문. 글은 아직 쓰지 않는다. "
     "[본보기]가 있으면 그 저널 논문들이 서론을 몇 문단으로 어떤 차례(배경 → 선행연구 → 공백 → 목적)로 짜는지를 출발점으로 삼되 베끼지 말고 이 연구의 논리에 맞게 고친다. "
-    "문단은 4~7개. 역할은 배경(분야·왜 중요한가) · 선행연구(무엇이 알려졌나 — 묶어서) · 공백(엇갈림·한계·남은 물음 — 설계서의 '배경과 공백'·답한 반론과 같은 말이어야 한다) · 목적·접근(이 연구의 물음과 방법 개요 — 설계서의 물음·가설 그대로) · 기여·구성(선택) 가운데 고른다. "
+    "문단 수는 [이 저널 서론의 크기](있으면)의 범위 안에서 이 연구의 논리에 필요한 만큼(없으면 4~7개). 역할은 배경(분야·왜 중요한가) · 선행연구(무엇이 알려졌나 — 묶어서) · 공백(엇갈림·한계·남은 물음 — 설계서의 '배경과 공백'·답한 반론과 같은 말이어야 한다) · 목적·접근(이 연구의 물음과 방법 개요 — 설계서의 물음·가설 그대로) · 기여·구성(선택) 가운데 고른다. "
     "문단마다 points 는 그 문단이 차례로 세울 말 2~5개 — 사실·주장 하나에 그것을 받치는 서재 논문을 '(첫 저자 연도)' 로 cites 에 적는다(그 논문이 실제로 그 말을 하는지 요약 한 줄에 비추어; 지어낸 인용·수치 금지). "
     "서재에 없는 사실을 세워야 하면 t 를 '서재 밖: ' 으로 시작하고 cites 는 빈 목록 — 그런 자리는 gaps 에 탐색어와 함께 적는다(연구자가 논문을 찾아 넣는다). 연구자의 요청이 있으면 따른다.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"flow\": \"서론이 펴는 논리 한 문단 — 왜 이 차례인가\", \"paras\": [{\"role\": \"배경|선행연구|공백|목적·접근|기여·구성\", \"gist\": \"이 문단이 세울 말 한 문장\", "
@@ -883,53 +884,66 @@ def _intro_journals(nt):
     return found[:3] or ["IJMTM", "JMPT"]
 
 
+def _intro_topic(nt):
+    """본보기를 고를 주제 낱말 — 제목·카드·설계서·서론 구조에 든 영어 낱말(원고의 _topic_words 와 같은 잣대: 자주 나온 열 개)"""
+    parts = [nt.get("title") or ""]
+    card = nt.get("card") or {}
+    for k in ("question", "hypothesis", "papers"):
+        v = card.get(k)
+        parts.append(" ".join(str(x) for x in v) if isinstance(v, list) else str(v or ""))
+    for sec in (nt.get("plan") or {}).get("sections") or []:
+        if sec.get("k") in ("background", "question", "venue") and sec.get("t"):
+            parts.append(sec["t"])
+    skip = {w.lower() for w in _JABBR.pattern.strip("\\b()").split("|")}   # 저널 약어
+    for q in (nt.get("intro") or {}).get("paras") or []:
+        parts.append(q.get("gist") or "")
+        parts += [pt.get("t") or "" for pt in q.get("points") or []]
+        for pt in q.get("points") or []:
+            for c in pt.get("cites") or []:
+                skip |= {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z'\-]+", str(c.get("key") or ""))}   # 인용 열쇠의 저자 성
+    for sec in (nt.get("plan") or {}).get("sections") or []:
+        for c in sec.get("cites") or []:
+            skip |= {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z'\-]+", str(c.get("key") or ""))}
+    for x in card.get("papers") or []:
+        skip |= {w.lower() for w in re.findall(r"^[A-Za-z][A-Za-z'\-]+", str(x).strip())}
+    import collections
+    words = [w for w in re.findall(r"[a-z][a-z\-]{3,}", " ".join(parts)[:20000].lower()) if w not in ms._STOP and w not in skip]
+    return [w for w, _ in collections.Counter(words).most_common(10)]
+
+
+def _intro_cited(nt):
+    """카드·설계서·서론 구조가 든 서재 논문 — 본보기 고르기에서 앞으로(원고의 '인용한 논문 +3' 자리)"""
+    files = set()
+    for x in (nt.get("card") or {}).get("papers") or []:
+        f = _cite_file(str(x))
+        if f:
+            files.add(f)
+    for sec in (nt.get("plan") or {}).get("sections") or []:
+        files |= {c["file"] for c in sec.get("cites") or [] if c.get("file")}
+    for q in (nt.get("intro") or {}).get("paras") or []:
+        for pt in q.get("points") or []:
+            files |= {c["file"] for c in pt.get("cites") or [] if c.get("file")}
+    return files
+
+
 def _intro_models(nt, n=3, diag=None):
-    """[본보기] 그 저널 서재 논문 n편의 서론 문단 구조 — 역할·요지(ms._label_chunked 'intro', 본보기 캐시). → (글, [논문 이름들]). diag(dict) 를 주면 고르는 과정을 적는다"""
+    """[본보기] = ms.intro_skeletons — 원고의 구성 보기와 같은 고르기(저널 · 주제 낱말 · 최근 순 · 이미 든 논문 앞으로)·문단 역할·요지·대목. → (글, [논문 이름들]). diag(dict) 를 주면 고르는 과정을 적는다"""
     abbrs = _intro_journals(nt)
-    if diag is not None:
-        diag["journals"] = abbrs
     try:
-        files = [f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf") and len(f.split("_")) > 2 and f.split("_")[1] in abbrs]
-    except OSError:
-        files = []
-    files.sort(reverse=True)   # 연도가 앞이라 최근순
-    if diag is not None:
-        diag["candidates"] = len(files)
-        diag["tried"] = []
-    picked, texts = [], {}
-    for f in files[:40]:
-        if len(picked) >= n:
-            break
-        try:
-            secs = ms._paper_secs(f, ["intro"])
-        except Exception as e:
-            if diag is not None:
-                diag["tried"].append((f[:50], "ERR " + str(e)[:80]))
-            continue
-        sec = next((x for x in secs if x.get("kind") == "intro" and 3 <= len(x.get("paras") or []) <= 24), None)
+        items = ms.intro_skeletons(abbrs, topic=_intro_topic(nt), cited=_intro_cited(nt), n=n, diag=diag)
+    except Exception as e:
         if diag is not None:
-            diag["tried"].append((f[:50], [(x.get("kind"), len(x.get("paras") or [])) for x in secs][:3]))
-        if not sec:
-            continue
-        picked.append((f, sec))
-        texts["M%d" % len(picked)] = [p.get("text", "") for p in sec["paras"]]
-    if not picked:
-        return "", []
-    try:
-        labels = ms._label_chunked("intro", texts)
-    except Exception:
-        labels = {}
+            diag["error"] = str(e)[:200]
+        items = []
     out, names = [], []
-    for i, (f, sec) in enumerate(picked):
-        m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_", f)
-        name = "%s %s (%s)" % (m.group(3), m.group(1), m.group(2)) if m else f[:40]
-        names.append(name)
-        lab = labels.get("M%d" % (i + 1)) or []
-        rows = []
-        for j, p in enumerate(sec["paras"]):
-            role, gist = (lab[j][0], lab[j][1]) if j < len(lab) and isinstance(lab[j], list) and len(lab[j]) >= 2 else ("", "")
-            rows.append("  %d. %s%s" % (j + 1, role or "?", (" — " + str(gist)[:90]) if gist else ""))
-        out.append("%s — 서론 문단 %d개:\n%s" % (name, len(sec["paras"]), "\n".join(rows)))
+    for it in items:
+        names.append(it["name"])
+        rows = ["%s — 서론 문단 %d개 · 차례: %s" % (it["name"], len(it["paras"]), it["pattern"])]
+        for g in it.get("groups") or []:
+            rows.append("  대목 [문단 %s–%s] %s: %s" % (g.get("a"), g.get("b"), g.get("head") or "", g.get("what") or ""))
+        for j, q in enumerate(it["paras"]):
+            rows.append("  %d. %s%s (%d낱말)" % (j + 1, q.get("role") or "?", (" — " + str(q["gist"])[:90]) if q.get("gist") else "", q.get("words") or 0))
+        out.append("\n".join(rows))
     return "\n".join(out), names
 
 
@@ -947,7 +961,10 @@ def _intro_prompt(nt):
     models, names = _intro_models(nt)
     _INTRO_MODELS[nt.get("id")] = names   # _apply_intro 가 기록에 옮긴다
     if models:
-        out += "\n[본보기 — 서재에 있는 그 저널 논문의 서론이 실제로 짜인 차례(문단마다 역할 — 요지)]\n" + models + "\n"
+        out += "\n[본보기 — 서재의 그 저널 논문(주제가 가까운 것부터) 서론이 실제로 짜인 차례: 대목(같은 것을 말하는 이어진 문단들)과 문단마다 역할 — 요지]\n" + models + "\n"
+    shape = ms.intro_shape_text(ms.intro_shape(tuple(_intro_journals(nt))) or ms.intro_shape())   # 그 저널 서론의 크기 — 서재에서 잰 것(내가 정한 '4~7개' 대신)
+    if shape:
+        out += "\n" + shape
     req = str((nt.get("intro_opts") or {}).get("req") or "").strip()
     if req:
         out += "\n[연구자의 요청]\n" + req + "\n"
@@ -961,7 +978,7 @@ def _intro_text(intro, brief=False):
     if intro.get("flow") and not brief:
         out.append("흐름: " + intro["flow"])
     for i, p in enumerate(intro.get("paras") or []):
-        line = "%d문단 [%s] %s" % (i + 1, p.get("role") or "", p.get("gist") or "")
+        line = "%d문단 [%s] %s%s" % (i + 1, p.get("role") or "", p.get("gist") or "", " (글을 썼음)" if (p.get("draft") or {}).get("text") else "")
         if not brief:
             for pt in p.get("points") or []:
                 line += "\n  - %s%s" % (pt.get("t") or "", (" (" + ", ".join(c.get("key") for c in pt.get("cites") or []) + ")") if pt.get("cites") else "")
@@ -969,6 +986,137 @@ def _intro_text(intro, brief=False):
     if intro.get("gaps") and not brief:
         out.append("채워야 할 근거: " + " / ".join(str(x) for x in intro["gaps"][:8]))
     return "\n".join(out)
+
+
+# ---------- 서론 문단 쓰기 — 원고의 문단 쓰기(서재에서 뽑기 → Stylus 로 쓰기 → 근거 대조 → 고쳐 쓰기)를 그대로 쓴다 (2026-10-25, 사용자: '다 유기적으로 해야 해') ----------
+def _intro_doc(nt):
+    """연구 노트의 서론 구조를 원고 꼴로 — manuscript.lib_use 는 원고를 받는다. 「1. Introduction」 절 하나: 쓴 문단은 그 글, 아직 안 쓴 문단은 '[k문단 자리 — 역할: 요지]'(앞뒤를 알고 겹치지 않게 쓰게).
+    참고문헌 목록은 intro.refs — 문단을 쓸수록 늘고 번호가 이어진다. 원고로 넘길 때(_apply_draft) 그대로 간다."""
+    intro = nt.get("intro") or {}
+    parts = []
+    for i, q in enumerate(intro.get("paras") or []):
+        d = q.get("draft") or {}
+        parts.append(d["text"] if d.get("text") else "[%d문단 자리 — %s: %s]" % (i + 1, q.get("role") or "", q.get("gist") or ""))
+    jr = _intro_journals(nt)
+    return {"id": "nt_intro_" + str(nt.get("id")), "title": nt.get("title") or "", "front": {"title": "", "abstract": "", "keywords": []},
+            "outline": [{"id": "intro", "level": 1, "heading": "1. Introduction", "claim": intro.get("flow") or "", "cards": [], "draft": "", "draft_en": "\n\n".join(parts), "status": "todo"}],
+            "refs_text": list(intro.get("refs") or []), "meta": {"journal": jr[0] if jr else ""}, "sources": [], "source_dirs": [], "figures": []}
+
+
+def _intro_order(nt, i):
+    """문단 쓰기의 주문(lib_use 의 '저자의 주문' 자리, 1500자 안) — 이 문단의 역할·요지·차례로 세울 말과 받칠 논문, 앞뒤 문단의 요지, 서론의 논리"""
+    intro = nt["intro"]
+    paras = intro["paras"]
+    q = paras[i]
+    lines = ["서론(Introduction)의 %d문단(모두 %d문단) — 역할: %s. 이 글은 「1. Introduction」 절의 '[%d문단 자리]' 에 들어간다. 그 앞뒤에 이미 쓴 글과 다른 문단의 자리 표시(요지)를 읽고, 겹치지 않고 이어지게 쓴다." % (i + 1, len(paras), q.get("role") or "", i + 1),
+             "요지: " + (q.get("gist") or ""), "차례로 세울 말:"]
+    for k, pt in enumerate((q.get("points") or [])[:6]):
+        keys = [c.get("key") for c in pt.get("cites") or [] if c.get("key")]
+        lines.append("%d) %s%s" % (k + 1, pt.get("t") or "", (" (" + ", ".join(keys) + ")") if keys else ""))
+    if i > 0:
+        lines.append("앞 문단(%s): %s" % (paras[i - 1].get("role") or "", paras[i - 1].get("gist") or ""))
+    if i + 1 < len(paras):
+        lines.append("다음 문단(%s): %s" % (paras[i + 1].get("role") or "", paras[i + 1].get("gist") or ""))
+    if intro.get("flow"):
+        lines.append("서론 전체의 논리: " + intro["flow"][:300])
+    jr = _intro_journals(nt)
+    lines.append("'서재 밖:' 으로 적힌 말은 서재에 근거가 없는 사실 — 그 자리에는 [@?] 를 단다. 영어로 쓴다. 저널: %s" % (jr[0] if jr else "IJMTM"))
+    return "\n".join(lines)[:1500]
+
+
+def intro_write_start(nid, body):
+    try:
+        i = int(body.get("i"))
+    except (TypeError, ValueError):
+        return {"error": "문단 번호가 없습니다"}
+    effort = body.get("effort") if body.get("effort") in ms._SEL_EFFORT else "xhigh"
+    with _LOCK:
+        nt = _load(nid)
+        if not nt or not nt.get("intro"):
+            return {"error": "서론 구조가 없습니다 — 먼저 「서론 구조 뽑기」"}
+        paras = nt["intro"].get("paras") or []
+        if not 0 <= i < len(paras):
+            return {"error": "그 문단이 없습니다"}
+        if nt["intro"].get("writing"):
+            return {"error": "이미 쓰는 중인 문단이 있습니다 — 끝난 뒤에 (참고문헌 번호가 이어지도록 한 번에 하나씩)"}
+        if nt.get("intro_pending"):
+            return {"error": "서론 구조를 뽑는 중입니다"}
+        nt["intro"]["writing"] = {"i": i, "t": time.time(), "effort": effort, "stage": "extract"}
+        paras[i].pop("draft_error", None)
+        _save(nt)
+    threading.Thread(target=_intro_write_job, args=(nid, i, effort), name="notes-intro-write", daemon=True).start()
+    return {"ok": True}
+
+
+def _intro_write_job(nid, i, effort):
+    """① ms.lib_extract — 이 문단의 요지·할 말로 서재에서 근거 문장을 뽑는다(원고의 「서재에서 뽑기」와 같은 결과, _서재뽑기.json 에 남아 원고 창에도 보인다)
+    ② ms.lib_use(mode write) — 가짜 원고(_intro_doc)를 놓고 Stylus 규칙·서재 논문의 분포로 쓰고 → 다른 호출이 근거와 대조 → 걸리면 고쳐 쓰고 다시 대조(원고의 문단 쓰기 그대로)
+    ③ [@열쇠] → 참고문헌 번호(ms.cites_apply — 화면의 citeApply 와 같은 규칙), 새 문헌은 intro.refs 끝에."""
+    t0 = time.time()
+    err, use, item = "", None, None
+    try:
+        nt = _load(nid)
+        q = ((nt or {}).get("intro") or {}).get("paras")[i]
+        topic = ((q.get("gist") or "") + " — " + "; ".join(re.sub(r"^서재 밖:\s*", "", pt.get("t") or "") for pt in (q.get("points") or [])[:5]))[:600]
+        item = ms.lib_extract(topic, effort)
+        if not item or item.get("error"):
+            raise RuntimeError((item or {}).get("error") or "서재에서 뽑지 못했습니다")
+        with _LOCK:
+            nt = _load(nid)
+            w = ((nt or {}).get("intro") or {}).get("writing")
+            if nt and w:
+                w.update(stage="write", xid=item["id"])
+                _save(nt)
+        use = ms.lib_use(_intro_doc(nt), {"xid": item["id"], "mode": "write", "note": _intro_order(nt, i), "node": "intro", "effort": effort})
+        if not use or use.get("error"):
+            raise RuntimeError((use or {}).get("error") or "문단을 받지 못했습니다")
+    except Exception as e:
+        err = str(e)[:300]
+    with _LOCK:
+        nt = _load(nid)
+        if not nt or not nt.get("intro"):
+            return
+        intro = nt["intro"]
+        intro.pop("writing", None)
+        paras = intro.get("paras") or []
+        if not 0 <= i < len(paras):
+            _save(nt)
+            return
+        if err:
+            paras[i]["draft_error"] = err
+            _save(nt)
+            return
+        refs = list(intro.get("refs") or [])
+        text, num = ms.cites_apply(use.get("text") or "", use.get("cites") or [], refs)
+        intro["refs"] = refs
+        chk = use.get("check") or {}
+        sents = chk.get("sentences") or []
+        bad = [{"s": str(x.get("s") or "")[:240], "verdict": x.get("verdict"), "type": x.get("type") or "", "abrupt": bool(x.get("abrupt")), "why": str(x.get("why") or "")[:300]}
+               for x in sents if x.get("verdict") in ("over", "none") or (x.get("verdict") == "own" and x.get("type") == "needs") or x.get("abrupt")]
+        paras[i]["draft"] = {"text": text, "raw": use.get("text") or "", "xid": item["id"], "uid": use.get("id"), "t": time.time(), "model": use.get("model") or "", "sec": round(time.time() - t0), "tok": use.get("tok"),
+                             "stylus": use.get("stylus") or ms.STYLUS, "answer": use.get("answer") or "", "changes": use.get("changes") or "", "rounds": use.get("rounds") or 1, "reads": chk.get("reads") or "",
+                             "nsent": len(sents), "flagged": bad, "second": sum(1 for x in sents if x.get("second")), "todo": use.get("todo") or 0, "unknown": use.get("unknown") or [],
+                             "flow": [str(x) for x in ((use.get("flow") or {}).get("marks") or [])[:6]], "plan": [str(m.get("move") or "")[:200] for m in use.get("plan") or []],
+                             "cites": [{"key": c.get("key"), "n": num.get(c.get("key"), c.get("n") or ""), "label": c.get("label") or "", "file": c.get("file") or "", "unread": bool(c.get("unread"))} for c in use.get("cites") or []],
+                             "extract": {"papers": len(item.get("papers") or []), "sents": sum(len(z.get("sents") or []) for z in item.get("papers") or []), "sec": item.get("sec")}, "steps": use.get("steps") or []}
+        paras[i].pop("draft_error", None)
+        _save(nt)
+
+
+def intro_draft_clear(nid, body):
+    try:
+        i = int(body.get("i"))
+    except (TypeError, ValueError):
+        return {"error": "문단 번호가 없습니다"}
+    with _LOCK:
+        nt = _load(nid)
+        paras = ((nt or {}).get("intro") or {}).get("paras") or []
+        if not 0 <= i < len(paras):
+            return {"error": "그 문단이 없습니다"}
+        paras[i].pop("draft", None)
+        paras[i].pop("draft_error", None)
+        _save(nt)
+        return {"note": nt}
 
 
 def _apply_intro(nt, d, res, t0):
@@ -994,8 +1142,13 @@ def _apply_intro(nt, d, res, t0):
         paras.append({"role": role, "gist": re.sub(r"\s+", " ", str(p["gist"])).strip()[:300], "points": pts, "len": max(0, min(ln, 30))})
     if len(paras) < 3:
         raise RuntimeError("서론 구조가 비어 왔습니다")
+    old = nt.get("intro") or {}
+    for i, q in enumerate(paras):   # 다시 뽑아도 이미 쓴 문단은 같은 자리·같은 역할이면 지킨다 — 참고문헌 목록도 (2026-10-25)
+        prev = (old.get("paras") or [])[i] if i < len(old.get("paras") or []) else None
+        if prev and prev.get("draft") and prev.get("role") == q["role"]:
+            q["draft"] = prev["draft"]
     nt["intro"] = {"flow": re.sub(r"\s+", " ", str(d.get("flow") or "")).strip()[:1500], "paras": paras,
-                   "gaps": [str(x).strip()[:300] for x in (d.get("gaps") or [])[:10] if str(x).strip()],
+                   "gaps": [str(x).strip()[:300] for x in (d.get("gaps") or [])[:10] if str(x).strip()], "refs": list(old.get("refs") or []),
                    "models": _INTRO_MODELS.pop(nt.get("id"), None) or [], "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
     nt.pop("intro_edited", None)
 
@@ -1069,6 +1222,12 @@ def _apply_draft(nt, d, res, t0):
     if not outline:
         raise RuntimeError("절 차례가 비어 왔습니다")
     doc["outline"] = outline
+    intro = nt.get("intro") or {}
+    texts = [q["draft"]["text"] for q in intro.get("paras") or [] if (q.get("draft") or {}).get("text")]
+    if texts:   # 연구 노트에서 쓴 서론 문단은 서론 절의 영문 글로, 그 참고문헌은 원고의 목록으로 — 노트 → 원고가 한 흐름이 된다 (2026-10-25)
+        node = next((x for x in outline if x["level"] == 1 and re.search(r"introduc|서론", x["heading"], re.I)), outline[0])
+        node["draft_en"] = "\n\n".join(texts)
+        doc["refs_text"] = list(intro.get("refs") or [])
     doc["front"] = {"title": str(d.get("title") or title_ko).strip()[:300], "abstract": re.sub(r"[ \t]+", " ", str(d.get("abstract") or "")).strip()[:3000],
                     "keywords": [str(x).strip()[:40] for x in (d.get("keywords") if isinstance(d.get("keywords"), list) else [])[:8] if str(x).strip()]}
     doc.setdefault("meta", {})["journal"] = str(d.get("journal") or "").strip()[:40]
@@ -1076,7 +1235,7 @@ def _apply_draft(nt, d, res, t0):
     doc.setdefault("idea", {})["question"] = str(q)[:1000]
     doc["note_id"] = nt["id"]
     cfg["ms_save"](doc)
-    nt["ms"] = {"id": doc["id"], "title": doc["title"], "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "nodes": len(outline)}
+    nt["ms"] = {"id": doc["id"], "title": doc["title"], "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "nodes": len(outline), "intro_paras": len(texts)}
 
 
 def _job_key(nid, kind, t):
@@ -1206,6 +1365,11 @@ def to_md(nt):
             out += ["**우리 연구실에서 할 수 있는가**"] + ["- " + _feas_line(f) for f in nt["plan"]["feasibility"]] + [""]
     if nt.get("intro"):
         out += ["## 서론 구조", _intro_text(nt["intro"]), ""]
+        drafts = [q["draft"]["text"] for q in nt["intro"].get("paras") or [] if (q.get("draft") or {}).get("text")]
+        if drafts:
+            out += ["## 서론 초안 (쓴 문단)"] + [t + "\n" for t in drafts]
+        if nt["intro"].get("refs"):
+            out += ["## 참고문헌 (서론)"] + [str(r) for r in nt["intro"]["refs"]] + [""]
     if nt.get("objections"):
         out += ["## 심사위원의 반론"]
         for o in nt["objections"]:
@@ -1235,6 +1399,11 @@ def handle_get(h, url):
                              "plan_keys": PLAN_KEYS, "reviewers": REVIEWERS})
     if p == "/api/notes/get":
         nt = _load(_q(url, "id"))
+        w = ((nt or {}).get("intro") or {}).get("writing")
+        if w and w.get("xid"):   # 문단 쓰기의 지금 단계(쓰기 → 대조 → 고쳐 쓰기)는 manuscript 가 메모리에 둔다 — 응답에만 얹는다
+            st = ms._LIBX_STAGE.get(w["xid"]) or {}
+            if st.get("stage"):
+                w["stage"] = st["stage"]
         return h._send(200, {"note": nt, "now": time.time()} if nt else {"error": "찾지 못했습니다"})
     if p == "/api/notes/intro_models":       # 서론 본보기 진단 — 어느 저널·어느 논문의 서론을 고르나
         nt = _load(_q(url, "id")) or {}
@@ -1276,6 +1445,10 @@ def handle_post(h, body):
             return h._send(200, job_cancel(nid, str(body.get("kind") or "")))
         if op == "objection":
             return h._send(200, objection_set(nid, body))
+        if op == "intro_write":                  # 서론 문단 쓰기 — 원고의 문단 쓰기 그대로 (2026-10-25)
+            return h._send(200, intro_write_start(nid, body))
+        if op == "intro_draft_clear":
+            return h._send(200, intro_draft_clear(nid, body))
         if op == "lab_save":
             return h._send(200, lab_save(body))
         if op == "lab_fetch":

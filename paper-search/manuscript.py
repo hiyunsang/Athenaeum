@@ -1800,6 +1800,51 @@ def _style_norms(journals=("IJMTM", "JMPT")):
     return nm
 
 
+_shape_cache = {}
+
+
+def intro_shape(journals=("IJMTM", "JMPT")):
+    """그 저널 논문 서론의 크기 — 번역해 둔 서재 논문에서 잰다(_intro_paragraphs): 논문마다 문단 수(25낱말 넘는 문단만 — 조각난 문단은 빼고) · 문장 수 · 인용 자리 수 · 낱말 수 → [5%, 가운데, 95%].
+    서론 구조를 세울 때 '문단은 4~7개' 처럼 내가 정한 숫자 대신 주는 잣대(2026-10-25). 그 저널의 번역 논문이 6편 미만이면 None."""
+    try:
+        stems = sorted(f[:-len(".번역.정렬.json")] for f in os.listdir(cfg["GEN_DIR"]) if f.endswith(".번역.정렬.json"))
+    except OSError:
+        stems = []
+    key = (tuple(journals), len(stems))
+    if key in _shape_cache:
+        return _shape_cache[key]
+    rows = []
+    for stem in stems:
+        m = re.match(r"^\d{4}_([A-Za-z0-9&-]+)_", stem)
+        if not m or m.group(1) not in journals:
+            continue
+        ps = [p for p in _intro_paragraphs(stem) if len(p.split()) >= 25]
+        if len(ps) < 2:
+            continue
+        text = "\n\n".join(ps)
+        rows.append((len(ps), sum(len(_flow_sents(p, _FLOW_CITE_AY)) for p in ps), len(re.findall(_FLOW_CITE_AY, text)), len(text.split())))
+    if len(rows) < 6:
+        _shape_cache[key] = None
+        return None
+
+    def band(k):
+        v = sorted(r[k] for r in rows)
+        return [v[min(len(v) - 1, int(q * (len(v) - 1) + 0.5))] for q in (.05, .5, .95)]
+    sh = {"src": "·".join(journals), "npaper": len(rows), "paras": band(0), "sents": band(1), "cites": band(2), "words": band(3)}
+    _shape_cache[key] = sh
+    return sh
+
+
+def intro_shape_text(sh):
+    """intro_shape 를 Claude 에게 줄 한 줄로 — 범위를 채우라는 뜻이 아님을 같이 적는다(숫자로 준 지시는 글에 그림자를 남긴다)"""
+    if not sh:
+        return ""
+    return ("[이 저널 서론의 크기 — 서재의 %s 논문 %d편의 서론을 잰 것. 열에 아홉은 이 범위 안이다] 문단 %d~%d개(가운데 %d) · 문장 %d~%d개(가운데 %d) · 인용 자리 %d~%d곳(가운데 %d) · 낱말 %d~%d개. "
+            "문단 수와 길이는 이 범위 안에서 이 연구의 논리에 필요한 만큼 — 범위를 채우려고 문단을 늘리거나 나누지 않는다.\n"
+            % (sh["src"], sh["npaper"], sh["paras"][0], sh["paras"][2], sh["paras"][1], sh["sents"][0], sh["sents"][2], sh["sents"][1],
+               sh["cites"][0], sh["cites"][2], sh["cites"][1], sh["words"][0], sh["words"][2]))
+
+
 def _norms_text(nm, auth=None):
     """쓰는 Claude 에게 줄 사례 — 이 분야 논문이 문단을 어떻게 짜고, 문장 사이의 관계마다 그것을 겉으로 어떻게 드러내는가. 숫자를 기준으로 주지 않는다.
     관계의 사례는 2026-10-02 에 서재의 IJMTM·JMPT 서론 60문단(문장 425개)을 Claude 로 분석해(문장마다 어느 문장을 무슨 관계로 이어받는지) 문장 첫머리와 맞춰 본 것이다:
@@ -3593,7 +3638,7 @@ def _para_ko(f, paras):
     return out
 
 
-_SEG_PROMPT = ("아래는 논문의 결과·논의·결론 절들이다. 절마다 문단이 '[번호] (소절) 앞부분 — 역할 · 요지' 꼴로 있다.\n"
+_SEG_PROMPT = ("아래는 논문의 절들(결과·논의·결론, 또는 서론)이다. 절마다 문단이 '[번호] (소절) 앞부분 — 역할 · 요지' 꼴로 있다.\n"
                "절마다 문단들을 3~8개의 '대목' 으로 묶어라 — 대목은 같은 것을 말하는 이어진 문단들(보통 소절 경계를 넘지 않는다; 문단이 셋 이하인 절은 대목 하나여도 된다).\n"
                "JSON 한 줄만 출력: {\"<키>\": [{\"a\": 첫 문단 번호, \"b\": 끝 문단 번호, \"head\": \"이름표 — 한국어 14자 안팎, 무엇에 관한 대목인가\", "
                "\"what\": \"이 대목이 무엇을 보이고 무엇을 말하는가 — 한국어 1~2문장, 근거로 든 그림·표가 있으면 (Fig. 4) 처럼\"}, ...]}\n"
@@ -3793,14 +3838,17 @@ def _paper_secs(f, kinds):
     return pre + secs
 
 
-def _structure_auto(doc, journals, kinds, n):
+def _structure_auto(doc, journals, kinds, n, topic=None, cited=None, ok=None):
     """논문을 알아서 고른다(2026-10-18, 사용자: '굳이 선행 연구로 안 해도 돼 — 기존 본보기처럼 몇 편 고르면 알아서'):
     본보기와 같은 잣대(고른 저널 · 제목의 주제 낱말 · 최근 순)에 원고가 인용한 논문은 앞으로(+3 = 주제 낱말 하나 값). 그 종류의 절(문단 둘 이상)이 실제로 있는 것만 n편.
+    topic(주제 낱말)·cited(인용한 서재 파일)를 주면 원고 대신 그것으로 — 원고가 없는 연구 노트가 같은 잣대로 고른다(2026-10-25). ok(절들) = 그 논문을 고를 만한가(기본: 그 종류의 절에 문단 둘 이상).
     → [(파일, 절들)]"""
-    topic = _topic_words(doc)
-    refs = doc.get("refs_text") or []
-    lines = refs if isinstance(refs, list) else str(refs).splitlines()
-    cited = {_ref_file(l) for l in lines if str(l).strip()} - {None, ""}
+    topic = list(topic) if topic is not None else _topic_words(doc)
+    if cited is None:
+        refs = doc.get("refs_text") or []
+        lines = refs if isinstance(refs, list) else str(refs).splitlines()
+        cited = {_ref_file(l) for l in lines if str(l).strip()} - {None, ""}
+    ok = ok or (lambda secs: any(len(x["paras"]) >= 2 for x in secs))
     tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
     try:
         names = [f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf")]
@@ -3817,11 +3865,45 @@ def _structure_auto(doc, journals, kinds, n):
     picked = []
     for _s, f in scored[: max(n * 4, 12)]:
         secs = _paper_secs(f, kinds)
-        if any(len(x["paras"]) >= 2 for x in secs):
+        if ok(secs):
             picked.append((f, secs))
             if len(picked) >= n:
                 break
     return picked
+
+
+def intro_skeletons(journals, topic=(), cited=(), n=3, diag=None):
+    """서론의 본보기(2026-10-25 — 연구 노트의 「서론 구조」가 원고의 구성 보기와 같은 기계를 쓰게, 사용자: '다 유기적으로 해야해'):
+    그 저널 서재 논문 n편을 구성 보기와 같은 잣대(_structure_auto: 저널 · 주제 낱말 · 최근 순 · 이미 든 논문 +3)로 고르고, 서론을 문단 역할·요지(_label_chunked 'intro', 본보기 캐시)와
+    대목(_segments — 같은 것을 말하는 이어진 문단들, 'seg' 캐시)으로 나눈다. 서론이 문단 3~24개인 논문만.
+    → [{file, name, journal, year, paras[{role, gist, words, sub}], groups[{a, b, head, what}], pattern}]"""
+    pseudo = {"title": " ".join(topic), "front": {}, "outline": [], "refs_text": []}
+    pick = lambda secs: next((x for x in secs if x.get("kind") == "intro" and 3 <= len(x.get("paras") or []) <= 24), None)
+    if diag is not None:
+        diag["journals"], diag["topic"], diag["cited"] = list(journals), list(topic), len(cited)
+    pairs = _structure_auto(pseudo, list(journals), ["intro"], n, topic=list(topic), cited=set(cited), ok=lambda secs: pick(secs) is not None)
+    items, texts = [], {}
+    for i, (f, secs) in enumerate(pairs):
+        sec = pick(secs)
+        m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_", f)
+        items.append({"file": f, "name": ("%s %s (%s)" % (m.group(3), m.group(1), m.group(2))) if m else f[:40], "journal": m.group(2) if m else "", "year": int(m.group(1)) if m else 0, "_sec": sec})
+        texts["M%d" % i] = [p["text"] for p in sec["paras"]]
+    if diag is not None:
+        diag["picked"] = [x["file"][:70] for x in items]
+    labels = _label_chunked("intro", texts) if texts else {}
+    segtexts = {}
+    for i, it in enumerate(items):
+        sec = it.pop("_sec")
+        lb = labels.get("M%d" % i) or []
+        if len(lb) != len(sec["paras"]):
+            lb = [[r, ""] for r in _heuristic_roles("intro", [p["text"] for p in sec["paras"]])]
+        it["paras"] = [{"role": l[0], "gist": l[1], "words": len(p["text"].split()), "sub": p.get("sub") or ""} for p, l in zip(sec["paras"], lb)]
+        it["pattern"] = _pattern([x["role"] for x in it["paras"]])
+        segtexts["M%d" % i] = [{"t": " ".join(p["text"].split()[:60]), "role": l[0], "gist": l[1], "sub": p.get("sub") or "", "figs": []} for p, l in zip(sec["paras"], lb)]
+    groups = _segments(segtexts) if segtexts else {}
+    for i, it in enumerate(items):
+        it["groups"] = groups.get("M%d" % i) or []
+    return items
 
 
 def section_structure(doc, body):
@@ -4435,6 +4517,71 @@ def _cite_info(doc, cites):
         n = have.get(f, "")
         out.append({"key": key, "file": f, "n": n, "line": "" if n else library_ref(f), "label": paper_short(f)})
     return out
+
+
+def _cite_parse(tok):
+    """'[3, 5–7]' → [3, 5, 6, 7] (화면 citeParse 와 같다)"""
+    out = []
+    for part in re.split(r"\s*,\s*", str(tok or "").strip("[] ")):
+        m = re.match(r"^(\d+)\s*[\u2013\u2014\-]\s*(\d+)$", part.strip())
+        if m:
+            out += list(range(int(m.group(1)), int(m.group(2)) + 1))
+        elif part.strip().isdigit():
+            out.append(int(part))
+    return out
+
+
+def _cite_fmt(nums):
+    """[5, 6, 7, 9] → '[5–7,9]' — 셋 이상 이어지면 줄표 (화면 citeFormat 과 같다)"""
+    ns = sorted(set(int(x) for x in nums))
+    out, i = [], 0
+    while i < len(ns):
+        j = i
+        while j + 1 < len(ns) and ns[j + 1] == ns[j] + 1:
+            j += 1
+        out.append(("%d\u2013%d" % (ns[i], ns[j])) if j - i >= 2 else ",".join(str(x) for x in ns[i:j + 1]))
+        i = j + 1
+    return "[" + ",".join(out) + "]"
+
+
+def cites_apply(text, cites, refs):
+    """글 속의 [@열쇠] 를 참고문헌 번호로 — 화면(manuscript.html citeNumbers·citeSwap)과 같은 규칙을 서버에서(연구 노트처럼 원고 화면 없이 반영하는 곳, 2026-10-25).
+    cites 는 _cite_info·_libx_cites 가 준 [{key, n, line, …}]: n 이 있으면 그 번호, 없고 line 이 있으면 refs(원고의 참고문헌 줄 목록 — 제자리에서 늘어난다) 끝에 '[k] line' 을 넣고 k,
+    둘 다 없으면 [@열쇠] 그대로(저자가 단다). 이어 붙은 [@a][@b] 는 [a,b] 로, 바로 앞에 [4] 가 붙어 있으면 [4,a,b] 로. [@?] 는 그대로. → (새 글, {열쇠: 번호})"""
+    text = str(text or "")
+    if "[@" not in text:
+        return text, {}
+    def num_of(r):
+        mm = re.match(r"^\s*\[(\d{1,3})\]", str(r))
+        return mm.group(1) if mm else ""
+    nxt = max([int(num_of(r) or 0) for r in refs] + [0]) + 1
+    num = {}
+    for c in cites or []:
+        k = str((c or {}).get("key") or "")
+        if not k or ("[@%s]" % k) not in text:
+            continue
+        if c.get("n"):
+            num[k] = str(c["n"])
+            continue
+        line = _norm_ws(str(c.get("line") or ""))
+        if not line:
+            continue
+        had = next((r for r in refs if _norm_ws(re.sub(r"^\s*\[\d+\]\s*", "", str(r))) == line), None)
+        if had:
+            num[k] = num_of(had)
+            continue
+        num[k] = str(nxt)
+        refs.append("[%d] %s" % (nxt, line))
+        nxt += 1
+
+    def swap(m):
+        prev, gap, run = m.group(1), m.group(2), m.group(3)
+        ks = re.findall(r"\[@([^\]]+)\]", run)
+        if not all(k in num for k in ks):
+            return (prev or "") + gap + "".join(("[%s]" % num[k]) if k in num else ("[@%s]" % k) for k in ks)
+        mine = [int(num[k]) for k in ks]
+        return _cite_fmt(_cite_parse(prev) + mine) if prev else gap + _cite_fmt(mine)
+    return re.sub(r"(\[\d{1,3}(?:\s*[,\u2013\u2014\-]\s*\d{1,3})*\])?( ?)(\[@[^\]\s,;]+\](?:\s*\[@[^\]\s,;]+\])*)", swap, text), num
 
 
 def _cited_refs(doc, quote, para):
