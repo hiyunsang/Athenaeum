@@ -1246,6 +1246,13 @@ def _gapcheck_job(nid):
                     row["expr"], row["plan"] = expr, plan.get("intent", "")
                     if expr:
                         found, cnt = cfg["openalex_boolean"](expr, year="2008", per_page=40)
+                        if cnt == 0 and len(cs) > 2:   # 개념을 다 AND 하니 0편(따옴표 구절이 많을 때) → 앞의 두 개념으로 넓혀 한 번 더 (2026-10-26 재시험에서 5문단 하나가 0편)
+                            expr2 = cfg["build_boolean"](cs[:2], plan.get("exclude"))
+                            if expr2 and expr2 != expr:
+                                found, cnt = cfg["openalex_boolean"](expr2, year="2008", per_page=40)
+                                if cnt:
+                                    expr = expr2
+                                    row["expr"] = expr
                         recent, _c = cfg["openalex_boolean"](expr, year="2022", per_page=20, sort="publication_date:desc")
                         seen, merged = set(), []
                         for it in list(found) + list(recent):
