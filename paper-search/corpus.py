@@ -42,7 +42,7 @@ _STATE = {"running": False, "current": "", "stage": "", "stop": False, "manual":
           "last": None, "err": "", "started": 0, "synth": "", "active": [], "batch_on": False, "batch": None}
 # 모델(사용자 2026-10-25: 'Sonnet 보다 Opus 5.5 가 낫지 않을까') — 바탕(규칙을 적는 쪽)은 Opus, 주석은 우선 저널(★ — 글의 잣대가 되는 논문)만 Opus 로, 그 밖 저널은 Sonnet 으로.
 # 토큰 수는 같아도 Opus 는 한도를 Sonnet 의 다섯 배쯤 깎고 2~3배 느리다 — 335편 전부 Opus 면 Sonnet 기준 6천만 토큰 어치, 우선 저널 133편만 Opus 면 3천만 어치.
-_DEFAULT = {"on": True, "hours": [22, 8], "per_day": 30, "model": "opus", "model_rest": "sonnet", "synth_model": "opus", "workers": 3, "sent_kinds": ["intro", "discussion", "rd", "conclusion"]}   # workers: 동시에 읽는 편수(사용자 2026-10-25 '오늘 많이 읽혀')
+_DEFAULT = {"on": True, "hours": [22, 8], "per_day": 30, "model": "opus", "model_rest": "sonnet", "synth_model": "opus", "workers": 6, "sent_kinds": ["intro", "discussion", "rd", "conclusion"]}   # workers: 동시에 읽는 편수(사용자 2026-10-25 '오늘 많이 읽혀')
 KINDS = ["intro", "methods", "results", "rd", "discussion", "conclusion"]
 KIND_KO = {"intro": "서론", "methods": "방법", "results": "결과", "rd": "결과·논의", "discussion": "논의", "conclusion": "결론", "abstract": "초록", "other": "그 밖"}
 _ROLES = {"intro": ["배경", "선행연구", "공백", "목적·접근", "기여·구성"],
@@ -89,9 +89,9 @@ def settings():
     s["model_rest"] = s["model_rest"] if s.get("model_rest") in ("sonnet", "opus") else "sonnet"
     s["synth_model"] = s["synth_model"] if s.get("synth_model") in ("sonnet", "opus") else "opus"
     try:
-        s["workers"] = max(1, min(6, int(s.get("workers") or 3)))
+        s["workers"] = max(1, min(8, int(s.get("workers") or 6)))
     except Exception:
-        s["workers"] = 3
+        s["workers"] = 6
     return s
 
 
@@ -121,7 +121,9 @@ def save_settings(body):
             s[k] = body[k]
     if "workers" in body:
         try:
-            s["workers"] = max(1, min(6, int(body["workers"])))
+            s["workers"] = max(1, min(8, int(body["workers"])))
+            if _STATE.get("batch_on") and _STATE.get("batch"):
+                _STATE["batch"]["workers"] = s["workers"]   # 도는 배치도 바로 따른다 (사용자 2026-10-26 '6편씩')
         except Exception:
             pass
     d = cfg["settings"]() or {}
@@ -920,31 +922,61 @@ def pending(limit=None):
     return stems[:limit] if limit else stems
 
 
+def pending_upgrade(model="opus"):
+    """다른 모델(Sonnet)로 읽은 논문들 — Opus 로 다시 읽을 차례: 우선 저널 → 최근 연도"""
+    pref = _pref()
+    out = []
+    for stem in translated_stems():
+        d = load_cached(stem)
+        if not (d and d.get("v") == ANN_V and d.get("ok")):
+            continue   # 아직 없는 것은 보통 배치(pending)의 몫
+        if (d.get("model") or "") == model:
+            continue
+        y, j, _ = _meta(stem)
+        out.append(((0 if j in pref else 1), -y, stem))
+    out.sort()
+    return [x[2] for x in out]
+
+
 def _today():
     return datetime.date.today().isoformat()
 
 
-def run_batch(n, workers=None, nightly=False):
-    """지금 n편을 동시에 workers 편씩 읽는다(「지금 n편」 은 시간대·상한 무관). 이미 도는 배치가 있으면 그 수만 늘린다."""
+def run_batch(n, workers=None, nightly=False, upgrade=False):
+    """지금 n편을 동시에 workers 편씩 읽는다(「지금 n편」 은 시간대·상한 무관). 이미 도는 배치가 있으면 그 수만 늘리고 동시 편수를 바꾼다.
+    upgrade: 다른 모델로 읽은 논문을 ★ 저널의 모델(Opus)로 다시 읽는다 — 끝나면 바탕도 다시 세운다."""
     with _LOCK:
         if _STATE.get("batch_on"):
             _STATE["manual"] += n
+            if workers and _STATE.get("batch"):
+                _STATE["batch"]["workers"] = workers
             return
         _STATE.update(manual=n, batch_on=True, stop=False, nightly=nightly)
-    threading.Thread(target=_batch, args=(workers,), name="corpus-batch", daemon=True).start()
+    threading.Thread(target=_batch, args=(workers, upgrade), name="corpus-batch", daemon=True).start()
 
 
-def _batch(workers=None):
+def _batch(workers=None, upgrade=False):
     s = settings()
-    workers = workers or s["workers"]
-    sem = threading.Semaphore(workers)
+    cv = threading.Condition()
     active, fails = {}, [0]
-    _STATE["batch"] = {"t0": time.time(), "n0": _STATE["manual"], "done": 0, "fail": 0, "workers": workers}
+    _STATE["batch"] = {"t0": time.time(), "n0": _STATE["manual"], "done": 0, "fail": 0, "workers": workers or s["workers"], "upgrade": bool(upgrade)}
+    model_up = s["model"] if upgrade else None
+
+    def limit():
+        """동시 편수 — 설정 창에서 배치 도중에 바꾸면 다음 논문부터 따른다(세마포어는 처음 값에 묶여 있었다)"""
+        try:
+            return max(1, min(8, int((_STATE.get("batch") or {}).get("workers") or 1)))
+        except Exception:
+            return 1
 
     def work(stem):
+        old = load(stem) if upgrade else None
         try:
-            d = annotate(_pdf_of(stem), model_for(stem), stages=lambda x: _STATE.update(stage=x))
+            d = annotate(_pdf_of(stem), model_up or model_for(stem), force=bool(upgrade), stages=lambda x: _STATE.update(stage=x))
             ok = bool((d or {}).get("ok"))
+            if upgrade and not ok and old and old.get("ok"):
+                cfg["save_json"](ann_path(stem), old)   # 다시 읽기가 실패하면 옛 주석(Sonnet)을 지킨다 — 실패 기록이 멀쩡한 주석을 덮지 않게
+                _ANN_CACHE.pop(stem, None)
             _STATE["done_today"] += 1
             _STATE["tok_today"] += (d or {}).get("tok") or 0
             _STATE["batch"]["done"] += 1
@@ -955,40 +987,47 @@ def _batch(workers=None):
             _STATE["err"] = str(e)[:200]
             fails[0] += 1
         finally:
-            active.pop(stem, None)
-            _STATE["active"] = list(active)
-            _STATE["running"] = bool(active)
-            sem.release()
+            with cv:
+                active.pop(stem, None)
+                _STATE["active"] = list(active)
+                _STATE["running"] = bool(active)
+                cv.notify_all()
     try:
         while _STATE["manual"] > 0 and not _STATE["stop"]:
             if _STATE["day"] != _today():
                 _STATE.update(day=_today(), done_today=0, tok_today=0)
             if _STATE.get("nightly") and (not _in_window(s["hours"]) or _STATE["done_today"] >= s["per_day"]):
                 break   # 밤 학습은 시간대·하루 상한을 지킨다
-            todo = [x for x in pending() if x not in active]
-            if not todo:
-                break
             if fails[0] >= 3:   # Claude 가 잇달아 실패(한도·로그인) → 잠깐 쉰다
                 time.sleep(90)
                 fails[0] = 0
                 continue
-            sem.acquire()
+            with cv:
+                while len(active) >= limit() and not _STATE["stop"] and _STATE["manual"] > 0:
+                    cv.wait(5)
             if _STATE["stop"] or _STATE["manual"] <= 0:
-                sem.release()
+                break
+            todo = [x for x in (pending_upgrade(model_up) if upgrade else pending()) if x not in active]
+            if not todo:
                 break
             stem = todo[0]
-            _STATE["manual"] -= 1
-            active[stem] = True
-            _STATE["active"] = list(active)
-            _STATE["running"] = True
-            _STATE["current"] = stem
+            with cv:
+                _STATE["manual"] -= 1
+                active[stem] = True
+                _STATE["active"] = list(active)
+                _STATE["running"] = True
+                _STATE["current"] = stem
             threading.Thread(target=work, args=(stem,), daemon=True).start()
-        for _ in range(workers):   # 도는 것이 다 끝나길 기다린다
-            sem.acquire()
+        with cv:   # 도는 것이 다 끝나길 기다린다
+            while active:
+                cv.wait(5)
     finally:
         _STATE.update(batch_on=False, manual=0, running=False, current="", stage="", stop=False, active=[], nightly=False)
     try:
-        _synth_needed(settings())   # 바탕은 배치가 끝난 뒤 한 번만 (10편마다 다시 세우면 Opus 호출이 수십 번 늘어난다)
+        if upgrade:
+            _synth_all(settings())   # 주석이 바뀌었으니 편수가 그대로여도 바탕을 다시 세운다
+        else:
+            _synth_needed(settings())   # 바탕은 배치가 끝난 뒤 한 번만 (10편마다 다시 세우면 Opus 호출이 수십 번 늘어난다)
     except Exception as e:
         _STATE["err"] = ("바탕: %s" % e)[:200]
 
@@ -1001,6 +1040,20 @@ def _tick():
         return
     if s["on"] and _in_window(s["hours"]) and _STATE["done_today"] < s["per_day"] and pending(1):
         run_batch(s["per_day"] - _STATE["done_today"], s["workers"], nightly=True)
+
+
+def _synth_all(s):
+    """편수가 8 이상인 모든 묶음·절의 바탕을 강제로 다시 세운다 (Opus 로 다시 읽은 뒤)"""
+    for g in groups():
+        for kind in KINDS:
+            try:
+                _STATE["synth"] = "%s %s" % (g, kind)
+                need, n = needs_synth(g, kind)
+                if n >= 8:
+                    synthesize(g, kind, s["synth_model"], force=True)
+            except Exception as e:
+                _STATE["err"] = ("바탕 %s %s: %s" % (g, kind, e))[:200]
+    _STATE["synth"] = ""
 
 
 def _synth_needed(s):
@@ -1056,6 +1109,7 @@ def status():
     pend = pending(8)
     return {"settings": s, "in_window": _in_window(s["hours"]), "state": {k: v for k, v in _STATE.items() if k != "stop"},
             "translated": len(stems), "annotated": len(items), "pending": len(pending()), "tok": tok, "pref": sorted(pref),
+            "upgradable": sum(1 for st, a in items if a.get("ok") and a.get("v") == ANN_V and (a.get("model") or "") != s["model"]),
             "journals": [{"abbr": j, "done": v[0], "total": v[1], "pref": j in pref} for j, v in jl],
             "recent": [{"stem": st, "journal": a.get("journal"), "year": a.get("year"), "t": a.get("t"), "tok": a.get("tok"), "sec": a.get("sec"), "nsents": len(a.get("sents") or {}), "chain": len(a.get("chain") or []), "model": a.get("model")} for st, a in recent],
             "next": pend, "knows": knows}
@@ -1134,11 +1188,11 @@ def handle_post(h, body):
         except Exception:
             n = 5
         try:
-            w = max(1, min(6, int(body.get("workers") or 0))) if body.get("workers") else None
+            w = max(1, min(8, int(body.get("workers") or 0))) if body.get("workers") else None
         except Exception:
             w = None
-        run_batch(n, w)
-        return h._send(200, {"ok": True, "manual": _STATE["manual"], "workers": w or settings()["workers"]})
+        run_batch(n, w, upgrade=bool(body.get("upgrade")))
+        return h._send(200, {"ok": True, "manual": _STATE["manual"], "workers": w or settings()["workers"], "upgrade": bool(body.get("upgrade"))})
     if op == "stop":
         _STATE["stop"] = True
         _STATE["manual"] = 0

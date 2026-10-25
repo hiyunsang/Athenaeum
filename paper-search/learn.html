@@ -102,12 +102,13 @@
       <div class="row"><label>주석 ★ 저널</label><select id="sModel"><option value="opus">Opus</option><option value="sonnet">Sonnet</option></select></div>
       <div class="row"><label>주석 그 밖</label><select id="sRest"><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select></div>
       <div class="row"><label>바탕 모델</label><select id="sSyn"><option value="opus">Opus</option><option value="sonnet">Sonnet</option></select></div>
-      <div class="row"><label>동시에</label><select id="sWork"><option value="1">1편</option><option value="2">2편</option><option value="3">3편</option><option value="4">4편</option><option value="6">6편</option></select></div>
+      <div class="row"><label>동시에</label><select id="sWork"><option value="1">1편</option><option value="2">2편</option><option value="3">3편</option><option value="4">4편</option><option value="6">6편</option><option value="8">8편</option></select></div>
       <div class="hint">편마다 Claude 호출 2~3번 · 3만~4만 토큰(0.5~5분). 바탕 하나 2만~4만. Opus 는 같은 토큰으로 한도를 Sonnet 의 다섯 배쯤 쓰고 2~3배 느리다 — 글의 잣대가 되는 우선 저널(★)과 바탕은 Opus, 그 밖은 Sonnet 이 기본. 모든 주석은 논문의 문장 번호에 걸려 있어 원문으로 되짚을 수 있다.</div>
     </div>
     <div class="sideh">지금</div>
     <div class="box">
       <div class="row"><input type="number" id="runN" min="1" max="400" value="5"> 편 <button class="sm" id="runNow">지금 학습</button> <button class="sm" id="stopNow">멈추기</button></div>
+      <div class="row"><button class="sm" id="upNow" title="★ 저널이 아닌 논문은 Sonnet 으로 읽는 것이 기본 — 토큰이 넉넉할 때 Opus 로 다시 읽으면 주석이 더 세밀해지고(공백·역할), 끝나면 바탕을 다시 세운다. 편당 3만~4만 토큰(Opus)">Sonnet 으로 읽은 것을 Opus 로 다시</button></div>
       <div class="state" id="state"></div>
     </div>
     <div class="sideh">진도 <span class="n" id="progN"></span></div>
@@ -140,7 +141,7 @@ function renderSide() {
   $("sOn").checked = !!st.on; $("sH0").value = st.hours[0]; $("sH1").value = st.hours[1]; $("sPer").value = st.per_day; $("sModel").value = st.model; $("sRest").value = st.model_rest || "sonnet"; $("sSyn").value = st.synth_model; $("sWork").value = String(st.workers || 3);
   $("hdrN").textContent = S.annotated + "/" + S.translated + "편";
   let h = "";
-  if (x.running) h += "<div class='run'>지금 " + ((x.active || []).length || 1) + "편 읽는 중" + (x.batch ? " · 이 배치 " + x.batch.done + "/" + x.batch.n0 + (x.batch.fail ? " (실패 " + x.batch.fail + ")" : "") + " · " + Math.round((Date.now() / 1000 - x.batch.t0) / 60) + "분" : "") + "</div>" + (x.active || []).map(a => "<div class='hint'>· " + esc(a.slice(0, 64)) + "</div>").join("");
+  if (x.running) h += "<div class='run'>지금 " + ((x.active || []).length || 1) + "편 읽는 중" + (x.batch ? (x.batch.upgrade ? " · Opus 로 다시" : "") + " · 이 배치 " + x.batch.done + "/" + x.batch.n0 + " · 동시에 " + (x.batch.workers || "?") + "편" + (x.batch.fail ? " (실패 " + x.batch.fail + ")" : "") + " · " + Math.round((Date.now() / 1000 - x.batch.t0) / 60) + "분" : "") + "</div>" + (x.active || []).map(a => "<div class='hint'>· " + esc(a.slice(0, 64)) + "</div>").join("");
   else if (x.synth) h += "<div class='run'>바탕 세우는 중: " + esc(x.synth) + "</div>";
   else h += "<div>" + (x.manual > 0 ? "곧 다음 논문 (남은 " + x.manual + "편)" : (st.on ? (S.in_window ? "시간대 안 — 곧 다음 논문" : "시간대 밖 (" + st.hours[0] + "~" + st.hours[1] + "시에 돈다)") : "꺼져 있음")) + "</div>";
   h += "<div>오늘 " + x.done_today + "편 · 토큰 " + fmtTok(x.tok_today) + (st.per_day ? " · 상한 " + st.per_day + "편" : "") + "</div>";
@@ -148,6 +149,8 @@ function renderSide() {
   if (x.err) h += "<div class='err'>" + esc(x.err) + "</div>";
   $("state").innerHTML = h;
   $("progN").textContent = "주석 " + S.annotated + "편 · 토큰 " + fmtTok(S.tok);
+  $("upNow").textContent = S.upgradable ? "Sonnet 으로 읽은 " + S.upgradable + "편을 Opus 로 다시" : "모두 " + (st.model === "opus" ? "Opus" : st.model) + " 로 읽었다";
+  $("upNow").disabled = !S.upgradable || !!x.batch_on;
   $("jl").innerHTML = S.journals.filter(j => j.total > 0).slice(0, 18).map(j => "<div class='j" + (j.pref ? " pref" : "") + "'><span class='a'>" + (j.pref ? "★ " : "") + esc(j.abbr) + "</span><span class='bar'><i style='width:" + Math.round(100 * j.done / Math.max(1, j.total)) + "%'></i></span><span class='c'>" + j.done + "/" + j.total + "</span></div>").join("");
   $("nx").innerHTML = S.next.length ? S.next.map(s => "· " + esc(s.slice(0, 64))).join("<br>") : "없음 — 번역한 논문은 모두 주석이 있다";
 }
@@ -159,6 +162,7 @@ async function saveSettings() {
 for (const id of ["sOn", "sH0", "sH1", "sPer", "sModel", "sRest", "sSyn", "sWork"]) $(id).onchange = saveSettings;
 $("runNow").onclick = async () => { await api("/api/learn", { op: "run_now", n: +$("runN").value || 5 }); refresh(); };
 $("stopNow").onclick = async () => { await api("/api/learn", { op: "stop" }); refresh(); };
+$("upNow").onclick = async () => { if (!S.upgradable) return; if (!confirm("Sonnet 으로 읽은 " + S.upgradable + "편을 Opus 로 다시 읽습니다 — 편당 3만~4만 토큰(Opus), 끝나면 바탕을 다시 세웁니다. 시작할까요?")) return; await api("/api/learn", { op: "run_now", n: S.upgradable, upgrade: true }); refresh(); };
 
 /* ---- 바탕 ---- */
 function mdLite(t) {
