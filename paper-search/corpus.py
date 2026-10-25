@@ -27,7 +27,9 @@ _BUSY = set()
 _RETRY_AFTER = 1800
 _STATE = {"running": False, "current": "", "stage": "", "stop": False, "manual": 0, "day": "", "done_today": 0, "tok_today": 0,
           "last": None, "err": "", "started": 0, "synth": ""}
-_DEFAULT = {"on": True, "hours": [22, 8], "per_day": 30, "model": "sonnet", "synth_model": "sonnet", "sent_kinds": ["intro", "discussion", "rd", "conclusion"]}
+# 모델(사용자 2026-10-25: 'Sonnet 보다 Opus 5.5 가 낫지 않을까') — 바탕(규칙을 적는 쪽)은 Opus, 주석은 우선 저널(★ — 글의 잣대가 되는 논문)만 Opus 로, 그 밖 저널은 Sonnet 으로.
+# 토큰 수는 같아도 Opus 는 한도를 Sonnet 의 다섯 배쯤 깎고 2~3배 느리다 — 335편 전부 Opus 면 Sonnet 기준 6천만 토큰 어치, 우선 저널 133편만 Opus 면 3천만 어치.
+_DEFAULT = {"on": True, "hours": [22, 8], "per_day": 30, "model": "opus", "model_rest": "sonnet", "synth_model": "opus", "sent_kinds": ["intro", "discussion", "rd", "conclusion"]}
 KINDS = ["intro", "methods", "results", "rd", "discussion", "conclusion"]
 KIND_KO = {"intro": "서론", "methods": "방법", "results": "결과", "rd": "결과·논의", "discussion": "논의", "conclusion": "결론", "abstract": "초록", "other": "그 밖"}
 _ROLES = {"intro": ["배경", "선행연구", "공백", "목적·접근", "기여·구성"],
@@ -70,9 +72,16 @@ def settings():
     except Exception:
         s["hours"] = [22, 8]
     s["per_day"] = max(0, min(300, int(s.get("per_day") or 0)))
-    s["model"] = s["model"] if s.get("model") in ("sonnet", "opus") else "sonnet"
-    s["synth_model"] = s["synth_model"] if s.get("synth_model") in ("sonnet", "opus") else "sonnet"
+    s["model"] = s["model"] if s.get("model") in ("sonnet", "opus") else "opus"
+    s["model_rest"] = s["model_rest"] if s.get("model_rest") in ("sonnet", "opus") else "sonnet"
+    s["synth_model"] = s["synth_model"] if s.get("synth_model") in ("sonnet", "opus") else "opus"
     return s
+
+
+def model_for(stem):
+    """이 논문의 주석에 쓸 모델 — 우선 저널(★)은 settings.model, 그 밖은 model_rest"""
+    s = settings()
+    return s["model"] if _meta(_stem(stem))[1] in _pref() else s["model_rest"]
 
 
 def save_settings(body):
@@ -90,7 +99,7 @@ def save_settings(body):
             s["per_day"] = max(0, min(300, int(body["per_day"])))
         except Exception:
             pass
-    for k in ("model", "synth_model"):
+    for k in ("model", "model_rest", "synth_model"):
         if body.get(k) in ("sonnet", "opus"):
             s[k] = body[k]
     d = cfg["settings"]() or {}
@@ -325,7 +334,7 @@ def annotate(fname, model=None, force=False, stages=None):
     """논문 하나의 주석을 만든다(있으면 그대로). Claude 호출 2~3번. → 주석 dict"""
     stem = _stem(fname)
     s = settings()
-    model = model or s["model"]
+    model = model or model_for(stem)
     old = load(stem)
     if not force and old and old.get("v") == ANN_V and (old.get("ok") or time.time() - (old.get("t") or 0) < _RETRY_AFTER):
         return old
@@ -900,7 +909,7 @@ def _tick():
     stem = todo[0]
     _STATE.update(running=True, current=stem, stage="")
     try:
-        d = annotate(_pdf_of(stem), s["model"], stages=lambda x: _STATE.update(stage=x))
+        d = annotate(_pdf_of(stem), model_for(stem), stages=lambda x: _STATE.update(stage=x))
         _STATE["done_today"] += 1
         _STATE["tok_today"] += (d or {}).get("tok") or 0
         _STATE["last"] = {"stem": stem, "ok": bool((d or {}).get("ok")), "tok": (d or {}).get("tok"), "sec": (d or {}).get("sec"), "t": time.time()}
