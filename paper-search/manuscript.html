@@ -519,7 +519,7 @@ function renderFront() {
   ed.innerHTML = "<h2 class='title'>" + esc(doc.title) + "</h2><div class='crumb'>머리부 · " + esc(doc.meta.journal || "저널 미지정") + (doc.meta.lang === "en" ? " · 영어 원고" : "") + "</div>" +
     "<label class='f'>논문 제목</label><textarea id='fTitle' rows='2'>" + esc(f.title) + "</textarea>" +
     "<label class='f'>저자·소속</label><textarea id='fAuthors' rows='3'>" + esc(f.authors) + "</textarea>" +
-    "<label class='f'>초록 <span class='hint' style='font-weight:400'>" + wc + " 단어</span> <a href='#' class='act' style='font-weight:400' onclick='openEx();return false' title='잘 쓴 가공 논문들의 초록 구조를 옆에 펼쳐 놓고 쓰기 (서랍 본보기 탭에서 제목·서론·방법·결과·결론도)'>잘 쓴 초록 보기 →</a></label><textarea id='fAbs' rows='9'>" + esc(f.abstract) + "</textarea>" +
+    "<label class='f'>초록 <span class='hint' style='font-weight:400'>" + wc + " 단어</span> <a href='#' class='act' style='font-weight:400' onclick='openEx();return false' title='잘 쓴 가공 논문들의 초록 구조를 옆에 펼쳐 놓고 쓰기 (서랍 본보기 탭에서 제목·서론·방법·결과·결론도)'>잘 쓴 초록 보기 →</a> <a href='#' class='act' style='font-weight:400' onclick='stylusOpen(\"front\");return false' title='원고 전체를 읽고 초록의 논리대로 초록을 쓰고, 문장마다 원고와 대조합니다(Stylus) — 꼴은 서재의 그 저널 초록 분포에 맞춤'>Stylus 로 초록 쓰기 →</a></label><textarea id='fAbs' rows='9'>" + esc(f.abstract) + "</textarea>" +
     "<label class='f'>키워드 <span class='hint' style='font-weight:400'>세미콜론으로 구분</span></label><textarea id='fKw' rows='2'>" + esc((f.keywords || []).join("; ")) + "</textarea>" +
     "<label class='f'>하이라이트 <span class='hint' style='font-weight:400'>한 줄에 하나 · JMPT 3~5개, 각 85자 이내</span></label><textarea id='fHl' rows='5'>" + esc((f.highlights || []).join("\n")) + "</textarea>" +
     "<div class='ctl' style='padding:8px 0;margin-left:-8px'><button class='btn pri' id='frontGen'>초록·키워드·하이라이트 생성 (Claude)</button></div><div id='frontprog'></div>" +
@@ -600,7 +600,7 @@ function renderDocMode() {
     "<select id='docLang' style='border-color:transparent;font-size:12px;color:var(--text-2);background:transparent'><option value='ko'" + (lang === "ko" ? " selected" : "") + ">한국어 초안</option><option value='en'" + (lang === "en" ? " selected" : "") + ">영문</option></select>" +
     "<span class='hint'>문단을 눌러 바로 고칩니다. 근거 카드·검토·초안 생성은 문단 아래 「문단 모드 →」</span></div>" +
     "<textarea class='para' id='docTitle' rows='1' placeholder='제목' style='font-family:var(--font-serif);font-size:24px;font-weight:600;color:var(--text);margin:6px 0 4px;line-height:1.3;padding-left:0;border-left:0'>" + esc(f.title || doc.title) + "</textarea>" +
-    "<div class='sec-h'>" + (lang === "en" ? "Abstract" : "초록") + "</div><textarea class='para' data-front='abstract' placeholder='초록'>" + esc(f.abstract || "") + "</textarea>" +
+    "<div class='sec-h'>" + (lang === "en" ? "Abstract" : "초록") + " <a href='#' class='act' data-stylus='front' style='font-weight:400;font-size:11px' title='원고 전체를 읽고 초록의 논리대로 초록을 쓰고, 문장마다 원고와 대조합니다(Stylus)'>Stylus 로 초록 쓰기</a></div><textarea class='para' data-front='abstract' placeholder='초록'>" + esc(f.abstract || "") + "</textarea>" +
     doc.outline.map(n => "<div class='dsec' data-n='" + n.id + "'><div class='sec-h" + (n.level === 2 ? " l2" : "") + "'><input class='inl hd' data-h='" + n.id + "' value='" + esc(n.heading) + "'></div>" +
       "<textarea class='para' data-p='" + n.id + "' placeholder='" + (lang === "en" ? "영문 없음 - 문단 모드에서 영문화 →" : "여기에 쓰세요") + "'>" + esc(n[key] || "") + "</textarea>" +
       "<div class='pm'><span class='wcn'>" + wc(n[key]) + " 단어</span><span>카드 " + (n.cards || []).length + "</span><span class='st " + (n.status || "") + "'></span>" +
@@ -2106,10 +2106,13 @@ function libUseBind(el, it) {
 const STYLUS_CONCL_RX = /conclu|concluding|closing remarks|결론|맺음|맺는 말|summary and/i;
 const STYLUS_STAGE = { write: "원고를 읽고 결론을 쓰는 중 (1/4)", check: "문장마다 원고와 대조하는 중 (2/4)", revise: "걸린 곳을 고쳐 쓰는 중 (3/4)", recheck: "고친 글을 다시 대조하는 중 (4/4)", plan: "논증 모형·바탕·본보기를 읽고 설계도를 세우는 중 (1/2)", critique: "심사위원이 설계도를 공격해 고치는 중 (2/2)", extract: "서재에서 근거를 뽑는 중" };
 let stylusState = { node: "", form: "", note: "", busy: false, err: "", t0: 0, stage: "", pollT: null };
-function stylusOpen(nid) { stylusState.node = nid; switchTab("stylus"); renderStylus(); const t = document.querySelector("#tab-stylus textarea"); if (t) t.focus(); }
+function stylusOpen(nid) {
+  if (nid === "front") { switchTab("stylus"); renderStylus(); const t = $("abNote"); if (t) { t.focus(); t.scrollIntoView({ block: "center" }); } return; }   /* 초록 (2026-10-26) */
+  stylusState.node = nid; switchTab("stylus"); renderStylus(); const t = document.querySelector("#tab-stylus textarea"); if (t) t.focus();
+}
 function renderStylus() {
   const el = $("tab-stylus"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
-  const st = stylusState, runs = (doc.stylus || []).filter(u => u.kind === "conclusion");
+  const st = stylusState, runs = (doc.stylus || []).filter(u => u.kind === "conclusion"), aruns = (doc.stylus || []).filter(u => u.kind === "abstract");
   const concl = doc.outline.filter(n => STYLUS_CONCL_RX.test(n.heading || ""));
   if (!st.node || !node(st.node)) st.node = concl.length ? concl[concl.length - 1].id : "";
   const keep = document.activeElement && document.activeElement.id === "stNote" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
@@ -2123,7 +2126,10 @@ function renderStylus() {
     "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px'><button class='btn pri' id='stRun'" + (st.busy ? " disabled" : "") + ">결론 쓰기</button>" + (st.busy ? "" : "<span class='hint'>" + (node(st.node) && (node(st.node)[docKey()] || "").trim() ? "그 절에 글이 있습니다 — 참고만 하고 처음부터 다시 씁니다. 넣을 때 바꿀지 묻습니다." : "") + "</span>") + "</div>" +
     (st.busy ? waitHtml(STYLUS_STAGE[st.stage] || STYLUS_STAGE.write, st.t0, durGet("stylus|concl|" + chatEffort(), 420), "<div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>", "stStage") : "") +
     (st.err ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(st.err) + "</div>" : "");
-  runs.slice(0, 6).forEach((u, ui) => { h += stylusRunHtml(u, ui); });
+  const all = runs.slice(0, 6);   /* 결론 카드 뒤에 초록 블록과 초록 카드 — 단추의 번호는 all 의 자리 (2026-10-26) */
+  all.forEach((u, ui) => { h += stylusRunHtml(u, ui); });
+  h += absBlockHtml();
+  aruns.slice(0, 6).forEach(u => { h += stylusRunHtml(u, all.length); all.push(u); });
   el.innerHTML = h;
   const q = id => el.querySelector("#" + id);
   if (q("stNote")) { autogrow(q("stNote")); q("stNote").oninput = e => { st.note = e.target.value; }; if (keep) { q("stNote").focus(); try { q("stNote").setSelectionRange(keep[0], keep[1]); } catch (e) {} } }
@@ -2131,10 +2137,12 @@ function renderStylus() {
   if (q("stForm")) q("stForm").onchange = e => { st.form = e.target.value; };
   if (q("stEffort")) q("stEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
   if (q("stRun")) q("stRun").onclick = stylusRun;
-  el.querySelectorAll("[data-stput]").forEach(b => b.onclick = () => stylusApply(runs[+b.dataset.stput]));
-  el.querySelectorAll("[data-stcopy]").forEach(b => b.onclick = () => { navigator.clipboard.writeText(runs[+b.dataset.stcopy].text); b.textContent = "복사됨"; });
-  el.querySelectorAll("[data-stdel]").forEach(b => b.onclick = () => { const u = runs[+b.dataset.stdel]; doc.stylus = (doc.stylus || []).filter(x => x !== u); save(true); renderStylus(); });
-  el.querySelectorAll("[data-stundo]").forEach(b => b.onclick = () => stylusUndo(runs[+b.dataset.stundo]));
+  el.querySelectorAll("[data-stput]").forEach(b => b.onclick = () => stylusApply(all[+b.dataset.stput]));
+  el.querySelectorAll("[data-stcopy]").forEach(b => b.onclick = () => { navigator.clipboard.writeText(all[+b.dataset.stcopy].text); b.textContent = "복사됨"; });
+  el.querySelectorAll("[data-stdel]").forEach(b => b.onclick = () => { const u = all[+b.dataset.stdel]; doc.stylus = (doc.stylus || []).filter(x => x !== u); save(true); renderStylus(); });
+  el.querySelectorAll("[data-stundo]").forEach(b => b.onclick = () => stylusUndo(all[+b.dataset.stundo]));
+  if (q("abNote")) { autogrow(q("abNote")); q("abNote").oninput = e => { absState.note = e.target.value; }; }
+  if (q("abRun")) q("abRun").onclick = stylusAbsRun;
   bindPlan(el);
 }
 
@@ -2255,28 +2263,31 @@ async function planWrite(pid, i) {
 }
 
 function stylusRunHtml(u, ui) {
-  const c = u.check || {}, ss = c.sentences || [], bad = ss.filter(x => x.verdict === "over" || x.verdict === "none"), n = node(u.node);
+  const c = u.check || {}, ss = c.sentences || [], bad = ss.filter(x => x.verdict === "over" || x.verdict === "none"), n = node(u.node), isAbs = u.kind === "abstract";
   const fmtT = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const V = { over: "원고보다 나아간 말", none: "원고에 없는 말" };
   const fl = u.flow || {}, flowOk = !(fl.out || []).length && !(c.share_out || []).length;
-  let h = "<div class='card' style='margin-top:10px'><div class='m'><b>" + esc(n ? n.heading : u.node) + "</b><span class='hint' style='display:inline'>" + fmtT(u.t) + " · " + esc(u.model || "") + " · " + esc(u.stylus || "") + (u.sec ? " · " + u.sec + "초" : "") + (tokNote(u.tok) ? " · " + tokNote(u.tok) : "") + (u.form === "list" ? " · 목록" : "") + (u.note ? " · 주문: " + esc(u.note.slice(0, 50)) : "") + "</span></div>" +
+  let h = "<div class='card' style='margin-top:10px'><div class='m'><b>" + esc(isAbs ? "초록" : n ? n.heading : u.node) + "</b><span class='hint' style='display:inline'>" + fmtT(u.t) + " · " + esc(u.model || "") + " · " + esc(u.stylus || "") + (u.sec ? " · " + u.sec + "초" : "") + (tokNote(u.tok) ? " · " + tokNote(u.tok) : "") + (u.form === "list" ? " · 목록" : "") + (u.note ? " · 주문: " + esc(u.note.slice(0, 50)) : "") + "</span></div>" +
     (u.answer ? "<div class='fbmsg claude'>" + fbFmt(u.answer) + "</div>" : "") +
     "<div class='rvtext' style='white-space:pre-wrap;margin:6px 0'>" + esc(u.text) + "</div>" +
     "<div class='acts'><button class='btn pri' data-stput='" + ui + "'" + (u.done ? " title='이미 넣었습니다 — 다시 넣으면 그 절의 지금 글을 이 글로 바꿉니다'" : "") + ">" + (u.done ? "다시 이 절에 넣기" : "이 절에 넣기") + "</button>" +
     (u.done && u.before != null ? "<button class='btn' data-stundo='" + ui + "' title='이 절을 넣기 전의 글로 되돌립니다. 지금 글은 판 이력에 남깁니다'>고치기 전 글로 되돌리기</button>" : "") +
     "<button class='btn' data-stcopy='" + ui + "'>복사</button><span style='margin-left:auto'></span><button class='btn warn' data-stdel='" + ui + "'>지우기</button></div>";
   // 원고와 대조
-  h += "<div class='sec' style='padding-left:0;margin-top:6px'>원고와 대조</div><div class='hint'>문장 " + ss.length + "개 — 원고가 받침 " + ss.filter(x => x.verdict === "ok").length + " · 저자의 말(수행·종합·의의·향후) " + ss.filter(x => x.verdict === "own").length +
+  h += "<div class='sec' style='padding-left:0;margin-top:6px'>원고와 대조</div><div class='hint'>문장 " + ss.length + "개 — 원고가 받침 " + ss.filter(x => x.verdict === "ok").length + " · " + (isAbs ? "저자의 말(배경·목적·의의)" : "저자의 말(수행·종합·의의·향후)") + " " + ss.filter(x => x.verdict === "own").length +
     " · <b style='color:" + (bad.length ? "var(--amber)" : "var(--green)") + "'>확인할 곳 " + bad.length + "</b>" + ((u.nums_missing || []).length ? " · <b style='color:var(--amber)'>원고에 없는 수치 " + u.nums_missing.join(", ") + "</b>" : " · 수치는 모두 원고에 있음") +
+    ((u.abbr_missing || []).length ? " · <b style='color:var(--amber)'>초록 안에서 풀지 않은 약어 " + u.abbr_missing.map(esc).join(", ") + "</b>" : "") +
+    (isAbs && (c.missing || []).length ? "<br><span style='color:var(--amber)'>빠뜨린 것: " + c.missing.map(esc).join(" · ") + "</span>" : "") +
     (u.rounds > 1 ? "<br>처음 쓴 글에서 걸린 곳을 고쳐 쓴 뒤 다시 대조한 결과입니다." + (u.changes ? " " + esc(u.changes) : "") : "") +
-    (c.reads === "listed" ? "<br><span style='color:var(--amber)'>통독: 결과를 늘어놓은 목록으로 읽힙니다 — 결과마다 해석을 붙이고 종합 문장으로 꿰도록 주문해 보세요.</span>" : "") +
+    (c.reads === "listed" ? "<br><span style='color:var(--amber)'>" + (isAbs ? "통독: 결과를 늘어놓은 목록이나 본문의 조각으로 읽힙니다 — 문제 → 한 일 → 본 것 → 뜻이 한 흐름으로 서도록 주문해 보세요." : "통독: 결과를 늘어놓은 목록으로 읽힙니다 — 결과마다 해석을 붙이고 종합 문장으로 꿰도록 주문해 보세요.") + "</span>" : "") +
     (c.order || []).map(x => "<br><span style='color:var(--amber)'>차례: " + esc(x) + "</span>").join("") +
-    "<br>논문의 범위와 견줌" + (flowOk ? " — <span style='color:var(--green)'>문장 수·수치·완곡한 말·이음·걸음의 비율이 서재 논문 결론의 90% 안</span>" : (fl.out || []).length ? ": <span style='color:var(--amber)'>" + fl.notes.map(esc).join(" · ") + "</span>" : "") +
+    "<br>논문의 범위와 견줌" + (flowOk ? " — <span style='color:var(--green)'>" + (isAbs ? "문장 수·낱말 수·수치·완곡한 말·역할의 비율이 서재의 그 저널 초록" + (u.shape ? "(" + esc(u.shape.src) + " " + u.shape.npaper + "편)" : "") + "의 90% 안" : "문장 수·수치·완곡한 말·이음·걸음의 비율이 서재 논문 결론의 90% 안") + "</span>" : (fl.out || []).length ? ": <span style='color:var(--amber)'>" + fl.notes.map(esc).join(" · ") + "</span>" : "") +
     ((c.share_out || []).length ? " · <span style='color:var(--amber)'>" + c.share_out.map(m => m + " 문장이 논문보다 많음(" + c.share[m] + "%)").join(", ") + "</span>" : "") + "</div>";
   h += bad.map(x => "<div class='libchk nv'><div class='k'><b class='w'>" + V[x.verdict] + "</b>" + (x.src ? " · 받침: " + esc(x.src) : "") + "</div><div class='q'>" + esc(x.s) + "…</div><div>" + esc(x.why) + (x.fix ? " <span style='color:var(--text-2)'>고치려면: " + esc(x.fix) + "</span>" : "") + "</div></div>").join("");
   if (ss.length) h += "<details class='libmore'><summary>문장마다 걸음과 받침 " + ss.length + "개</summary>" + ss.map(x => "<div class='libchk nv'><div class='k'><b>" + esc(x.move) + "</b> · " + (x.verdict === "own" ? "저자의 말" : x.verdict === "ok" ? "받침: " + esc(x.src || "") : V[x.verdict]) + "</div><div class='q'>" + esc(x.s) + "…</div>" + (x.verdict !== "ok" && x.why ? "<div>" + esc(x.why) + "</div>" : "") + "</div>").join("") + "</details>";
-  if ((u.plan || []).length) h += "<details class='libmore'><summary>결론의 짜임 — 걸음마다 왜 이 자리인가</summary>" + u.plan.map((p, i) => "<div class='libchk nv'><div class='q'>" + (i + 1) + ". <b>" + esc(p.move) + "</b>" + (p.sents && p.sents.length ? " <span class='hint' style='display:inline'>문장 " + esc(p.sents.join(", ")) + "</span>" : "") + "</div><div>" + esc(p.why) + (p.src ? " <span class='hint' style='display:inline'>— 받침: " + esc(p.src) + "</span>" : "") + "</div></div>").join("") + "</details>";
+  if ((u.plan || []).length) h += "<details class='libmore'><summary>" + (isAbs ? "초록의 짜임" : "결론의 짜임") + " — 걸음마다 왜 이 자리인가</summary>" + u.plan.map((p, i) => "<div class='libchk nv'><div class='q'>" + (i + 1) + ". <b>" + esc(p.move) + "</b>" + (p.sents && p.sents.length ? " <span class='hint' style='display:inline'>문장 " + esc(p.sents.join(", ")) + "</span>" : "") + "</div><div>" + esc(p.why) + (p.src ? " <span class='hint' style='display:inline'>— 받침: " + esc(p.src) + "</span>" : "") + "</div></div>").join("") + "</details>";
   if (u.draft) h += "<details class='libmore'><summary>처음 쓴 글과 견주기</summary><div class='rvdiff" + (altView() === "clean" ? " clean" : "") + "'>" + (altView() === "clean" ? cleanDiff(u.draft, u.text) : wordDiff(u.draft, u.text)) + "</div></details>";
+  if (u.alt && u.alt.text) h += "<details class='libmore'><summary>고쳐 쓴 글 — 쓰지 않음 (" + esc(u.alt.why || "") + ")</summary>" + (u.alt.changes ? "<div class='hint'>" + esc(u.alt.changes) + "</div>" : "") + "<div class='rvdiff" + (altView() === "clean" ? " clean" : "") + "'>" + (altView() === "clean" ? cleanDiff(u.text, u.alt.text) : wordDiff(u.text, u.alt.text)) + "</div></details>";
   return h + "</div>";
 }
 async function stylusRun() {
@@ -2294,6 +2305,7 @@ async function stylusRun() {
   renderStylus();
 }
 async function stylusApply(u) {
+  if (u.node === "front") return stylusApplyAbs(u);
   const n = node(u.node); if (!n) { alert("그 절이 개요에서 없어졌습니다."); return; }
   const key = docKey(), cur = (n[key] || "").trim(), mid = doc.id;
   if (cur && !confirm("「" + n.heading + "」 의 지금 글을 Stylus 가 쓴 결론으로 바꿉니다.\n\n바꾸기 전의 글은 판 이력에 남기고, 여기 「고치기 전 글로 되돌리기」 로도 되돌립니다.")) return;
@@ -2305,6 +2317,7 @@ async function stylusApply(u) {
   u.before = cur; u.after = u.text; u.done = Date.now() / 1000; delete u.undone; save(true); renderStylus();
 }
 async function stylusUndo(u) {
+  if (u.node === "front") return stylusUndoAbs(u);
   const n = node(u.node); if (!n || u.before == null) return;
   const key = docKey(), mid = doc.id, more = normWs(n[key] || "") !== normWs(u.after || "");
   if (!confirm("「" + n.heading + "」 을 Stylus 결론을 넣기 전의 글로 되돌립니다." + (more ? "\n\n넣은 뒤에 이 절을 더 고치셨습니다 — 되돌리면 그 뒤에 고친 것도 함께 사라집니다." : "") + "\n\n지금 글은 판 이력에 남깁니다.")) return;
@@ -2313,6 +2326,54 @@ async function stylusUndo(u) {
   const text = u.before, ta = taFor(u.node, key);
   if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
   else n[key] = text;
+  delete u.done; delete u.before; delete u.after; u.undone = Date.now() / 1000; save(true); renderStylus();
+}
+
+// ---------- Stylus · 초록 쓰기 (2026-10-26): 내용은 원고·논증 모형에서만, 꼴은 서재의 그 저널 초록 분포에 — 결론 쓰기와 같은 네 단계
+const ABS_STAGE = { shape: "서재의 그 저널 초록을 문장마다 읽어 분포를 재는 중 (처음 한 번 — 1~5분)", write: "원고를 읽고 초록을 쓰는 중 (1/4)", check: "문장마다 원고와 대조하는 중 (2/4)", revise: "걸린 곳을 고쳐 쓰는 중 (3/4)", recheck: "고친 글을 다시 대조하는 중 (4/4)" };
+let absState = { note: "", busy: false, err: "", t0: 0, stage: "", pollT: null };
+function absBlockHtml() {
+  const ab = absState, cur = ((doc.front || {}).abstract || "").trim();
+  return "<div class='sec' style='padding-left:0;margin-top:18px'>Stylus · 초록 쓰기</div>" +
+    "<div class='hint'>원고 전체를 읽고 <b>초록의 논리</b>대로 씁니다 — 배경·공백 → 목적·방법 → 물음의 차례대로 결과(대표값 하나씩) → 의의. 내용은 <b>이 원고와 논증 모형</b>에서만(서재의 사실을 들이지 않습니다), 꼴은 서재의 그 저널 초록을 문장마다 읽어 잰 분포(문장 수·낱말 수·역할의 차례·수치 비율)에 맞춥니다. 쓴 뒤 문장마다 원고의 받침을 대조하고, 본문에 없는 수치와 풀지 않은 약어를 찾아내고, 빠뜨린 핵심이 있는지 보고, 분포와 견줍니다. 걸린 곳은 한 번 고쳐 씁니다(3~6분). 처음 한 번은 그 저널 초록의 분포를 재느라 몇 분 더 듭니다.</div>" +
+    "<textarea id='abNote' rows='2' placeholder='주문 (비워도 됩니다) — 예: 200단어 안에 / 결과는 셋으로 / 의의로 끝내기 / 구조화 초록(Purpose·Methods·Results)'>" + esc(ab.note) + "</textarea>" +
+    "<div class='ctl' style='padding:4px 0 6px;margin-left:-8px'><button class='btn pri' id='abRun'" + (ab.busy ? " disabled" : "") + ">초록 쓰기</button>" + (ab.busy ? "" : "<span class='hint'>" + (cur ? "초록에 글이 있습니다 — 참고만 하고 처음부터 다시 씁니다. 넣을 때 바꿀지 묻습니다. " : "") + "모델은 위의 고르기를 씁니다.</span>") + "</div>" +
+    (ab.busy ? waitHtml(ABS_STAGE[ab.stage] || ABS_STAGE.write, ab.t0, durGet("stylus|abs|" + chatEffort(), 300), "<div class='hint'>다른 일을 하셔도 됩니다. 결과는 여기에 남습니다.</div>", "abStage") : "") +
+    (ab.err ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(ab.err) + "</div>" : "");
+}
+async function stylusAbsRun() {
+  const ab = absState; if (ab.busy || !doc) return;
+  const mid = doc.id, key = docKey(), eff = chatEffort();
+  ab.busy = true; ab.err = ""; ab.t0 = Date.now(); ab.stage = "write"; renderStylus();
+  clearInterval(ab.pollT);
+  ab.pollT = setInterval(async () => { try { const g = await api("/api/ms/stylus", { id: mid, op: "stage" }); if (g && g.stage && ab.busy) { ab.stage = g.stage; const e = $("abStage"); if (e) e.textContent = ABS_STAGE[g.stage] || g.stage; } } catch (e) {} }, 4000);
+  await saveNow();   // 서버가 원고 파일을 읽는다
+  let r; try { r = await api("/api/ms/stylus", { id: mid, op: "abstract", key, note: ab.note.trim(), effort: eff }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  clearInterval(ab.pollT); ab.busy = false;
+  if (!doc || doc.id !== mid) return;
+  if (r.error) ab.err = r.error;
+  else { durPut("stylus|abs|" + eff, r.sec || (Date.now() - ab.t0) / 1000); doc.stylus = [r].concat((doc.stylus || []).filter(x => x.kind !== "abstract").slice(0, 7)); save(true); }
+  renderStylus();
+}
+async function stylusApplyAbs(u) {
+  const mid = doc.id, cur = ((doc.front || {}).abstract || "").trim();
+  if (cur && !confirm("초록의 지금 글을 Stylus 가 쓴 초록으로 바꿉니다.\n\n바꾸기 전의 글은 판 이력에 남기고, 여기 「고치기 전 글로 되돌리기」 로도 되돌립니다.")) return;
+  if (cur) await snapNow("Stylus 초록 넣기 전");
+  if (!doc || doc.id !== mid) return;
+  const ta = taFor("front", "abstract");
+  if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, u.text)) { ta.setRangeText(u.text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
+  else { doc.front = doc.front || {}; doc.front.abstract = u.text; }
+  u.before = cur; u.after = u.text; u.done = Date.now() / 1000; delete u.undone; save(true); renderStylus();
+}
+async function stylusUndoAbs(u) {
+  if (u.before == null) return;
+  const mid = doc.id, more = normWs((doc.front || {}).abstract || "") !== normWs(u.after || "");
+  if (!confirm("초록을 Stylus 초록을 넣기 전의 글로 되돌립니다." + (more ? "\n\n넣은 뒤에 초록을 더 고치셨습니다 — 되돌리면 그 뒤에 고친 것도 함께 사라집니다." : "") + "\n\n지금 글은 판 이력에 남깁니다.")) return;
+  await snapNow("되돌리기 전 — 초록");
+  if (!doc || doc.id !== mid) return;
+  const text = u.before, ta = taFor("front", "abstract");
+  if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
+  else { doc.front = doc.front || {}; doc.front.abstract = text; }
   delete u.done; delete u.before; delete u.after; u.undone = Date.now() / 1000; save(true); renderStylus();
 }
 

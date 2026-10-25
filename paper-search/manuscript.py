@@ -5485,6 +5485,328 @@ def stylus_conclusion(doc, body):
             "stylus": STYLUS, "model": (res or {}).get("model", ""), "tok": tok, "sec": round(time.time() - t0), "steps": [[x[0], x[1]] for x in steps], "whole": bool(whole)}
 
 
+# ---------- Stylus · 초록 쓰기 (2026-10-26, 승인된 차례의 ⑥) ----------
+# 내용은 이 원고와 논증 모형에서만(서재의 사실을 들이지 않는다 — 초록은 이 연구의 말), 꼴은 서재의 그 저널 초록을 문장마다 읽어 잰 분포(문장 수·낱말 수·역할의 차례·수치 비율, abstract_shape)에 맞춘다.
+# 쓴 뒤: 다른 호출이 문장마다 역할과 원고의 받침을 대조(ok/over/none/own)·빠뜨린 핵심을 보고, 프로그램이 본문에 없는 수치·초록 안에서 풀지 않은 약어·분포 범위를 확인 → 걸리면 한 번 고쳐 쓰고 다시 대조. 결론 쓰기(stylus_conclusion)와 같은 길.
+_ABS_MOVES = tuple(MOVES) + ("그밖",)
+_ABS_LOGIC = (
+    "[초록의 논리 — 문장마다 왜 그 자리에 오는가]\n"
+    "1. 초록은 그 자체로 완결된 작은 논문이다 — 논문을 읽을지 정하는 독자와 초록만 읽을 독자 둘 다를 위해: 무엇이 문제이고(배경·공백) 무엇을 어떻게 했고(목적·방법) 무엇을 보았고(결과) 그것이 무엇을 뜻하나(의의). 본문과 따로 읽히므로 본문을 가리키는 말(그림·표·절 번호, 'as shown below')을 쓰지 않는다.\n"
+    "2. 배경은 한두 문장 — 이 분야에서 왜 이 물음이 서는가. 공백은 한 문장으로 바로 목적에 잇는다(…, but … remains unclear. → This study …). 공백 없이 목적으로 바로 들어가는 초록도 흔하다 — 억지로 세우지 않는다. 서론의 문헌 정리를 되풀이하지 않는다.\n"
+    "3. 목적·방법: 무엇을 무엇으로 어떻게 했나 — 재료·공정·측정의 이름과 그 실험을 규정하는 조건(범위·수준) 정도. 장치 사양·절차의 세부는 본문에 둔다. 처음 나오는 약어는 풀어 쓰고 괄호에 약어.\n"
+    "4. 결과: 서론의 물음 차례대로(논증 모형의 약속 → 답하는 주장) 2~4문장 — 문장 하나에 발견 하나, 수치는 그 발견의 크기를 보여 주는 대표값 하나(원고의 수치 그대로 — 초록에 새 수치를 들이지 않는다). 관찰과 그 뜻을 한 문장에 묶어도 된다(…, indicating that …). 조건별 값의 나열은 본문에 둔다.\n"
+    "5. 의의: 마지막 한두 문장 — 이 결과가 바꾸는 것·누가 어디에 쓰나(이 분야 논문의 초록은 거의 모두 의의나 결과로 끝난다). 배경을 되풀이하거나 '향후 연구가 필요하다' 로 끝내지 않는다.\n"
+    "6. 하지 않는 것: 문헌 인용, 원고에 없는 주장·수치, 풀지 않은 약어, 'In this paper' 식 되풀이, 새로움의 과장('for the first time' 은 정말 그럴 때 한 번), 수식·기호의 남발, 서론·결론의 문장을 그대로 베끼기(말을 줄여 다시 쓴다).\n"
+    "7. 문장: 한 일은 과거 시제, 일반 사실·의의는 현재 시제. 접속 부사는 맨 앞에(가운데는 also 만). 결과 문장은 조건·수치를 담아 길어도 되지만 목적·의의 문장은 짧게 끊는다. 한 문단으로 쓴다(저널이 구조화 초록을 요구하면 저자가 주문에 적는다).\n"
+    "8. 분량: [이 저널 초록의 크기] 가 있으면 그 범위 안에서 이 연구에 필요한 만큼(없으면 문장 6~12개·낱말 150~280개). 범위를 채우려고 늘리지 않는다.\n"
+    "9. 문장의 크기와 첫머리:\n") + _style_pick(("문장의 크기는", "문장의 첫머리(주어)는", "같은 것을 다시 가리킬", "조건·범위의 부사구", "덧붙일 말"))
+_ABS_BAND_DEFAULT = {"nsent": (4, 14), "words": (100, 330), "num": (0, 75), "hedge": (0, 45)}   # 서재의 분포를 못 잴 때(그 저널 초록이 8편 미만)
+_ABS_SHAPE = {}
+_ABBR_OK = {"DOI", "USA", "UK", "EU", "ISO", "ASTM", "DIN", "JIS", "ANSI", "MPa", "GPa", "KPa", "HV", "HRC", "HB", "RPM", "SI", "II", "III", "IV", "VI", "VII", "VIII", "IX", "XX", "UTS", "PVD", "CVD"}
+
+
+def _abs_journals(doc):
+    js = [j for j in _journal_abbrs(doc) if j]
+    return tuple(js) if js else ("IJMTM", "JMPT")
+
+
+def abstract_shape(journals=("IJMTM", "JMPT"), label=True):
+    """그 저널 논문 초록의 크기와 차례 — 서재 PDF 의 초록(_abstract_of → extract_abstract)을 문장으로 나누고(_sentences) 문장마다 역할(_label_chunked 'abstract' — 본보기와 같은 Sonnet 라벨, 같은 캐시)을 붙여 잰다:
+    문장 수·낱말 수·수치가 든 문장 %·완곡한 말이 든 문장 % 의 [5%, 가운데, 95%] · 역할마다 문장 비율의 95% · 첫/끝 문장의 역할 분포 · 역할 차례(이어진 같은 역할은 하나로) 상위. 8편 미만이면 None.
+    처음 한 번은 라벨링에 Sonnet 호출 수십 번(1~5분)이 든다 — 결과를 원고\\_초록분포.json 에 두고(저널 묶음마다) 그 저널의 논문이 15% 넘게 늘면 다시 잰다. label=False 면 라벨 없이 크기만."""
+    journals = tuple(journals) if journals else ("IJMTM", "JMPT")
+    try:
+        names = [f for f in os.listdir(cfg["ARCHIVE"]) if f.lower().endswith(".pdf")]
+    except OSError:
+        names = []
+    files = []
+    for f in sorted(names):
+        m = re.match(r"^\d{4}_([A-Za-z0-9&-]+)_", f)
+        if m and m.group(1) in journals:
+            files.append(f)
+    jkey = "·".join(journals)
+    ck = (jkey, len(files))
+    if ck in _ABS_SHAPE:
+        return _ABS_SHAPE[ck]
+    path = os.path.join(cfg["MS_DIR"], "_초록분포.json")
+    store = (cfg["load_json"](path, {}) if cfg.get("load_json") else {}) or {}
+    old = store.get(jkey)
+    if isinstance(old, dict) and old.get("npaper") and len(files) <= int(old.get("nfiles") or 0) * 1.15:
+        _ABS_SHAPE[ck] = old
+        return old
+    texts = {}
+    for f in files:
+        en = (_abstract_of(f) or {}).get("en") or ""
+        ss = _sentences(en)
+        if 3 <= len(ss) <= 20 and 60 <= len(en.split()) <= 500:
+            texts[f] = ss
+    if len(texts) < 8:
+        _ABS_SHAPE[ck] = None
+        return None
+    roles = _label_chunked("abstract", texts) if label else {}
+    import collections
+    rows, pats, first, last, share = [], collections.Counter(), collections.Counter(), collections.Counter(), {m: [] for m in MOVES}
+    for f, ss in texts.items():
+        rl = [x[0] for x in (roles.get(f) or []) if isinstance(x, list) and x and x[0] in MOVES]
+        if len(rl) != len(ss):
+            rl = _heuristic_roles("abstract", ss)
+        words = sum(len(s.split()) for s in ss)
+        rows.append((len(ss), words, round(100.0 * sum(1 for s in ss if _NUM_RX.search(s)) / len(ss)), round(100.0 * sum(1 for s in ss if _HEDGE_RX.search(s)) / len(ss))))
+        seq = []
+        for r in rl:
+            if not seq or seq[-1] != r:
+                seq.append(r)
+        pats[" → ".join(seq)] += 1
+        first[rl[0]] += 1
+        last[rl[-1]] += 1
+        for m in MOVES:
+            share[m].append(round(100.0 * sum(1 for r in rl if r == m) / len(rl)))
+
+    def band(vals):
+        v = sorted(vals)
+        return [v[min(len(v) - 1, int(q * (len(v) - 1) + 0.5))] for q in (.05, .5, .95)]
+    n = len(rows)
+    sh = {"src": jkey, "npaper": n, "nfiles": len(files), "labeled": bool(label), "t": time.time(),
+          "sents": band([r[0] for r in rows]), "words": band([r[1] for r in rows]), "num": band([r[2] for r in rows]), "hedge": band([r[3] for r in rows]),
+          "share": {m: band(share[m])[2] for m in MOVES}, "share_mid": {m: band(share[m])[1] for m in MOVES},
+          "first": {m: round(100.0 * c / n) for m, c in first.most_common()}, "last": {m: round(100.0 * c / n) for m, c in last.most_common()},
+          "patterns": [[p, round(100.0 * c / n)] for p, c in pats.most_common(4)]}
+    _ABS_SHAPE[ck] = sh
+    if label and cfg.get("save_json"):
+        try:
+            store = cfg["load_json"](path, {}) or {}
+            store[jkey] = sh
+            cfg["save_json"](path, store)
+        except Exception:
+            pass
+    return sh
+
+
+def _ratio_ko(p):
+    """백분율 → '열에 여섯' 꼴 — Claude 에게 숫자 목표를 주지 않는다(corpus._ratio_text 와 같은 잣대)"""
+    if p >= 93:
+        return "거의 모두"
+    if p <= 7:
+        return "드물게"
+    return "열에 %d" % max(1, min(9, int(round(p / 10.0))))
+
+
+def abstract_shape_text(sh):
+    """abstract_shape 를 Claude 에게 줄 몇 줄로 — 범위를 채우라는 뜻이 아님을 같이 적는다"""
+    if not sh:
+        return ""
+    fr = ", ".join("%s %s" % (_ratio_ko(p), m) for m, p in list((sh.get("first") or {}).items())[:2] if p >= 8)
+    la = ", ".join("%s %s" % (_ratio_ko(p), m) for m, p in list((sh.get("last") or {}).items())[:2] if p >= 8)
+    pats = " / ".join("%s(%s)" % (p, _ratio_ko(c)) for p, c in (sh.get("patterns") or [])[:3] if c >= 8)
+    return ("[이 저널 초록의 크기와 차례 — 서재의 %s 논문 %d편의 초록을 문장마다 읽고 잰 것. 열에 아홉은 이 범위 안이다] 문장 %d~%d개(가운데 %d) · 낱말 %d~%d개(가운데 %d) · 수치가 든 문장 %d~%d%%(가운데 %d%%) · 완곡한 말(may·suggest)이 든 문장은 많아야 %d%%. "
+            "첫 문장은 %s · 끝 문장은 %s%s. 길이와 차례는 이 범위 안에서 이 연구의 논리에 필요한 만큼 — 범위를 채우려고 늘리거나 흔한 차례를 베끼지 않는다.\n"
+            % (sh["src"], sh["npaper"], sh["sents"][0], sh["sents"][2], sh["sents"][1], sh["words"][0], sh["words"][2], sh["words"][1], sh["num"][0], sh["num"][2], sh["num"][1], sh["hedge"][2],
+               fr or "배경이나 목적", la or "의의나 결과", (" · 흔한 차례: " + pats) if pats else ""))
+
+
+def _abs_models(doc, journals, n=3):
+    """[같은 저널의 초록 — 문장마다 역할]: 주제가 가까운 서재 논문 n편(본보기와 같은 고르기 _library_candidates), 라벨은 같은 캐시에서. 베끼지 말고 차례와 크기를 보라고 적는다. → (글, 파일들)"""
+    texts, meta = {}, {}
+    ex = {os.path.basename(str(x)).lower() for x in (doc.get("bench_exclude") or [])}
+    for c in _library_candidates(list(journals), _topic_words(doc))[:n * 4]:
+        if c["file"].lower() in ex:
+            continue
+        en = (_abstract_of(c["file"]) or {}).get("en") or ""
+        ss = _sentences(en)
+        if 3 <= len(ss) <= 16 and 60 <= len(en.split()) <= 400:
+            texts[c["file"]] = ss
+            meta[c["file"]] = c
+        if len(texts) >= n:
+            break
+    if not texts:
+        return "", []
+    roles = _label_chunked("abstract", texts)
+    out = []
+    for f, ss in texts.items():
+        rl = [x[0] for x in (roles.get(f) or []) if isinstance(x, list) and x]
+        if len(rl) != len(ss):
+            rl = _heuristic_roles("abstract", ss)
+        c = meta[f]
+        out.append("(%s %s, %s) " % (c["author"], c["year"], c["journal"]) + " ".join("[%s] %s" % (r, s) for r, s in zip(rl, ss)))
+    return "[같은 저널의 초록 — 문장마다 역할. 차례와 크기를 보되 문장을 베끼지 않는다]\n" + "\n".join(out) + "\n", list(texts)
+
+
+def _abs_flow(text, sh):
+    """초록이 그 저널 초록의 범위 안인지 — 쓰고 난 뒤의 확인. → {n, words, num, hedge, cited, out[], notes[]}"""
+    st = _flow_stats(text)
+    ss = _flow_sents(text, _FLOW_CITE)
+    n = max(1, len(ss))
+    v = {"n": len(ss), "words": len(text.split()), "num": round(100.0 * sum(1 for t in ss if _NUM_RX.search(re.sub(_FLOW_CITE, " ", t))) / n),
+         "hedge": round(100.0 * sum(1 for t in ss if _HEDGE_RX.search(t)) / n), "cited": st["cited"]}
+    band = {"nsent": (sh["sents"][0], sh["sents"][2]), "words": (sh["words"][0], sh["words"][2]), "num": (0, sh["num"][2]), "hedge": (0, sh["hedge"][2])} if sh else dict(_ABS_BAND_DEFAULT)
+    names = {"nsent": "문장 수", "words": "낱말 수", "num": "수치가 든 문장", "hedge": "완곡한 말(may·suggest …)이 든 문장"}
+    out, notes = [], []
+    for k, (lo, hi) in band.items():
+        x = v["n"] if k == "nsent" else v[k]
+        if x < lo or x > hi:
+            out.append(k)
+            u = "" if k in ("nsent", "words") else "%"
+            notes.append("%s %s%s — 이 저널 초록의 90%%는 %s~%s%s" % (names[k], x, u, lo, hi, u))
+    if v["cited"]:
+        out.append("cited"); notes.append("인용이 든 문장 %d — 초록에는 인용을 두지 않는다" % v["cited"])
+    if st["mid"]:
+        out.append("mid"); notes.append("문장 %s 은 접속 부사가 주어 뒤에 있음" % ", ".join(str(x[0]) for x in st["mid"]))
+    v.update(out=out, notes=notes, band=band, src=(sh or {}).get("src", ""))
+    return v
+
+
+def _abs_numbers(text, doc, key):
+    """초록의 수치 가운데 본문(절·캡션)에 없는 것 — 초록에 새 수치를 들이지 않았는지(연도·한 자리 수는 넘긴다). 옛 초록은 보지 않는다(옛 초록의 수치가 틀렸을 수 있다)"""
+    body = []
+    for n in doc.get("outline") or []:
+        body.append((n.get(key) or n.get("draft_en" if key == "draft" else "draft") or ""))
+    for f in doc.get("figures") or []:
+        body.append(str(f.get("caption") or "") + " " + str(f.get("caption_en") or ""))
+    norm = lambda x: x.replace(",", "")
+    have = {norm(x) for x in _NUM_RX.findall(" ".join(body))}
+    return [x for x in dict.fromkeys(_NUM_RX.findall(re.sub(_FLOW_CITE, " ", text))) if not (re.match(r"^(19|20)\d\d$", x) or norm(x) in have or len(x) <= 1)]
+
+
+def _abs_abbr(text):
+    """초록 안에서 풀지 않은 약어 — 대문자 2~7자(숫자·하이픈 섞여도) 가운데 '(ABBR)' 꼴로 정의되지 않았고 단위·규격·합금 이름(IN718·AISI 4140·H13)이 아닌 것"""
+    defined = set(re.findall(r"\(([A-Z][A-Za-z0-9\-]{1,7})s?\)", text))
+    out = []
+    for w in dict.fromkeys(re.findall(r"\b[A-Z][A-Z0-9\-]{1,6}\b", text)):
+        core = w.replace("-", "")
+        if w in defined or core in defined or w in _ABBR_OK or re.match(r"^(IN|AA|SS|AISI|SAE|EN|CP)\d", w) or re.match(r"^[A-Z]\d+[A-Z]?$", w) or sum(ch.isalpha() for ch in core) < 2:
+            continue
+        out.append(w)
+    return out[:10]
+
+
+def _abs_check(text, doc, key, system, pre, run, model):
+    """쓴 초록을 원고와 대조한다(다른 호출): 문장마다 역할 · 원고의 어느 절이 받치는가 · 받침보다 나아갔는가 · 빠뜨린 핵심 · 초록이 혼자 서는가. → (check, 결과)"""
+    prompt = (pre +
+        "당신은 기계가공 분야 국제 저널의 까다로운 심사위원이다. 위에 저자의 원고 전체가 있다. 아래 [초록]은 그 원고의 초록으로 쓴 글이다. 문장마다 (가) 역할과 (나) 원고의 받침을 본다. JSON 으로만 답하라:\n"
+        "{\"sentences\": [{\"s\": \"그 문장의 첫 8 낱말 그대로\", \"move\": \"" + "|".join(_ABS_MOVES) + "\", \"verdict\": \"ok|over|none|own\", \"src\": \"받치는 절 이름과 그 문장의 첫 구절(원고 그대로, 20자 안팎)\", "
+        "\"why\": \"한국어 한 문장 — 결론부터\", \"fix\": \"over·none 일 때 원고 안에 들게 고치는 법 한국어 한 줄\"}], "
+        "\"order\": [\"차례가 논리에 어긋나는 곳이 있으면 한국어 한 문장씩. 없으면 빈 배열\"], \"missing\": [\"원고의 핵심 결과·주장 가운데 초록이 빠뜨린 것 — 한국어 한 줄씩(없으면 빈 배열)\"], \"reads\": \"whole|listed\"}\n"
+        "규칙:\n"
+        "- 초록의 모든 문장을 순서대로 하나씩 낸다. why·fix 는 사람(저자)이 읽는 말로 짧게, 내부 표시 없이.\n"
+        "- verdict: ok = 원고의 절(서론·방법·결과·논의·결론)에 그 말의 받침이 있다 / over = 받침은 있으나 더 세거나 넓게 말했다(수치·조건·범위가 다르다, '항상·모든' 으로 넓혔다, 해석을 관찰처럼) / none = 원고에 없는 주장·수치 / own = 받침이 필요 없는 저자의 말(배경의 일반 사실·목적·의의).\n"
+        "- 방법 문장은 원고의 방법 절과, 결과 문장은 결과·논의 절과, 의의는 결론·논의와 맞춘다. 원고의 수치를 초록에서 다르게 적었으면 over.\n"
+        "- missing: 논증 모형이나 결론이 세운 핵심 주장·답 가운데 초록에 없는 것 — 초록이 논문을 대표하지 못하는 자리. 세부 결과까지 다 넣으라는 뜻이 아니다.\n"
+        "- reads: 초록이 혼자 서는 작은 논문(문제 → 한 일 → 본 것 → 뜻)으로 읽히면 whole, 결과를 늘어놓은 목록이나 본문의 요약 조각으로만 읽히면 listed.\n\n"
+        "[초록]\n" + text)
+    res = run(prompt, timeout=900, model=model, effort=None, tools="", system=system or None) if run else None
+    r = _json_in((res or {}).get("text") or "")
+    if not isinstance(r, dict) or not isinstance(r.get("sentences"), list):
+        return None, res
+    ss = []
+    for x in r["sentences"]:
+        if not isinstance(x, dict):
+            continue
+        ss.append({"s": str(x.get("s") or "")[:160], "move": x.get("move") if x.get("move") in _ABS_MOVES else "그밖", "verdict": x.get("verdict") if x.get("verdict") in ("ok", "over", "none", "own") else "own",
+                   "src": str(x.get("src") or "")[:120], "why": str(x.get("why") or "")[:400], "fix": str(x.get("fix") or "")[:300]})
+    share = {m: round(100.0 * sum(1 for x in ss if x["move"] == m) / max(1, len(ss))) for m in MOVES}
+    return {"sentences": ss, "order": [str(x)[:300] for x in (r.get("order") or []) if str(x).strip()][:6], "missing": [str(x)[:300] for x in (r.get("missing") or []) if str(x).strip()][:6],
+            "reads": "listed" if r.get("reads") == "listed" else "argued", "share": share, "share_out": [], "first": ss[0]["move"] if ss else "", "last": ss[-1]["move"] if ss else ""}, res
+
+
+def stylus_abstract(doc, body):
+    """초록을 Stylus 로 쓴다: 원고 전체(캐시된 시스템 프롬프트)를 읽고 _ABS_LOGIC + 서재의 그 저널 초록 분포(abstract_shape) + 같은 저널의 초록 본보기 + 논증 모형으로 → 원고와 대조·수치·약어·범위 확인 → 걸린 곳이 있으면 한 번 고쳐 쓴다.
+    body = {key: draft|draft_en(글의 언어), note: 저자의 주문, effort}. 결과는 화면이 doc.stylus 에 남긴다(kind abstract, node front)."""
+    key = "draft_en" if body.get("key") == "draft_en" else "draft"
+    lang_en = key == "draft_en" or (doc.get("meta") or {}).get("lang") == "en"
+    note = str(body.get("note") or "").strip()
+    model, eff = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
+    run = cfg.get("claude_run")
+    if not run:
+        return {"error": "Claude 를 부를 수 없습니다"}
+    t0 = time.time()
+    steps = []
+    skey = "stylus:" + str(doc.get("id"))
+
+    def stage(name):
+        now = time.time()
+        if steps:
+            steps[-1][1] = round(now - steps[-1][2])
+        steps.append([name, 0, now])
+        _LIBX_STAGE[skey] = {"stage": name, "t": now}
+    journals = _abs_journals(doc)
+    stage("shape")
+    try:
+        sh = abstract_shape(journals)
+    except Exception:
+        sh = None
+    try:
+        models, mfiles = _abs_models(doc, journals)
+    except Exception:
+        models, mfiles = "", []
+    system, pre, whole = _ctx(doc, "front", key, "초록 " + note, True)
+    cur = ((doc.get("front") or {}).get("abstract") or "").strip()
+    head = ("당신은 기계가공·재료 분야 국제 저널 논문의 공저자다. 위에 저자의 원고 전체가 있다(초록" + (" 에는 지금 이런 글이 있다 — 참고만 하고 처음부터 다시 쓴다" if cur else " 은 아직 비어 있다") + "). "
+            "서론이 세운 물음, 방법 절이 한 일, 결과·논의 절이 보인 것, 결론이 꿴 답을 읽고 초록을 써라. 초록은 이 원고의 말이다 — 원고에 있는 것만, 원고의 용어·기호·수치 그대로. 서재의 다른 논문의 사실을 들이지 않는다.\n")
+    prompt = (pre + head + _ABS_LOGIC + abstract_shape_text(sh) + models + argument_text(doc) +
+        ("- 저자의 주문: " + note + "\n" if note else "") +
+        "- 글의 언어: " + ("영어" if lang_en else "한국어(학술 문체)") + ". 한 문단.\n"
+        "먼저 JSON 하나로 답하고:\n"
+        "{\"answer\": \"한국어 2~4문장, 두괄식 — 무엇을 어떤 차례로 썼는지, 저자가 확인할 것\", "
+        "\"plan\": [{\"move\": \"배경|공백|목적|방법|결과|의의\", \"why\": \"이 문장이 왜 이 자리에 오는가 — 한국어 한 문장\", \"src\": \"받침이 되는 원고의 절과 첫 구절\", \"sents\": [\"그 걸음의 문장 번호들\"]}]}\n"
+        "그 뒤에 쓴 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(초록 — 한 문단, 제목 줄 없이)\n<<<END>>>\n" + _ANSWER_RULE)
+    stage("write")
+    res = run(prompt, timeout=1500, model=model, effort=eff, tools="", system=system or None)
+    raw = (res or {}).get("text") or ""
+    tok = (res or {}).get("tok")
+    r, text = _rewrite_in(raw)
+    if not text:
+        _LIBX_STAGE.pop(skey, None)
+        return {"error": "쓴 글이 끝까지 오지 않았습니다 — 다시 해 보세요" + _why()}
+    text = text.strip()
+
+    def measure(t):
+        chk, rr = _abs_check(t, doc, key, system, pre, run, model)
+        if chk and sh:
+            chk["share_out"] = [m for m, p in chk["share"].items() if p > (sh.get("share") or {}).get(m, 100)]
+        return chk, rr, _abs_numbers(t, doc, key), _abs_abbr(t), _abs_flow(t, sh)
+    stage("check")
+    chk, r2, nums, abbr, flow = measure(text)
+    tok = _tok_add(tok, (r2 or {}).get("tok"))
+    draft, changes, rounds, chk0, flow0, alt = "", "", 1, None, None, None
+    marks = ["- 문장 \"%s…\": %s — %s%s" % (x["s"][:60], "원고에 없는 말" if x["verdict"] == "none" else "원고보다 나아간 말", x["why"], (" → " + x["fix"]) if x["fix"] else "") for x in _concl_bad(chk)]
+    marks += ["- 수치 %s 은 본문의 절·캡션에 없다 — 원고의 수치로 바꾸거나 뺀다" % x for x in nums[:8]]
+    marks += ["- 약어 %s 은 초록 안에서 풀지 않았다 — 처음 나올 때 풀어 쓰고 괄호에 약어(초록은 본문과 따로 읽힌다)" % x for x in abbr[:6]]
+    marks += ["- 차례: " + x for x in (chk or {}).get("order") or []]
+    marks += ["- 빠뜨린 것: " + x for x in (chk or {}).get("missing") or []]
+    if chk and chk["reads"] == "listed":
+        marks.append("- 통독: 결과를 늘어놓은 목록이나 본문의 조각으로만 읽힌다 — 문제 → 한 일 → 본 것 → 뜻이 한 흐름으로 서게 하라.")
+    marks += ["- 범위: " + x for x in flow["notes"]]
+    if chk and chk.get("share_out"):
+        marks += ["- %s 문장이 이 저널 초록보다 많다(%d%%)" % (m, chk["share"][m]) for m in chk["share_out"]]
+    if marks:
+        stage("revise")
+        rp = (pre + head + "앞서 쓴 [초록]을 심사위원이 원고와 대조했다 — 아래 [지적]. 지적된 문장만 고치고 나머지는 글자 그대로 둔다(차례 지적이 있으면 그 문장들을 옮기고, 빠뜨린 것은 원고의 말로 한 문장 더하되 분량 범위를 넘기면 덜 중요한 결과를 뺀다). 원고에 없는 수치·주장은 원고의 것으로 바꾸거나 뺀다.\n"
+              "먼저 JSON 하나로 답하고: {\"changes\": \"무엇을 왜 고쳤는지 한국어 1~3문장\"}\n그 뒤에 고친 글 전체를 아래 꼴로 붙여라:\n<<<REWRITE new>>>\n(초록)\n<<<END>>>\n" + _ABS_LOGIC + abstract_shape_text(sh) +
+              "\n[지적]\n" + "\n".join(marks) + "\n\n[초록]\n" + text)
+        r3 = run(rp, timeout=1200, model=model, effort=None, tools="", system=system or None)
+        tok = _tok_add(tok, (r3 or {}).get("tok"))
+        j3, text2 = _rewrite_in((r3 or {}).get("text") or "")
+        if text2 and _norm_ws(text2) != _norm_ws(text):
+            stage("recheck")
+            chk2, r4, nums2, abbr2, flow2 = measure(text2.strip())
+            tok = _tok_add(tok, (r4 or {}).get("tok"))
+            b1 = (len(_concl_bad(chk)) + len(nums) + len(abbr)) if chk else 99
+            b2 = (len(_concl_bad(chk2)) + len(nums2) + len(abbr2)) if chk2 else 99
+            if chk2 and b2 <= b1 and not (chk2["reads"] == "listed" and chk["reads"] != "listed"):
+                draft, text, chk0, chk, flow0, flow, nums, abbr, rounds, changes = text, text2.strip(), chk, chk2, flow, flow2, nums2, abbr2, 2, str((j3 or {}).get("changes") or "").strip()
+            else:   # 쓰지 않은 고친 글도 남긴다 — 왜 버렸는지 화면이 보이게(첫 시험에서 고친 글이 조용히 사라졌다, 2026-10-26)
+                alt = {"text": text2.strip(), "changes": str((j3 or {}).get("changes") or "").strip()[:400], "bad": [b1, b2 if chk2 else None], "reads": (chk2 or {}).get("reads"),
+                       "why": ("다시 대조의 판정을 받지 못해 처음 글을 둔다" if not chk2 else ("고치니 목록처럼 읽혀 처음 글을 둔다" if chk2["reads"] == "listed" and chk["reads"] != "listed" else "다시 대조하니 걸린 곳이 %d → %d 로 늘어 처음 글을 둔다" % (b1, b2)))}
+    steps[-1][1] = round(time.time() - steps[-1][2])
+    _LIBX_STAGE.pop(skey, None)
+    plan = [{"move": str(x.get("move") or "")[:10], "why": str(x.get("why") or "")[:300], "src": str(x.get("src") or "")[:120], "sents": [str(v)[:20] for v in (x.get("sents") or [])[:12]]}
+            for x in ((r or {}).get("plan") or [])[:12] if isinstance(x, dict)]
+    return {"id": "a%d" % int(time.time() * 1000), "kind": "abstract", "node": "front", "key": "abstract", "lang": "en" if lang_en else "ko", "t": time.time(), "note": note, "form": "", "text": text,
+            "answer": str((r or {}).get("answer") or "").strip(), "plan": plan, "check": chk, "check0": chk0, "nums_missing": nums, "abbr_missing": abbr, "flow": flow, "flow0": flow0,
+            "shape": {k: sh[k] for k in ("src", "npaper", "sents", "words", "num") if k in sh} if sh else None, "models": mfiles, "draft": draft, "changes": changes, "rounds": rounds, "alt": alt,
+            "stylus": STYLUS, "model": (res or {}).get("model", ""), "tok": tok, "sec": round(time.time() - t0), "steps": [[x[0], x[1]] for x in steps], "whole": bool(whole)}
+
+
 # ---------- 절 계획 — 깊은 계획 (2026-10-25, 사용자: '계획 단계를 더 심도 있게') ----------
 # 글을 쓰기 전에 절 하나의 설계도를 세운다: 문단마다 역할 · 요지 · 차례로 세울 말(받침: 논증 모형의 R·C, 근거의 E번호, 또는 [@?]) · 닮은 본보기 문단 · 앞에서 받는 것 · 다음에 넘기는 것.
 # 재료 = 이 원고의 논증 모형(argument_text) + 서재 학습의 바탕·같은 자리의 실제 문단(_knowledge_block) + 그 절의 분포(kstats) + (있으면) 서재에서 뽑은 근거 + 지금 그 절의 글과 앞뒤 절.
@@ -5865,6 +6187,10 @@ def stylus_op(doc, body):
         return _LIBX_STAGE.get("stylus:" + str(doc.get("id"))) or {}
     if op == "conclusion":
         return stylus_conclusion(doc, body)
+    if op == "abstract":                          # Stylus · 초록 쓰기 (2026-10-26)
+        return stylus_abstract(doc, body)
+    if op == "abstract_shape":                    # 서재의 그 저널 초록 분포 — 처음이면 잰다(Sonnet 라벨, 1~5분)
+        return {"shape": abstract_shape(_abs_journals(doc)), "journals": list(_abs_journals(doc))}
     if op in ("plan", "plan_write", "plan_delete", "plan_edit"):   # 절 계획(깊은 계획)과 계획대로 문단 쓰기
         return plan_op(doc, body)
     return {"error": "알 수 없는 동작"}
