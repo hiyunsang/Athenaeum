@@ -19,7 +19,8 @@ import manuscript as ms
 import study
 
 cfg = {}
-ANN_V = 1           # 주석 판 — 올리면 옛 주석은 다음 차례에 다시 만든다
+ANN_V = 2           # 주석 판 — 올리면 옛 주석은 다음 차례에 다시 만든다 (1 → 2: 절 안에 끼어든 저자 기여·사사·부록 문단을 뺌, 2026-10-25)
+_FRONT_RX = re.compile(r"(?i)^\W*(credit\s+author|declaration\s+of|acknowledg|funding|appendix\b|conflicts?\s+of\s+interest|competing\s+interest|data\s+availability|supplementary\s+(material|data)|nomenclature|corresponding\s+author|\*\s*corresponding|e-?mail|https?://|doi:|received\s+\d|©|author\s+contributions?|저자\s*기여|감사의\s*글|이해\s*(상충|관계))")
 KNOW_V = 1
 _LOCK = threading.Lock()
 _BUSY = set()
@@ -245,6 +246,8 @@ def structure(fname):
             paras.append({"p": "", "sub": sub_head, "_para": pid, "sents": [{"sid": s["sid"], "en": s["en"], "ko": s.get("ko", "")}]})
     out, n = [], 0
     for sec in secs:
+        # 번역문에 제목 줄이 없는 뒷·앞 자료(저자 기여·이해 충돌·사사·부록·교신 저자·DOI 줄)가 절 안에 문단으로 끼어든다 → 뺀다 (첫 바탕에서 결론의 '마지막 문단' 이 부록·저자기여로 세어졌다, 2026-10-25)
+        sec["paras"] = [p for p in sec["paras"] if not _FRONT_RX.match(" ".join(x["en"] for x in p["sents"])[:80])]
         sk = [k for _, k in sec.get("_subkinds") or []]
         if sk and not sec.get("_top"):
             if "discussion" in sk and any(k in ("results", "other", "rd") for k in sk):
@@ -690,7 +693,7 @@ def _sent_text(stem, sid):
             for kk in list(_SENT_TXT)[:40]:
                 _SENT_TXT.pop(kk, None)
     e = tb.get(str(sid).lstrip("s")) or {}
-    return re.sub(r"\s+", " ", str(e.get("t") or "")).strip()
+    return re.sub(r"\s+", " ", str(e.get("t") or "").replace("­ ", "").replace("­", "")).strip()   # PDF 의 soft hyphen('diffi­ culties')은 뗀다
 
 
 def _sent_ko(stem, sid):
