@@ -3373,7 +3373,7 @@ import corpus
 import mapper as _mapper
 corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, settings=_mapper.settings, save_settings=_mapper.save_settings, pref_abbrs=pref_file_abbrs)
 ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
-notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text)
+notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text)   # 서론 구조의 분포 점검 · 유사 연구의 설계(2026-10-26)
 
 
 def settings_view():

@@ -81,6 +81,8 @@
   .idraft .ichk { font-size: 11.5px; color: var(--text-2); margin-top: 3px; } .idraft .ichk summary { cursor: pointer; } .idraft .ichk ul, .idraft .ichk ol { margin: 2px 0 0; padding-left: 1.2em; } .idraft .ichk .v { color: var(--amber); }
   .irefs { font-size: 11.5px; line-height: 1.5; color: var(--text-2); padding-left: 1.6em; margin: 2px 0 0; }
   .iflow { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 4px 0 6px; } .ireq { width: 100%; font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); margin: 4px 0; }
+  .dsgi { padding: 6px 0; border-bottom: 1px solid var(--line-2); font-size: 12px; line-height: 1.5; } .dsgi .dh { font-weight: 600; } .dsgi .dh .hint { display: inline; font-weight: 400; } .dsgi .dq { color: var(--text); margin-top: 1px; } .dsgi .dg { color: var(--text-2); } .dsgi .dm { color: var(--text-2); font-size: 11.5px; margin-top: 2px; } .dsgi .dr { font-weight: 600; color: var(--text-3); font-size: 11px; } .dsgi .dc { margin-top: 2px; font-size: 11.5px; color: var(--text-2); }
+  .dsgt { width: 100%; border-collapse: collapse; font-size: 11.5px; line-height: 1.45; margin-top: 4px; } .dsgt th, .dsgt td { text-align: left; vertical-align: top; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line-2); } .dsgt th { color: var(--text-3); font-weight: 600; font-size: 11px; } .dsgt td .hint { display: inline; }
   .feas .fm { font-weight: 600; margin-right: 4px; } .feas .fm.ok { color: var(--accent); } .feas .fm.no { color: var(--amber); } .feas .fm.unk { color: var(--text-3); } .feas .fh { color: var(--text-2); }
   .labrow { display: flex; gap: 6px; align-items: center; } .labrow input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); }
   .obj { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .obj .oh { display: flex; gap: 6px; align-items: center; font-size: 11px; flex-wrap: wrap; }
@@ -319,6 +321,7 @@ function renderCard() {
   $("goStudy").onclick = () => openBig("/study?topic=" + encodeURIComponent(cur.title), "athenaeum_study", "width=1440,height=920");
   /* 설계서 · 반론 · 원고 초안 (2026-10-19) */
   const jobBtn = (id, kind) => { const b = $(id); if (b) b.onclick = () => startJob(kind, b); };
+  const dl = $("dsgLoad"); if (dl) dl.onclick = async () => { dl.disabled = true; dl.textContent = "고르는 중…"; try { designData[cur.id] = await api("/api/notes/designs?id=" + encodeURIComponent(cur.id)); } catch (e) { } renderCard(); };
   jobBtn("planGo", "plan"); jobBtn("revGo", "review"); jobBtn("draftGo", "draft"); jobBtn("introGo", "intro");
   el.querySelectorAll(".ipara textarea[data-ik]").forEach(t => { fit(t, 34); t.oninput = () => { fit(t, 34); clearTimeout(introSaveT); introSaveT = setTimeout(saveIntro, 800); }; });
   el.querySelectorAll("[data-iask]").forEach(b => b.onclick = () => {
@@ -399,6 +402,8 @@ function introHtml(answered) {   /* 서론 구조 (2026-10-24) */
     h += "<div class='cm'>" + fmtDate(it.t) + " · " + esc(it.model || "Claude") + (it.sec ? " · " + fmtDur(it.sec) : "") + (cur.intro_edited ? " · 요지를 손으로 고침" : "") +
       ((it.models || []).length ? " · 본보기: " + esc(it.models.join(", ")) : " · 본보기 없음(그 저널 논문의 서론을 못 찾음)") + " · 요지는 고치면 바로 저장</div>";
     if (it.flow) h += "<div class='iflow'>" + esc(it.flow) + "</div>";
+    if ((it.notes || []).length) h += "<div class='hint' style='line-height:1.55'>프로그램이 서재 분포(그 저널 서론 " + (it.band_n || "") + "편)와 견준 것: " + it.notes.map(esc).join(" · ") + "</div>";
+    else if (it.band_n) h += "<div class='hint'>문단 수·역할 차례·공백 자리가 서재의 그 저널 서론 " + it.band_n + "편의 범위 안입니다.</div>";
     const cr = it.critique || {};   /* 심사위원이 설계도를 공격해 고친 것 (2026-10-25 — 원고의 절 계획과 같은 비평) */
     if ((cr.issues || []).length) h += "<details class='cf' open><summary class='k' style='cursor:pointer'>심사위원이 본 설계도의 약점 " + cr.issues.length + (it.before ? " — 설계도를 고쳤습니다" : "") + "</summary><ul class='pl'>" + cr.issues.map(x => "<li><b>" + (x.para ? x.para + "문단" : "전체") + "</b> " + esc(x.note) + (x.fix ? " <span class='hint' style='display:inline'>→ " + esc(x.fix) + "</span>" : "") + "</li>").join("") + "</ul>" + (it.before ? "<div class='hint'>비평 전: " + it.before.map((b, i) => (i + 1) + ". " + esc(b.role) + " — " + esc((b.gist || "").slice(0, 60))).join(" / ") + "</div>" : "") + "</details>";
     else if (cr.verdict === "ok") h += "<div class='hint' style='color:var(--green)'>심사위원: 설계도에 큰 약점이 없습니다.</div>";
@@ -435,14 +440,34 @@ async function savePlan() {
   const r = await api("/api/notes", { op: "save", id: cur.id, plan });
   if (r.note) { cur.plan = r.note.plan; cur.plan_edited = r.note.plan_edited; }
 }
+let designData = {};   /* 주제 id → 유사 연구의 설계 (서재 주석에서, Claude 없음 — 2026-10-26) */
+function designsHtml() {
+  const d = designData[cur.id];
+  let h = "<details class='cf dsg'" + (d ? " open" : "") + "><summary class='k' style='cursor:pointer'>유사 연구의 설계 — 서재 주석에서" + (d ? " " + d.items.length + "편" : "") + "</summary>";
+  if (!d) h += "<div class='hint' style='line-height:1.6'>서재 학습이 문장마다 읽어 둔 논문 가운데 이 주제와 가까운 것(제목 · 서론의 약속 문장 · 이미 든 논문 · ★ · 최근)의 물음·공백·재료·장치·조건·측정·주장을 표로 — Claude 를 부르지 않습니다. 설계서·반론·서론 구조를 만들 때 Claude 에게도 같이 갑니다. <button class='act' id='dsgLoad'>불러오기</button></div>";
+  else if (!d.items.length) h += "<div class='hint'>이 주제와 닿는 주석이 없습니다 — 주제 낱말: " + esc((d.topic || []).join(", ")) + " <button class='act' id='dsgLoad'>다시</button></div>";
+  else {
+    h += "<div class='hint'>주제 낱말: " + esc((d.ko || []).concat(d.topic || []).join(", ")) + " · 저널 " + esc((d.journals || []).join("·")) + " <button class='act' id='dsgLoad'>다시</button></div>";
+    d.items.forEach(x => {   /* 오른쪽 칸이 좁아 표 대신 논문마다 한 덩이로 */
+      const m = x.methods || {};
+      const ml = ["재료·시편", "장치·셋업", "조건·절차", "측정·분석", "모델·해석"].filter(r => (m[r] || []).length).map(r => "<span class='dr'>" + r + "</span> " + esc(m[r].join(" / "))).join("<br>");
+      h += "<div class='dsgi'><div class='dh'>" + (x.star ? "★ " : "") + esc(x.author + " " + x.year) + " <span class='hint'>" + esc(x.journal || "") + (x.type === "review" ? " · 리뷰" : "") + "</span></div>" +
+        (x.question ? "<div class='dq'>" + esc(x.question) + "</div>" : "") + (x.gap ? "<div class='dg'>공백: " + esc(x.gap) + "</div>" : "") +
+        (ml ? "<div class='dm'>" + ml + "</div>" : "<div class='hint'>방법 문단 주석 없음</div>") +
+        ((x.claims || []).length ? "<details class='dc'><summary class='hint' style='cursor:pointer'>주장 " + x.claims.length + "</summary>" + x.claims.map(c => "<div>· " + esc(c) + "</div>").join("") + "</details>" : "") + "</div>";
+    });
+  }
+  return h + "</details>";
+}
 function planHtml(answered) {
   const p = cur.plan, pend = cur.plan_pending;
   let h = "<div class='sec secline'>실험 설계서<span class='r'>" +
     (pend ? "<span style='color:var(--accent)'>만드는 중…</span> <button class='act' data-cancel='plan'>취소</button>"
       : "<button class='act' id='planGo'" + (answered ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + " title='토의·카드·(손으로 고친 설계서)·답한 반론을 모아 열 칸을 채웁니다 — Opus 2~4분'>" + (p ? "다시 만들기" : "토의·카드로 설계서 만들기") + "</button>") + "</span></div>";
   if (cur.plan_error) h += "<div class='warnbox'>" + esc(cur.plan_error) + "</div>";
+  h += designsHtml();
   if (p) {
-    h += "<div class='cm'>" + fmtDate(p.t) + " · " + esc(p.model || "Claude") + (p.sec ? " · " + fmtDur(p.sec) : "") + (cur.plan_edited ? " · 손으로 고침" : "") + " · 칸을 고치면 바로 저장 · (저자 연도) 뒤의 ✓ = 서재에 있는 논문, ? = 서재에서 못 찾음</div>";
+    h += "<div class='cm'>" + fmtDate(p.t) + " · " + esc(p.model || "Claude") + (p.sec ? " · " + fmtDur(p.sec) : "") + (cur.plan_edited ? " · 손으로 고침" : "") + ((p.similar || []).length ? " · 유사 연구 " + p.similar.length + "편을 함께 봄(" + esc(p.similar.slice(0, 4).map(x => x.author + " " + x.year).join(", ")) + (p.similar.length > 4 ? " …" : "") + ")" : "") + " · 칸을 고치면 바로 저장 · (저자 연도) 뒤의 ✓ = 서재에 있는 논문, ? = 서재에서 못 찾음</div>";
     (p.sections || []).forEach(s => {
       const cites = (s.cites || []).map(c => c.file ? "<a class='cite ok' data-open='" + esc(c.file) + "' title='서재에 있음 — 누르면 PDF 를 엽니다: " + esc(c.file) + "'>" + esc(c.key) + " ✓</a>"
         : "<span class='cite no' title='서재에서 못 찾음 — 서재 밖의 논문이거나 이름·연도가 다릅니다'>" + esc(c.key) + " ?</span>").join(" ");

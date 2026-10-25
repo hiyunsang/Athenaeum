@@ -788,11 +788,13 @@ _PLAN_RULE = (
     "background 배경과 공백(무엇이 알려졌고 무엇이 비었나 — 서재 논문으로) · question 연구 물음과 가설(검증 가능한 꼴로, 맞으면/틀리면 무엇이 보이나) · material 재료·시편(규격·상태·수) · setup 장비·측정(무엇을 무엇으로 재나, 분해능·범위 — [우리 연구실] 이 있으면 우리 장비로 되는 것과 외부에 맡길 것을 갈라 적는다) · "
     "design 실험 설계(독립 변수와 수준, 고정 조건, 반복 수, 대조군) · analysis 해석·모델(측정값을 가설의 판정으로 바꾸는 길) · expected 예상 결과와 판정 기준 · risks 위험과 대안(실패할 자리와 대비) · schedule 일정(단계와 기간) · venue 저널과 독자(어느 저널, 심사자가 볼 것). "
     "cites 는 그 칸에서 든 서재 논문의 '첫 저자 연도' 목록(없으면 빈 목록). "
-    "feasibility 는 이 계획이 쓰는 측정·장비·공정마다 [우리 연구실] 에 비추어 우리가 할 수 있는가 — ours 가 false 인 것은 어디에 맡길지, null 은 연구자가 확인할 것. [우리 연구실] 이 없으면 빈 목록.")
+    "feasibility 는 이 계획이 쓰는 측정·장비·공정마다 [우리 연구실] 에 비추어 우리가 할 수 있는가 — ours 가 false 인 것은 어디에 맡길지, null 은 연구자가 확인할 것. [우리 연구실] 이 없으면 빈 목록. "
+    "[유사 연구의 설계] 가 있으면: background 는 그 논문들이 무엇을 했고 어디서 멈췄는지를 그 논문으로 들어 공백을 세우고, material·setup·design 은 그들의 재료·장치·조건과 무엇이 같고 무엇이 다른지를 한 줄로 밝힌다(같은 설계면 그렇게 적는다 — 심사위원이 새로움을 물을 것이다). "
+    "[… 방법을 이렇게 쓴다] 가 있으면 그 저널의 방법 절이 늘 적는 것(시편 상태·공구 기하·조건·측정 분해능 같은)을 설계서가 빠뜨리지 않게 한다.")
 
 _REVIEW_RULE = (
     "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성 — [우리 연구실] 이 있으면 그 장비·역량으로 되는가와 외부에 맡길 측정의 비용·일정·접근, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수), "
-    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
+    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것; [유사 연구의 설계] 가 있으면 그 논문들과 칸마다 견줘 이미 된 것과 다른 것을 짚는다). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
     "반론은 구체적으로(어느 칸의 무엇이 왜 문제인가), 서재 논문을 들 수 있으면 '(첫 저자 연도)' 로. 이미 답한 반론은 되풀이하지 않는다. 연구자가 답하면 풀릴 수 있게 물음을 한 줄 단다.\n"
     "JSON 으로만: {\"items\": [{\"who\": \"exp|theory|editor\", \"sec\": \"설계서 칸 이름(background·question·material·setup·design·analysis·expected·risks·schedule·venue) 또는 빈 문자열\", \"sev\": \"high|mid|low\", \"t\": \"반론 1~3문장\", \"ask\": \"연구자가 답해야 할 물음 한 줄\"}]}")
 
@@ -819,6 +821,16 @@ def _plan_prompt(nt):
     ans = _answered_text(nt)
     if ans:
         out += "\n[답한 반론]\n" + ans + "\n"
+    dz, items = _designs(nt, k=8)   # 유사 연구의 설계 — 서재 주석에서 (2026-10-26)
+    _DESIGNS[nt.get("id")] = [{"stem": x["stem"], "author": x["author"], "year": x["year"], "journal": x["journal"], "star": x.get("star")} for x in items]
+    if dz:
+        out += "\n" + dz
+    try:   # 그 저널의 방법 절은 무엇을 꼭 적는가 — 설계서의 재료·장비·설계 칸이 빠뜨리지 않게 (짧게)
+        kn = (cfg.get("knowledge") or (lambda j, k, cap=0: ""))(_intro_journals(nt), "methods", cap=4500)
+    except TypeError:
+        kn = ""
+    if kn:
+        out += "\n" + kn
     out += "\n[토의]\n" + _thread_text(nt) + "\n\n" + _PLAN_RULE
     return out
 
@@ -835,6 +847,9 @@ def _review_prompt(nt):
     ans = _answered_text(nt)
     if ans:
         out += "\n[이미 답한 반론 — 되풀이하지 않는다]\n" + ans + "\n"
+    dz, _items = _designs(nt, k=6)   # 심사위원(editor)이 새로움을 실제 논문과 견주게 (2026-10-26)
+    if dz:
+        out += "\n" + dz
     return out + "\n" + _REVIEW_RULE
 
 
@@ -860,9 +875,84 @@ _INTRO_RULE = (
     "[본보기]가 있으면 그 저널 논문들이 서론을 몇 문단으로 어떤 차례(배경 → 선행연구 → 공백 → 목적)로 짜는지를 출발점으로 삼되 베끼지 말고 이 연구의 논리에 맞게 고친다. "
     "문단 수는 [이 저널 서론의 크기](있으면)의 범위 안에서 이 연구의 논리에 필요한 만큼(없으면 4~7개). 역할은 배경(분야·왜 중요한가) · 선행연구(무엇이 알려졌나 — 묶어서) · 공백(엇갈림·한계·남은 물음 — 설계서의 '배경과 공백'·답한 반론과 같은 말이어야 한다) · 목적·접근(이 연구의 물음과 방법 개요 — 설계서의 물음·가설 그대로) · 기여·구성(선택) 가운데 고른다. "
     "문단마다 points 는 그 문단이 차례로 세울 말 2~5개 — 사실·주장 하나에 그것을 받치는 서재 논문을 '(첫 저자 연도)' 로 cites 에 적는다(그 논문이 실제로 그 말을 하는지 요약 한 줄에 비추어; 지어낸 인용·수치 금지). "
+    "[유사 연구의 설계] 가 있으면 선행연구·공백 문단의 points 는 그 논문들이 실제로 한 것(물음·기여·주장)과 멈춘 곳(공백)으로 세운다 — 요약 한 줄보다 믿을 만한 재료다. "
     "서재에 없는 사실을 세워야 하면 t 를 '서재 밖: ' 으로 시작하고 cites 는 빈 목록 — 그런 자리는 gaps 에 탐색어와 함께 적는다(연구자가 논문을 찾아 넣는다). 연구자의 요청이 있으면 따른다.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"flow\": \"서론이 펴는 논리 한 문단 — 왜 이 차례인가\", \"paras\": [{\"role\": \"배경|선행연구|공백|목적·접근|기여·구성\", \"gist\": \"이 문단이 세울 말 한 문장\", "
     "\"points\": [{\"t\": \"할 말 한 문장\", \"cites\": [\"첫 저자 연도\", ...]}], \"len\": 문장 수 어림(정수)}], \"gaps\": [\"서재에 없어 채워야 할 근거 — 무엇을, 탐색어: ...\"]}")
+
+_DESIGNS = {}   # 주제 id → 설계서를 만들 때 같이 본 유사 연구(stem·이름) — _apply_plan 이 plan.similar 에 옮긴다 (2026-10-26)
+
+
+_KO_STOP = {"연구", "논문", "결과", "실험", "분석", "가능", "경우", "대한", "통해", "있다", "없다", "때문", "그리고", "하지만", "영향", "특성", "조건", "방법", "과정", "기존", "제안", "확인", "비교", "관찰", "측정", "모델", "설계", "가설", "물음", "수준", "변수", "우리", "연구실", "논의", "정리", "다음", "지금", "이런", "어떤", "무엇", "것은", "것이", "것을", "하나", "둘째", "첫째", "서재", "탐색", "공부", "주제", "카드", "토의"}
+_KO_TAIL = re.compile(r"(으로써|으로는|에서는|에서도|으로|에서|부터|까지|에게|처럼|보다|이라|이다|들의|들이|들을|들은|들|을|를|이|가|은|는|의|에|로|과|와|도|만|나|고|며|서|면|적인|적)$")
+
+
+def _ko_topic(nt, n=14):
+    """한국어 주제 낱말 — 제목·카드(물음·가설)·설계서(배경·물음)·서론 구조 요지의 한글 낱말에서 조사를 떼고 자주 나온 것. 주석의 논문 층(물음·공백·기여·주장)이 한국어라 이것으로 맞춘다 (2026-10-26)"""
+    parts = [nt.get("title") or ""]
+    card = nt.get("card") or {}
+    for k in ("question", "hypothesis", "design"):
+        v = card.get(k)
+        parts.append(" ".join(str(x) for x in v) if isinstance(v, list) else str(v or ""))
+    for sec in (nt.get("plan") or {}).get("sections") or []:
+        if sec.get("k") in ("background", "question") and sec.get("t"):
+            parts.append(sec["t"])
+    for q in (nt.get("intro") or {}).get("paras") or []:
+        parts.append(q.get("gist") or "")
+    import collections
+    cnt = collections.Counter()
+    for w in re.findall(r"[가-힣]{2,}", " ".join(parts)[:12000]):
+        w2 = _KO_TAIL.sub("", w)
+        if len(w2) >= 2 and w2 not in _KO_STOP and not w2.endswith(("다", "요", "데", "게", "까", "니", "면", "서", "지만", "는지", "라서", "하게", "히", "들")):   # 서술어·부사 꼴은 뺀다('않았다'·'없어보이는데')
+            cnt[w2] += 1
+    return [w for w, _ in cnt.most_common(n)]
+
+
+def _designs(nt, k=8, brief=False):
+    """[유사 연구의 설계] — 서재 주석에서 이 주제와 가까운 논문의 물음·공백·방법 문단·기여·주장 (corpus.similar_designs, Claude 없음). → (글, 항목들)"""
+    fn = cfg.get("designs")
+    if not fn:
+        return "", []
+    try:
+        items = fn(topic=_intro_topic(nt), journals=_intro_journals(nt), cited=sorted(_intro_cited(nt)), k=k, ko=_ko_topic(nt)) or []
+        text = (cfg.get("designs_text") or (lambda it, brief=False: ""))(items, brief=brief)
+    except Exception:
+        return "", []
+    return text, items
+
+
+def _intro_check(nt):
+    """프로그램이 본 것 — 서론 구조를 서재의 분포(corpus.band_for, 그 저널 묶음의 서론)와 견준다: 문단 수·역할의 차례·첫 공백 문단의 자리 (원고의 절 계획과 같은 확인, 2026-10-26)"""
+    intro = nt.get("intro") or {}
+    paras = intro.get("paras") or []
+    notes = []
+    try:
+        band = cfg["kband"](_intro_journals(nt), "intro") if cfg.get("kband") else None
+    except Exception:
+        band = None
+    if band and band.get("nparas") and (band.get("n") or 0) >= 8 and paras:
+        lo, md, hi = band["nparas"]
+        if not lo <= len(paras) <= hi:
+            notes.append("문단 %d개 — 서재의 그 저널 서론은 열에 아홉이 %d~%d개(가운데 %d)" % (len(paras), lo, hi, md))
+        pats = [p for p, _ in (band.get("patterns") or [])]
+        seq = []
+        for p in paras:
+            r = p.get("role") or "?"
+            if not seq or seq[-1] != r:
+                seq.append(r)
+        mine = " → ".join(seq)
+        if pats and mine not in pats:
+            notes.append("역할의 차례 '%s' 는 서재에서 자주 보이는 차례(%s)와 다르다 — 그럴 까닭이 있으면 그대로" % (mine, " / ".join(pats[:3])))
+        gp = band.get("gap_pos")
+        idx = [i for i, p in enumerate(paras) if p.get("role") == "공백"]
+        if gp and idx:
+            pos = (idx[0] + 0.5) / len(paras)
+            if not gp[0] - 0.1 <= pos <= gp[2] + 0.1:
+                notes.append("첫 공백 문단이 %d문단(서론의 %.2f 지점) — 서재의 서론은 %.2f~%.2f 지점(가운데 %.2f)에 둔다" % (idx[0] + 1, pos, gp[0], gp[2], gp[1]))
+        intro["band_n"] = band.get("n")
+    intro["notes"] = notes
+    return notes
+
 
 _INTRO_MODELS = {}   # 주제 id → 본보기 논문 이름들 (물음을 만들 때 적고, 결과를 담을 때 꺼낸다 — _bg_job 이 주제 파일을 다시 읽어 nt 에 적어 두면 사라진다)
 _JABBR = re.compile(r"\b(IJMTM|JMPT|CIRPA|CIRP|PE|JMP|IJEM|JMSE|IJPEM|IJPEMGT|JMST|AMT|WEAR|TI|PCIRP|MD|JAC|JMPS|IJMS|NM)\b")
@@ -962,6 +1052,9 @@ def _intro_prompt(nt):
     _INTRO_MODELS[nt.get("id")] = names   # _apply_intro 가 기록에 옮긴다
     if models:
         out += "\n[본보기 — 서재의 그 저널 논문(주제가 가까운 것부터) 서론이 실제로 짜인 차례: 대목(같은 것을 말하는 이어진 문단들)과 문단마다 역할 — 요지]\n" + models + "\n"
+    dz, _items = _designs(nt, k=6, brief=True)   # 선행연구·공백 문단의 재료 — 그 논문들이 실제로 한 것과 멈춘 곳 (2026-10-26)
+    if dz:
+        out += "\n" + dz
     shape = ms.intro_shape_text(ms.intro_shape(tuple(_intro_journals(nt))) or ms.intro_shape())   # 그 저널 서론의 크기 — 서재에서 잰 것(내가 정한 '4~7개' 대신)
     if shape:
         out += "\n" + shape
@@ -1177,6 +1270,7 @@ def _apply_plan(nt, d, res, t0):
     nt["plan"] = {"sections": out, "gaps": [str(x).strip()[:300] for x in (d.get("gaps") or [])[:10] if str(x).strip()],
                   "checks": [str(x).strip()[:300] for x in (d.get("checks") or [])[:10] if str(x).strip()],
                   "feasibility": _clean_feas(d.get("feasibility")),
+                  "similar": _DESIGNS.pop(nt.get("id"), None) or [],
                   "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
     nt.pop("plan_edited", None)
 
@@ -1314,6 +1408,8 @@ def _bg_job(nid, kind):
         if not err:
             try:
                 {"plan": _apply_plan, "review": _apply_review, "draft": _apply_draft, "intro": _apply_intro}[kind](nt, d, res, t0)
+                if kind == "intro":
+                    _intro_check(nt)   # 프로그램이 본 것 — 서재 분포와 견줌 (비평 물음에도 들어간다)
             except Exception as e:
                 err = str(e)[:300]
         if err:
@@ -1331,6 +1427,10 @@ def _bg_job(nid, kind):
                 nt = _load(nid)
                 if nt:
                     nt.pop("intro_pending", None)
+                    try:
+                        _intro_check(nt)   # 비평이 설계도를 고쳤으면 다시 견준다
+                    except Exception:
+                        pass
                     _save(nt)
 
 
@@ -1348,7 +1448,9 @@ def _intro_critique(nid, model, eff):
     if nt.get("plan"):
         ctx += "\n[실험 설계서]\n" + _plan_text(nt["plan"], cap=1200) + "\n"
     kn = (cfg.get("knowledge") or (lambda j, k: ""))(_intro_journals(nt), "intro")
-    prompt = ctx + ("\n" + kn if kn else "") + "\n[계획]\n" + plan_json + "\n\n" + ms._PLAN_CRIT % "서론(Introduction)" + "(이 계획의 src 는 '첫 저자 연도' 열쇠다 — 고친 설계도에서도 그 꼴로 적는다. 서재에 없는 것은 '서재 밖: ' 으로.)"
+    dz, _items = _designs(nt, k=6, brief=True)
+    notes_ = intro.get("notes") or []
+    prompt = ctx + ("\n" + kn if kn else "") + ("\n" + dz if dz else "") + (("\n[프로그램이 본 것 — 서재 분포와 견줌]\n" + "\n".join("- " + x for x in notes_) + "\n") if notes_ else "") + "\n[계획]\n" + plan_json + "\n\n" + ms._PLAN_CRIT % "서론(Introduction)" + "(이 계획의 src 는 '첫 저자 연도' 열쇠다 — 고친 설계도에서도 그 꼴로 적는다. 서재에 없는 것은 '서재 밖: ' 으로.)"
     system, _st = _background()
     run = cfg.get("claude_run")
     res = run(prompt, timeout=1200, model=model, effort=None if eff in ("xhigh", "max") else eff, tools="", system=system) if run else None
@@ -1388,6 +1490,9 @@ def _intro_critique(nid, model, eff):
                 before = [{"role": q.get("role"), "gist": q.get("gist")} for q in intro["paras"]]
                 crit = intro["critique"]
                 _apply_intro(nt, fake, res or {}, time.time())   # cites 를 서재 파일에 맞추고 쓴 문단을 지키는 길 그대로
+                for k in ("sec", "tok", "model", "t"):   # 뽑기의 시간·토큰·모델은 지킨다 — 비평의 것은 critique.tok 에 (전에는 sec 0 으로 덮였다, 2026-10-26)
+                    if intro.get(k) is not None:
+                        nt["intro"][k] = intro[k]
                 nt["intro"]["critique"] = crit
                 nt["intro"]["before"] = before
                 nt["intro"]["models"] = old_models or []
@@ -1481,6 +1586,14 @@ def handle_get(h, url):
             if st.get("stage"):
                 w["stage"] = st["stage"]
         return h._send(200, {"note": nt, "now": time.time()} if nt else {"error": "찾지 못했습니다"})
+    if p == "/api/notes/designs":            # 유사 연구의 설계 — 서재 주석에서 (토큰 0, 2026-10-26)
+        nt = _load(_q(url, "id")) or {}
+        try:
+            k = max(1, min(20, int(_q(url, "k") or 10)))
+        except ValueError:
+            k = 10
+        text, items = _designs(nt, k=k)
+        return h._send(200, {"items": items, "topic": _intro_topic(nt), "ko": _ko_topic(nt), "journals": _intro_journals(nt), "chars": len(text)})
     if p == "/api/notes/intro_models":       # 서론 본보기 진단 — 어느 저널·어느 논문의 서론을 고르나
         nt = _load(_q(url, "id")) or {}
         diag = {}

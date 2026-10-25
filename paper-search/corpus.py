@@ -89,7 +89,7 @@ def settings():
     s["model_rest"] = s["model_rest"] if s.get("model_rest") in ("sonnet", "opus") else "sonnet"
     s["synth_model"] = s["synth_model"] if s.get("synth_model") in ("sonnet", "opus") else "opus"
     try:
-        s["workers"] = max(1, min(8, int(s.get("workers") or 6)))
+        s["workers"] = max(1, min(10, int(s.get("workers") or 6)))
     except Exception:
         s["workers"] = 6
     return s
@@ -121,7 +121,7 @@ def save_settings(body):
             s[k] = body[k]
     if "workers" in body:
         try:
-            s["workers"] = max(1, min(8, int(body["workers"])))
+            s["workers"] = max(1, min(10, int(body["workers"])))
             if _STATE.get("batch_on") and _STATE.get("batch"):
                 _STATE["batch"]["workers"] = s["workers"]   # 도는 배치도 바로 따른다 (사용자 2026-10-26 '6편씩')
         except Exception:
@@ -906,6 +906,108 @@ def exemplars_text(kind, role=None, journals=None, tags=None, topic=None, k=4, e
     return "\n".join(L) + "\n"
 
 
+# ---------- 유사 연구의 설계 — 서재 주석에서 (연구 노트의 설계서·반론·서론 구조에, 토큰 0; 2026-10-26) ----------
+_DESIGN_ROLES = ["재료·시편", "장치·셋업", "조건·절차", "측정·분석", "모델·해석"]
+
+
+def _design_of(stem, ann, sc=0.0):
+    """논문 하나의 '설계' — 논문 층(물음·공백·기여·주장) + 방법 절의 문단 요지(역할마다 셋까지) + 서론의 약속(공백·목적 문장)과 그것에 답했는가"""
+    pp = ann.get("paper") or {}
+    y, j, au = _meta(stem)
+    meth = {}
+    for sec in ann.get("secs") or []:
+        if sec.get("kind") != "methods":
+            continue
+        for p in sec.get("paras") or []:
+            r = p.get("role")
+            if r in _DESIGN_ROLES and p.get("gist"):
+                meth.setdefault(r, [])
+                if len(meth[r]) < 3:
+                    meth[r].append(str(p["gist"])[:110])
+    prom = []
+    for c in (ann.get("chain") or [])[:5]:
+        if c.get("promise"):
+            t = _sent_text(stem, c["promise"])
+            if t:
+                prom.append({"kind": c.get("kind") or "", "t": t[:220], "answered": bool(c.get("answer"))})
+    return {"stem": stem, "year": y, "journal": j, "author": au, "star": j in _pref(), "type": pp.get("type") or "", "question": str(pp.get("question") or "")[:300],
+            "gap": str(pp.get("gap") or "")[:300], "contribution": str(pp.get("contribution") or "")[:300], "claims": [str(c)[:200] for c in (pp.get("claims") or [])[:4] if str(c).strip()],
+            "methods": meth, "promises": prom, "score": round(sc, 2)}
+
+
+def similar_designs(topic=None, journals=None, cited=(), k=8, exclude=(), ko=None):
+    """주제 낱말(영어 topic · 한국어 ko)·이미 든 논문·★ 우선 저널·최근으로 고른 논문 k편의 설계 — 주석만 읽는다(Claude 없음).
+    고르기: 파일 이름의 제목(영어)에 주제 낱말이 들면 ×2, 논문 층(물음·공백·기여·주장 — 한국어)에 한국어 낱말이 들면 ×1.5, 그 뒤 후보에 한해 서론의 약속 문장(영어)에 들면 ×1, 그 저널 +1, ★ +0.8, 최근 +0.05/년.
+    이미 든 논문(cited)은 점수와 무관하게 맨 앞(연구자가 이미 고른 것). 주제와 안 닿는 것(2점 미만)은 뺀다."""
+    topic = [str(w).lower() for w in (topic or []) if len(str(w).strip()) > 2]
+    ko = [str(w) for w in (ko or []) if len(str(w).strip()) >= 2]
+    cited_stems = {_stem(os.path.basename(str(x))) for x in (cited or []) if str(x).strip()}
+    ex = {_stem(x) for x in exclude}
+    pref = _pref()
+    js = {str(j).upper() for j in (journals or [])}
+    first = []
+    for stem, ann in all_annotated():
+        pp = ann.get("paper") or {}
+        if stem in ex or not pp.get("question"):
+            continue
+        title = stem.lower()
+        sc = 2.0 * sum(1 for w in topic if w in title)
+        if ko:
+            kt = " ".join([str(pp.get("question") or ""), str(pp.get("gap") or ""), str(pp.get("contribution") or "")] + [str(c) for c in (pp.get("claims") or [])])
+            sc += 1.5 * sum(1 for w in ko if w in kt)
+        if sc <= 0 and (topic or ko) and stem not in cited_stems:
+            continue   # 제목·논문 층에도 없고 든 적도 없는 논문은 약속 문장을 읽지 않는다(정렬표 읽기를 아낀다)
+        first.append((sc, stem, ann))
+    scored = []
+    for sc, stem, ann in first:
+        if topic:
+            prom = " ".join(_sent_text(stem, c["promise"]) for c in (ann.get("chain") or [])[:6] if c.get("promise")).lower()
+            sc += 1.0 * sum(1 for w in topic if w in prom)
+        j = (ann.get("journal") or "").upper()
+        sc += 1.0 if j in js else 0
+        sc += 0.8 if j in pref else 0
+        sc += 0.05 * max(0, (ann.get("year") or 2000) - 2010)
+        if sc < 2.0 and stem not in cited_stems:
+            continue
+        scored.append((0 if stem in cited_stems else 1, sc, stem, ann))
+    scored.sort(key=lambda x: (x[0], -x[1], -(x[3].get("year") or 0)))
+    cited_rows = [x for x in scored if x[0] == 0]
+    other_rows = [x for x in scored if x[0] == 1]
+    nc = min(len(cited_rows), max(1, (k * 3 + 4) // 5))   # 이미 든 논문은 k 의 60% 까지 — 나머지 자리는 아직 안 든 가까운 논문에(새로 보이는 것이 유사 연구의 값이다)
+    rows = cited_rows[:nc] + other_rows[:max(0, k - nc)]
+    if len(rows) < k:
+        rows += cited_rows[nc:nc + (k - len(rows))]
+    return [_design_of(stem, ann, sc) for _tier, sc, stem, ann in rows[:k]]
+
+
+def designs_text(items, brief=False, cap=9000):
+    """지시문에 붙일 '[유사 연구의 설계 — 서재 주석에서]'. brief 면 방법 문단은 빼고 물음·공백·기여·주장만(서론 구조용). 없으면 ''"""
+    if not items:
+        return ""
+    L = ["[유사 연구의 설계 — 서재 학습이 문장마다 읽어 둔 주석에서 이 주제와 가까운 %d편(제목·서론의 약속·이미 든 논문·★ 우선 저널·최근으로 골랐다). 이 연구를 이들 옆에 놓고 같은 것과 새로운 것을 가른다 — 여기 적힌 것만 쓰고, 든 논문은 '(첫 저자 연도)' 로]" % len(items)]
+    size = len(L[0])
+    for x in items:
+        rows = ["— %s%s %s (%s)%s" % ("★ " if x.get("star") else "", x.get("author") or "", x.get("year") or "", x.get("journal") or "", (" · " + ("리뷰" if x.get("type") == "review" else "연구")) if x.get("type") else "")]
+        if x.get("question"):
+            rows.append("  물음: " + x["question"])
+        if x.get("gap"):
+            rows.append("  공백: " + x["gap"])
+        if not brief and x.get("methods"):
+            rows.append("  " + " · ".join("%s: %s" % (r, " / ".join(x["methods"][r])) for r in _DESIGN_ROLES if x["methods"].get(r)))
+        if x.get("contribution"):
+            rows.append("  기여: " + x["contribution"])
+        if x.get("claims"):
+            rows.append("  주장: " + " ".join("%s %s" % ("①②③④"[i] if i < 4 else "·", c) for i, c in enumerate(x["claims"])))
+        if not brief and x.get("promises"):
+            rows.append("  서론의 약속(%s) → 결론이 답한 것 %d/%d" % ("·".join(sorted({p["kind"] for p in x["promises"] if p.get("kind")})) or "공백·목적", sum(1 for p in x["promises"] if p.get("answered")), len(x["promises"])))
+        b = "\n".join(rows)
+        if size + len(b) > cap:
+            break
+        L.append(b)
+        size += len(b)
+    return "\n".join(L) + "\n"
+
+
 # ---------- 배경 학습 ----------
 def pending(limit=None):
     """주석을 만들 차례의 논문들(번역이 있는 것만): 우선 저널 → 최근 연도"""
@@ -965,7 +1067,7 @@ def _batch(workers=None, upgrade=False):
     def limit():
         """동시 편수 — 설정 창에서 배치 도중에 바꾸면 다음 논문부터 따른다(세마포어는 처음 값에 묶여 있었다)"""
         try:
-            return max(1, min(8, int((_STATE.get("batch") or {}).get("workers") or 1)))
+            return max(1, min(10, int((_STATE.get("batch") or {}).get("workers") or 1)))
         except Exception:
             return 1
 
@@ -1188,7 +1290,7 @@ def handle_post(h, body):
         except Exception:
             n = 5
         try:
-            w = max(1, min(8, int(body.get("workers") or 0))) if body.get("workers") else None
+            w = max(1, min(10, int(body.get("workers") or 0))) if body.get("workers") else None
         except Exception:
             w = None
         run_batch(n, w, upgrade=bool(body.get("upgrade")))
