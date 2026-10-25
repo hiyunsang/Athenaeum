@@ -1258,6 +1258,25 @@ def _clean_plan(plan, q):
     return {"intent": str((plan or {}).get("intent") or q)[:200], "concepts": cs, "exclude": ex, "authors": au}
 
 
+def owned_map(items):
+    """탐색 결과의 논문들이 지금 서재에 있나 → {id: 파일}. tags 의 제목 정규화 일치 + 막 수집돼 tags 에 아직 없는 파일은 이름의 제목(80자로 잘림) 앞부분 일치(30자 넘게 같으면)"""
+    import mapper
+    with _lock:
+        tags = load_json(TAGS_PATH, {})
+    idx = archive_title_index(tags)
+    short = [(mapper.norm_title((tags.get(f) or {}).get("title") or parse_name(f)["title"]), f) for f in archive_pdfs()]
+    short = [(k, f) for k, f in short if len(k) >= 30]
+    out = {}
+    for it in (items or [])[:400]:
+        k = mapper.norm_title(it.get("title") or "")
+        if len(k) < 12:
+            continue
+        f = idx.get(k) or (next((f for p, f in short if k.startswith(p) or p.startswith(k)), "") if len(k) >= 30 else "")
+        if f:
+            out[str(it.get("id") or "")] = f
+    return out
+
+
 def plan_search(q):
     """말로 적은 주제(한국어·영어)를 개념(필수/선택)·동의어 검색 계획으로."""
     r = ask_claude_json(
@@ -3373,7 +3392,8 @@ import corpus
 import mapper as _mapper
 corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, settings=_mapper.settings, save_settings=_mapper.save_settings, pref_abbrs=pref_file_abbrs)
 ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
-notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text)   # 서론 구조의 분포 점검 · 유사 연구의 설계(2026-10-26)
+notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text,
+                 plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
 
 
 def settings_view():
@@ -4045,23 +4065,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
             self._send(200, {"ok": True, "dir": d})
-        elif self.path == "/api/owned_check":   # 탐색 결과의 논문들이 지금 서재에 있나 → {id: 파일}. tags 의 제목 정규화 일치 + 막 수집돼 tags 에 아직 없는 파일은 이름의 제목(80자로 잘림) 앞부분 일치
-            import mapper
-            with _lock:
-                tags = load_json(TAGS_PATH, {})
-            idx = archive_title_index(tags)
-            # 앞부분 일치용: tags 의 제목(없으면 파일 이름의 제목 — 80자로 잘린다). OpenAlex 제목과 부제의 구두점·꼬리가 조금 달라도 잡히게, 30자 넘게 같으면 같은 논문으로
-            short = [(mapper.norm_title((tags.get(f) or {}).get("title") or parse_name(f)["title"]), f) for f in archive_pdfs()]
-            short = [(k, f) for k, f in short if len(k) >= 30]
-            out = {}
-            for it in (body.get("items") or [])[:400]:
-                k = mapper.norm_title(it.get("title") or "")
-                if len(k) < 12:
-                    continue
-                f = idx.get(k) or (next((f for p, f in short if k.startswith(p) or p.startswith(k)), "") if len(k) >= 30 else "")
-                if f:
-                    out[str(it.get("id") or "")] = f
-            self._send(200, {"owned": out})
+        elif self.path == "/api/owned_check":   # 탐색 결과의 논문들이 지금 서재에 있나 → {id: 파일} (owned_map — 연구 노트의 공백 검증도 같은 함수를 쓴다, 2026-10-26)
+            self._send(200, {"owned": owned_map(body.get("items") or [])})
         elif self.path == "/api/settings":
             import mapper
             d = mapper.settings()

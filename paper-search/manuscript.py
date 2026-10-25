@@ -1279,9 +1279,11 @@ def _term_rx(terms, korean=False):
     return re.compile("|".join(parts)) if parts else None
 
 
-def _libx_scan(concepts):
+def _libx_scan(concepts, exclude=()):
     """개념(낱말 묶음)들이 모두 가까이(앞 두 문장~다음 문장) 있고, 그 가운데 적어도 (개념 수 − 1)개가 그 문장 안에 있는 문장을 후보로.
-    → (후보들, 훑은 논문 수, 문장 수). 논문마다 14문장까지, 전체 320문장까지(논문마다 돌아가며)."""
+    → (후보들, 훑은 논문 수, 문장 수). 논문마다 14문장까지, 전체 320문장까지(논문마다 돌아가며). exclude: 뺄 논문 파일(벤치마크 — 그 논문 자신, 2026-10-26)"""
+    ex = {os.path.basename(str(x)).lower() for x in (exclude or []) if str(x).strip()}
+    ex |= {x[:-4] if x.endswith(".pdf") else x + ".pdf" for x in list(ex)}
     rx = [(_term_rx(c.get("en")), _term_rx(c.get("ko"), True)) for c in concepts]
     rx = [r for r in rx if r[0] or r[1]]
     if not rx:
@@ -1295,6 +1297,8 @@ def _libx_scan(concepts):
     groups, nsent, nfiles, odd = [], 0, 0, []
     hangul = lambda t: sum(1 for ch in t if "\uac00" <= ch <= "\ud7a3") > len(t) * 0.2
     for pdf in files + bare:
+        if ex and pdf.lower() in ex:
+            continue
         if pdf in bare:
             sents = _pdf_sentences(pdf)
         else:
@@ -1334,7 +1338,7 @@ def _libx_scan(concepts):
 _LIBX_KIND = {"direct": "직접 다룸", "mention": "지나가며 언급", "cites": "남의 연구를 들어 말함"}
 
 
-def lib_extract(topic, effort="xhigh"):
+def lib_extract(topic, effort="xhigh", exclude=()):
     """주제(한국어·영어) → 서재에서 그 내용을 말한 대목. → {id, topic, summary, papers: [{file, short, title, kind, gist, sents: [{sent, page, en, ko, cited}]}], …}"""
     topic = str(topic or "").strip()
     if len(topic) < 2:
@@ -1351,7 +1355,7 @@ def lib_extract(topic, effort="xhigh"):
     concepts = [c for c in concepts if c["en"] or c["ko"]]
     if not concepts:
         return {"error": "찾을 낱말을 정하지 못했습니다" + _why()}
-    cands, nfiles, nsent, odd = _libx_scan(concepts)
+    cands, nfiles, nsent, odd = _libx_scan(concepts, exclude)
     if not cands:
         return {"error": "서재에서 그 낱말들이 함께 나오는 문장을 찾지 못했습니다 (찾은 낱말: %s)" % " / ".join(", ".join(c["en"][:6]) for c in concepts)}
     order = []
@@ -2433,6 +2437,7 @@ def _knowledge_block(doc, kind, role=None, tags=None, topic="", key="draft", k=3
     if not kind:
         return ""
     js = _journal_abbrs(doc)
+    exclude = tuple(exclude or ()) + tuple(doc.get("bench_exclude") or ())   # 벤치마크: 그 논문 자신의 문단은 본보기로 꺼내지 않는다
     out = ""
     try:
         if cfg.get("knowledge"):
@@ -2506,8 +2511,8 @@ def _note_block(doc):
     return ("\n[연구 노트 「%s」 — 저자가 이 연구를 세우며 적은 것(원고가 아니라 계획이다 — 원고와 다르면 원고를 따르고 issues 에 적는다)]\n" % str(nt.get("title") or "")[:80] + "\n".join(L) + "\n") if L else ""
 
 
-def argument_build(doc, body):
-    """원고 글에서 논증 모형을 세운다(Claude 한 번) → doc['argument'] 에 저장. body = {effort}"""
+def argument_build(doc, body, save=True, extra=""):
+    """원고 글에서 논증 모형을 세운다(Claude 한 번) → doc['argument'] 에 저장. body = {effort}. save=False 면 저장하지 않고 돌려준다(연구 노트의 가짜 원고 — 2026-10-26), extra 는 규칙 앞에 붙일 글"""
     key = "draft" if any((n.get("draft") or "").strip() for n in doc.get("outline") or []) else "draft_en"
     parts = _whole_parts(doc, key, cut=False)
     if not parts:
@@ -2519,7 +2524,7 @@ def argument_build(doc, body):
         return {"error": "Claude 를 부를 수 없습니다"}
     system, pre, whole = _ctx(doc, None, key, "논증 모형", True)
     t0 = time.time()
-    prompt = pre + _note_block(doc) + "\n" + _ARG_RULE
+    prompt = pre + _note_block(doc) + (extra or "") + "\n" + _ARG_RULE
     res = run(prompt, timeout=1500, model=model, effort=eff, tools="", system=system or None)
     r = _json_in((res or {}).get("text") or "")
     if not isinstance(r, dict):
@@ -2559,10 +2564,11 @@ def argument_build(doc, body):
            "t": time.time(), "model": (res or {}).get("model") or model, "tok": (res or {}).get("tok"), "sec": round(time.time() - t0), "key": key, "chars": len(whole_text),
            "body_chars": len((doc.get("front") or {}).get("abstract") or "") + sum(len(n.get(key) or n.get("draft_en" if key == "draft" else "draft") or "") for n in doc.get("outline") or []),   # 화면이 '그 뒤 얼마나 바뀌었나' 를 같은 잣대로 센다
            "hash": hashlib.sha1(whole_text.encode("utf-8")).hexdigest()[:12]}
-    with _REV_LOCK:   # 기다리는 동안 저장된 글을 덮지 않게 — 파일을 다시 읽어 논증만 얹는다
-        fresh = load_ms(doc["id"]) or doc
-        fresh["argument"] = arg
-        save_ms(fresh)
+    if save:
+        with _REV_LOCK:   # 기다리는 동안 저장된 글을 덮지 않게 — 파일을 다시 읽어 논증만 얹는다
+            fresh = load_ms(doc["id"]) or doc
+            fresh["argument"] = arg
+            save_ms(fresh)
     return arg
 
 
@@ -5752,7 +5758,7 @@ def plan_write(doc, body):
                 item = next((x for x in store.get("items") or [] if x.get("id") == plan["xid"]), None)
             if not item or not item.get("papers"):
                 topic = ((p.get("gist") or "") + " — " + "; ".join(re.sub(r"^서재 밖:\s*", "", pt.get("t") or "") for pt in (p.get("points") or [])[:5]))[:600]
-                item = lib_extract(topic, body.get("effort") or "xhigh")
+                item = lib_extract(topic, body.get("effort") or "xhigh", exclude=doc.get("bench_exclude") or ())
             if not item or item.get("error") or not item.get("papers"):
                 if lit_role and kind == "intro":
                     return {"error": (item or {}).get("error") or "서재에서 이 문단의 근거를 찾지 못했습니다 — 주제를 바꿔 「서재에서 뽑기」 를 먼저 해 보세요"}

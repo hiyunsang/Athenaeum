@@ -35,7 +35,7 @@ PLAN_KEYS = [("background", "배경과 공백"), ("question", "연구 물음과 
 PLAN_KO = dict(PLAN_KEYS)
 REVIEWERS = [("exp", "실험 전문가"), ("theory", "이론·모델 전문가"), ("editor", "저널 심사위원")]
 REVIEWER_KO = dict(REVIEWERS)
-_JOBKINDS = ("plan", "review", "draft", "intro")
+_JOBKINDS = ("plan", "review", "draft", "intro", "matrix", "argmap", "gapcheck")   # matrix 식별력 표 · argmap 약속-답 지도 · gapcheck 공백 검증 (2026-10-26)
 INTRO_ROLES = list(ms.SECTION_KINDS["intro"]["roles"])   # 서론 문단의 역할 — 원고의 본보기·구성 보기와 같은 이름표(한 곳에만 둔다, 2026-10-25)
 LAB_FILE = "_연구실.json"      # 우리 연구실 — 장비·역량·홈페이지 글 (2026-10-24)
 
@@ -78,6 +78,9 @@ def _brief(nt):
             "pending": bool(nt.get("pending")), "card": bool(nt.get("card")), "last": (last["text"][:90] if last else ""),
             "plan": bool(nt.get("plan")), "open": sum(1 for o in nt.get("objections") or [] if o.get("status") == "open"), "ms": bool(nt.get("ms")), "intro": bool(nt.get("intro")),
             "intro_drafts": sum(1 for q in (nt.get("intro") or {}).get("paras") or [] if (q.get("draft") or {}).get("text")),
+            "matrix": bool(nt.get("matrix")), "unsplit": len((nt.get("matrix") or {}).get("unsplit") or []), "argmap": bool(nt.get("argmap")),
+            "unanswered": sum(1 for x in (nt.get("argmap") or {}).get("issues") or [] if x.get("kind") == "unanswered"),
+            "gapcheck": bool(nt.get("gapcheck")), "gap_done": sum(1 for r in (nt.get("gapcheck") or {}).get("claims") or [] if r.get("verdict") in ("done", "partial")),
             "busy": any(nt.get(k + "_pending") for k in _JOBKINDS) or bool((nt.get("intro") or {}).get("writing")),
             "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", "")}
 
@@ -793,8 +796,8 @@ _PLAN_RULE = (
     "[… 방법을 이렇게 쓴다] 가 있으면 그 저널의 방법 절이 늘 적는 것(시편 상태·공구 기하·조건·측정 분해능 같은)을 설계서가 빠뜨리지 않게 한다.")
 
 _REVIEW_RULE = (
-    "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성 — [우리 연구실] 이 있으면 그 장비·역량으로 되는가와 외부에 맡길 측정의 비용·일정·접근, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수), "
-    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것; [유사 연구의 설계] 가 있으면 그 논문들과 칸마다 견줘 이미 된 것과 다른 것을 짚는다). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
+    "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성 — [우리 연구실] 이 있으면 그 장비·역량으로 되는가와 외부에 맡길 측정의 비용·일정·접근, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수; [식별력 표] 가 있으면 못 가르는 쌍과 '~'·'?' 칸, [약속 ↔ 답 지도] 의 답 없는 약속을 먼저 공격한다), "
+    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것; [유사 연구의 설계] 가 있으면 그 논문들과 칸마다 견줘 이미 된 것과 다른 것을 짚고, [공백 검증] 에 '이미 됨' 으로 나온 공백을 계획이 그대로 쓰고 있으면 그것을 친다). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
     "반론은 구체적으로(어느 칸의 무엇이 왜 문제인가), 서재 논문을 들 수 있으면 '(첫 저자 연도)' 로. 이미 답한 반론은 되풀이하지 않는다. 연구자가 답하면 풀릴 수 있게 물음을 한 줄 단다.\n"
     "JSON 으로만: {\"items\": [{\"who\": \"exp|theory|editor\", \"sec\": \"설계서 칸 이름(background·question·material·setup·design·analysis·expected·risks·schedule·venue) 또는 빈 문자열\", \"sev\": \"high|mid|low\", \"t\": \"반론 1~3문장\", \"ask\": \"연구자가 답해야 할 물음 한 줄\"}]}")
 
@@ -825,6 +828,15 @@ def _plan_prompt(nt):
     _DESIGNS[nt.get("id")] = [{"stem": x["stem"], "author": x["author"], "year": x["year"], "journal": x["journal"], "star": x.get("star")} for x in items]
     if dz:
         out += "\n" + dz
+    mx = _matrix_text(nt.get("matrix"))
+    if mx:
+        out += "\n" + mx + "(설계서를 다시 쓸 때 못 가르는 쌍을 가를 관찰·대조를 design·setup 에 더하거나, 못 가른다고 risks 에 밝힌다)\n"
+    am = _argmap_text(nt.get("argmap"))
+    if am:
+        out += "\n" + am
+    gc = _gapcheck_text(nt.get("gapcheck"))
+    if gc:
+        out += "\n" + gc
     try:   # 그 저널의 방법 절은 무엇을 꼭 적는가 — 설계서의 재료·장비·설계 칸이 빠뜨리지 않게 (짧게)
         kn = (cfg.get("knowledge") or (lambda j, k, cap=0: ""))(_intro_journals(nt), "methods", cap=4500)
     except TypeError:
@@ -850,6 +862,15 @@ def _review_prompt(nt):
     dz, _items = _designs(nt, k=6)   # 심사위원(editor)이 새로움을 실제 논문과 견주게 (2026-10-26)
     if dz:
         out += "\n" + dz
+    mx = _matrix_text(nt.get("matrix"))
+    if mx:
+        out += "\n" + mx
+    am = _argmap_text(nt.get("argmap"))
+    if am:
+        out += "\n" + am
+    gc = _gapcheck_text(nt.get("gapcheck"))
+    if gc:
+        out += "\n" + gc
     return out + "\n" + _REVIEW_RULE
 
 
@@ -954,6 +975,367 @@ def _intro_check(nt):
     return notes
 
 
+# ---------- 식별력 표 — 가설 × 관찰 × 예측·판정 (2026-10-26, 사용자: '최종 목표는 연구 계획·서론 구조') ----------
+# 교수가 계획서에서 맨 먼저 묻는 것: 이 실험이 경쟁하는 설명 가운데 어느 것이 맞는지 가를 수 있나. Claude 가 가설·관찰·칸마다의 예측(부호)을 세우고,
+# 프로그램이 '두 가설의 예측 부호가 어느 관찰에서도 다르지 않은 쌍'(못 가르는 쌍)·아무 쌍도 못 가르는 관찰·아무것과도 안 갈리는 가설을 센다. 반론·설계서·서론 구조 물음에 들어간다.
+_MATRIX_RULE = (
+    "설계서(없으면 카드·토의)의 연구를 놓고, 이 실험이 경쟁하는 설명 가운데 어느 것이 맞는지를 실제로 가를 수 있는지 표로 세운다 — 심사위원이 아니라 공저자로서, 빠진 경쟁 설명을 찾아 넣는 것이 이 일의 반이다.\n"
+    "hyps: 설계서의 가설(H1, H2 …)은 그대로 쓰고(kind main), 거기에 경쟁하는 설명을 더한다 — 영가설(kind null: 효과 없음·차이 없음), 장치·절차가 만드는 가짜 신호(kind artifact: 공구 정렬 오차·고정구 비대칭·동력계 혼선·열·마모 같은), "
+    "다른 기전(kind rival: 같은 관찰을 다르게 설명하는 것 — [유사 연구의 설계]가 쓴 설명 포함). 모두 4~7개, 각각 한 문장. "
+    "obs: 이 실험이 재는 양·비교 4~8개 — t(무엇을 어느 조건끼리 견주나), how(어떤 장치·분해능·표본 수로), when(예비|본). 설계서의 '장비·측정'·'해석'·'예상 결과' 칸에 있는 것만(새 장치를 지어내지 않는다). "
+    "cells: 가설마다 관찰마다 예측 — dir 은 부호·경향 하나: '+' 커진다·있다·같은 쪽 / '-' 작아진다·반대쪽 / '0' 없다·차이 없음·대칭 / '~' 있지만 방향이 정해지지 않거나 다른 가설과 같은 꼴이라 못 가름 / '?' 이 가설은 이 관찰에 대해 예측하지 못함. t 는 한 구절(왜 그 부호인지). "
+    "**두 가설의 dir 이 어느 관찰에서도 다르지 않으면 이 실험은 그 둘을 못 가른다 — 프로그램이 이것을 센다. 그러니 부호는 성실하게, 모르면 '?' 로.** "
+    "rules: 판정 규칙 3~6개 — '관찰 Ok 가 어느 꼴이면 어느 가설을 접고 어느 것을 남긴다'. 설계서의 판정 기준과 어긋나지 않게. "
+    "risks: 식별력을 깨는 것 0~4개 — 효과 크기가 분해능·표본 산포보다 작을 수 있는 자리, 두 가설이 같은 예측을 내는 자리, 가짜 신호가 주 가설의 부호와 같은 자리.\n"
+    "JSON 으로만 답하라(한국어, 마크다운 없이): {\"hyps\": [{\"id\": \"H1\", \"t\": \"한 문장\", \"kind\": \"main|rival|null|artifact\"}], \"obs\": [{\"id\": \"O1\", \"t\": \"…\", \"how\": \"…\", \"when\": \"예비|본\"}], "
+    "\"cells\": [{\"h\": \"H1\", \"o\": \"O1\", \"dir\": \"+|-|0|~|?\", \"t\": \"한 구절\"}], \"rules\": [\"…\"], \"risks\": [\"…\"]}")
+
+_MX_KIND_KO = {"main": "주 가설", "rival": "경쟁 설명", "null": "영가설", "artifact": "가짜 신호"}
+
+
+def _matrix_prompt(nt):
+    out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))
+    ct = _card_text(nt.get("card"))
+    if ct:
+        out += "\n[주제 카드]\n" + ct + "\n"
+    if nt.get("plan"):
+        out += "\n[실험 설계서]\n" + _plan_text(nt["plan"], cap=1800) + "\n"
+    else:
+        out += "\n[토의 — 설계서가 아직 없어 토의와 카드로 세운다]\n" + _thread_text(nt, n=12, cap=2500) + "\n"
+    ans = _answered_text(nt)
+    if ans:
+        out += "\n[답한 반론]\n" + ans + "\n"
+    opens = [o for o in nt.get("objections") or [] if o.get("status") == "open"]
+    if opens:
+        out += "\n[아직 답하지 않은 반론 — 경쟁 설명·가짜 신호의 후보]\n" + "\n".join("- [%s] %s" % (REVIEWER_KO.get(o.get("who"), o.get("who")), o.get("t")) for o in opens[:10]) + "\n"
+    dz, _items = _designs(nt, k=6, brief=True)
+    if dz:
+        out += "\n" + dz
+    if nt.get("matrix"):
+        out += "\n[전에 세운 표 — 못 가른 쌍을 가를 관찰을 더하거나 예측을 고친다]\n" + _matrix_text(nt["matrix"]) + "\n"
+    return out + "\n" + _MATRIX_RULE
+
+
+def _matrix_check(m):
+    """프로그램이 센다: 못 가르는 가설 쌍 · 아무 쌍도 못 가르는 관찰 · 아무것과도 안 갈리는 가설"""
+    hyps = [h["id"] for h in m.get("hyps") or []]
+    obs = [o["id"] for o in m.get("obs") or []]
+    cells = m.get("cells") or {}
+    d = lambda h, o: (cells.get(h + "|" + o) or {}).get("dir") or "?"
+    kind = {h["id"]: h.get("kind") for h in m.get("hyps") or []}
+    pairs, unsplit, coexist, used = [], [], [], set()
+    for i in range(len(hyps)):
+        for j in range(i + 1, len(hyps)):
+            by = [o for o in obs if d(hyps[i], o) not in ("?", "~") and d(hyps[j], o) not in ("?", "~") and d(hyps[i], o) != d(hyps[j], o)]
+            pairs.append({"a": hyps[i], "b": hyps[j], "by": by})
+            used |= set(by)
+            if not by:
+                if kind.get(hyps[i]) == "main" and kind.get(hyps[j]) == "main":
+                    coexist.append({"a": hyps[i], "b": hyps[j]})   # 주 가설끼리는 함께 설 수 있다 — 못 가르는 것이 흠이 아니다(첫 실전에서 H1↔H2·H1↔H3 가 경고로 잡혔다)
+                else:
+                    unsplit.append({"a": hyps[i], "b": hyps[j]})
+    idle = [o for o in obs if o not in used]
+    blind = [h for h in hyps if all((p["a"] != h and p["b"] != h) or not p["by"] for p in pairs)] if len(hyps) > 1 else []
+    m["pairs"], m["unsplit"], m["coexist"], m["idle"], m["blind"] = pairs, unsplit, coexist, idle, blind
+    return m
+
+
+def _apply_matrix(nt, d, res, t0):
+    S = lambda v, n=400: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+    hyps, seen = [], set()
+    for i, h in enumerate((d.get("hyps") if isinstance(d.get("hyps"), list) else [])[:8]):
+        if not isinstance(h, dict) or not S(h.get("t")):
+            continue
+        hid = S(h.get("id"), 6) or "H%d" % (i + 1)
+        if hid in seen:
+            hid = "H%d" % (len(hyps) + 1)
+        seen.add(hid)
+        hyps.append({"id": hid, "t": S(h["t"]), "kind": h.get("kind") if h.get("kind") in _MX_KIND_KO else "rival"})
+    obs, seen = [], set()
+    for i, o in enumerate((d.get("obs") if isinstance(d.get("obs"), list) else [])[:10]):
+        if not isinstance(o, dict) or not S(o.get("t")):
+            continue
+        oid = S(o.get("id"), 6) or "O%d" % (i + 1)
+        if oid in seen:
+            oid = "O%d" % (len(obs) + 1)
+        seen.add(oid)
+        obs.append({"id": oid, "t": S(o["t"], 300), "how": S(o.get("how"), 300), "when": "예비" if "예비" in str(o.get("when") or "") else "본"})
+    if len(hyps) < 2 or len(obs) < 2:
+        raise RuntimeError("표가 비어 왔습니다(가설 %d · 관찰 %d)" % (len(hyps), len(obs)))
+    hid_set, oid_set = {h["id"] for h in hyps}, {o["id"] for o in obs}
+    cells = {}
+    for c in (d.get("cells") if isinstance(d.get("cells"), list) else []):
+        if not isinstance(c, dict):
+            continue
+        h, o = S(c.get("h"), 6), S(c.get("o"), 6)
+        if h in hid_set and o in oid_set:
+            dr = str(c.get("dir") or "?").strip()
+            cells[h + "|" + o] = {"dir": dr if dr in ("+", "-", "0", "~", "?") else "?", "t": S(c.get("t"), 200)}
+    m = {"hyps": hyps, "obs": obs, "cells": cells, "rules": [S(x, 300) for x in (d.get("rules") or [])[:8] if S(x)], "risks": [S(x, 300) for x in (d.get("risks") or [])[:6] if S(x)],
+         "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
+    nt["matrix"] = _matrix_check(m)
+
+
+def _matrix_text(m, brief=False):
+    """지시문에 붙일 [식별력 표] — brief 면 가설 목록과 못 가르는 쌍만"""
+    if not m or not m.get("hyps"):
+        return ""
+    L = ["[식별력 표 — 가설 × 관찰 × 예측 부호(+ 커짐·있음 / - 반대 / 0 없음 / ~ 못 가름 / ? 예측 없음). 프로그램이 센 것: 못 가르는 가설 쌍 %d]" % len(m.get("unsplit") or [])]
+    for h in m["hyps"]:
+        L.append("%s (%s): %s" % (h["id"], _MX_KIND_KO.get(h.get("kind"), h.get("kind")), h["t"]))
+    if not brief:
+        for o in m.get("obs") or []:
+            L.append("%s: %s — %s%s" % (o["id"], o["t"], o.get("how") or "", (" [" + o["when"] + "]") if o.get("when") else ""))
+        for h in m["hyps"]:
+            L.append("  %s → " % h["id"] + " · ".join("%s %s" % (o["id"], (m["cells"].get(h["id"] + "|" + o["id"]) or {}).get("dir") or "?") for o in m.get("obs") or []))
+        if m.get("rules"):
+            L.append("판정: " + " / ".join(m["rules"]))
+    if m.get("unsplit"):
+        L.append("못 가르는 쌍: " + ", ".join("%s↔%s" % (p["a"], p["b"]) for p in m["unsplit"]) + " — 어느 관찰에서도 예측 부호가 다르지 않다(설계에 가를 관찰을 더하거나, 둘을 하나로 묶거나, 못 가른다고 밝혀야 한다)")
+    if m.get("coexist") and not brief:
+        L.append("주 가설끼리 서로 가르지 않는 쌍(함께 설 수 있다): " + ", ".join("%s↔%s" % (p["a"], p["b"]) for p in m["coexist"]))
+    if m.get("idle") and not brief:
+        L.append("아무 쌍도 못 가르는 관찰: " + ", ".join(m["idle"]))
+    if m.get("risks") and not brief:
+        L.append("식별력을 깨는 것: " + " / ".join(m["risks"]))
+    return "\n".join(L) + "\n"
+
+
+# ---------- 약속 ↔ 답 지도 — 원고의 논증 모형(ms.argument_build)을 노트의 가짜 원고에 (2026-10-26) ----------
+_ARGMAP_NOTE = ("\n[주의] 위 원고는 실험 전의 연구 계획(연구 노트의 서론 구조·설계서·식별력 표)을 원고의 꼴로 늘어놓은 것이다 — 결과·주장은 '예상' 이다. 그래도 같은 틀로 본다: "
+                "서론(구조)이 세운 공백·목적 문장(약속)마다 예상 결과·판정 규칙이 답하는지, 답이 없는 약속은 unanswered 로, 서론의 공백과 기여(예상)가 맞물리지 않으면 gap_mismatch 로, 예상 결과가 받치지 않는 주장은 unsupported 로. "
+                "수치는 없는 것이 정상이니 number 문제는 세우지 않는다. results 는 '예상 결과·판정' 절의 항목(예상), claims 는 설계서가 결과가 나오면 세우겠다는 주장이다.\n")
+
+
+def _note_doc(nt):
+    """연구 노트를 원고의 꼴로 — 논증 모형 기계가 그대로 읽게. 서론 = 서론 구조(쓴 문단이 있으면 그 글, 없으면 요지와 할 말) · 방법 = 설계서 재료·장비·설계 · 결과(예상) = 예상 결과 + 식별력 표 · 논의 = 해석 · 결론(예상) = 판정 규칙"""
+    plan = nt.get("plan") or {}
+    sec = {s.get("k"): s.get("t") or "" for s in plan.get("sections") or []}
+    card = nt.get("card") or {}
+    intro = nt.get("intro") or {}
+    L = []
+    for i, q in enumerate(intro.get("paras") or []):
+        dr = (q.get("draft") or {}).get("text")
+        if dr:
+            L.append(dr)
+        else:
+            L.append("(%d문단 · 역할 %s · 요지: %s)\n" % (i + 1, q.get("role") or "", q.get("gist") or "") + " ".join(
+                (pt.get("t") or "") + ((" (" + ", ".join(c.get("key") for c in pt.get("cites") or []) + ")") if pt.get("cites") else "") for pt in q.get("points") or []))
+    m = nt.get("matrix") or {}
+    results = (sec.get("expected") or "")
+    if m.get("hyps"):
+        results += "\n\n(식별력 표의 예측) " + _matrix_text(m)
+    concl = ("판정 규칙: " + " / ".join(m.get("rules") or [])) if m.get("rules") else ""
+    for k in ("expected",):
+        if card.get(k):
+            concl += ("\n" if concl else "") + "카드의 예상 결과: " + (" / ".join(str(x) for x in card[k]) if isinstance(card[k], list) else str(card[k]))
+    out = [("1. Introduction", "\n\n".join(L)), ("2. Materials and methods", "\n\n".join(x for x in (sec.get("material"), sec.get("setup"), sec.get("design")) if x)),
+           ("3. Results (expected)", results), ("4. Discussion (planned analysis)", sec.get("analysis") or ""), ("5. Conclusions (expected)", concl)]
+    outline = [{"id": "n%d" % (i + 1), "level": 1, "heading": h, "draft": t, "claim": ""} for i, (h, t) in enumerate(out)]
+    q = card.get("question") or sec.get("question") or ""
+    hyp = card.get("hypothesis") or ""
+    abstract = (" ".join(str(x) for x in q) if isinstance(q, list) else str(q)) + ("\n" + (" ".join(str(x) for x in hyp) if isinstance(hyp, list) else str(hyp)) if hyp else "")
+    return {"id": "nt:" + str(nt.get("id") or ""), "title": nt.get("title") or "", "front": {"abstract": abstract[:3000]}, "outline": outline, "refs_text": [], "sources": [], "source_dirs": [], "meta": {}}
+
+
+def _argmap_job(nid):
+    nt = _load(nid)
+    if not nt:
+        return
+    eff = (nt.get("argmap_opts") or {}).get("effort") or "xhigh"
+    t0 = time.time()
+    arg, err = None, ""
+    try:
+        doc = _note_doc(nt)
+        if not any(n.get("draft") for n in doc["outline"]):
+            err = "서론 구조·설계서가 없어 지도를 그릴 글이 없습니다"
+        else:
+            r = ms.argument_build(doc, {"effort": eff if eff in getattr(ms, "_SEL_EFFORT", {}) else "xhigh"}, save=False, extra=_ARGMAP_NOTE)
+            if isinstance(r, dict) and r.get("error"):
+                err = r["error"]
+            elif not isinstance(r, dict):
+                err = "지도를 받지 못했습니다"
+            else:
+                arg = r
+    except Exception as e:
+        err = "논증 모형 실패: " + str(e)[:200]
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return
+        nt.pop("argmap_pending", None)
+        if err:
+            nt["argmap_error"] = err
+        else:
+            nt.pop("argmap_error", None)
+            arg["sec"] = round(time.time() - t0)
+            nt["argmap"] = arg
+        _save(nt)
+
+
+def _argmap_text(a, cap=3500):
+    """지시문에 붙일 [약속 ↔ 답 지도] — 약속마다 답하는 주장, 답 없는 약속·받침 없는 주장·문제"""
+    if not a or not (a.get("promises") or a.get("issues")):
+        return ""
+    L = ["[약속 ↔ 답 지도 — 서론 구조의 공백·목적(약속)과 설계서의 예상 결과·주장을 논증 모형으로 맞댄 것(계획 단계라 결과는 예상). 답 없는 약속은 서론에서 빼거나 설계에 답을 더한다]"]
+    for pm in a.get("promises") or []:
+        L.append("- 약속: %s → %s" % (pm.get("t", "")[:160], (", ".join(pm.get("answered_by") or []) or "답 없음")))
+    weak = [c for c in a.get("claims") or [] if c.get("strength") == "weak" or not c.get("results")]
+    if weak:
+        L.append("받침이 약한 주장: " + " / ".join("%s %s" % (c["id"], c["t"][:100]) for c in weak[:5]))
+    for x in (a.get("issues") or [])[:8]:
+        L.append("- 문제(%s): %s" % (ms._ARG_KINDS.get(x.get("kind"), x.get("kind")), x.get("note", "")[:200]))
+    out = "\n".join(L) + "\n"
+    return out if len(out) <= cap else out[:cap] + "\n(…)\n"
+
+
+# ---------- 공백 검증 — 서론 구조의 공백 문장을 세상의 문헌에서 (2026-10-26, 사용자 'ㄱㄱ': 서론 구조를 뽑으면 자동으로, 탐색 둘까지가 아니라 공백 문장마다 하나씩·넷까지) ----------
+# 서재는 세상의 일부다. 공백 문장("…을 잰 연구가 없다")마다 탐색의 검색 계획(Claude Sonnet) → OpenAlex 불리언(관련도 40 + 2022년 뒤 최신 20) → 서재 보유 표시 → Claude(노트의 모델)가 초록만으로 '이미 한 논문 / 일부 / 열림' 을 가른다.
+_GAP_RULE = (
+    "아래는 한 연구 계획의 서론이 세운 공백 문장들과, 공백마다 학술 DB 에서 찾아온 후보 논문(제목·연도·저널·초록)이다. 공백마다 후보 가운데 **그 공백이 '없다'고 한 바로 그것을 이미 한 논문**이 있는지 가려라 — 초록에 적힌 것만으로 판단하고, 제목만 비슷한 것·주제가 겹칠 뿐인 것은 넣지 않는다. "
+    "level: done = 그 공백이 없다고 한 그 측정·그 조건·그 재료를 이미 했다 / partial = 일부만(다른 재료·다른 척도·간접 측정·모사만). verdict: done 이 하나라도 있으면 done, partial 만 있으면 partial, 없으면 open. "
+    "note 는 연구자가 공백 문장을 어떻게 고쳐 말해야 하는가 한 줄(한국어; open 이면 빈 문자열). papers 의 how 는 그 논문이 무엇을 이미 했나 한 줄(한국어, 초록에 있는 말로).\n"
+    "JSON 으로만: {\"claims\": [{\"i\": 1, \"verdict\": \"done|partial|open\", \"note\": \"…\", \"papers\": [{\"k\": 3, \"level\": \"done|partial\", \"how\": \"…\"}]}]}")
+
+_GAP_VERDICT_KO = {"done": "이미 됨", "partial": "일부 됨", "open": "열림", "fail": "검색 실패"}
+
+
+def _gap_claims(nt, cap=4):
+    """서론 구조의 공백 문단에서 검증할 주장 — 문단마다 points(구체적인 것) 둘까지, 없으면 요지. '서재 밖:' 머리말은 뗀다"""
+    out = []
+    for i, q in enumerate((nt.get("intro") or {}).get("paras") or []):
+        if q.get("role") != "공백":
+            continue
+        pts = [re.sub(r"^서재 밖:\s*", "", str(pt.get("t") or "")).strip() for pt in q.get("points") or []]
+        pts = [t for t in pts if len(t) > 15][:2] or ([str(q.get("gist") or "").strip()] if q.get("gist") else [])
+        for t in pts:
+            out.append({"para": i + 1, "t": t[:400]})
+    return out[:cap]
+
+
+def _gapcheck_job(nid):
+    nt = _load(nid)
+    if not nt:
+        return
+    eff_key = (nt.get("gapcheck_opts") or {}).get("effort") or "xhigh"
+    model, eff = _EFFORT.get(eff_key, _EFFORT["xhigh"])
+    t0 = time.time()
+    claims = _gap_claims(nt)
+    err, result, tok = "", None, None
+    try:
+        if not claims:
+            err = "서론 구조에 공백 문단이 없습니다"
+        elif not (cfg.get("plan_search") and cfg.get("build_boolean") and cfg.get("openalex_boolean")):
+            err = "이 서버는 탐색 기계를 주지 않았습니다"
+        else:
+            rows = []
+            for c in claims:
+                row = dict(c, expr="", n=0, papers=[], verdict="fail", note="")
+                try:
+                    plan = cfg["plan_search"](c["t"] + " — 이것을 실제로 재거나 한 논문을 찾는다") or {}
+                    fallback = lambda p: len(p.get("concepts") or []) == 1 and (p["concepts"][0].get("terms") or [None])[0] and len(str(p["concepts"][0]["terms"][0])) > 60   # 계획을 못 받아 원문 그대로 한 개념이 된 것
+                    if fallback(plan):
+                        plan = cfg["plan_search"]("다음 공백 문장이 '없다·안 됐다' 고 하는 측정·관찰·조건을 찾을 영어 검색어(개념 2~3개, 필수): " + c["t"][:300]) or {}
+                    if fallback(plan):
+                        row["err"] = "검색 계획을 받지 못했다"
+                        rows.append(row)
+                        continue
+                    cs = plan.get("concepts") or []
+                    req = [x for x in cs if x.get("required")]
+                    expr = cfg["build_boolean"](req if len(req) >= 2 else cs, plan.get("exclude"))   # 필수 개념이 하나뿐이면 전체 개념으로 — 하나짜리 OR 묶음은 13만 편에 걸렸다
+                    row["expr"], row["plan"] = expr, plan.get("intent", "")
+                    if expr:
+                        found, cnt = cfg["openalex_boolean"](expr, year="2008", per_page=40)
+                        recent, _c = cfg["openalex_boolean"](expr, year="2022", per_page=20, sort="publication_date:desc")
+                        seen, merged = set(), []
+                        for it in list(found) + list(recent):
+                            if it.get("id") and it["id"] not in seen and it.get("title"):
+                                seen.add(it["id"])
+                                merged.append(it)
+                        row["n"] = cnt
+                        row["papers"] = [{"id": it["id"], "title": it.get("title", "")[:200], "year": it.get("year") or 0, "venue": (it.get("venue") or "")[:60], "doi": it.get("doi") or "",
+                                          "abstract": (it.get("abstract") or "")[:450], "rel": it.get("rel") or 0} for it in merged[:18]]
+                        row["verdict"] = "open"
+                except Exception as e:
+                    row["err"] = str(e)[:160]
+                rows.append(row)
+            try:
+                om = cfg["owned_map"]([{"id": p["id"], "title": p["title"]} for r in rows for p in r["papers"]]) if cfg.get("owned_map") else {}
+            except Exception:
+                om = {}
+            for r in rows:
+                for p in r["papers"]:
+                    p["owned"] = om.get(p["id"], "")
+            # Claude 가 가른다 — 배경 없이(시스템 프롬프트 없음: 공백 문장과 초록만 보면 된다)
+            L = ["[연구 계획의 서론이 세운 공백 문장들]"]
+            for i, r in enumerate(rows):
+                L.append("%d) %s" % (i + 1, r["t"]))
+            for i, r in enumerate(rows):
+                if not r["papers"]:
+                    continue
+                L.append("\n[공백 %d 의 후보 논문 — 검색식: %s · 전체 %d편 가운데 %d편]" % (i + 1, r["expr"][:300], r["n"], len(r["papers"])))
+                for k, p in enumerate(r["papers"]):
+                    L.append("%d) %s (%s, %s)%s — %s" % (k + 1, p["title"], p["year"], p["venue"], " ★서재" if p.get("owned") else "", p["abstract"] or "(초록 없음)"))
+            run = cfg.get("claude_run")
+            res = run("\n".join(L) + "\n\n" + _GAP_RULE, timeout=900, model=model, effort=eff, tools="") if (run and any(r["papers"] for r in rows)) else None
+            d = _json_of((res or {}).get("text")) if res else None
+            tok = (res or {}).get("tok")
+            if isinstance(d, dict) and isinstance(d.get("claims"), list):
+                for x in d["claims"]:
+                    try:
+                        i = int(x.get("i") or 0) - 1
+                    except Exception:
+                        continue
+                    if not 0 <= i < len(rows) or not rows[i]["papers"]:
+                        continue
+                    r = rows[i]
+                    r["verdict"] = x.get("verdict") if x.get("verdict") in ("done", "partial", "open") else r["verdict"]
+                    r["note"] = re.sub(r"\s+", " ", str(x.get("note") or "")).strip()[:300]
+                    for y in (x.get("papers") if isinstance(x.get("papers"), list) else [])[:6]:
+                        try:
+                            k = int(y.get("k") or 0) - 1
+                        except Exception:
+                            continue
+                        if 0 <= k < len(r["papers"]):
+                            r["papers"][k]["level"] = y.get("level") if y.get("level") in ("done", "partial") else "partial"
+                            r["papers"][k]["how"] = re.sub(r"\s+", " ", str(y.get("how") or "")).strip()[:300]
+                    if r["verdict"] == "open" and any(p.get("level") == "done" for p in r["papers"]):
+                        r["verdict"] = "done"
+            elif any(r["papers"] for r in rows):
+                err = "후보는 찾았지만 판정을 받지 못했습니다" + _why()
+            for r in rows:   # 화면·지시문에는 가린 논문만 — 초록은 뺀다
+                r["papers"] = [{k: v for k, v in p.items() if k != "abstract"} for p in r["papers"] if p.get("level")]
+            result = {"claims": rows, "t": time.time(), "sec": round(time.time() - t0), "tok": tok, "model": (res or {}).get("model") or model}
+    except Exception as e:
+        err = "공백 검증 실패: " + str(e)[:200]
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return
+        nt.pop("gapcheck_pending", None)
+        if err and not result:
+            nt["gapcheck_error"] = err
+        else:
+            nt.pop("gapcheck_error", None)
+            if err:
+                result["warn"] = err
+            nt["gapcheck"] = result
+        _save(nt)
+
+
+def _gapcheck_text(g, cap=3000):
+    """지시문에 붙일 [공백 검증] — 공백마다 판정과 이미 한 논문"""
+    if not g or not g.get("claims"):
+        return ""
+    L = ["[공백 검증 — 서론 구조의 공백 문장을 학술 DB(OpenAlex)에서 찾아 Claude 가 초록으로 가린 것. '이미 됨' 인 공백은 그대로 쓰지 말고 그 논문을 선행연구에 넣어 공백을 좁힌다; '열림' 은 아직 세상에도 없는 것으로 보되 단정은 피한다]"]
+    for r in g["claims"]:
+        L.append("- (%s) %s%s" % (_GAP_VERDICT_KO.get(r.get("verdict"), r.get("verdict")), r["t"][:200], (" → " + r["note"]) if r.get("note") else ""))
+        for p in (r.get("papers") or [])[:4]:
+            L.append("    · %s (%s, %s)%s — %s" % (p.get("title", "")[:120], p.get("year"), p.get("venue"), " ★서재" if p.get("owned") else "", p.get("how", "")))
+    out = "\n".join(L) + "\n"
+    return out if len(out) <= cap else out[:cap] + "\n(…)\n"
+
+
 _INTRO_MODELS = {}   # 주제 id → 본보기 논문 이름들 (물음을 만들 때 적고, 결과를 담을 때 꺼낸다 — _bg_job 이 주제 파일을 다시 읽어 nt 에 적어 두면 사라진다)
 _JABBR = re.compile(r"\b(IJMTM|JMPT|CIRPA|CIRP|PE|JMP|IJEM|JMSE|IJPEM|IJPEMGT|JMST|AMT|WEAR|TI|PCIRP|MD|JAC|JMPS|IJMS|NM)\b")
 
@@ -1055,6 +1437,15 @@ def _intro_prompt(nt):
     dz, _items = _designs(nt, k=6, brief=True)   # 선행연구·공백 문단의 재료 — 그 논문들이 실제로 한 것과 멈춘 곳 (2026-10-26)
     if dz:
         out += "\n" + dz
+    mx = _matrix_text(nt.get("matrix"), brief=True)
+    if mx:
+        out += "\n" + mx + "(목적 문단은 이 가설들 가운데 무엇을 어떻게 가르는지를 말한다)\n"
+    am = _argmap_text(nt.get("argmap"))
+    if am:
+        out += "\n" + am + "(답 없는 약속은 공백 문단에서 빼거나 설계가 답하는 것으로 좁힌다)\n"
+    gc = _gapcheck_text(nt.get("gapcheck"))
+    if gc:
+        out += "\n" + gc
     shape = ms.intro_shape_text(ms.intro_shape(tuple(_intro_journals(nt))) or ms.intro_shape())   # 그 저널 서론의 크기 — 서재에서 잰 것(내가 정한 '4~7개' 대신)
     if shape:
         out += "\n" + shape
@@ -1354,6 +1745,12 @@ def job_start(nid, kind, body):
             return {"error": "먼저 한 번은 토의해야 합니다"}
         if kind == "draft" and not (nt.get("plan") or nt.get("card")):
             return {"error": "먼저 설계서(또는 카드)를 만들어야 원고 초안을 세울 수 있습니다"}
+        if kind == "matrix" and not (nt.get("plan") or nt.get("card")):
+            return {"error": "먼저 설계서(또는 카드)를 만들어야 식별력 표를 세울 수 있습니다"}
+        if kind == "argmap" and not ((nt.get("intro") or {}).get("paras") and (nt.get("plan") or nt.get("card"))):
+            return {"error": "서론 구조와 설계서(또는 카드)가 있어야 약속-답 지도를 그릴 수 있습니다"}
+        if kind == "gapcheck" and not any(q.get("role") == "공백" for q in (nt.get("intro") or {}).get("paras") or []):
+            return {"error": "서론 구조에 공백 문단이 있어야 검증할 수 있습니다"}
         nt[kind + "_pending"] = time.time()
         nt.pop(kind + "_error", None)
         nt[kind + "_opts"] = {"effort": effort, "req": str(body.get("req") or "").strip()[:600]}
@@ -1381,8 +1778,12 @@ def _bg_job(nid, kind):
     nt = _load(nid)
     if not nt:
         return
+    if kind == "argmap":   # 원고의 논증 모형 기계를 그대로 — 물음·답 꼴이 달라 따로 간다
+        return _argmap_job(nid)
+    if kind == "gapcheck":   # 탐색 기계 + 판정 — 따로 간다
+        return _gapcheck_job(nid)
     model, eff = _EFFORT.get((nt.get(kind + "_opts") or {}).get("effort"), _EFFORT["xhigh"])
-    prompt = {"plan": _plan_prompt, "review": _review_prompt, "draft": _draft_prompt, "intro": _intro_prompt}[kind](nt)
+    prompt = {"plan": _plan_prompt, "review": _review_prompt, "draft": _draft_prompt, "intro": _intro_prompt, "matrix": _matrix_prompt}[kind](nt)
     t0 = time.time()
     res, err, d, cancelled = None, "", None, False
     try:
@@ -1393,7 +1794,7 @@ def _bg_job(nid, kind):
         if not cancelled:
             d = _json_of((res or {}).get("text"))
             if not isinstance(d, dict):
-                err = {"plan": "설계서를", "review": "반론을", "draft": "원고 초안을", "intro": "서론 구조를"}[kind] + " 받지 못했습니다" + _why()
+                err = {"plan": "설계서를", "review": "반론을", "draft": "원고 초안을", "intro": "서론 구조를", "matrix": "식별력 표를"}[kind] + " 받지 못했습니다" + _why()
     except Exception as e:
         err = "Claude 호출 실패: " + str(e)[:200]
     with _LOCK:
@@ -1407,7 +1808,7 @@ def _bg_job(nid, kind):
             return
         if not err:
             try:
-                {"plan": _apply_plan, "review": _apply_review, "draft": _apply_draft, "intro": _apply_intro}[kind](nt, d, res, t0)
+                {"plan": _apply_plan, "review": _apply_review, "draft": _apply_draft, "intro": _apply_intro, "matrix": _apply_matrix}[kind](nt, d, res, t0)
                 if kind == "intro":
                     _intro_check(nt)   # 프로그램이 본 것 — 서재 분포와 견줌 (비평 물음에도 들어간다)
             except Exception as e:
@@ -1432,6 +1833,11 @@ def _bg_job(nid, kind):
                     except Exception:
                         pass
                     _save(nt)
+        try:   # 서론 구조가 서면 약속 ↔ 답 지도를 이어서 그린다(Opus 한 번 — 서론의 공백·목적에 설계서가 답하는가, 2026-10-26)
+            job_start(nid, "argmap", {"effort": (nt.get("intro_opts") or {}).get("effort") or "xhigh"})
+            job_start(nid, "gapcheck", {"effort": (nt.get("intro_opts") or {}).get("effort") or "xhigh"})   # 공백 문장을 세상의 문헌에서 — 나란히
+        except Exception:
+            pass
 
 
 def _intro_critique(nid, model, eff):
@@ -1449,6 +1855,12 @@ def _intro_critique(nid, model, eff):
         ctx += "\n[실험 설계서]\n" + _plan_text(nt["plan"], cap=1200) + "\n"
     kn = (cfg.get("knowledge") or (lambda j, k: ""))(_intro_journals(nt), "intro")
     dz, _items = _designs(nt, k=6, brief=True)
+    am = _argmap_text(nt.get("argmap"))
+    if am:
+        dz = (dz or "") + "\n" + am
+    gc = _gapcheck_text(nt.get("gapcheck"))
+    if gc:
+        dz = (dz or "") + "\n" + gc
     notes_ = intro.get("notes") or []
     prompt = ctx + ("\n" + kn if kn else "") + ("\n" + dz if dz else "") + (("\n[프로그램이 본 것 — 서재 분포와 견줌]\n" + "\n".join("- " + x for x in notes_) + "\n") if notes_ else "") + "\n[계획]\n" + plan_json + "\n\n" + ms._PLAN_CRIT % "서론(Introduction)" + "(이 계획의 src 는 '첫 저자 연도' 열쇠다 — 고친 설계도에서도 그 꼴로 적는다. 서재에 없는 것은 '서재 밖: ' 으로.)"
     system, _st = _background()
@@ -1544,6 +1956,12 @@ def to_md(nt):
                 out += ["**%s**" % nm] + ["- " + str(x) for x in nt["plan"][k]] + [""]
         if nt["plan"].get("feasibility"):
             out += ["**우리 연구실에서 할 수 있는가**"] + ["- " + _feas_line(f) for f in nt["plan"]["feasibility"]] + [""]
+    if nt.get("matrix"):
+        out += ["## 식별력 표 — 가설 × 관찰 × 예측", _matrix_text(nt["matrix"]), ""]
+    if nt.get("argmap"):
+        out += ["## 약속 ↔ 답 지도", _argmap_text(nt["argmap"]), ""]
+    if nt.get("gapcheck"):
+        out += ["## 공백 검증 — 세상의 문헌에서", _gapcheck_text(nt["gapcheck"]), ""]
     if nt.get("intro"):
         out += ["## 서론 구조", _intro_text(nt["intro"]), ""]
         drafts = [q["draft"]["text"] for q in nt["intro"].get("paras") or [] if (q.get("draft") or {}).get("text")]

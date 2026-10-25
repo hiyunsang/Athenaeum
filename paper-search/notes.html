@@ -81,6 +81,10 @@
   .idraft .ichk { font-size: 11.5px; color: var(--text-2); margin-top: 3px; } .idraft .ichk summary { cursor: pointer; } .idraft .ichk ul, .idraft .ichk ol { margin: 2px 0 0; padding-left: 1.2em; } .idraft .ichk .v { color: var(--amber); }
   .irefs { font-size: 11.5px; line-height: 1.5; color: var(--text-2); padding-left: 1.6em; margin: 2px 0 0; }
   .iflow { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 4px 0 6px; } .ireq { width: 100%; font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); margin: 4px 0; }
+  .gc { padding: 5px 0; border-bottom: 1px solid var(--line-2); font-size: 12px; line-height: 1.5; } .gc .gv { font-weight: 600; font-size: 11px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--line-2); } .gc .gv.done { color: var(--amber); border-color: var(--amber); } .gc .gv.partial { color: var(--amber); } .gc .gv.open { color: var(--green); } .gc .gn { color: var(--text-2); margin: 2px 0; } .gc .gl { font-size: 10.5px; color: var(--text-3); font-weight: 600; } .gc .gl.done { color: var(--amber); } .gc .own { color: var(--accent); font-size: 11px; } .gc .pl .hint { display: block; }
+  .mxwrap { overflow-x: auto; margin: 4px 0; } .mx { border-collapse: collapse; font-size: 11.5px; line-height: 1.4; min-width: 100%; } .mx th, .mx td { border-bottom: 1px solid var(--line-2); padding: 3px 4px; vertical-align: top; text-align: left; } .mx th { color: var(--text-3); font-weight: 600; font-size: 11px; text-align: center; }
+  .mx td.hy { min-width: 150px; } .mx .kd { color: var(--text-3); font-size: 10.5px; } .mx td.c { text-align: center; font-weight: 600; width: 26px; cursor: help; } .mx td.dp { color: var(--accent); } .mx td.dm { color: var(--amber); } .mx td.dz { color: var(--text-2); } .mx td.dt, .mx td.dq { color: var(--text-3); font-weight: 400; }
+  .mxobs { font-size: 11.5px; line-height: 1.5; color: var(--text-2); } .mxobs .hint { display: inline; }
   .dsgi { padding: 6px 0; border-bottom: 1px solid var(--line-2); font-size: 12px; line-height: 1.5; } .dsgi .dh { font-weight: 600; } .dsgi .dh .hint { display: inline; font-weight: 400; } .dsgi .dq { color: var(--text); margin-top: 1px; } .dsgi .dg { color: var(--text-2); } .dsgi .dm { color: var(--text-2); font-size: 11.5px; margin-top: 2px; } .dsgi .dr { font-weight: 600; color: var(--text-3); font-size: 11px; } .dsgi .dc { margin-top: 2px; font-size: 11.5px; color: var(--text-2); }
   .dsgt { width: 100%; border-collapse: collapse; font-size: 11.5px; line-height: 1.45; margin-top: 4px; } .dsgt th, .dsgt td { text-align: left; vertical-align: top; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line-2); } .dsgt th { color: var(--text-3); font-weight: 600; font-size: 11px; } .dsgt td .hint { display: inline; }
   .feas .fm { font-weight: 600; margin-right: 4px; } .feas .fm.ok { color: var(--accent); } .feas .fm.no { color: var(--amber); } .feas .fm.unk { color: var(--text-3); } .feas .fh { color: var(--text-2); }
@@ -166,7 +170,7 @@ async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 
   if (!cur) return;
   let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(cur.id)); } catch (e) { return; }
   if (!cur || r.error || !r.note || r.note.id !== cur.id) return;
-  const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error, n.intro, n.intro_pending, n.intro_error, n.intro_edited];
+  const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error, n.intro, n.intro_pending, n.intro_error, n.intro_edited, n.matrix, n.matrix_pending, n.matrix_error, n.argmap, n.argmap_pending, n.argmap_error, n.gapcheck, n.gapcheck_pending, n.gapcheck_error];
   const before = JSON.stringify(keys(cur)), after = JSON.stringify(keys(r.note));
   const wasPending = !!cur.pending;
   cur = r.note;
@@ -180,7 +184,7 @@ let listT = null;
 function renderListSoon() { clearTimeout(listT); listT = setTimeout(loadList, 300); }
 function schedulePoll() {
   clearTimeout(pollT);
-  const busy = () => cur && (cur.pending || cur.card_pending || cur.plan_pending || cur.review_pending || cur.draft_pending || cur.intro_pending || (cur.intro && cur.intro.writing));
+  const busy = () => cur && (cur.pending || cur.card_pending || cur.plan_pending || cur.review_pending || cur.draft_pending || cur.intro_pending || cur.matrix_pending || cur.argmap_pending || cur.gapcheck_pending || (cur.intro && cur.intro.writing));
   const loop = async () => { await refresh(); if (busy()) pollT = setTimeout(loop, 4000); };
   if (busy()) pollT = setTimeout(loop, 4000);
 }
@@ -305,7 +309,7 @@ function renderCard() {
   } else if (!cur.card_pending) {
     h += "<div class='hint' style='line-height:1.6'>토의가 한 번 이상 오가면 「대화에서 정리」 로 카드를 만듭니다. 그 뒤로는 칸을 직접 고치고, 토의가 더 쌓이면 다시 정리합니다.</div>";
   }
-  h += planHtml(answered) + objHtml(answered) + introHtml(answered);
+  h += planHtml(answered) + matrixHtml() + objHtml(answered) + introHtml(answered);
   h += "<div class='sec'>이어서</div><div class='links'>" +
     (cur.ms ? "<a class='act' href='/ms?id=" + esc(cur.ms.id) + "' target='athenaeum_ms' title='이 주제로 세운 원고 — 절 " + (cur.ms.nodes || 0) + "개'>원고 「" + esc(cur.ms.title) + "」 열기 ↗</a>" : "") +
     (cur.draft_pending ? "<span class='hint' style='display:block;padding:5px 0'>원고 초안을 세우는 중… <button class='act' data-cancel='draft'>취소</button></span>"
@@ -321,6 +325,7 @@ function renderCard() {
   $("goStudy").onclick = () => openBig("/study?topic=" + encodeURIComponent(cur.title), "athenaeum_study", "width=1440,height=920");
   /* 설계서 · 반론 · 원고 초안 (2026-10-19) */
   const jobBtn = (id, kind) => { const b = $(id); if (b) b.onclick = () => startJob(kind, b); };
+  jobBtn("matrixGo", "matrix"); jobBtn("argmapGo", "argmap"); jobBtn("gapcheckGo", "gapcheck");
   const dl = $("dsgLoad"); if (dl) dl.onclick = async () => { dl.disabled = true; dl.textContent = "고르는 중…"; try { designData[cur.id] = await api("/api/notes/designs?id=" + encodeURIComponent(cur.id)); } catch (e) { } renderCard(); };
   jobBtn("planGo", "plan"); jobBtn("revGo", "review"); jobBtn("draftGo", "draft"); jobBtn("introGo", "intro");
   el.querySelectorAll(".ipara textarea[data-ik]").forEach(t => { fit(t, 34); t.oninput = () => { fit(t, 34); clearTimeout(introSaveT); introSaveT = setTimeout(saveIntro, 800); }; });
@@ -408,6 +413,7 @@ function introHtml(answered) {   /* 서론 구조 (2026-10-24) */
     if ((cr.issues || []).length) h += "<details class='cf' open><summary class='k' style='cursor:pointer'>심사위원이 본 설계도의 약점 " + cr.issues.length + (it.before ? " — 설계도를 고쳤습니다" : "") + "</summary><ul class='pl'>" + cr.issues.map(x => "<li><b>" + (x.para ? x.para + "문단" : "전체") + "</b> " + esc(x.note) + (x.fix ? " <span class='hint' style='display:inline'>→ " + esc(x.fix) + "</span>" : "") + "</li>").join("") + "</ul>" + (it.before ? "<div class='hint'>비평 전: " + it.before.map((b, i) => (i + 1) + ". " + esc(b.role) + " — " + esc((b.gist || "").slice(0, 60))).join(" / ") + "</div>" : "") + "</details>";
     else if (cr.verdict === "ok") h += "<div class='hint' style='color:var(--green)'>심사위원: 설계도에 큰 약점이 없습니다.</div>";
     else if (cr.err) h += "<div class='hint'>" + esc(cr.err) + "</div>";
+    h += argmapHtml() + gapcheckHtml();
     (it.paras || []).forEach((p, i) => {
       h += "<div class='ipara'><div class='ih'><span class='no'>" + (i + 1) + "문단</span><span class='role'>" + esc(p.role) + "</span>" + (p.len ? "<span class='len'>" + p.len + "문장쯤</span>" : "") + "</div>" +
         "<textarea data-ik='" + i + "' title='이 문단이 세울 말 — 고치면 바로 저장되고, 다시 뽑을 때 바탕이 됩니다'>" + esc(p.gist || "") + "</textarea>" +
@@ -458,6 +464,65 @@ function designsHtml() {
     });
   }
   return h + "</details>";
+}
+const MX_KIND = { main: "주 가설", rival: "경쟁 설명", null: "영가설", artifact: "가짜 신호" }, MX_GLYPH = { "+": "＋", "-": "−", "0": "0", "~": "~", "?": "?" };
+const ARG_KIND = { gap_mismatch: "공백과 기여가 안 맞음", unsupported: "받침 없는 주장", unanswered: "답 없는 약속", overreach: "결과 밖의 말", missing_limit: "말하지 않은 한계", number: "수치 불일치", order: "차례", terminology: "용어" };
+function matrixHtml() {   /* 식별력 표 — 가설 × 관찰 × 예측 부호, 프로그램이 못 가르는 쌍을 센다 (2026-10-26) */
+  const m = cur.matrix, pend = cur.matrix_pending, can = cur.plan || cur.card;
+  let h = "<div class='sec secline'>가설-예측-판정 표" + (m && (m.unsplit || []).length ? "<span class='n' style='background:var(--amber)'>" + m.unsplit.length + "</span>" : "") + "<span class='r'>" +
+    (pend ? "<span style='color:var(--accent)'>세우는 중…</span> <button class='act' data-cancel='matrix'>취소</button>"
+      : "<button class='act' id='matrixGo'" + (can ? "" : " disabled title='먼저 설계서나 카드를 만드세요'") + " title='설계서의 가설에 경쟁 설명·영가설·가짜 신호를 더하고, 재는 양마다 각 가설의 예측 부호를 세웁니다. 프로그램이 어느 관찰에서도 부호가 다르지 않은 가설 쌍(이 실험이 못 가르는 것)을 셉니다 — Opus 2~4분'>" + (m ? "표 다시 세우기" : "표 세우기") + "</button>") + "</span></div>";
+  if (cur.matrix_error) h += "<div class='warnbox'>" + esc(cur.matrix_error) + "</div>";
+  if (m) {
+    h += "<div class='cm'>" + fmtDate(m.t) + " · " + esc(m.model || "Claude") + (m.sec ? " · " + fmtDur(m.sec) : "") + " · 가설 " + m.hyps.length + " · 관찰 " + m.obs.length + "</div>";
+    if ((m.unsplit || []).length) h += "<div class='warnbox'>이 실험이 못 가르는 쌍 " + m.unsplit.length + ": " + m.unsplit.map(p => "<b>" + esc(p.a) + " ↔ " + esc(p.b) + "</b>").join(", ") + " — 어느 관찰에서도 예측 부호가 다르지 않습니다. " +
+      "<button class='act' data-ask=\"" + esc(m.unsplit.map(p => p.a + "↔" + p.b).join(", ") + " 을(를) 가를 관찰이나 대조를 설계에 더할 수 있나? 못 가른다면 둘을 하나로 묶거나 한계로 밝혀야 하나?") + "\">대화로 ↗</button></div>";
+    else h += "<div class='hint' style='color:var(--green)'>경쟁 설명·영가설·가짜 신호는 모두 적어도 하나의 관찰에서 주 가설과 갈립니다.</div>";
+    if ((m.coexist || []).length) h += "<div class='hint'>주 가설끼리 서로 가르지 않는 쌍(함께 설 수 있음): " + m.coexist.map(p => esc(p.a) + " ↔ " + esc(p.b)).join(", ") + "</div>";
+    h += "<div class='mxwrap'><table class='mx'><thead><tr><th></th>" + m.obs.map(o => "<th title='" + esc(o.t + (o.how ? " — " + o.how : "")) + "'>" + esc(o.id) + "</th>").join("") + "</tr></thead><tbody>";
+    m.hyps.forEach(hy => {
+      h += "<tr><td class='hy'><b>" + esc(hy.id) + "</b> <span class='kd'>" + esc(MX_KIND[hy.kind] || hy.kind) + "</span><br>" + esc(hy.t) + "</td>" +
+        m.obs.map(o => { const c = (m.cells || {})[hy.id + "|" + o.id] || {}; return "<td class='c d" + (({ "+": "p", "-": "m", "0": "z", "~": "t", "?": "q" })[c.dir] || "q") + "' title='" + esc(c.t || "") + "'>" + (MX_GLYPH[c.dir] || "?") + "</td>"; }).join("") + "</tr>";
+    });
+    h += "</tbody></table></div><div class='mxobs'>" + m.obs.map(o => "<div><b>" + esc(o.id) + "</b> " + esc(o.t) + (o.how ? " <span class='hint'>— " + esc(o.how) + "</span>" : "") + (o.when === "예비" ? " <span class='hint'>[예비]</span>" : "") + ((m.idle || []).includes(o.id) ? " <span style='color:var(--amber)'>아무 쌍도 못 가름</span>" : "") + "</div>").join("") + "</div>";
+    if ((m.rules || []).length) h += "<div class='cf'><div class='k'>판정 규칙</div><ul class='pl'>" + m.rules.map(x => "<li>" + esc(x) + "</li>").join("") + "</ul></div>";
+    if ((m.risks || []).length) h += "<div class='cf'><div class='k'>식별력을 깨는 것</div><ul class='pl'>" + m.risks.map(x => "<li>" + esc(x) + " <button class='act' data-ask=\"" + esc(x.slice(0, 300)) + "\">대화로 ↗</button></li>").join("") + "</ul></div>";
+  } else if (!pend) {
+    h += "<div class='hint' style='line-height:1.6'>교수가 계획서에서 맨 먼저 묻는 것 — 이 실험이 경쟁하는 설명 가운데 어느 것이 맞는지 가를 수 있나. 가설(주 가설 · 경쟁 설명 · 영가설 · 가짜 신호) × 재는 양 → 예측 부호(＋ − 0 ~ ?)의 표. 어느 관찰에서도 부호가 다르지 않은 쌍은 이 실험이 못 가르는 것이고, 심사위원의 반론과 다음 설계서가 그것을 먼저 봅니다.</div>";
+  }
+  return h;
+}
+function argmapHtml() {   /* 약속 ↔ 답 지도 — 원고의 논증 모형 기계를 노트에 (2026-10-26) */
+  const a = cur.argmap, pend = cur.argmap_pending, can = cur.intro && (cur.intro.paras || []).length && (cur.plan || cur.card);
+  let h = "<div class='cf'><div class='k' style='display:flex;align-items:center'>약속 ↔ 답 지도<span style='margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400'>" +
+    (pend ? "<span style='color:var(--accent)'>그리는 중…</span>" : "<button class='act' id='argmapGo'" + (can ? "" : " disabled title='서론 구조와 설계서가 있어야 합니다'") + " title='서론 구조(공백·목적 = 약속)와 설계서·식별력 표(예상 결과·주장)를 원고의 꼴로 놓고 논증 모형 기계로 맞댑니다 — 답 없는 약속, 받침 없는 주장. Opus 1~3분. 서론 구조를 뽑으면 자동으로도 그립니다'>" + (a ? "다시 그리기" : "지도 그리기") + "</button>") + "</span></div>";
+  if (cur.argmap_error) h += "<div class='warnbox'>" + esc(cur.argmap_error) + "</div>";
+  if (a) {
+    const un = (a.promises || []).filter(p => !(p.answered_by || []).length).length;
+    h += "<div class='cm'>" + fmtDate(a.t) + " · " + esc(a.model || "Claude") + (a.sec ? " · " + fmtDur(a.sec) : "") + " · 약속 " + (a.promises || []).length + (un ? " · <span style='color:var(--amber)'>답 없음 " + un + "</span>" : " · 모두 답 있음") + "</div>";
+    h += "<ul class='pl'>" + (a.promises || []).map(p => "<li>" + esc(p.t) + " → " + ((p.answered_by || []).length ? "<b>" + esc(p.answered_by.join(", ")) + "</b>" : "<span style='color:var(--amber)'>답 없음</span>") + "</li>").join("") + "</ul>";
+    if ((a.claims || []).length) h += "<details class='cf'><summary class='hint' style='cursor:pointer'>주장 " + a.claims.length + " (← 받치는 예상 결과)</summary><ul class='pl'>" + a.claims.map(c => "<li><b>" + esc(c.id) + "</b> " + esc(c.t) + " ← " + ((c.results || []).length ? esc(c.results.join(", ")) : "<span style='color:var(--amber)'>받침 없음</span>") + (c.strength && c.strength !== "strong" ? " <span class='hint'>· " + esc(c.strength) + "</span>" : "") + "</li>").join("") + "</ul></details>";
+    const iss = (a.issues || []).filter(x => x.kind !== "number");
+    if (iss.length) h += "<div class='k' style='margin-top:4px'>문제 " + iss.length + "</div><ul class='pl'>" + iss.map(x => "<li><b>" + esc(ARG_KIND[x.kind] || x.kind) + "</b> " + esc(x.note) + (x.fix ? " <span class='hint' style='display:inline'>→ " + esc(x.fix) + "</span>" : "") + " <button class='act' data-ask=\"" + esc((x.note + " " + (x.fix || "")).slice(0, 300)) + "\">대화로 ↗</button></li>").join("") + "</ul>";
+  }
+  return h + "</div>";
+}
+const GAP_KO = { done: "이미 됨", partial: "일부 됨", open: "열림", fail: "검색 실패" };
+function gapcheckHtml() {   /* 공백 검증 — 서론 구조의 공백 문장을 세상의 문헌(OpenAlex)에서 (2026-10-26) */
+  const g = cur.gapcheck, pend = cur.gapcheck_pending, can = cur.intro && (cur.intro.paras || []).some(p => p.role === "공백");
+  let h = "<div class='cf'><div class='k' style='display:flex;align-items:center'>공백 검증 — 세상의 문헌<span style='margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400'>" +
+    (pend ? "<span style='color:var(--accent)'>찾는 중…</span>" : "<button class='act' id='gapcheckGo'" + (can ? "" : " disabled title='서론 구조에 공백 문단이 있어야 합니다'") + " title='공백 문장마다 탐색의 검색 계획(Sonnet) → OpenAlex(관련도 40 + 최신 20) → Claude 가 초록만으로 이미 한 논문 / 일부 / 열림 을 가릅니다. 2~3분 · 토큰 4만~6만. 서론 구조를 뽑으면 자동으로도 돕니다'>" + (g ? "다시 검증" : "검증") + "</button>") + "</span></div>";
+  if (cur.gapcheck_error) h += "<div class='warnbox'>" + esc(cur.gapcheck_error) + "</div>";
+  if (g) {
+    h += "<div class='cm'>" + fmtDate(g.t) + " · " + esc(g.model || "Claude") + (g.sec ? " · " + fmtDur(g.sec) : "") + (g.warn ? " · <span style='color:var(--amber)'>" + esc(g.warn) + "</span>" : "") + "</div>";
+    (g.claims || []).forEach(r => {
+      h += "<div class='gc'><div><span class='gv " + esc(r.verdict) + "'>" + (GAP_KO[r.verdict] || r.verdict) + "</span> <span class='hint'>" + r.para + "문단</span> " + esc(r.t) + (r.n ? " <span class='hint'>· DB " + r.n + "편</span>" : "") +
+        " <button class='act' data-q=\"" + esc(r.t.slice(0, 200)) + "\" title='이 공백으로 논문 탐색 창을 엽니다'>탐색 ↗</button></div>" + (r.err ? "<div class='hint' style='color:var(--amber)'>" + esc(r.err) + "</div>" : "") +
+        (r.note ? "<div class='gn'>→ " + esc(r.note) + "</div>" : "") +
+        ((r.papers || []).length ? "<ul class='pl'>" + r.papers.map(p => "<li><span class='gl " + esc(p.level || "") + "'>" + (p.level === "done" ? "함" : "일부") + "</span> " + (p.doi ? "<a href='" + esc(p.doi) + "' target='_blank' rel='noopener'>" + esc(p.title) + "</a>" : esc(p.title)) + " <span class='hint'>(" + esc(String(p.year)) + (p.venue ? ", " + esc(p.venue) : "") + ")</span>" + (p.owned ? " <span class='own'>★ 서재</span>" : "") + (p.how ? "<div class='hint'>" + esc(p.how) + "</div>" : "") + "</li>").join("") + "</ul>" : "") + "</div>";
+    });
+  }
+  return h + "</div>";
 }
 function planHtml(answered) {
   const p = cur.plan, pend = cur.plan_pending;
