@@ -50,6 +50,9 @@
   .kt h3 { font-size: 15px; margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); }
   .kt p { margin: 6px 0; } .kt li { margin: 3px 0 3px 18px; }
   .kt q, .kt .qq { font-style: italic; color: var(--text-2); }
+  .kt .qts { margin: 4px 0 6px 10px; }
+  .kt .qt { font-size: 12.5px; line-height: 1.5; color: var(--text-2); padding: 2px 0 2px 10px; border-left: 2px solid var(--line-2); margin: 2px 0; }
+  .kt .qt .src { color: var(--text-3); font-size: 11.5px; }
   details.st { margin-top: var(--s3); font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
   details.st summary { cursor: pointer; color: var(--text-3); }
   .ex { margin-top: var(--s4); border-top: 1px solid var(--line); }
@@ -161,7 +164,10 @@ $("stopNow").onclick = async () => { await api("/api/learn", { op: "stop" }); re
 function mdLite(t) {
   const lines = String(t || "").split("\n"); let out = "", inList = false, para = [];
   const flush = () => { if (para.length) { out += "<p>" + para.join(" ") + "</p>"; para = []; } };
-  const inl = (s) => esc(s).replace(/“([^”]{3,}?)”\s*(\([^)]{2,60}\))/g, "<q>$1</q> <span class='src'>$2</span>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  /* 인용 문장은 줄로 — 한 문단에 다섯 개씩 괄호 안에 이어지면 읽기 어렵다 (2026-10-25 바탕 점검) */
+  const QRX = /“([^”]{3,}?)”\s*(\([^)]{2,60}\))/g;
+  const inl = (s) => esc(s).replace(/\(\s*((?:“[^”]{3,}?”\s*\([^)]{2,60}\)\s*)+)\)/g, (m, g) => "<div class='qts'>" + g.replace(QRX, "<div class='qt'>$1 <span class='src'>$2</span></div>") + "</div>")
+    .replace(QRX, "<div class='qt'>$1 <span class='src'>$2</span></div>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
   for (const ln of lines) {
     const m = ln.match(/^(#{1,4})\s+(.*)$/);
     if (m) { flush(); if (inList) { out += "</ul>"; inList = false; } out += "<h3>" + inl(m[2]) + "</h3>"; continue; }
