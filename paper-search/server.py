@@ -3366,6 +3366,15 @@ import notes
 notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
            paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, ms_new=ms.new_ms, ms_save=ms.save_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
 
+# ---------- 서재 학습 (2026-10-25, 사용자: '서재의 논문을 다 학습하고, 서론은 왜 이런 구조고 이 문장은 왜 이런 문장인지 전부') ----------
+# 논문마다 네 층 주석(논문·절·문단·문장 + 약속-이행 사슬)을 번역\주석\ 에, 저널 묶음·절마다 '이렇게 쓴다' 바탕을 번역\주석\_바탕\ 에. 원고·연구 노트·공부의 쓰기가 corpus.knowledge_text·exemplars_text 로 꺼내 쓴다.
+# 설정(설정.json 의 learn)대로 밤 시간대에 하루 상한만큼 배경으로 돈다 — 화면은 /learn.
+import corpus
+import mapper as _mapper
+corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, settings=_mapper.settings, save_settings=_mapper.save_settings, pref_abbrs=pref_file_abbrs)
+ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
+notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text)
+
 
 def settings_view():
     """⚙ 환경설정에 보이는 서버 쪽 설정 — 키 값은 끝 4자만, 우선 저널, 전용 Claude 계정(폴더·로그인 여부)"""
@@ -3404,6 +3413,8 @@ class Handler(BaseHTTPRequestHandler):
             return vocab.handle_get(self, url)
         if url.path == "/study" or url.path.startswith("/api/study"):
             return study.handle_get(self, url)
+        if url.path == "/learn" or url.path.startswith("/api/learn"):
+            return corpus.handle_get(self, url)   # 서재 학습
         if url.path == "/notes" or url.path.startswith("/api/notes/") or (url.path == "/api/notes" and "file" not in parse_qs(url.query)):
             return notes.handle_get(self, url)   # 읽기 화면의 논문 메모 /api/notes?file= 는 아래 옛 라우트로 — 접두사로 넘기다 가로채 읽기 창이 '불러오는 중'에서 멈췄다(2026-10-08~09)
         if url.path == "/api/intake":
@@ -3888,6 +3899,8 @@ class Handler(BaseHTTPRequestHandler):
             return vocab.handle_post(self, body)
         if self.path.startswith("/api/study"):
             return study.handle_post(self, body)
+        if self.path.startswith("/api/learn"):
+            return corpus.handle_post(self, body)
         if self.path.startswith("/api/notes/") or (self.path == "/api/notes" and not body.get("file")):
             return notes.handle_post(self, body)   # 읽기 화면의 논문 메모(POST /api/notes {file, op}) 는 아래 옛 라우트로
         if self.path == "/api/intake":
@@ -4224,6 +4237,7 @@ def main():
         os.makedirs(d, exist_ok=True)
     threading.Thread(target=refresh_new_papers, daemon=True).start()
     threading.Thread(target=libnet_build, daemon=True).start()   # 서재 인용 이웃 색인 (새 논문만, 배경)
+    corpus.start()   # 서재 학습 — 설정의 시간대에 배경으로(편마다 한 번, 하루 상한)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 

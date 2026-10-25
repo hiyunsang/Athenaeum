@@ -394,6 +394,7 @@
     <div class="tab" id="tab-refs"></div>
     <div class="tab" id="tab-lib"></div>
     <div class="tab" id="tab-figs"></div>
+    <div class="tab" id="tab-arg"></div>
     <div class="tab" id="tab-check"></div>
     <div class="tab" id="tab-stylus"></div>
     <div class="tab" id="tab-ex"></div>
@@ -1257,9 +1258,9 @@ function stInsert(chId) {
 // ---------- 서랍 ----------
 // 서랍의 탭: 열 개를 여섯 묶음으로. 묶음을 누르면 그 묶음에서 마지막에 보던 것이 열리고, 묶음 안의 것은 둘째 줄에서 고른다
 const TAB_GROUPS = [["대화", ["chat"], "고른 글마다의 메모와 Claude 대화"], ["근거", ["cards", "lib", "src", "refs"], "근거 카드 · 서재에서 뽑기(내 논문들에서 어떤 내용을 말한 대목) · Claude 에게 함께 보여 주는 작업 자료 · 원고의 참고문헌 목록"],
-  ["검토", ["notes", "rev", "check"], "교수님·공저자 피드백 · 심사 의견(리비전) · 저널 규격 점검"], ["참고", ["stylus", "ex", "idea", "en"], "Stylus 로 절 쓰기(결론) · 잘 쓴 논문의 본보기 · 아이디어 · 영문(용어집)"],
+  ["검토", ["arg", "notes", "rev", "check"], "논증 모형(원고의 글에서 세운 물음·공백·결과·주장과 그 받침·서론의 약속과 답·어긋난 곳) · 교수님·공저자 피드백 · 심사 의견(리비전) · 저널 규격 점검"], ["참고", ["stylus", "ex", "idea", "en"], "Stylus 로 절 쓰기(결론) · 잘 쓴 논문의 본보기 · 아이디어 · 영문(용어집)"],
   ["그림", ["figs"], "그림·도식"], ["내보내기", ["out"], ".docx 내보내기 · 워드 파일에 반영"]];
-const TAB_NAMES = { chat: "대화", cards: "카드", lib: "서재에서 뽑기", src: "자료", refs: "참고문헌", notes: "피드백", rev: "리비전", check: "점검", stylus: "Stylus", ex: "본보기", idea: "아이디어", en: "영문", figs: "그림", out: "내보내기" };
+const TAB_NAMES = { chat: "대화", cards: "카드", lib: "서재에서 뽑기", src: "자료", refs: "참고문헌", arg: "논증", notes: "피드백", rev: "리비전", check: "점검", stylus: "Stylus", ex: "본보기", idea: "아이디어", en: "영문", figs: "그림", out: "내보내기" };
 let curTab = "cards";
 const activeTab = () => curTab;
 function tabBadge(k) {   // 묶음 이름 옆의 작은 숫자
@@ -1281,7 +1282,7 @@ function switchTab(name) {
   const gi = TAB_GROUPS.findIndex(g => g[1].includes(name));
   try { localStorage.setItem("ms_tab", name); localStorage.setItem("ms_tab_g" + gi, name); } catch (e) {}
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.id === "tab-" + name));
-  $("drawer").classList.toggle("wide", ["ex", "rev", "chat", "lib", "stylus"].includes(name));
+  $("drawer").classList.toggle("wide", ["ex", "rev", "chat", "lib", "stylus", "arg"].includes(name));
   $("drawer").classList.toggle("stwide", name === "ex" && exState.section === "structure");   /* 구성 보기는 창의 절반 */
   renderTabs();
   // 그림 탭이면 가운데를 그림 작업대로. 다른 탭끼리 오갈 때는 가운데를 다시 그리지 않는다 (쓰던 자리를 잃지 않게)
@@ -1331,8 +1332,57 @@ function renderFigWorkspace() {
   const wc = $("wCode"); if (wc) wc.onclick = () => { const b = $("wCodeBox"); b.style.display = b.style.display === "none" ? "block" : "none"; };
   const wr = $("wRefine"); if (wr) wr.onclick = () => { const fb = $("wFb").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } refineFigure(f.id, fb, $("wProg")); };
 }
-function renderDrawer() { renderTabs(); renderChat(); renderCards(); renderSrc(); renderRefs(); renderLib(); renderStylus(); renderFigs(); renderCheck(); renderEx(); renderNotes(); renderRev(); renderIdea(); renderEn(); renderOut(); }
+function renderDrawer() { renderTabs(); renderChat(); renderCards(); renderSrc(); renderRefs(); renderLib(); renderStylus(); renderFigs(); renderCheck(); renderArg(); renderEx(); renderNotes(); renderRev(); renderIdea(); renderEn(); renderOut(); }
 function issuesHtml(list) { return (list || []).map(i => "<div class='issue'><b>" + esc(i.type) + "</b>" + esc(i.text) + "</div>").join("") || "<div class='hint'>문제 없음</div>"; }
+
+// ---------- 논증 모형 (2026-10-25): 원고의 글에서 물음·공백·방법·결과·주장·약속·문제를 세운다 — 칸을 채우게 하지 않는다. Stylus 로 절을 쓸 때 같이 간다
+let argState = { busy: false, err: "", t0: 0 };
+// 교정 기억 (2026-10-25, 가볍게): 저자가 Claude 의 글을 바꾼·버린 것과 심사위원의 지적을 서버에 남긴다 — 다음에 쓸 때 '[저자의 교정 사례]' 로 몇 개 붙는다
+function caseAdd(kind, before, after, note) { if (!doc) return; api("/api/ms/case", { op: "add", kind, before: (before || "").slice(0, 700), after: (after || "").slice(0, 700), note: (note || "").slice(0, 400), id: doc.id }).catch(() => {}); }
+function chatLastQ(m) { const u = (m.thread || []).filter(x => x.role === "user" && !x.swap && !x.quiet && x.text && !/^\(/.test(x.text)).pop(); return u ? u.text : ""; }
+const ARG_KIND = { gap_mismatch: "공백과 기여가 안 맞음", unsupported: "받침 없는 주장", unanswered: "답 없는 약속", overreach: "결과 밖의 말", missing_limit: "말하지 않은 한계", number: "수치 불일치", order: "차례", terminology: "용어" };
+function argCurChars() { if (!doc) return 0; const f = doc.front || {}; return (f.abstract || "").length + doc.outline.reduce((n, x) => n + ((x[docKey()] || x.draft || x.draft_en || "").length), 0); }
+function renderArg() {
+  const el = $("tab-arg"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
+  const a = doc.argument, st = argState;
+  const fmtT = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const effs = [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]];
+  let h = "<div class='sec' style='padding-left:0'>논증 모형 — 이 원고가 지금 세우고 있는 것</div>" +
+    "<div class='hint'>칸을 채우는 것이 아니라 <b>원고의 글에서</b> Claude 가 세웁니다: 물음 · 공백 · 방법 · 결과 항목(그림·수치) · 주장과 그것을 받치는 결과 · 서론의 약속과 그 답 · 어긋난 곳. 수치는 프로그램이 원고에 있는지 다시 봅니다. 연결된 연구 노트가 있으면 그 계획과도 견줍니다. 세워 두면 Stylus 로 절을 쓸 때 이 모형이 같이 가서 글이 모형 밖으로 나가지 않습니다. Claude 호출 하나(2~5분).</div>" +
+    "<div class='ctl' style='padding:6px 0 2px;margin-left:-8px;flex-wrap:wrap;align-items:center'><select id='argEffort' style='font-size:12px'>" + effs.map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select>" +
+    "<button class='btn pri' id='argRun'" + (st.busy ? " disabled" : "") + ">" + (a ? "다시 세우기" : "원고에서 세우기") + "</button></div>" +
+    (st.busy ? waitHtml("논증 모형 세우기", st.t0, durGet("arg|" + chatEffort(), 200), "<div class='hint'>원고 전체를 읽습니다. 다른 일을 하셔도 됩니다.</div>", "argStage") : "") +
+    (st.err ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(st.err) + "</div>" : "");
+  if (a) {
+    const cur = argCurChars(), base = a.body_chars || 0, drift = base ? Math.abs(cur - base) / base : 0;
+    h += "<div class='hint'>" + fmtT(a.t) + " · " + esc(a.model || "") + (a.sec ? " · " + a.sec + "초" : "") + (tokNote(a.tok) ? " · " + tokNote(a.tok) : "") + " · 글 " + a.chars + "자" + (drift > 0.1 ? " · <span style='color:var(--amber)'>그 뒤 원고가 " + Math.round(drift * 100) + "% 바뀌었습니다 — 다시 세우기</span>" : "") + "</div>";
+    const row = (k, v) => v ? "<div class='libchk nv'><div class='k'><b>" + k + "</b></div><div>" + esc(v) + "</div></div>" : "";
+    h += "<div class='card' style='margin-top:8px'>" + row("물음", a.question) + row("공백", a.gap) + row("가설", a.hypothesis) + row("접근", a.approach) + row("기여", a.contribution) + row("저널", a.journal) + "</div>";
+    if ((a.issues || []).length) h += "<div class='sec' style='padding-left:0;margin-top:8px'>어긋난 곳 " + a.issues.length + "</div>" + a.issues.map(x => "<div class='libchk nv'><div class='k'><b class='w' style='color:var(--amber)'>" + esc(ARG_KIND[x.kind] || x.kind) + "</b>" + (x.where ? " · " + esc(x.where) : "") + "</div><div>" + esc(x.note) + (x.fix ? " <span style='color:var(--text-2)'>고치려면: " + esc(x.fix) + "</span>" : "") + "</div></div>").join("");
+    else h += "<div class='hint' style='color:var(--green)'>어긋난 곳이 보이지 않습니다.</div>";
+    if ((a.promises || []).length) h += "<div class='sec' style='padding-left:0;margin-top:8px'>서론의 약속 → 답하는 주장</div>" + a.promises.map(x => "<div class='libchk nv'><div class='q'>" + esc(x.t) + "</div><div>" + (x.answered_by.length ? "→ " + esc(x.answered_by.join(", ")) : "<span style='color:var(--amber)'>→ 답하는 주장이 없음</span>") + (x.where ? " <span class='hint' style='display:inline'>" + esc(x.where) + "</span>" : "") + "</div></div>").join("");
+    if ((a.results || []).length) h += "<div class='sec' style='padding-left:0;margin-top:8px'>결과 항목 " + a.results.length + "</div>" + a.results.map(x => "<div class='libchk nv'><div class='k'><b>" + esc(x.id) + "</b>" + (x.fig && x.fig !== "없음" ? " · " + esc(x.fig) : "") + (x.where ? " · " + esc(x.where) : "") + "</div><div>" + esc(x.t) + ((x.numbers || []).length ? " <span class='hint' style='display:inline'>(" + x.numbers.map(n => (x.num_bad || []).includes(n) ? "<span style='color:var(--amber)' title='원고의 글·캡션에서 이 수를 찾지 못했습니다'>" + esc(n) + "?</span>" : esc(n)).join(", ") + ")</span>" : "") + (x.answers ? "<div class='hint'>답하는 것: " + esc(x.answers) + "</div>" : "") + "</div></div>").join("");
+    if ((a.claims || []).length) h += "<div class='sec' style='padding-left:0;margin-top:8px'>주장 " + a.claims.length + " ← 받치는 결과</div>" + a.claims.map(x => "<div class='libchk nv'><div class='k'><b>" + esc(x.id) + "</b> ← " + (x.results.length ? esc(x.results.join(", ")) : "<span style='color:var(--amber)'>받침 없음</span>") + " · <span style='color:" + (x.strength === "strong" ? "var(--green)" : x.strength === "weak" ? "var(--amber)" : "var(--text-2)") + "'>" + ({ strong: "굳음", moderate: "보통", weak: "약함" }[x.strength] || "") + "</span>" + (x.where ? " · " + esc(x.where) : "") + "</div><div>" + esc(x.t) + (x.note ? " <span style='color:var(--text-2)'>" + esc(x.note) + "</span>" : "") + "</div></div>").join("");
+    const lst = (name, arr, fn) => (arr || []).length ? "<details class='libmore'><summary>" + name + " " + arr.length + "</summary>" + arr.map(fn).join("") + "</details>" : "";
+    h += lst("방법", a.methods, x => "<div class='libchk nv'><div>" + esc(x.t) + (x.where ? " <span class='hint' style='display:inline'>" + esc(x.where) + "</span>" : "") + "</div></div>");
+    h += lst("원고가 인정한 한계", a.limits, x => "<div class='libchk nv'><div>" + esc(x) + "</div></div>");
+    if ((a.missing || []).length) h += "<div class='sec' style='padding-left:0;margin-top:8px'>아직 없는 것 — 저자가 채울 것</div>" + a.missing.map(x => "<div class='libchk nv'><div>" + esc(x) + "</div></div>").join("");
+  } else if (!st.busy) h += "<div class='hint'>아직 세우지 않았습니다. 초록이나 절에 글이 있으면 세울 수 있습니다.</div>";
+  el.innerHTML = h;
+  const b = el.querySelector("#argRun"); if (b) b.onclick = argRun;
+  const se = el.querySelector("#argEffort"); if (se) se.onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
+}
+async function argRun() {
+  const st = argState; if (st.busy || !doc) return;
+  const mid = doc.id, eff = chatEffort();
+  st.busy = true; st.err = ""; st.t0 = Date.now(); renderArg();
+  await saveNow();   // 서버가 원고 파일을 읽는다
+  let r; try { r = await api("/api/ms/argument", { id: mid, op: "build", effort: eff }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  st.busy = false; if (!doc || doc.id !== mid) return;
+  if (r.error) st.err = r.error; else { durPut("arg|" + eff, r.sec || (Date.now() - st.t0) / 1000); doc.argument = r; save(true); }
+  renderArg();
+}
+
 function renderCheck() {
   const el = $("tab-check"); if (!doc) { el.innerHTML = ""; return; }
   const rv = (doc.review || {}).result;
@@ -2054,7 +2104,7 @@ function libUseBind(el, it) {
 
 // ---------- Stylus 탭: 결론 절을 Stylus 로 쓴다 (Stylus 1.1) — 논리(문장마다 왜 그 자리인가)가 우선, 통계는 쓰고 난 뒤의 확인 ----------
 const STYLUS_CONCL_RX = /conclu|concluding|closing remarks|결론|맺음|맺는 말|summary and/i;
-const STYLUS_STAGE = { write: "원고를 읽고 결론을 쓰는 중 (1/4)", check: "문장마다 원고와 대조하는 중 (2/4)", revise: "걸린 곳을 고쳐 쓰는 중 (3/4)", recheck: "고친 글을 다시 대조하는 중 (4/4)" };
+const STYLUS_STAGE = { write: "원고를 읽고 결론을 쓰는 중 (1/4)", check: "문장마다 원고와 대조하는 중 (2/4)", revise: "걸린 곳을 고쳐 쓰는 중 (3/4)", recheck: "고친 글을 다시 대조하는 중 (4/4)", plan: "논증 모형·바탕·본보기를 읽고 설계도를 세우는 중 (1/2)", critique: "심사위원이 설계도를 공격해 고치는 중 (2/2)", extract: "서재에서 근거를 뽑는 중" };
 let stylusState = { node: "", form: "", note: "", busy: false, err: "", t0: 0, stage: "", pollT: null };
 function stylusOpen(nid) { stylusState.node = nid; switchTab("stylus"); renderStylus(); const t = document.querySelector("#tab-stylus textarea"); if (t) t.focus(); }
 function renderStylus() {
@@ -2063,7 +2113,7 @@ function renderStylus() {
   const concl = doc.outline.filter(n => STYLUS_CONCL_RX.test(n.heading || ""));
   if (!st.node || !node(st.node)) st.node = concl.length ? concl[concl.length - 1].id : "";
   const keep = document.activeElement && document.activeElement.id === "stNote" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-  let h = "<div class='sec' style='padding-left:0'>Stylus · 결론 쓰기</div>" +
+  let h = planHtml() + "<div class='sec' style='padding-left:0;margin-top:14px'>Stylus · 결론 쓰기</div>" +
     "<div class='hint'>원고 전체(서론의 물음·방법·결과·논의)를 읽고 <b>결론의 논리</b>대로 씁니다 — 무엇을 했나(수행) → 물음의 차례대로 결과 한 문장 + 해석 한 문장 → 종합 → 의의·향후. 쓴 뒤 문장마다 원고의 어느 절이 받치는지 대조하고, 원고에 없는 수치를 찾아내고, 서재의 논문 결론 범위와 견줍니다. 걸린 곳은 한 번 고쳐 씁니다(5~8분). 결론은 서재가 아니라 <b>이 원고</b>에서만 씁니다.</div>" +
     "<div class='ctl' style='padding:6px 0 2px;margin-left:-8px;flex-wrap:wrap;align-items:center'>" +
     "<select id='stNode' style='font-size:12px;max-width:220px' title='결론을 쓸 절'>" + doc.outline.map(n => "<option value='" + n.id + "'" + (n.id === st.node ? " selected" : "") + ">" + esc((n.level === 2 ? "　" : "") + n.heading.slice(0, 34)) + "</option>").join("") + "</select>" +
@@ -2085,7 +2135,125 @@ function renderStylus() {
   el.querySelectorAll("[data-stcopy]").forEach(b => b.onclick = () => { navigator.clipboard.writeText(runs[+b.dataset.stcopy].text); b.textContent = "복사됨"; });
   el.querySelectorAll("[data-stdel]").forEach(b => b.onclick = () => { const u = runs[+b.dataset.stdel]; doc.stylus = (doc.stylus || []).filter(x => x !== u); save(true); renderStylus(); });
   el.querySelectorAll("[data-stundo]").forEach(b => b.onclick = () => stylusUndo(runs[+b.dataset.stundo]));
+  bindPlan(el);
 }
+
+// ---------- 절 계획 — 깊은 계획 (2026-10-25, 사용자: '계획 단계를 더 심도 있게'): 논증 모형 + 서재에서 배운 바탕·같은 자리의 실제 문단 + 근거로 설계도를 세우고 → 심사위원이 공격해 고치고 → 문단마다 쓴다
+let planState = { node: "", note: "", busy: "", t0: 0, err: "", open: null, writing: null, edit: null };
+const PLAN_KIND_KO = { intro: "서론", methods: "방법", results: "결과", rd: "결과·논의", discussion: "논의", conclusion: "결론" };
+function planHtml() {
+  const st = planState, plans = doc.plans || [];
+  if (!st.node || !node(st.node)) { const f = doc.outline.find(n => n.level === 1 && /result|discuss|결과|고찰|논의/i.test(n.heading)) || doc.outline.find(n => n.level === 1); st.node = f ? f.id : ""; }
+  let h = "<div class='sec' style='padding-left:0'>절 계획 — 쓰기 전에 설계도부터</div>" +
+    "<div class='hint'>절 하나의 설계도를 세웁니다: 문단마다 역할 · 요지 · 차례로 세울 말과 그 받침(논증 모형의 R·C, 서재 근거의 E, 그림) · 닮은 본보기 · 앞에서 받고 다음에 넘기는 것. 재료는 <b>논증 모형</b>(「검토 → 논증」에서 먼저 세워 두면 좋습니다)과 <b>서재에서 배운 바탕·같은 자리의 실제 문단</b>(「학습」)입니다. 세운 설계도는 심사위원(다른 호출)이 공격해 고칩니다. 그 뒤 문단마다 「이 문단 쓰기」 — 서론·문헌 문단은 서재에서 뽑기 → Stylus 네 단계, 내 결과 문단은 원고에서 쓰고 원고와 대조합니다. 계획 2~5분, 문단마다 2~8분.</div>" +
+    "<div class='ctl' style='padding:6px 0 2px;margin-left:-8px;flex-wrap:wrap;align-items:center'><select id='plNode' style='font-size:12px;max-width:240px' title='계획할 절'>" + doc.outline.filter(n => n.level === 1).map(n => "<option value='" + n.id + "'" + (n.id === st.node ? " selected" : "") + ">" + esc(n.heading.slice(0, 40)) + "</option>").join("") + "</select>" +
+    "<select id='plEffort' style='font-size:12px' title='모델'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select>" +
+    "<button class='btn pri' id='plRun'" + (st.busy ? " disabled" : "") + ">설계도 세우기</button></div>" +
+    "<textarea id='plNote' rows='2' placeholder='주문 (비워도 됩니다) — 예: 결과는 물음 셋으로 묶어서 / 문헌 비교 문단을 하나 / 5문단 안에'>" + esc(st.note) + "</textarea>" +
+    (st.busy === "plan" ? waitHtml(STYLUS_STAGE[st.stage] || STYLUS_STAGE.plan, st.t0, durGet("plan|" + chatEffort(), 240), "<div class='hint'>다른 일을 하셔도 됩니다.</div>", "plStage") : "") +
+    (st.err ? "<div class='hint' style='color:var(--amber)'>⚠ " + esc(st.err) + "</div>" : "");
+  plans.slice(0, 6).forEach((pl, pi) => { h += planCardHtml(pl, pi); });
+  return h;
+}
+function planCardHtml(pl, pi) {
+  const st = planState, open = st.open === pl.id || (st.open === null && pi === 0), fmtT = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const crit = pl.critique || {}, n = node(pl.node);
+  let h = "<div class='card' style='margin-top:10px'><div class='m' data-plopen='" + pl.id + "' style='cursor:pointer'><b>" + esc(n ? n.heading : pl.heading) + "</b> <span class='hint' style='display:inline'>" + esc(PLAN_KIND_KO[pl.kind] || pl.kind) + " · 문단 " + pl.paras.length + " · " + fmtT(pl.t) + " · " + esc(pl.model || "") + (pl.sec ? " · " + pl.sec + "초" : "") + (tokNote(pl.tok) ? " · " + tokNote(pl.tok) : "") + (pl.edited ? " · 손으로 고침" : "") + (open ? "" : " · 펼치기") + "</span></div>";
+  if (!open) return h + "</div>";
+  if (pl.flow) h += "<div class='fbmsg claude'>" + esc(pl.flow) + "</div>";
+  if ((pl.notes || []).length) h += "<div class='hint' style='color:var(--amber)'>" + pl.notes.map(esc).join("<br>") + "</div>";
+  if (crit.issues && crit.issues.length) h += "<details class='libmore' open><summary>심사위원이 본 약점 " + crit.issues.length + (pl.before ? " — 설계도를 고쳤습니다" : "") + "</summary>" + crit.issues.map(x => "<div class='libchk nv'><div class='k'><b class='w' style='color:var(--amber)'>" + (x.para ? x.para + "문단" : "전체") + "</b></div><div>" + esc(x.note) + (x.fix ? " <span style='color:var(--text-2)'>→ " + esc(x.fix) + "</span>" : "") + "</div></div>").join("") + "</details>";
+  else if (crit.verdict === "ok") h += "<div class='hint' style='color:var(--green)'>심사위원: 설계도에 큰 약점이 없습니다.</div>";
+  const editing = st.edit === pl.id;
+  h += "<div class='acts' style='margin-left:-8px'>" + (editing ? "<button class='btn pri' data-plsave='" + pl.id + "'>설계도 저장</button><button class='btn' data-plcancel='" + pl.id + "'>취소</button>" : "<button class='btn' data-pledit='" + pl.id + "' title='문단의 역할·요지·할 말을 손으로 고칩니다 — 고친 설계도로 씁니다'>설계도 고치기</button>") + "<span style='margin-left:auto'></span><button class='btn warn' data-pldel='" + pl.id + "'>지우기</button></div>";
+  pl.paras.forEach((p, i) => {
+    const d = p.draft, w = st.writing && st.writing.plan === pl.id && st.writing.i === i;
+    h += "<div class='libchk nv' style='margin-top:6px'><div class='k'><b>" + (i + 1) + ". " + esc(p.role || "?") + "</b>" + (p.len ? " · " + p.len + "문장쯤" : "") + (p.exemplar ? " · 본보기: " + esc(p.exemplar) : "") + "</div>";
+    if (editing) {
+      h += "<input data-plrole='" + i + "' value='" + esc(p.role || "") + "' style='font-size:12px;width:120px'> <textarea data-plgist='" + i + "' rows='1' style='width:100%;margin:2px 0'>" + esc(p.gist || "") + "</textarea>" +
+        "<textarea data-plpts='" + i + "' rows='" + Math.max(2, (p.points || []).length) + "' style='width:100%' placeholder='할 말 — 한 줄에 하나, 받침은 끝에 [R1, C2, E3.2]'>" + esc((p.points || []).map(pt => pt.t + (pt.src && pt.src.length ? " [" + pt.src.join(", ") + "]" : "")).join("\n")) + "</textarea>";
+    } else {
+      h += "<div class='q'>" + esc(p.gist || "") + "</div>" + (p.points || []).map(pt => "<div>· " + esc(pt.t) + (pt.src && pt.src.length ? " <span class='hint' style='display:inline'>[" + esc(pt.src.join(", ")) + "]</span>" : " <span class='hint' style='display:inline'>저자의 말</span>") + "</div>").join("") +
+        ((p.from_prev || p.to_next) ? "<div class='hint'>받음: " + esc(p.from_prev || "-") + " · 넘김: " + esc(p.to_next || "-") + "</div>" : "");
+      h += "<div class='acts' style='margin-left:-8px;margin-top:4px'><button class='btn" + (d ? "" : " pri") + "' data-plwrite='" + pl.id + ":" + i + "'" + (st.busy ? " disabled" : "") + " title='이 문단을 씁니다 — 서론·문헌 문단은 서재에서 근거를 뽑아 Stylus 네 단계로, 내 결과 문단은 원고에서 쓰고 원고와 대조'>" + (d ? "다시 쓰기" : "이 문단 쓰기") + "</button></div>";
+      if (w) h += waitHtml(STYLUS_STAGE[st.stage] || "쓰는 중", st.t0, durGet("plwrite|" + chatEffort(), 300), "", "plwStage");
+      if (p.draft_error) h += "<div class='hint' style='color:var(--amber)'>⚠ " + esc(p.draft_error) + "</div>";
+      if (d) {
+        const c = d.check || {}, ss = c.sentences || [], bad = ss.filter(x => x.verdict === "over" || x.verdict === "none" || (x.verdict === "own" && x.type === "needs") || x.abrupt);
+        h += "<div class='hint'>" + fmtT(d.t) + " · " + esc(d.model || "") + (d.stylus ? " · " + esc(d.stylus) : "") + (d.sec ? " · " + d.sec + "초" : "") + (tokNote(d.tok) ? " · " + tokNote(d.tok) : "") + " · " + (d.mode === "lib" ? "서재 근거로" : "원고에서") + (d.rounds > 1 ? " · 고쳐 씀" : "") + "</div>" +
+          (d.answer ? "<div class='libsum'>" + esc(d.answer) + "</div>" : "") + "<div class='libtext'>" + esc(d.text || "") + "</div>" +
+          "<div class='hint'>대조: 문장 " + ss.length + " · <b style='color:" + (bad.length ? "var(--amber)" : "var(--green)") + "'>확인할 곳 " + bad.length + "</b>" + ((d.nums_missing || []).length ? " · <b style='color:var(--amber)'>원고에 없는 수치 " + d.nums_missing.map(esc).join(", ") + "</b>" : "") + (d.todo ? " · 출처 달 자리 [@?] " + d.todo : "") + "</div>" +
+          bad.slice(0, 6).map(x => "<div class='libchk nv'><div class='q'>" + esc(x.s) + "…</div><div>" + esc(x.why || "") + (x.fix ? " <span style='color:var(--text-2)'>→ " + esc(x.fix) + "</span>" : "") + "</div></div>").join("") +
+          "<div class='ctl' style='padding:2px 0;margin-left:-8px;align-items:center;flex-wrap:wrap'><button class='btn pri' data-plput='" + pl.id + ":" + i + "' title='이 절의 글 끝에 넣습니다. 인용은 참고문헌 번호로 바뀌고 새 문헌은 목록에 들어갑니다. Ctrl+Z 로 되돌립니다'>" + (d.put ? "넣었음 — 다시 넣기" : "이 절 끝에 넣기") + "</button><button class='btn' data-plcopy='" + pl.id + ":" + i + "'>복사</button></div>";
+      }
+    }
+    h += "</div>";
+  });
+  if ((pl.gaps || []).length) h += "<details class='libmore'><summary>받침이 없어 채울 것 " + pl.gaps.length + "</summary>" + pl.gaps.map(x => "<div class='libchk nv'><div>" + esc(x) + "</div></div>").join("") + "</details>";
+  if ((pl.checks || []).length) h += "<details class='libmore'><summary>저자가 정할 것 " + pl.checks.length + "</summary>" + pl.checks.map(x => "<div class='libchk nv'><div>" + esc(x) + "</div></div>").join("") + "</details>";
+  if (pl.before) h += "<details class='libmore'><summary>비평 전의 설계도</summary>" + pl.before.map((p, i) => "<div class='libchk nv'><div class='k'><b>" + (i + 1) + ". " + esc(p.role) + "</b></div><div class='q'>" + esc(p.gist) + "</div></div>").join("") + "</details>";
+  return h + "</div>";
+}
+function bindPlan(el) {
+  const st = planState, q = id => el.querySelector("#" + id);
+  if (q("plNode")) q("plNode").onchange = e => { st.node = e.target.value; };
+  if (q("plNote")) { autogrow(q("plNote")); q("plNote").oninput = e => { st.note = e.target.value; }; }
+  if (q("plEffort")) q("plEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
+  if (q("plRun")) q("plRun").onclick = planRun;
+  const plan = id => (doc.plans || []).find(x => x.id === id);
+  el.querySelectorAll("[data-plopen]").forEach(b => b.onclick = () => { st.open = st.open === b.dataset.plopen ? "" : b.dataset.plopen; renderStylus(); });
+  el.querySelectorAll("[data-pldel]").forEach(b => b.onclick = async () => { if (!confirm("이 설계도를 지울까요?")) return; await api("/api/ms/stylus", { id: doc.id, op: "plan_delete", plan: b.dataset.pldel }); doc.plans = (doc.plans || []).filter(x => x.id !== b.dataset.pldel); save(true); renderStylus(); });
+  el.querySelectorAll("[data-pledit]").forEach(b => b.onclick = () => { st.edit = b.dataset.pledit; st.open = b.dataset.pledit; renderStylus(); });
+  el.querySelectorAll("[data-plcancel]").forEach(b => b.onclick = () => { st.edit = null; renderStylus(); });
+  el.querySelectorAll("[data-plsave]").forEach(b => b.onclick = async () => {
+    const pl = plan(b.dataset.plsave); if (!pl) return;
+    const paras = pl.paras.map((p, i) => {
+      const role = (el.querySelector("[data-plrole='" + i + "']") || {}).value, gist = (el.querySelector("[data-plgist='" + i + "']") || {}).value, lines = ((el.querySelector("[data-plpts='" + i + "']") || {}).value || "").split("\n").map(x => x.trim()).filter(Boolean);
+      const points = lines.map(ln => { const m = ln.match(/^(.*?)\s*\[([^\]]*)\]\s*$/); return m ? { t: m[1].trim(), src: m[2].split(/[,\s]+/).filter(Boolean) } : { t: ln, src: [] }; });
+      return Object.assign({}, p, { role: role != null ? role : p.role, gist: gist != null ? gist : p.gist, points });
+    });
+    await saveNow();
+    const r = await api("/api/ms/stylus", { id: doc.id, op: "plan_edit", plan: pl.id, paras });
+    if (r && !r.error) { Object.assign(pl, r); st.edit = null; save(true); } else alert((r || {}).error || "저장 실패");
+    renderStylus();
+  });
+  el.querySelectorAll("[data-plwrite]").forEach(b => b.onclick = () => { const [pid, i] = b.dataset.plwrite.split(":"); planWrite(pid, +i); });
+  el.querySelectorAll("[data-plcopy]").forEach(b => b.onclick = () => { const [pid, i] = b.dataset.plcopy.split(":"); const pl = plan(pid); if (pl) { navigator.clipboard.writeText((pl.paras[+i].draft || {}).text || ""); b.textContent = "복사됨"; } });
+  el.querySelectorAll("[data-plput]").forEach(b => b.onclick = () => {
+    const [pid, i] = b.dataset.plput.split(":"); const pl = plan(pid); if (!pl) return; const d = pl.paras[+i].draft; const n = node(pl.node); if (!d || !n) return;
+    const key = docKey(), text = d.cites && d.cites.length ? citeApply(d.text, d.cites) : d.text, ta = taFor(pl.node, key), add = ((n[key] || "").trim() ? "\n\n" : "") + text;
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); if (!document.execCommand("insertText", false, add)) { ta.setRangeText(add, ta.value.length, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
+    else n[key] = (n[key] || "") + add;
+    d.put = true; save(true); renderStylus();
+    if (ta) { const c = $("center"); c.scrollTop = Math.max(0, c.scrollTop + ta.getBoundingClientRect().bottom - c.getBoundingClientRect().top - c.clientHeight * 0.7); }
+  });
+}
+function planPoll(mid, st) {
+  clearInterval(st.pollT);
+  st.pollT = setInterval(async () => { try { const g = await api("/api/ms/stylus", { id: mid, op: "stage" }); if (g && g.stage && st.busy) { st.stage = g.stage; const e = $("plStage") || $("plwStage"); if (e) e.textContent = STYLUS_STAGE[g.stage] || g.stage; } } catch (e) {} }, 4000);
+}
+async function planRun() {
+  const st = planState; if (st.busy || !doc || !node(st.node)) return;
+  const mid = doc.id, nid = st.node, eff = chatEffort();
+  st.busy = "plan"; st.err = ""; st.t0 = Date.now(); st.stage = "plan"; renderStylus(); planPoll(mid, st);
+  await saveNow();
+  let r; try { r = await api("/api/ms/stylus", { id: mid, op: "plan", node: nid, key: docKey(), note: st.note.trim(), effort: eff }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  clearInterval(st.pollT); st.busy = ""; if (!doc || doc.id !== mid) return;
+  if (r.error) st.err = r.error; else { durPut("plan|" + eff, r.sec || (Date.now() - st.t0) / 1000); doc.plans = [r].concat((doc.plans || []).filter(x => x.id !== r.id).slice(0, 7)); st.open = r.id; save(true); }
+  renderStylus();
+}
+async function planWrite(pid, i) {
+  const st = planState; if (st.busy || !doc) return;
+  const mid = doc.id, eff = chatEffort();
+  st.busy = "write"; st.writing = { plan: pid, i }; st.err = ""; st.t0 = Date.now(); st.stage = "extract"; st.open = pid; renderStylus(); planPoll(mid, st);
+  await saveNow();
+  let r; try { r = await api("/api/ms/stylus", { id: mid, op: "plan_write", plan: pid, i, effort: eff }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  clearInterval(st.pollT); st.busy = ""; st.writing = null; if (!doc || doc.id !== mid) return;
+  const pl = (doc.plans || []).find(x => x.id === pid);
+  if (pl && pl.paras[i]) { if (r.error) pl.paras[i].draft_error = r.error; else { delete pl.paras[i].draft_error; pl.paras[i].draft = r; durPut("plwrite|" + eff, r.sec || (Date.now() - st.t0) / 1000); } save(true); }
+  renderStylus();
+}
+
 function stylusRunHtml(u, ui) {
   const c = u.check || {}, ss = c.sentences || [], bad = ss.filter(x => x.verdict === "over" || x.verdict === "none"), n = node(u.node);
   const fmtT = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -2545,6 +2713,7 @@ async function chatRewrite(m, i, k) {   // 다시 쓴 글을 그 절에 통째�
   if (ta) { ta.focus(); ta.setSelectionRange(0, ta.value.length); if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, 0, ta.value.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } }
   else if (r.node === "front") doc.front.abstract = text; else node(r.node)[key] = text;
   r.done = Date.now() / 1000; rwCache.clear(); save(true); memoUi(m.id);
+  caseAdd("rewrite", (r.before || "").slice(0, 700), text.slice(0, 700), chatLastQ(m));   // 교정 기억
 }
 async function chatRewriteUndo(m, i, k) {   // 다시 쓴 글로 바꾼 절을 바꾸기 전의 글로
   const r = m.thread[i].rw[k], key = r.node === "front" ? "abstract" : m.key, mid = doc.id;
@@ -2906,6 +3075,7 @@ function chatApply(m, alt, cites) {   // 대안을 고른 글 자리에 바꿔 �
     if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
   }
   m.thread.push({ role: "user", text: "(대안으로 바꿈)", swap: { before: m.quote, after: alt, t: Date.now() / 1000 } });   // 고치기 전의 글 — 「고치기 전으로 되돌리기」
+  caseAdd("swap", m.quote, alt, chatLastQ(m));   // 교정 기억: 저자가 Claude 의 대안을 받아들인 것
   m.quote = alt; m.start = a; m.unread = false; save(true); memoUi(m.id);
 }
 function chatUndo(m, i) {   // 대안으로 바꾼 것을 고치기 전의 글로 되돌린다 (가장 나중에 바꾼 것부터)
@@ -2922,6 +3092,7 @@ function chatUndo(m, i) {   // 대안으로 바꾼 것을 고치기 전의 글�
     if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
   }
   sw.undone = Date.now() / 1000;
+  caseAdd("undo", sw.after, sw.before, chatLastQ(m));   // 교정 기억: Claude 의 글을 버리고 되돌린 것
   m.thread.push({ role: "user", text: "(고치기 전으로 되돌림)", quiet: true });   // Claude 가 이어지는 대화에서 알게 기록은 남기되, 화면에는 바꿈 줄의 '되돌렸음' 만 보인다
   m.quote = sw.before; m.start = a; save(true); memoUi(m.id);
 }

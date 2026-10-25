@@ -391,7 +391,7 @@ function draftHtml(p, i, it) {   /* 쓴 문단 — 원고의 문단 쓰기(Stylu
 function introHtml(answered) {   /* 서론 구조 (2026-10-24) */
   const it = cur.intro, pend = cur.intro_pending, can = answered || cur.plan || cur.card;
   let h = "<div class='sec secline'>서론 구조<span class='r'>" +
-    (pend ? "<span style='color:var(--accent)'>뽑는 중…</span> <button class='act' data-cancel='intro'>취소</button>"
+    (pend ? "<span style='color:var(--accent)'>" + (cur.intro && cur.intro.paras && cur.intro.paras.length && !cur.intro.critique ? "심사위원이 설계도를 보는 중…" : "뽑는 중…") + "</span> <button class='act' data-cancel='intro'>취소</button>"
       : "<button class='act' id='introGo'" + (can ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + " title='토의·카드·설계서·답한 반론에 서재의 그 저널 논문 서론이 실제로 짜인 차례(본보기)를 더해 — 문단마다 역할·요지·할 말·받칠 서재 논문을 세웁니다. 글은 아직 쓰지 않습니다. Opus 2~4분'>" + (it ? "다시 뽑기" : "서론 구조 뽑기") + "</button>") + "</span></div>";
   if (!pend) h += "<input class='ireq' id='introReq' type='text' placeholder='요청 (선택) — 예: 5문단으로, 결정 소성 쪽 배경은 짧게, Zan 2026 을 공백 문단에' value='" + esc(((cur.intro_opts || {}).req) || "") + "'>";
   if (cur.intro_error) h += "<div class='warnbox'>" + esc(cur.intro_error) + "</div>";
@@ -399,6 +399,10 @@ function introHtml(answered) {   /* 서론 구조 (2026-10-24) */
     h += "<div class='cm'>" + fmtDate(it.t) + " · " + esc(it.model || "Claude") + (it.sec ? " · " + fmtDur(it.sec) : "") + (cur.intro_edited ? " · 요지를 손으로 고침" : "") +
       ((it.models || []).length ? " · 본보기: " + esc(it.models.join(", ")) : " · 본보기 없음(그 저널 논문의 서론을 못 찾음)") + " · 요지는 고치면 바로 저장</div>";
     if (it.flow) h += "<div class='iflow'>" + esc(it.flow) + "</div>";
+    const cr = it.critique || {};   /* 심사위원이 설계도를 공격해 고친 것 (2026-10-25 — 원고의 절 계획과 같은 비평) */
+    if ((cr.issues || []).length) h += "<details class='cf' open><summary class='k' style='cursor:pointer'>심사위원이 본 설계도의 약점 " + cr.issues.length + (it.before ? " — 설계도를 고쳤습니다" : "") + "</summary><ul class='pl'>" + cr.issues.map(x => "<li><b>" + (x.para ? x.para + "문단" : "전체") + "</b> " + esc(x.note) + (x.fix ? " <span class='hint' style='display:inline'>→ " + esc(x.fix) + "</span>" : "") + "</li>").join("") + "</ul>" + (it.before ? "<div class='hint'>비평 전: " + it.before.map((b, i) => (i + 1) + ". " + esc(b.role) + " — " + esc((b.gist || "").slice(0, 60))).join(" / ") + "</div>" : "") + "</details>";
+    else if (cr.verdict === "ok") h += "<div class='hint' style='color:var(--green)'>심사위원: 설계도에 큰 약점이 없습니다.</div>";
+    else if (cr.err) h += "<div class='hint'>" + esc(cr.err) + "</div>";
     (it.paras || []).forEach((p, i) => {
       h += "<div class='ipara'><div class='ih'><span class='no'>" + (i + 1) + "문단</span><span class='role'>" + esc(p.role) + "</span>" + (p.len ? "<span class='len'>" + p.len + "문장쯤</span>" : "") + "</div>" +
         "<textarea data-ik='" + i + "' title='이 문단이 세울 말 — 고치면 바로 저장되고, 다시 뽑을 때 바탕이 됩니다'>" + esc(p.gist || "") + "</textarea>" +

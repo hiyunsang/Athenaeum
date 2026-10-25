@@ -965,6 +965,9 @@ def _intro_prompt(nt):
     shape = ms.intro_shape_text(ms.intro_shape(tuple(_intro_journals(nt))) or ms.intro_shape())   # 그 저널 서론의 크기 — 서재에서 잰 것(내가 정한 '4~7개' 대신)
     if shape:
         out += "\n" + shape
+    kn = (cfg.get("knowledge") or (lambda j, k: ""))(_intro_journals(nt), "intro")   # 서재 학습의 바탕 — 그 저널의 서론은 이렇게 쓴다 (주석이 8편 넘게 쌓인 뒤에 생긴다)
+    if kn:
+        out += "\n" + kn
     req = str((nt.get("intro_opts") or {}).get("req") or "").strip()
     if req:
         out += "\n[연구자의 요청]\n" + req + "\n"
@@ -1067,7 +1070,7 @@ def _intro_write_job(nid, i, effort):
             if nt and w:
                 w.update(stage="write", xid=item["id"])
                 _save(nt)
-        use = ms.lib_use(_intro_doc(nt), {"xid": item["id"], "mode": "write", "note": _intro_order(nt, i), "node": "intro", "effort": effort})
+        use = ms.lib_use(_intro_doc(nt), {"xid": item["id"], "mode": "write", "note": _intro_order(nt, i), "node": "intro", "effort": effort, "kind": "intro", "role": q.get("role")})   # kind·role → 서재 학습의 바탕·같은 자리의 실제 문단이 지시문에 붙는다
         if not use or use.get("error"):
             raise RuntimeError((use or {}).get("error") or "문단을 받지 못했습니다")
     except Exception as e:
@@ -1317,6 +1320,79 @@ def _bg_job(nid, kind):
             nt[kind + "_error"] = err
         else:
             nt.pop(kind + "_error", None)
+        if kind == "intro" and not err:
+            nt["intro_pending"] = time.time()   # 이어서 비평 — 화면은 같은 기다림 막대를 보인다
+        _save(nt)
+    if kind == "intro" and not err:
+        try:
+            _intro_critique(nid, model, eff)
+        finally:
+            with _LOCK:
+                nt = _load(nid)
+                if nt:
+                    nt.pop("intro_pending", None)
+                    _save(nt)
+
+
+def _intro_critique(nid, model, eff):
+    """서론 구조(설계도)를 심사위원이 공격하고 고친다 — 원고의 절 계획(ms.plan_section)과 같은 규칙. 고친 문단은 cites 를 서재 파일에 다시 맞추고, 이미 쓴 문단(draft)은 같은 자리·같은 역할이면 지킨다."""
+    nt = _load(nid)
+    intro = (nt or {}).get("intro") or {}
+    if not intro.get("paras"):
+        return
+    plan_json = json.dumps({"flow": intro.get("flow", ""), "paras": [{"role": q.get("role"), "gist": q.get("gist"), "points": [{"t": pt.get("t"), "src": [c.get("key") for c in pt.get("cites") or []]} for pt in q.get("points") or []], "len": q.get("len")} for q in intro["paras"]]}, ensure_ascii=False)
+    ctx = "[이 주제] %s\n" % (nt.get("title") or "")
+    ct = _card_text(nt.get("card"))
+    if ct:
+        ctx += "\n[주제 카드]\n" + ct + "\n"
+    if nt.get("plan"):
+        ctx += "\n[실험 설계서]\n" + _plan_text(nt["plan"], cap=1200) + "\n"
+    kn = (cfg.get("knowledge") or (lambda j, k: ""))(_intro_journals(nt), "intro")
+    prompt = ctx + ("\n" + kn if kn else "") + "\n[계획]\n" + plan_json + "\n\n" + ms._PLAN_CRIT % "서론(Introduction)" + "(이 계획의 src 는 '첫 저자 연도' 열쇠다 — 고친 설계도에서도 그 꼴로 적는다. 서재에 없는 것은 '서재 밖: ' 으로.)"
+    system, _st = _background()
+    run = cfg.get("claude_run")
+    res = run(prompt, timeout=1200, model=model, effort=None if eff in ("xhigh", "max") else eff, tools="", system=system) if run else None
+    c = _json_of((res or {}).get("text")) if res else None
+    with _LOCK:
+        nt = _load(nid)
+        intro = (nt or {}).get("intro") or {}
+        if not nt or not intro.get("paras"):
+            return
+        if not isinstance(c, dict):
+            intro["critique"] = {"verdict": "?", "issues": [], "err": "비평을 받지 못했다"}
+            _save(nt)
+            return
+        issues = []
+        for x in (c.get("issues") or [])[:8]:
+            if isinstance(x, dict) and str(x.get("note") or "").strip():
+                try:
+                    pi = int(x.get("para") or 0)
+                except Exception:
+                    pi = 0
+                issues.append({"para": pi, "note": re.sub(r"\s+", " ", str(x["note"])).strip()[:400], "fix": re.sub(r"\s+", " ", str(x.get("fix") or "")).strip()[:300]})
+        intro["critique"] = {"verdict": "revise" if (c.get("verdict") == "revise" or issues) else "ok", "issues": issues, "t": time.time(), "tok": (res or {}).get("tok")}
+        if issues and isinstance(c.get("paras"), list) and c["paras"]:
+            fake = {"paras": [], "flow": intro.get("flow", ""), "gaps": intro.get("gaps") or []}
+            for p in c["paras"]:
+                if not isinstance(p, dict):
+                    continue
+                pts = []
+                for pt in (p.get("points") if isinstance(p.get("points"), list) else [])[:6]:
+                    if isinstance(pt, str):
+                        pt = {"t": pt, "src": []}
+                    if isinstance(pt, dict) and str(pt.get("t") or "").strip():
+                        pts.append({"t": pt["t"], "cites": [v for v in (pt.get("src") or []) if str(v).strip() and not re.match(r"^(R|C|E)\d", str(v))]})
+                fake["paras"].append({"role": p.get("role"), "gist": p.get("gist"), "points": pts, "len": p.get("len")})
+            try:
+                old_models = intro.get("models")
+                before = [{"role": q.get("role"), "gist": q.get("gist")} for q in intro["paras"]]
+                crit = intro["critique"]
+                _apply_intro(nt, fake, res or {}, time.time())   # cites 를 서재 파일에 맞추고 쓴 문단을 지키는 길 그대로
+                nt["intro"]["critique"] = crit
+                nt["intro"]["before"] = before
+                nt["intro"]["models"] = old_models or []
+            except Exception as e:
+                intro["critique"]["err"] = str(e)[:200]
         _save(nt)
 
 

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>서재 학습 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  header .brand-mark { height: 24px; display: block; }
+  header h1 { font-size: 14px; font-weight: 600; }
+  header .sp { flex: 1; }
+  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+  #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; padding-bottom: var(--s8); }
+  #main { background: var(--surface); min-width: 0; min-height: 0; overflow-y: auto; }
+  .sideh { display: flex; align-items: center; gap: var(--s2); padding: 12px var(--s3) 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; }
+  .sideh .n { color: var(--text-3); font-weight: 400; }
+  .box { padding: 0 var(--s3) var(--s3); border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.6; }
+  .box .row { display: flex; align-items: center; gap: var(--s2); margin: 4px 0; flex-wrap: wrap; }
+  .box label { color: var(--text-2); font-size: 12px; min-width: 64px; }
+  .box select, .box input[type=number] { padding: 2px 6px; font-size: 12px; }
+  .box input[type=number] { width: 64px; }
+  .box .hint { color: var(--text-3); font-size: 11.5px; line-height: 1.5; margin-top: 4px; }
+  .state { padding: 8px var(--s3); font-size: 12.5px; line-height: 1.55; }
+  .state .run { color: var(--accent); }
+  .state .err { color: var(--amber, #b7791f); }
+  .jl { padding: 0 var(--s3) var(--s3); }
+  .jl .j { display: grid; grid-template-columns: 64px 1fr 56px; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+  .jl .j .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .jl .j .bar i { display: block; height: 100%; background: var(--accent); }
+  .jl .j .c { text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .jl .j.pref .a { font-weight: 600; }
+  .nx { padding: 0 var(--s3) var(--s3); font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+  /* 가운데 */
+  .tabs { display: flex; gap: var(--s2); padding: var(--s3) var(--s5) 0; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  .tabs a { padding: 6px 10px; font-size: 13px; color: var(--text-2); border-bottom: 2px solid transparent; cursor: pointer; }
+  .tabs a.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .page { max-width: 1040px; margin: 0 auto; padding: var(--s4) var(--s6) var(--s8); }
+  .kl { border-top: 1px solid var(--line); }
+  .kl .k { display: grid; grid-template-columns: 1fr 70px 90px 120px 130px; gap: var(--s2); align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; }
+  .kl .k:hover { background: var(--hover); } .kl .k.on { background: var(--sel-bg); }
+  .kl .k .m { color: var(--text-3); font-size: 12px; }
+  .kl .k .need { color: var(--amber, #b7791f); font-size: 12px; }
+  .know { margin-top: var(--s4); }
+  .know h2 { font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .know .meta { color: var(--text-3); font-size: 12px; margin-bottom: var(--s3); }
+  .kt { font-size: 14px; line-height: 1.75; }
+  .kt h3 { font-size: 15px; margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .kt p { margin: 6px 0; } .kt li { margin: 3px 0 3px 18px; }
+  .kt q, .kt .qq { font-style: italic; color: var(--text-2); }
+  details.st { margin-top: var(--s3); font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+  details.st summary { cursor: pointer; color: var(--text-3); }
+  .ex { margin-top: var(--s4); border-top: 1px solid var(--line); }
+  .ex .e { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.55; }
+  .ex .e .en { font-style: italic; } .ex .e .ko { color: var(--text-2); font-size: 12.5px; } .ex .e .why { color: var(--text-3); font-size: 12px; }
+  .ex .e .src { color: var(--text-3); font-size: 11.5px; }
+  /* 논문 주석 */
+  .pl { display: flex; gap: var(--s3); align-items: center; margin-bottom: var(--s3); }
+  .pl select { max-width: 640px; }
+  .pap h2 { font-family: var(--font-serif); font-size: 17px; font-weight: 600; margin: var(--s3) 0 2px; }
+  .pap .pm { font-size: 13px; line-height: 1.6; color: var(--text-2); }
+  .pap .pm b { color: var(--text); font-weight: 600; }
+  .sec { margin-top: var(--s4); }
+  .sec h3 { font-size: 14px; margin: 0 0 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .sec h3 .kd { color: var(--text-3); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .para { display: grid; grid-template-columns: 150px 1fr; gap: var(--s3); padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .para .ph { font-size: 12px; line-height: 1.5; color: var(--text-2); }
+  .para .ph .role { display: inline-block; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 3px; font-size: 11.5px; color: var(--text); }
+  .para .ph .role.bad { border-color: var(--amber, #b7791f); color: var(--amber, #b7791f); }
+  .para .ph .tags { color: var(--text-3); font-size: 11px; }
+  .para .ph .sets { color: var(--text-3); font-size: 11px; }
+  .para .ps .s { margin: 0 0 6px; line-height: 1.55; }
+  .para .ps .s .ko { color: var(--text-2); font-size: 12.5px; display: block; }
+  .para .ps .s .an { color: var(--text-3); font-size: 11.5px; display: block; }
+  .para .ps .s .an b { font-weight: 600; color: var(--text-2); }
+  .chain { margin-top: var(--s4); font-size: 13px; line-height: 1.6; }
+  .chain .c { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .chain .c .pr { font-style: italic; } .chain .c .de { color: var(--text-2); font-size: 12.5px; } .chain .c .an { color: var(--text-2); font-size: 12.5px; }
+  .empty { padding: var(--s5) 0; color: var(--text-3); font-size: 13px; line-height: 1.6; }
+  button.sm { padding: 2px 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a class="brand" href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
+  <h1>서재 학습</h1>
+  <span class="sp"></span>
+  <span id="uiCtlHost"></span>
+</header>
+<div id="app">
+  <div id="side">
+    <div class="sideh">학습 <span class="n" id="hdrN"></span></div>
+    <div class="box" id="setbox">
+      <div class="row"><label>켜기</label><input type="checkbox" id="sOn"> <span class="hint" style="margin:0">설정한 시간대에 저절로 돈다</span></div>
+      <div class="row"><label>시간대</label><select id="sH0"></select> 시 ~ <select id="sH1"></select> 시</div>
+      <div class="row"><label>하루 상한</label><input type="number" id="sPer" min="0" max="300"> 편</div>
+      <div class="row"><label>주석 모델</label><select id="sModel"><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select></div>
+      <div class="row"><label>바탕 모델</label><select id="sSyn"><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select></div>
+      <div class="hint">편마다 Claude 호출 2~3번 · 5만~10만 토큰. 바탕 하나 세우기 3만~8만. 모든 주석은 논문의 문장 번호에 걸려 있어 원문으로 되짚을 수 있다.</div>
+    </div>
+    <div class="sideh">지금</div>
+    <div class="box">
+      <div class="row"><input type="number" id="runN" min="1" max="400" value="5"> 편 <button class="sm" id="runNow">지금 학습</button> <button class="sm" id="stopNow">멈추기</button></div>
+      <div class="state" id="state"></div>
+    </div>
+    <div class="sideh">진도 <span class="n" id="progN"></span></div>
+    <div class="jl" id="jl"></div>
+    <div class="sideh">다음 차례</div>
+    <div class="nx" id="nx"></div>
+  </div>
+  <div id="main">
+    <div class="tabs"><a data-tab="know" class="on">바탕 — 이 저널은 이렇게 쓴다</a><a data-tab="papers">논문 주석</a></div>
+    <div class="page" id="pg"></div>
+  </div>
+</div>
+<script src="/ui.js"></script>
+<script>
+async function api(path, body) { const r = await fetch(path, body ? { method: "POST", body: JSON.stringify(body) } : undefined); return r.json(); }
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtTok = (n) => !n ? "—" : n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, "") + "만" : n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "천" : String(n);
+const fmtT = (t) => t ? new Date(t * 1000).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+const fmtSec = (s) => !s ? "" : s >= 60 ? Math.floor(s / 60) + "분 " + (s % 60) + "초" : s + "초";
+let S = null, tab = "know", knowSel = null, paperSel = null, knowData = null, paperData = null, papers = null;
+try { if (typeof mountUiControls === "function") mountUiControls("#uiCtlHost"); } catch (e) {}
+
+function fillHours() {
+  for (const id of ["sH0", "sH1"]) { const s = $(id); s.innerHTML = ""; for (let h = 0; h < 24; h++) { const o = document.createElement("option"); o.value = h; o.textContent = h; s.appendChild(o); } }
+}
+fillHours();
+function renderSide() {
+  const st = S.settings, x = S.state;
+  $("sOn").checked = !!st.on; $("sH0").value = st.hours[0]; $("sH1").value = st.hours[1]; $("sPer").value = st.per_day; $("sModel").value = st.model; $("sSyn").value = st.synth_model;
+  $("hdrN").textContent = S.annotated + "/" + S.translated + "편";
+  let h = "";
+  if (x.running) h += "<div class='run'>지금: " + esc((x.current || "").slice(0, 70)) + (x.stage ? " · " + ({ structure: "절·문단", sentences: "문장", chain: "약속-이행" }[x.stage] || x.stage) : "") + "</div>";
+  else if (x.synth) h += "<div class='run'>바탕 세우는 중: " + esc(x.synth) + "</div>";
+  else h += "<div>" + (x.manual > 0 ? "곧 다음 논문 (남은 " + x.manual + "편)" : (st.on ? (S.in_window ? "시간대 안 — 곧 다음 논문" : "시간대 밖 (" + st.hours[0] + "~" + st.hours[1] + "시에 돈다)") : "꺼져 있음")) + "</div>";
+  h += "<div>오늘 " + x.done_today + "편 · 토큰 " + fmtTok(x.tok_today) + (st.per_day ? " · 상한 " + st.per_day + "편" : "") + "</div>";
+  if (x.last) h += "<div class='hint'>마지막: " + esc((x.last.stem || "").slice(0, 60)) + " · " + fmtSec(x.last.sec) + " · " + fmtTok(x.last.tok) + (x.last.ok ? "" : " · 실패") + "</div>";
+  if (x.err) h += "<div class='err'>" + esc(x.err) + "</div>";
+  $("state").innerHTML = h;
+  $("progN").textContent = "주석 " + S.annotated + "편 · 토큰 " + fmtTok(S.tok);
+  $("jl").innerHTML = S.journals.filter(j => j.total > 0).slice(0, 18).map(j => "<div class='j" + (j.pref ? " pref" : "") + "'><span class='a'>" + (j.pref ? "★ " : "") + esc(j.abbr) + "</span><span class='bar'><i style='width:" + Math.round(100 * j.done / Math.max(1, j.total)) + "%'></i></span><span class='c'>" + j.done + "/" + j.total + "</span></div>").join("");
+  $("nx").innerHTML = S.next.length ? S.next.map(s => "· " + esc(s.slice(0, 64))).join("<br>") : "없음 — 번역한 논문은 모두 주석이 있다";
+}
+async function refresh() { S = await api("/api/learn"); renderSide(); if (tab === "know" && !knowData) renderKnowList(); }
+async function saveSettings() {
+  const body = { op: "settings", on: $("sOn").checked, hours: [+$("sH0").value, +$("sH1").value], per_day: +$("sPer").value, model: $("sModel").value, synth_model: $("sSyn").value };
+  await api("/api/learn", body); refresh();
+}
+for (const id of ["sOn", "sH0", "sH1", "sPer", "sModel", "sSyn"]) $(id).onchange = saveSettings;
+$("runNow").onclick = async () => { await api("/api/learn", { op: "run_now", n: +$("runN").value || 5 }); refresh(); };
+$("stopNow").onclick = async () => { await api("/api/learn", { op: "stop" }); refresh(); };
+
+/* ---- 바탕 ---- */
+function mdLite(t) {
+  const lines = String(t || "").split("\n"); let out = "", inList = false, para = [];
+  const flush = () => { if (para.length) { out += "<p>" + para.join(" ") + "</p>"; para = []; } };
+  const inl = (s) => esc(s).replace(/“([^”]{3,}?)”\s*(\([^)]{2,60}\))/g, "<q>$1</q> <span class='src'>$2</span>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  for (const ln of lines) {
+    const m = ln.match(/^(#{1,4})\s+(.*)$/);
+    if (m) { flush(); if (inList) { out += "</ul>"; inList = false; } out += "<h3>" + inl(m[2]) + "</h3>"; continue; }
+    if (/^\s*[-*•]\s+/.test(ln)) { flush(); if (!inList) { out += "<ul>"; inList = true; } out += "<li>" + inl(ln.replace(/^\s*[-*•]\s+/, "")) + "</li>"; continue; }
+    if (!ln.trim()) { flush(); if (inList) { out += "</ul>"; inList = false; } continue; }
+    if (inList) { out += "</ul>"; inList = false; }
+    para.push(inl(ln));
+  }
+  flush(); if (inList) out += "</ul>";
+  return out;
+}
+function renderKnowList() {
+  const ks = S.knows || [];
+  let h = "<div class='hint' style='margin-bottom:8px'>바탕 = 서재의 그 저널 논문들을 문장마다 읽은 주석과 프로그램이 센 분포로 Claude 가 적은 '이 절은 이렇게 쓴다'. 원고·연구 노트·공부가 쓸 때 옆에 둔다. 주석이 20% 넘게 늘면 판이 오른다(옛 판은 이력에).</div>";
+  if (!ks.length) h += "<div class='empty'>아직 바탕이 없습니다 — 주석이 8편 넘게 쌓이면 세울 수 있습니다.</div>";
+  h += "<div class='kl'>" + ks.map((k, i) => "<div class='k" + (knowSel && knowSel.g === k.g && knowSel.kind === k.kind ? " on" : "") + "' data-i='" + i + "'><span>" + esc(k.name) + " · <b>" + esc(k.kind_ko) + "</b></span><span class='m'>" + (k.v ? "판 " + k.v : "없음") + "</span><span class='m'>" + (k.v ? k.n + "편으로" : "") + (k.now !== k.n ? " · 지금 " + k.now + "편" : "") + "</span><span class='m'>" + (k.t ? fmtT(k.t) : "") + "</span><span>" + (k.need ? "<span class='need'>다시 세울 때</span> " : "") + (k.now >= 8 ? "<button class='sm' data-syn='" + i + "'>" + (k.v ? "다시 세우기" : "세우기") + "</button>" : "<span class='m'>" + k.now + "/8편</span>") + "</span></div>").join("") + "</div>";
+  h += "<div id='knowBody'></div>";
+  $("pg").innerHTML = h;
+  $("pg").querialAll = null;
+  $("pg").querySelectorAll(".k").forEach(el => el.onclick = (e) => { if (e.target.dataset.syn !== undefined) return; const k = ks[+el.dataset.i]; knowSel = { g: k.g, kind: k.kind }; openKnow(); });
+  $("pg").querySelectorAll("[data-syn]").forEach(b => b.onclick = async (e) => { e.stopPropagation(); const k = ks[+b.dataset.syn]; if (!confirm("「" + k.name + " · " + k.kind_ko + "」 바탕을 " + (k.v ? "다시 " : "") + "세울까요? Claude 호출 하나(3만~8만 토큰), 1~3분.")) return; await api("/api/learn", { op: "synth", g: k.g, kind: k.kind }); b.textContent = "세우는 중…"; b.disabled = true; setTimeout(refreshKnow, 20000); });
+  if (knowSel) openKnow();
+}
+async function refreshKnow() { S = await api("/api/learn"); knowData = null; renderKnowList(); }
+async function openKnow() {
+  const d = await api("/api/learn/know?g=" + encodeURIComponent(knowSel.g) + "&kind=" + encodeURIComponent(knowSel.kind));
+  knowData = d;
+  const box = $("knowBody"); if (!box) return;
+  if (d.error) { box.innerHTML = "<div class='empty'>" + esc(d.error) + "</div>"; return; }
+  let h = "<div class='know'><h2>" + esc(d.name) + " — " + esc({ intro: "서론", methods: "방법", results: "결과", rd: "결과·논의", discussion: "논의", conclusion: "결론" }[d.kind] || d.kind) + "은(는) 이렇게 쓴다</h2>";
+  h += "<div class='meta'>판 " + d.v + " · 논문 " + d.n + "편 · " + fmtT(d.t) + " · " + esc(d.model) + " · 토큰 " + fmtTok(d.tok) + " · " + fmtSec(d.sec) + (d.history && d.history.length ? " · 이력 " + d.history.map(x => "판 " + x.v + "(" + x.n + "편)").join(", ") : "") + "</div>";
+  h += "<div class='kt'>" + mdLite(d.html_text) + "</div>";
+  h += "<details class='st'><summary>프로그램이 센 분포</summary><div style='white-space:pre-wrap'>" + esc(d.stats_text) + "</div></details>";
+  if (d.exemplars && d.exemplars.length) h += "<div class='ex'><div class='sideh' style='padding-left:0'>본보기 문장 " + d.exemplars.length + "</div>" + d.exemplars.map(e => "<div class='e'><div class='en'>" + esc(e.en) + "</div>" + (e.ko ? "<div class='ko'>" + esc(e.ko) + "</div>" : "") + "<div class='why'>" + esc(e.role) + " — " + esc(e.why) + "</div><div class='src'>" + esc(e.stem.slice(0, 80)) + " · " + esc(e.sid) + " · <a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(e.stem + ".pdf") + "&kind=translation&sent=" + encodeURIComponent(e.sid) + "&nolog=1'>논문에서 보기</a></div></div>").join("") + "</div>";
+  h += "</div>";
+  box.innerHTML = h;
+}
+
+/* ---- 논문 주석 ---- */
+async function renderPapers() {
+  if (!papers) papers = (await api("/api/learn/papers")).items || [];
+  let h = "<div class='pl'><select id='pSel'><option value=''>논문 고르기 (" + papers.length + "편)</option>" + papers.map(p => "<option value='" + esc(p.stem) + "'" + (paperSel === p.stem ? " selected" : "") + ">" + esc(p.journal || "") + " " + (p.year || "") + " · " + esc(p.stem.replace(/^\d{4}_[^_]+_/, "").slice(0, 80)) + " · 문장 주석 " + p.nsents + "</option>").join("") + "</select>" +
+    "<span class='hint'>주석은 Claude 가 적은 설명이고 원문은 파일에서 꺼낸 것입니다 — 어긋나 보이면 그 논문을 다시 만들 수 있습니다.</span></div><div id='pBody'></div>";
+  $("pg").innerHTML = h;
+  $("pSel").onchange = () => { paperSel = $("pSel").value; openPaper(); };
+  if (paperSel) openPaper();
+}
+const ACT = { bg: "배경", def: "정의", prior: "선행연구", contrast: "대조·한계", gap: "공백", aim: "목적", approach: "접근", claim: "주장", evid: "근거·결과", interp: "해석·기전", compare: "문헌 비교", limit: "한계", signif: "의의", future: "향후", summary: "요약", trans: "전환" };
+const REL = { elab: "풀이", evid: "근거", example: "사례", add: "덧붙임", contrast: "대조", result: "귀결", cause: "원인", eval: "평가", purpose: "목적", seq: "차례", new: "새 대목" };
+const MARK = { adv: "접속 부사", back: "받는 말", auth: "저자 주어", phrase: "도입구", none: "표시 없음" };
+const KIND = { intro: "서론", methods: "방법", results: "결과", rd: "결과·논의", discussion: "논의", conclusion: "결론", abstract: "초록", other: "" };
+async function openPaper() {
+  const box = $("pBody"); if (!box || !paperSel) return;
+  box.innerHTML = "<div class='empty'>불러오는 중…</div>";
+  const d = await api("/api/learn/paper?file=" + encodeURIComponent(paperSel));
+  if (d.error) { box.innerHTML = "<div class='empty'>" + esc(d.error) + "</div>"; return; }
+  const pp = d.paper || {};
+  let h = "<div class='pap'><h2>" + esc(d.stem) + "</h2><div class='pm'>" + esc(d.journal || "") + " " + (d.year || "") + " · 주석 " + fmtT(d.t) + " · " + esc(d.model) + " · 토큰 " + fmtTok(d.tok) + " · " + fmtSec(d.sec) + " <button class='sm' id='reann'>다시 만들기</button></div>";
+  h += "<div class='pm' style='margin-top:6px'>" + (pp.type ? "<b>유형</b> " + esc(pp.type) + " · " : "") + (pp.question ? "<b>물음</b> " + esc(pp.question) + "<br>" : "") + (pp.gap ? "<b>공백</b> " + esc(pp.gap) + "<br>" : "") + (pp.contribution ? "<b>기여</b> " + esc(pp.contribution) + "<br>" : "") + ((pp.claims || []).length ? "<b>주장</b> " + pp.claims.map(esc).join(" / ") : "") + "</div>";
+  for (const sec of d.secs || []) {
+    h += "<div class='sec'><h3>" + esc(sec.head) + "<span class='kd'>" + esc(KIND[sec.kind] || sec.kind) + " · 문단 " + sec.paras.length + "</span></h3>";
+    for (const p of sec.paras) {
+      h += "<div class='para'><div class='ph'><span class='role" + (p.role_ok ? "" : " bad") + "'>" + esc(p.role || "?") + "</span> <span class='m'>" + esc(p.p) + "</span>" + (p.sub ? "<div class='tags'>" + esc(p.sub) + "</div>" : "") + "<div>" + esc(p.gist || "") + "</div>" + (p.sets ? "<div class='sets'>→ " + esc(p.sets) + "</div>" : "") + ((p.tags || []).length ? "<div class='tags'>" + p.tags.map(esc).join(" · ") + "</div>" : "") + "<div class='tags'>낱말 " + p.words + " · 인용 " + p.cites + "</div></div><div class='ps'>";
+      for (const s of p.sents) {
+        const an = [s.act && ("<b>" + (ACT[s.act] || s.act) + "</b>"), s.rel && ((s.to && s.to !== "-" ? "←" + s.to + " " : "") + (REL[s.rel] || s.rel)), s.mark && (MARK[s.mark] || s.mark), s.hedge ? "완곡 " + s.hedge : "", s.why].filter(Boolean).join(" · ");
+        h += "<div class='s'><span class='m' style='color:var(--text-3);font-size:11px'>" + esc(s.sid) + "</span> " + esc(s.en) + (s.ko ? "<span class='ko'>" + esc(s.ko) + "</span>" : "") + (an ? "<span class='an'>" + an + "</span>" : "") + "</div>";
+      }
+      h += "</div></div>";
+    }
+    h += "</div>";
+  }
+  if ((d.chain || []).length) {
+    const sent = {}; for (const sec of d.secs) for (const p of sec.paras) for (const s of p.sents) sent[s.sid] = s; const para = {}; for (const sec of d.secs) for (const p of sec.paras) para[p.p] = p;
+    h += "<div class='chain'><h3>약속과 이행 — 서론이 세운 것 → 그것을 메운 문단 → 결론의 답</h3>" + d.chain.map(c => "<div class='c'><div class='pr'>" + esc(c.kind === "aim" ? "목적" : "공백") + " · " + esc((sent[c.promise] || {}).en || c.promise) + "</div><div class='de'>→ " + c.delivers.map(x => esc(x) + " " + esc((para[x] || {}).gist || "")).join(" · ") + "</div>" + (c.answer.length ? "<div class='an'>답: " + c.answer.map(x => esc((sent[x] || {}).en || x)).join(" / ") + "</div>" : "") + "</div>").join("") + "</div>";
+  }
+  h += "</div>";
+  box.innerHTML = h;
+  $("reann").onclick = async () => { if (!confirm("이 논문의 주석을 다시 만들까요? (Claude 호출 2~3번)")) return; await api("/api/learn", { op: "annotate", file: paperSel + ".pdf", force: true }); alert("다시 만들기를 시작했습니다 — 2~4분 뒤 다시 고르면 새 주석이 보입니다."); };
+}
+document.querySelectorAll(".tabs a").forEach(a => a.onclick = () => { document.querySelectorAll(".tabs a").forEach(x => x.classList.toggle("on", x === a)); tab = a.dataset.tab; if (tab === "know") renderKnowList(); else renderPapers(); });
+refresh().then(() => renderKnowList());
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
