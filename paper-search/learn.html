@@ -99,6 +99,7 @@
       <div class="row"><label>주석 ★ 저널</label><select id="sModel"><option value="opus">Opus</option><option value="sonnet">Sonnet</option></select></div>
       <div class="row"><label>주석 그 밖</label><select id="sRest"><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select></div>
       <div class="row"><label>바탕 모델</label><select id="sSyn"><option value="opus">Opus</option><option value="sonnet">Sonnet</option></select></div>
+      <div class="row"><label>동시에</label><select id="sWork"><option value="1">1편</option><option value="2">2편</option><option value="3">3편</option><option value="4">4편</option><option value="6">6편</option></select></div>
       <div class="hint">편마다 Claude 호출 2~3번 · 3만~4만 토큰(0.5~5분). 바탕 하나 2만~4만. Opus 는 같은 토큰으로 한도를 Sonnet 의 다섯 배쯤 쓰고 2~3배 느리다 — 글의 잣대가 되는 우선 저널(★)과 바탕은 Opus, 그 밖은 Sonnet 이 기본. 모든 주석은 논문의 문장 번호에 걸려 있어 원문으로 되짚을 수 있다.</div>
     </div>
     <div class="sideh">지금</div>
@@ -133,10 +134,10 @@ function fillHours() {
 fillHours();
 function renderSide() {
   const st = S.settings, x = S.state;
-  $("sOn").checked = !!st.on; $("sH0").value = st.hours[0]; $("sH1").value = st.hours[1]; $("sPer").value = st.per_day; $("sModel").value = st.model; $("sRest").value = st.model_rest || "sonnet"; $("sSyn").value = st.synth_model;
+  $("sOn").checked = !!st.on; $("sH0").value = st.hours[0]; $("sH1").value = st.hours[1]; $("sPer").value = st.per_day; $("sModel").value = st.model; $("sRest").value = st.model_rest || "sonnet"; $("sSyn").value = st.synth_model; $("sWork").value = String(st.workers || 3);
   $("hdrN").textContent = S.annotated + "/" + S.translated + "편";
   let h = "";
-  if (x.running) h += "<div class='run'>지금: " + esc((x.current || "").slice(0, 70)) + (x.stage ? " · " + ({ structure: "절·문단", sentences: "문장", chain: "약속-이행" }[x.stage] || x.stage) : "") + "</div>";
+  if (x.running) h += "<div class='run'>지금 " + ((x.active || []).length || 1) + "편 읽는 중" + (x.batch ? " · 이 배치 " + x.batch.done + "/" + x.batch.n0 + (x.batch.fail ? " (실패 " + x.batch.fail + ")" : "") + " · " + Math.round((Date.now() / 1000 - x.batch.t0) / 60) + "분" : "") + "</div>" + (x.active || []).map(a => "<div class='hint'>· " + esc(a.slice(0, 64)) + "</div>").join("");
   else if (x.synth) h += "<div class='run'>바탕 세우는 중: " + esc(x.synth) + "</div>";
   else h += "<div>" + (x.manual > 0 ? "곧 다음 논문 (남은 " + x.manual + "편)" : (st.on ? (S.in_window ? "시간대 안 — 곧 다음 논문" : "시간대 밖 (" + st.hours[0] + "~" + st.hours[1] + "시에 돈다)") : "꺼져 있음")) + "</div>";
   h += "<div>오늘 " + x.done_today + "편 · 토큰 " + fmtTok(x.tok_today) + (st.per_day ? " · 상한 " + st.per_day + "편" : "") + "</div>";
@@ -149,10 +150,10 @@ function renderSide() {
 }
 async function refresh() { S = await api("/api/learn"); renderSide(); if (tab === "know" && !knowData) renderKnowList(); }
 async function saveSettings() {
-  const body = { op: "settings", on: $("sOn").checked, hours: [+$("sH0").value, +$("sH1").value], per_day: +$("sPer").value, model: $("sModel").value, model_rest: $("sRest").value, synth_model: $("sSyn").value };
+  const body = { op: "settings", on: $("sOn").checked, hours: [+$("sH0").value, +$("sH1").value], per_day: +$("sPer").value, model: $("sModel").value, model_rest: $("sRest").value, synth_model: $("sSyn").value, workers: +$("sWork").value };
   await api("/api/learn", body); refresh();
 }
-for (const id of ["sOn", "sH0", "sH1", "sPer", "sModel", "sRest", "sSyn"]) $(id).onchange = saveSettings;
+for (const id of ["sOn", "sH0", "sH1", "sPer", "sModel", "sRest", "sSyn", "sWork"]) $(id).onchange = saveSettings;
 $("runNow").onclick = async () => { await api("/api/learn", { op: "run_now", n: +$("runN").value || 5 }); refresh(); };
 $("stopNow").onclick = async () => { await api("/api/learn", { op: "stop" }); refresh(); };
 
