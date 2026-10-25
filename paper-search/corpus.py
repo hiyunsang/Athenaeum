@@ -19,8 +19,21 @@ import manuscript as ms
 import study
 
 cfg = {}
-ANN_V = 2           # 주석 판 — 올리면 옛 주석은 다음 차례에 다시 만든다 (1 → 2: 절 안에 끼어든 저자 기여·사사·부록 문단을 뺌, 2026-10-25)
-_FRONT_RX = re.compile(r"(?i)^\W*(credit\s+author|declaration\s+of|acknowledg|funding|appendix\b|conflicts?\s+of\s+interest|competing\s+interest|data\s+availability|supplementary\s+(material|data)|nomenclature|corresponding\s+author|\*\s*corresponding|e-?mail|https?://|doi:|received\s+\d|©|author\s+contributions?|저자\s*기여|감사의\s*글|이해\s*(상충|관계))")
+ANN_V = 3           # 주석 판 — 올리면 옛 주석은 다음 차례에 다시 만든다 (1 → 2: 절 안에 끼어든 저자 기여·사사·부록 문단을 뺌 · 2 → 3: 그 문단부터 절 끝까지 끊음, 2026-10-25)
+_FRONT_RX = re.compile(r"(?i)^\W*(credit\s+author|declaration\s+of|acknowledg|funding|appendix\b|conflicts?\s+of\s+interest|competing\s+interest|data\s+availability|supplementary\s+(material|data)|nomenclature|corresponding\s+author|\*\s*corresponding|e-?mail|https?://|doi:|received\s+\d|©|author\s+contributions?"
+                       r"|the\s+authors?\s+(declare|would\s+like|gratefully|thank|acknowledge|are\s+grateful)|this\s+(work|research|study|project)\s+(was|is)\s+(supported|funded|financed)|[A-Z][a-z]+(\s+[A-Z][a-z]+){1,3}\s*:\s*(writing|conceptuali[sz]ation|methodology|investigation|data\s+curation|supervision|funding|formal\s+analysis|visuali[sz]ation|validation|resources|software)"
+                       r"|저자\s*기여|감사의\s*글|이해\s*(상충|관계)|연구비|부록\s*[A-Z가-힣]?[.:]?\s)")
+
+
+def _cut_back(paras, last):
+    """저자 기여·사사·부록 꼴의 문단이 나오면 거기서부터 절 끝까지 끊는다(뒷자료는 본문 뒤에만 온다) — 마지막 절이 아니면 그 문단만 뺀다"""
+    text_of = lambda p: " ".join(x["en"] for x in p["sents"])[:90]
+    hits = [i for i, p in enumerate(paras) if _FRONT_RX.match(text_of(p))]
+    if not hits:
+        return paras
+    if last or hits[0] >= len(paras) // 2:
+        return paras[:hits[0]]
+    return [p for i, p in enumerate(paras) if i not in hits]
 KNOW_V = 1
 _LOCK = threading.Lock()
 _BUSY = set()
@@ -263,9 +276,9 @@ def structure(fname):
         else:
             paras.append({"p": "", "sub": sub_head, "_para": pid, "sents": [{"sid": s["sid"], "en": s["en"], "ko": s.get("ko", "")}]})
     out, n = [], 0
-    for sec in secs:
-        # 번역문에 제목 줄이 없는 뒷·앞 자료(저자 기여·이해 충돌·사사·부록·교신 저자·DOI 줄)가 절 안에 문단으로 끼어든다 → 뺀다 (첫 바탕에서 결론의 '마지막 문단' 이 부록·저자기여로 세어졌다, 2026-10-25)
-        sec["paras"] = [p for p in sec["paras"] if not _FRONT_RX.match(" ".join(x["en"] for x in p["sents"])[:80])]
+    for si, sec in enumerate(secs):
+        # 번역문에 제목 줄이 없는 뒷·앞 자료(저자 기여·이해 충돌·사사·부록·교신 저자·DOI 줄)가 절 안에 문단으로 끼어든다 → 그 문단부터 끊는다 (첫 바탕에서 결론의 '마지막 문단' 이 부록·저자기여로 세어졌다, 2026-10-25)
+        sec["paras"] = _cut_back(sec["paras"], si >= len(secs) - 2)
         sk = [k for _, k in sec.get("_subkinds") or []]
         if sk and not sec.get("_top"):
             if "discussion" in sk and any(k in ("results", "other", "rd") for k in sk):
