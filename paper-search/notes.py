@@ -35,7 +35,7 @@ PLAN_KEYS = [("background", "배경과 공백"), ("question", "연구 물음과 
 PLAN_KO = dict(PLAN_KEYS)
 REVIEWERS = [("exp", "실험 전문가"), ("theory", "이론·모델 전문가"), ("editor", "저널 심사위원")]
 REVIEWER_KO = dict(REVIEWERS)
-_JOBKINDS = ("plan", "review", "draft", "intro", "matrix", "argmap", "gapcheck")   # matrix 식별력 표 · argmap 약속-답 지도 · gapcheck 공백 검증 (2026-10-26)
+_JOBKINDS = ("plan", "review", "draft", "intro", "matrix", "argmap", "gapcheck", "framing")   # matrix 식별력 표 · argmap 약속-답 지도 · gapcheck 공백 검증 · framing 연구의 틀 (2026-10-26)
 INTRO_ROLES = list(ms.SECTION_KINDS["intro"]["roles"])   # 서론 문단의 역할 — 원고의 본보기·구성 보기와 같은 이름표(한 곳에만 둔다, 2026-10-25)
 LAB_FILE = "_연구실.json"      # 우리 연구실 — 장비·역량·홈페이지 글 (2026-10-24)
 
@@ -81,6 +81,7 @@ def _brief(nt):
             "matrix": bool(nt.get("matrix")), "unsplit": len((nt.get("matrix") or {}).get("unsplit") or []), "argmap": bool(nt.get("argmap")),
             "unanswered": sum(1 for x in (nt.get("argmap") or {}).get("issues") or [] if x.get("kind") == "unanswered"),
             "gapcheck": bool(nt.get("gapcheck")), "gap_done": sum(1 for r in (nt.get("gapcheck") or {}).get("claims") or [] if r.get("verdict") in ("done", "partial")),
+            "framing": bool(nt.get("framing")), "framing_pick": (nt.get("framing") or {}).get("pick") or "",
             "busy": any(nt.get(k + "_pending") for k in _JOBKINDS) or bool((nt.get("intro") or {}).get("writing")),
             "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", "")}
 
@@ -793,11 +794,12 @@ _PLAN_RULE = (
     "cites 는 그 칸에서 든 서재 논문의 '첫 저자 연도' 목록(없으면 빈 목록). "
     "feasibility 는 이 계획이 쓰는 측정·장비·공정마다 [우리 연구실] 에 비추어 우리가 할 수 있는가 — ours 가 false 인 것은 어디에 맡길지, null 은 연구자가 확인할 것. [우리 연구실] 이 없으면 빈 목록. "
     "[유사 연구의 설계] 가 있으면: background 는 그 논문들이 무엇을 했고 어디서 멈췄는지를 그 논문으로 들어 공백을 세우고, material·setup·design 은 그들의 재료·장치·조건과 무엇이 같고 무엇이 다른지를 한 줄로 밝힌다(같은 설계면 그렇게 적는다 — 심사위원이 새로움을 물을 것이다). "
-    "[… 방법을 이렇게 쓴다] 가 있으면 그 저널의 방법 절이 늘 적는 것(시편 상태·공구 기하·조건·측정 분해능 같은)을 설계서가 빠뜨리지 않게 한다.")
+    "[… 방법을 이렇게 쓴다] 가 있으면 그 저널의 방법 절이 늘 적는 것(시편 상태·공구 기하·조건·측정 분해능 같은)을 설계서가 빠뜨리지 않게 한다. "
+    "[택한 프레이밍] 이 있으면 question·background·venue 는 그 틀의 물음·공백·저널을 따르고 design·setup 은 그 틀이 '설계가 더 갖춰야 할 것' 으로 든 대조·측정을 채운다; 후보만 있고 고르지 않았으면 추천 틀을 따르되 checks 에 '틀을 고를 것' 을 적는다.")
 
 _REVIEW_RULE = (
     "아래 연구 계획을 세 사람이 따로 심사한다 — exp 실험 전문가(장비·시편·측정의 실현 가능성 — [우리 연구실] 이 있으면 그 장비·역량으로 되는가와 외부에 맡길 측정의 비용·일정·접근, 교란 변수, 재현성, 측정 분해능이 효과 크기를 가를 수 있는가), theory 이론·모델 전문가(가설의 논리, 해석 모델의 가정, 같은 결과를 내는 대안 설명, 빠진 변수; [식별력 표] 가 있으면 못 가르는 쌍과 '~'·'?' 칸, [약속 ↔ 답 지도] 의 답 없는 약속을 먼저 공격한다), "
-    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것; [유사 연구의 설계] 가 있으면 그 논문들과 칸마다 견줘 이미 된 것과 다른 것을 짚고, [공백 검증] 에 '이미 됨' 으로 나온 공백을 계획이 그대로 쓰고 있으면 그것을 친다). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
+    "editor 저널 심사위원(새로움 — 서재의 어느 논문이 이미 비슷한 것을 했는가, 결과가 나와도 왜 중요한가, 그 저널의 독자가 묻는 것; [유사 연구의 설계] 가 있으면 그 논문들과 칸마다 견줘 이미 된 것과 다른 것을 짚고, [공백 검증] 에 '이미 됨' 으로 나온 공백을 계획이 그대로 쓰고 있으면 그것을 친다; [택한 프레이밍] 이 있으면 설계가 그 틀의 주장을 실제로 세울 수 있는가와 그 저널의 독자가 그 틀을 살 것인가를 묻는다). 각자 가장 아픈 반론 2~4개를 낸다 — 좋은 말·요약·되묻기만 하는 말은 쓰지 않는다. "
     "반론은 구체적으로(어느 칸의 무엇이 왜 문제인가), 서재 논문을 들 수 있으면 '(첫 저자 연도)' 로. 이미 답한 반론은 되풀이하지 않는다. 연구자가 답하면 풀릴 수 있게 물음을 한 줄 단다.\n"
     "JSON 으로만: {\"items\": [{\"who\": \"exp|theory|editor\", \"sec\": \"설계서 칸 이름(background·question·material·setup·design·analysis·expected·risks·schedule·venue) 또는 빈 문자열\", \"sev\": \"high|mid|low\", \"t\": \"반론 1~3문장\", \"ask\": \"연구자가 답해야 할 물음 한 줄\"}]}")
 
@@ -824,6 +826,9 @@ def _plan_prompt(nt):
     ans = _answered_text(nt)
     if ans:
         out += "\n[답한 반론]\n" + ans + "\n"
+    fr = _framing_text(nt.get("framing"))   # 연구의 틀 — 고른 것(없으면 후보와 추천) (2026-10-26)
+    if fr:
+        out += "\n" + fr
     dz, items = _designs(nt, k=8)   # 유사 연구의 설계 — 서재 주석에서 (2026-10-26)
     _DESIGNS[nt.get("id")] = [{"stem": x["stem"], "author": x["author"], "year": x["year"], "journal": x["journal"], "star": x.get("star")} for x in items]
     if dz:
@@ -859,6 +864,9 @@ def _review_prompt(nt):
     ans = _answered_text(nt)
     if ans:
         out += "\n[이미 답한 반론 — 되풀이하지 않는다]\n" + ans + "\n"
+    fr = _framing_text(nt.get("framing"))
+    if fr:
+        out += "\n" + fr
     dz, _items = _designs(nt, k=6)   # 심사위원(editor)이 새로움을 실제 논문과 견주게 (2026-10-26)
     if dz:
         out += "\n" + dz
@@ -876,6 +884,9 @@ def _review_prompt(nt):
 
 def _draft_prompt(nt):
     out = "[이 주제] %s\n" % (nt.get("title") or "")
+    fr = _framing_text(nt.get("framing"), brief=True)   # 제목·초록은 고른 틀의 물음·주장으로
+    if fr:
+        out += "\n" + fr
     if nt.get("plan"):
         out += "\n[실험 설계서]\n" + _plan_text(nt["plan"], cap=2500) + "\n"
     if nt.get("intro"):
@@ -897,6 +908,7 @@ _INTRO_RULE = (
     "문단 수는 [이 저널 서론의 크기](있으면)의 범위 안에서 이 연구의 논리에 필요한 만큼(없으면 4~7개). 역할은 배경(분야·왜 중요한가) · 선행연구(무엇이 알려졌나 — 묶어서) · 공백(엇갈림·한계·남은 물음 — 설계서의 '배경과 공백'·답한 반론과 같은 말이어야 한다) · 목적·접근(이 연구의 물음과 방법 개요 — 설계서의 물음·가설 그대로) · 기여·구성(선택) 가운데 고른다. "
     "문단마다 points 는 그 문단이 차례로 세울 말 2~5개 — 사실·주장 하나에 그것을 받치는 서재 논문을 '(첫 저자 연도)' 로 cites 에 적는다(그 논문이 실제로 그 말을 하는지 요약 한 줄에 비추어; 지어낸 인용·수치 금지). "
     "[유사 연구의 설계] 가 있으면 선행연구·공백 문단의 points 는 그 논문들이 실제로 한 것(물음·기여·주장)과 멈춘 곳(공백)으로 세운다 — 요약 한 줄보다 믿을 만한 재료다. "
+    "[택한 프레이밍] 이 있으면 공백·목적 문단은 그 틀의 공백·물음·주장과 같은 말이어야 하고, 그 틀의 '가장 가까운 연구' 는 선행연구 문단에 들어가 '다른 점' 이 공백을 세운다. "
     "서재에 없는 사실을 세워야 하면 t 를 '서재 밖: ' 으로 시작하고 cites 는 빈 목록 — 그런 자리는 gaps 에 탐색어와 함께 적는다(연구자가 논문을 찾아 넣는다). 연구자의 요청이 있으면 따른다.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"flow\": \"서론이 펴는 논리 한 문단 — 왜 이 차례인가\", \"paras\": [{\"role\": \"배경|선행연구|공백|목적·접근|기여·구성\", \"gist\": \"이 문단이 세울 말 한 문장\", "
     "\"points\": [{\"t\": \"할 말 한 문장\", \"cites\": [\"첫 저자 연도\", ...]}], \"len\": 문장 수 어림(정수)}], \"gaps\": [\"서재에 없어 채워야 할 근거 — 무엇을, 탐색어: ...\"]}")
@@ -1011,6 +1023,9 @@ def _matrix_prompt(nt):
     dz, _items = _designs(nt, k=6, brief=True)
     if dz:
         out += "\n" + dz
+    fr = _framing_text(nt.get("framing"), brief=True)   # 주 가설은 고른 틀의 주장에서
+    if fr:
+        out += "\n" + fr
     if nt.get("matrix"):
         out += "\n[전에 세운 표 — 못 가른 쌍을 가를 관찰을 더하거나 예측을 고친다]\n" + _matrix_text(nt["matrix"]) + "\n"
     return out + "\n" + _MATRIX_RULE
@@ -1099,6 +1114,125 @@ def _matrix_text(m, brief=False):
     if m.get("risks") and not brief:
         L.append("식별력을 깨는 것: " + " / ".join(m["risks"]))
     return "\n".join(L) + "\n"
+
+
+# ---------- 연구의 틀(프레이밍 후보) — 같은 실험을 무엇으로 세울 것인가 (2026-10-26, 승인된 차례의 ④) ----------
+# 지도교수가 설계서 앞에서 묻는 것: 이 연구는 기전을 밝히는 연구인가, 측정법을 세우는 연구인가, 재료·공정의 지침인가 — 틀이 정해져야 물음·공백·저널·대조군이 정해진다.
+# Claude 가 2~4개를 내고(틀마다 물음·주장·공백·가장 가까운 연구·다른 점·설계가 더 갖출 것·저널·약점·맞음) 연구자가 하나를 고른다(op framing_pick). 고른 틀은 설계서·서론 구조·반론·식별력 표·원고 초안 물음에 [택한 프레이밍] 으로.
+_FRAMING_RULE = (
+    "아래 주제·토의·카드를 놓고, 이 연구를 세울 수 있는 틀(프레이밍)을 2~4개 낸다 — 같은 실험이라도 무엇을 주장으로 세우느냐에 따라 물음·공백·저널·꼭 필요한 대조군이 달라진다. 지도교수가 설계서 앞에서 묻는 것이다. "
+    "kind: mechanism 기전을 밝힘 · method 측정·관찰법을 세움 · material 재료·공정의 거동과 지침 · model 모델·이론의 검증 · scale 크기·척도 효과 · application 적용·설계 지침. 서로 다른 kind 로 2~4개, 억지로 채우지 않는다. "
+    "틀마다: name 짧은 이름(제목처럼) · question 연구 물음 한 문장 · claim 결과가 나오면 세울 주장 한 문장(검증 가능한 꼴) · gap 이 틀이 메우는 공백 — 서재 논문으로(cites) · near 가장 가까운 선행 연구 1~3편('첫 저자 연도', [유사 연구의 설계]·서재에서) · "
+    "differs 그 연구와 다른 점 한 문장(없으면 '다르지 않다' 고 적는다 — 심사위원이 새로움을 물을 것이다) · needs 이 틀이 설계에 더 요구하는 것 1~3개(대조군·측정·시편·분해능) · journal 어울리는 저널 약어와 그 독자가 묻는 것 · risk 이 틀의 가장 큰 약점 한 문장 · "
+    "fit high|mid|low 토의·[우리 연구실]·서재로 보아 이 연구가 그 틀을 감당할 수 있는가. "
+    "서재의 논문은 '(첫 저자 연도)' 로, 지어낸 수치·인용은 쓰지 않는다. [공백 검증] 에 '이미 됨' 으로 나온 공백을 틀의 gap 으로 쓰지 않는다. recommend 는 하나, why 는 왜 그것인가 2~3문장(다른 틀을 접는 까닭도).\n"
+    "JSON 으로만 답하라(한국어, 마크다운 없이): {\"framings\": [{\"id\": \"F1\", \"name\": \"…\", \"kind\": \"mechanism|method|material|model|scale|application\", \"question\": \"…\", \"claim\": \"…\", \"gap\": \"…\", \"cites\": [\"첫 저자 연도\"], "
+    "\"near\": [\"첫 저자 연도\"], \"differs\": \"…\", \"needs\": [\"…\"], \"journal\": \"…\", \"risk\": \"…\", \"fit\": \"high|mid|low\"}], \"recommend\": \"F1\", \"why\": \"…\"}")
+
+_FR_KIND_KO = {"mechanism": "기전", "method": "측정·관찰법", "material": "재료·공정", "model": "모델 검증", "scale": "척도 효과", "application": "적용 지침"}
+
+
+def _framing_prompt(nt):
+    out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))
+    seed = nt.get("seed") or {}
+    if seed.get("text"):
+        out += "[출발점]\n" + seed["text"][:3000] + "\n"
+    ct = _card_text(nt.get("card"))
+    if ct:
+        out += "\n[주제 카드]\n" + ct + "\n"
+    if nt.get("plan"):
+        out += "\n[실험 설계서 — 이미 있다; 틀을 고르면 다시 만든다]\n" + _plan_text(nt["plan"], cap=1500) + "\n"
+    ans = _answered_text(nt)
+    if ans:
+        out += "\n[답한 반론]\n" + ans + "\n"
+    dz, _items = _designs(nt, k=8)   # 가장 가까운 연구와 다른 점은 실제 논문의 설계로 가른다
+    if dz:
+        out += "\n" + dz
+    gc = _gapcheck_text(nt.get("gapcheck"))
+    if gc:
+        out += "\n" + gc
+    fr = nt.get("framing") or {}
+    if fr.get("items"):
+        out += "\n[전에 낸 틀 — 연구자가 %s]\n" % (("'%s' 를 골랐다: 그 틀은 지키되 다듬고, 나머지는 다시 생각한다" % fr["pick"]) if fr.get("pick") else "아직 고르지 않았다") + _framing_text(fr, all_items=True) + "\n"
+    req = str((nt.get("framing_opts") or {}).get("req") or "").strip()
+    if req:
+        out += "\n[연구자의 요청]\n" + req + "\n"
+    out += "\n[토의]\n" + _thread_text(nt, n=16, cap=3000) + "\n\n" + _FRAMING_RULE
+    return out
+
+
+def _apply_framing(nt, d, res, t0):
+    S = lambda v, n=400: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+    cites_of = lambda v, n: [{"key": S(c, 60), "file": _cite_file(S(c, 60))} for c in (v if isinstance(v, list) else [])[:n] if S(c)]
+    items, seen = [], set()
+    for i, f in enumerate((d.get("framings") if isinstance(d.get("framings"), list) else [])[:5]):
+        if not isinstance(f, dict) or not S(f.get("question")):
+            continue
+        fid = S(f.get("id"), 5)
+        if fid in seen or not re.match(r"^F\d$", fid):
+            fid = "F%d" % (len(items) + 1)
+        seen.add(fid)
+        items.append({"id": fid, "name": S(f.get("name"), 80), "kind": f.get("kind") if f.get("kind") in _FR_KIND_KO else "mechanism", "question": S(f.get("question")), "claim": S(f.get("claim")),
+                      "gap": S(f.get("gap"), 600), "cites": cites_of(f.get("cites"), 8), "near": cites_of(f.get("near"), 4), "differs": S(f.get("differs")),
+                      "needs": [S(x, 200) for x in (f.get("needs") if isinstance(f.get("needs"), list) else [])[:4] if S(x)],
+                      "journal": S(f.get("journal"), 200), "risk": S(f.get("risk")), "fit": f.get("fit") if f.get("fit") in ("high", "mid", "low") else "mid"})
+    if len(items) < 2:
+        raise RuntimeError("틀이 %d개만 왔습니다" % len(items))
+    ids = {x["id"] for x in items}
+    rec = S(d.get("recommend"), 5)
+    if rec not in ids:
+        rec = items[0]["id"]
+    old = nt.get("framing") or {}
+    pick = old.get("pick") if old.get("pick") in ids else ""   # 다시 뽑아도 고른 번호가 남아 있으면 지킨다(지시문이 그 틀을 지키라고 한다)
+    nt["framing"] = {"items": items, "recommend": rec, "why": S(d.get("why"), 800), "pick": pick, "pick_t": old.get("pick_t") if pick else None,
+                     "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
+
+
+def framing_pick(nid, body):
+    """연구자가 틀을 고른다(fid 가 비면 푼다) — 그 뒤의 설계서·서론 구조·반론이 그 틀을 따른다"""
+    with _LOCK:
+        nt = _load(nid)
+        if not nt or not (nt.get("framing") or {}).get("items"):
+            return {"error": "프레이밍 후보가 없습니다"}
+        fid = str(body.get("fid") or "").strip()
+        if fid and fid not in {x["id"] for x in nt["framing"]["items"]}:
+            return {"error": "그 틀을 찾지 못했습니다"}
+        nt["framing"]["pick"] = fid
+        nt["framing"]["pick_t"] = time.time() if fid else None
+        _save(nt)
+        return {"note": nt}
+
+
+def _framing_text(fr, brief=False, all_items=False):
+    """지시문에 붙일 [택한 프레이밍] — 골랐으면 그 틀을 자세히, 안 골랐으면 후보 목록(추천 표시). all_items 는 다시 뽑을 때·md 에"""
+    if not fr or not fr.get("items"):
+        return ""
+    by = {x["id"]: x for x in fr["items"]}
+    pick = by.get(fr.get("pick"))
+
+    def full(f):
+        L = ["%s %s (%s · 맞음 %s)" % (f["id"], f.get("name") or "", _FR_KIND_KO.get(f.get("kind"), f.get("kind")), f.get("fit")), "물음: " + (f.get("question") or ""), "주장: " + (f.get("claim") or "")]
+        if f.get("gap"):
+            L.append("공백: " + f["gap"] + ((" (" + ", ".join(c["key"] for c in f.get("cites") or []) + ")") if f.get("cites") else ""))
+        if f.get("near"):
+            L.append("가장 가까운 연구: " + ", ".join(c["key"] for c in f["near"]) + ((" — 다른 점: " + f["differs"]) if f.get("differs") else ""))
+        if f.get("needs"):
+            L.append("설계가 더 갖춰야 할 것: " + " / ".join(f["needs"]))
+        if f.get("journal"):
+            L.append("저널·독자: " + f["journal"])
+        if f.get("risk"):
+            L.append("약점: " + f["risk"])
+        return "\n".join(L)
+
+    line = lambda f: "%s %s (%s): %s" % (f["id"], f.get("name") or "", _FR_KIND_KO.get(f.get("kind"), f.get("kind")), f.get("question") or "")
+    if pick and not all_items:
+        return "[택한 프레이밍 — 연구자가 고른 틀. 설계서의 물음·배경·저널, 서론의 공백·목적, 가설과 주장은 이 틀을 따른다]\n" + (line(pick) if brief else full(pick)) + "\n"
+    if all_items:
+        head = "[프레이밍 후보%s]" % ((" — 연구자가 고른 것 " + fr["pick"]) if fr.get("pick") else "")
+    else:
+        head = "[프레이밍 후보 — 연구자가 아직 고르지 않았다; 추천 %s. 추천 틀을 따르되 '틀을 고를 것' 을 연구자가 정할 것에 적는다]" % (fr.get("recommend") or "")
+    body = "\n".join((line(f) if brief else full(f)) for f in fr["items"])
+    return head + "\n" + body + (("\n추천 까닭: " + fr["why"]) if fr.get("why") and not brief else "") + "\n"
 
 
 # ---------- 약속 ↔ 답 지도 — 원고의 논증 모형(ms.argument_build)을 노트의 가짜 원고에 (2026-10-26) ----------
@@ -1436,6 +1570,9 @@ def _intro_prompt(nt):
     ans = _answered_text(nt)
     if ans:
         out += "\n[답한 반론 — 공백·목적 문단에 반영한다]\n" + ans + "\n"
+    fr = _framing_text(nt.get("framing"))
+    if fr:
+        out += "\n" + fr
     out += "\n[토의]\n" + _thread_text(nt, n=12, cap=2000) + "\n"
     models, names = _intro_models(nt)
     _INTRO_MODELS[nt.get("id")] = names   # _apply_intro 가 기록에 옮긴다
@@ -1790,7 +1927,7 @@ def _bg_job(nid, kind):
     if kind == "gapcheck":   # 탐색 기계 + 판정 — 따로 간다
         return _gapcheck_job(nid)
     model, eff = _EFFORT.get((nt.get(kind + "_opts") or {}).get("effort"), _EFFORT["xhigh"])
-    prompt = {"plan": _plan_prompt, "review": _review_prompt, "draft": _draft_prompt, "intro": _intro_prompt, "matrix": _matrix_prompt}[kind](nt)
+    prompt = {"plan": _plan_prompt, "review": _review_prompt, "draft": _draft_prompt, "intro": _intro_prompt, "matrix": _matrix_prompt, "framing": _framing_prompt}[kind](nt)
     t0 = time.time()
     res, err, d, cancelled = None, "", None, False
     try:
@@ -1801,7 +1938,7 @@ def _bg_job(nid, kind):
         if not cancelled:
             d = _json_of((res or {}).get("text"))
             if not isinstance(d, dict):
-                err = {"plan": "설계서를", "review": "반론을", "draft": "원고 초안을", "intro": "서론 구조를", "matrix": "식별력 표를"}[kind] + " 받지 못했습니다" + _why()
+                err = {"plan": "설계서를", "review": "반론을", "draft": "원고 초안을", "intro": "서론 구조를", "matrix": "식별력 표를", "framing": "틀 후보를"}[kind] + " 받지 못했습니다" + _why()
     except Exception as e:
         err = "Claude 호출 실패: " + str(e)[:200]
     with _LOCK:
@@ -1815,7 +1952,7 @@ def _bg_job(nid, kind):
             return
         if not err:
             try:
-                {"plan": _apply_plan, "review": _apply_review, "draft": _apply_draft, "intro": _apply_intro, "matrix": _apply_matrix}[kind](nt, d, res, t0)
+                {"plan": _apply_plan, "review": _apply_review, "draft": _apply_draft, "intro": _apply_intro, "matrix": _apply_matrix, "framing": _apply_framing}[kind](nt, d, res, t0)
                 if kind == "intro":
                     _intro_check(nt)   # 프로그램이 본 것 — 서재 분포와 견줌 (비평 물음에도 들어간다)
             except Exception as e:
@@ -1953,6 +2090,8 @@ def to_md(nt):
                 continue
             out.append("**%s**" % CARD_KO[k])
             out += (["- " + str(x) for x in v] if isinstance(v, list) else [str(v)]) + [""]
+    if nt.get("framing"):
+        out += ["## 연구의 틀 (프레이밍 후보)", _framing_text(nt["framing"], all_items=True), ""]
     if nt.get("plan"):
         out += ["## 실험 설계서"]
         for sec in nt["plan"].get("sections") or []:
@@ -2057,6 +2196,8 @@ def handle_post(h, body):
             return h._send(200, job_start(nid, op, body))
         if op == "cancel_job":
             return h._send(200, job_cancel(nid, str(body.get("kind") or "")))
+        if op == "framing_pick":                 # 연구의 틀 고르기 (2026-10-26)
+            return h._send(200, framing_pick(nid, body))
         if op == "objection":
             return h._send(200, objection_set(nid, body))
         if op == "intro_write":                  # 서론 문단 쓰기 — 원고의 문단 쓰기 그대로 (2026-10-25)
