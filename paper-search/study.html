@@ -196,8 +196,13 @@
   .plist .p .m { color: var(--text-3); white-space: nowrap; }
   .logl { color: var(--text-2); font-size: 12.5px; padding: 3px 0; }
   .warnbox { background: var(--amber-bg); color: var(--amber); border-radius: var(--r); padding: var(--s2) var(--s3); margin: var(--s3) 0; line-height: 1.55; }
-  /* 오른쪽: 근거 */
-  #srcp .sec:first-child { margin-top: 0; }
+  /* 오른쪽: 근거 — 위의 갈래 단추(근거 · 묻기 · 논문 · 기록 …)로 나눠 누른 것만 보인다 (연구 노트 #cardtabs 와 같은 꼴, 2026-10-27) */
+  #srctabs { position: sticky; top: calc(-1 * var(--s3)); z-index: 3; display: flex; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); margin: calc(-1 * var(--s3)) calc(-1 * var(--s4)) var(--s3); }
+  #srctabs button { flex: 1; background: var(--panel); border: 0; border-radius: 0; margin: 0; padding: 8px 2px 7px; font: inherit; font-size: 12px; line-height: 1.2; color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; min-width: 0; }
+  #srctabs button:hover { background: var(--hover); color: var(--text); }
+  #srctabs button.on { color: var(--accent); font-weight: 600; background: var(--surface); box-shadow: inset 0 -2px 0 var(--accent); }
+  #srctabs .b { font-size: 10.5px; font-weight: 600; color: var(--text-3); line-height: 1; } #srctabs .b.run { color: var(--accent); } #srctabs .b.err { color: var(--amber); }
+  #srcp .sec:first-child, #srcbody > .sec:first-child { margin-top: 0; }
   .spq { line-height: 1.6; padding: var(--s2) 0 var(--s3); border-bottom: 1px solid var(--line-2); }
   .srci { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
   .srci .sm { font-size: 12px; color: var(--text-2); margin-bottom: 4px; } .srci .sm b { color: var(--text); }
@@ -356,8 +361,9 @@ function renderOutline() {
 }
 function gotoView(kind, si) {
   view = { kind, si: kind === "sec" ? si : -1 };
+  if (kind === "deck") panel = "deck"; else if (panel === "deck" || panel === "mapnode" || panel === "secedit") panel = selKey ? "unit" : "info";   /* 그 보기에만 있는 갈래는 보기를 떠나면 근거로 */
   if (kind === "map" && si >= 0) { mapMode = "sec"; mapSi = si; }
-  renderMain(); $("main").scrollTop = 0;
+  renderMain(); $("main").scrollTop = 0; renderPanel();   /* 오른쪽 칸의 갈래도 보기에 맞춘다 */
 }
 
 // ---------- 열기 · 살피기 ----------
@@ -738,7 +744,7 @@ function bindChapter() {
   if ($("mdCopy")) $("mdCopy").onclick = async () => { const r = await md(); if (!r) return; try { await navigator.clipboard.writeText(r.md); msg("복사했습니다"); } catch (e) { msg("복사하지 못했습니다 — 「md 파일로」 를 쓰세요"); } };
   if ($("mdSave")) $("mdSave").onclick = async () => { const r = await md(); if (!r) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([r.md], { type: "text/markdown;charset=utf-8" })); a.download = r.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
   if ($("printBtn")) $("printBtn").onclick = () => { if (view.kind !== "all") { view = { kind: "all", si: -1 }; renderMain(); } setTimeout(() => window.print(), 300); };
-  if ($("infoBtn")) $("infoBtn").onclick = () => { panel = "info"; infoOpen = true; selKey = ""; m.querySelectorAll(".u.on").forEach(e => e.classList.remove("on")); renderPanel(); };
+  if ($("infoBtn")) $("infoBtn").onclick = () => { panel = "log"; renderPanel(); };
   if ($("delBtn")) $("delBtn").onclick = delStudy;
   if ($("rwBtn")) $("rwBtn").onclick = async () => { if (!confirm("읽은 논문과 메모는 그대로 두고 짜기부터 다시 씁니다(40분쯤, 토큰은 새로 쓰는 장의 절반쯤). 새 장이 생기고 이 장은 남습니다. 시작할까요?")) return;
     const r = await api("/api/study", { op: "rewrite", id: cur.id }); if (r.error) { alert(r.error); return; } await loadList(); openStudy(r.id); };
@@ -1022,9 +1028,14 @@ function msgHtml(m) {
   return "<div class='msg'><div class='who'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") + (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + "</div>" +
     paras.map(p => "<p" + (/^서재 밖\s*:/.test(p) ? " class='beyond' title='장과 근거에 없어 Claude 가 제 지식으로 보탠 부분입니다 — 서재에서 확인된 것이 아닙니다'" : "") + ">" + esc(p).replace(/\n/g, "<br>") + "</p>").join("") + "</div>";
 }
+function askListPanel() {   /* 묻기 갈래에 고른 대목이 없을 때 — 이 장에서 물은 것 (2026-10-27) */
+  const chats = (cur.chats || []).slice().reverse();
+  return "<div class='sec'>Claude 에게 물은 것" + (chats.length ? " " + chats.length + "개" : "") + "</div><div class='hint' style='line-height:1.6'>본문의 글을 드래그하면 그 대목을 놓고 Claude 에게 물을 수 있습니다. 답은 창을 닫아도 그 대화에 남습니다.</div>" +
+    (chats.length ? chatListHtml(chats) : "<div class='hint' style='padding-top:var(--s2)'>아직 이 장에서 물은 것이 없습니다.</div>");
+}
 function askPanel() {
   const chat = askOpen ? (cur.chats || []).find(c => c.id === askOpen) : null;
-  const ctx = chat || askCtx; if (!ctx) { panel = "info"; return infoPanel(); }
+  const ctx = chat || askCtx; if (!ctx) return askListPanel();
   const keys = ctx.keys || [], srcKeys = [...new Set(keys.flatMap(k => { try { return unitAt(k).src || []; } catch (e) { return []; } }))];
   const src = srcKeys.map(k => [k, cur.src[k]]).filter(x => x[1]);
   /* 이 장에서 물은 것 — 같은 대목의 대화를 먼저 (사용자 2026-10-14: '고른 대목밖에 안 뜨는데, 그 위에 내가 했던 질문들 볼 수 있게') */
@@ -1121,17 +1132,53 @@ function renderPanel() {
   clearInterval(askTick);
   if (view.kind === "index") { el.innerHTML = ixPanelHtml(); bindIxPanel(el); return; }
   if (view.kind === "decks") { el.innerHTML = "<div class='sec'>발표 자료</div><div class='hint'>모든 장의 발표 자료입니다. 자료를 누르면 그 장이 열리고, 쪽을 넘기며 배치를 고르거나 이 칸에서 Claude 에게 쪽을 고쳐 달라고 할 수 있습니다.</div>"; return; }
-  if (view.kind === "deck" && cur && cur.chapter) { el.innerHTML = deckPanel(); bindDeckPanel(el); return; }
   if (!cur) { el.innerHTML = ""; return; }
   if (cur.status !== "done" || !cur.chapter) { el.innerHTML = "<div class='sec'>근거</div><div class='hint'>다 쓰면 여기에서 문장마다의 근거(논문의 원문 문장)를 봅니다.</div>"; return; }
-  if (panel === "ask") { el.innerHTML = askPanel(); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
-  if (panel === "secedit" && secEditSi >= 0) { el.innerHTML = secEditPanel(); bindSecEdit(el); el.scrollTop = 0; return; }
-  if (panel === "mapnode" && mapSel) { el.innerHTML = mapNodePanel(); bindChatLinks(el); el.scrollTop = 0; return; }
-  if (panel === "paper" && paperSel != null) { el.innerHTML = paperPanel(); bindChatLinks(el); const c = $("paperClose"); if (c) c.onclick = () => { panel = selKey ? "unit" : "info"; renderPanel(); }; el.scrollTop = 0; return; }
-  if (panel === "unit" && selKey) { el.innerHTML = unitPanel(unitAt(selKey), selKey); bindChatLinks(el); el.scrollTop = 0; return; }
-  el.innerHTML = infoPanel();
-  bindChatLinks(el);
-  const rb = $("rmBtn"); if (rb) rb.onclick = () => { panel = panel === "removed" ? "info" : "removed"; renderPanel(); };
+  /* 갈래 단추 — 누른 갈래만 그린다 (사용자 2026-10-27: '공부 오른쪽 창도 비슷하게' — 연구 노트의 #cardtabs 처럼) */
+  const tab = srcTabOf(), wrap = b => srcTabsHtml(tab) + "<div id='srcbody'>" + b + "</div>";
+  if (tab === "ask") { el.innerHTML = wrap(askPanel()); bindSrcTabs(el); bindAsk(); bindChatLinks(el); if (!askOpen) el.scrollTop = 0; return; }
+  if (tab === "secedit") { el.innerHTML = wrap(secEditPanel()); bindSrcTabs(el); bindSecEdit(el); el.scrollTop = 0; return; }
+  if (tab === "mapnode") { el.innerHTML = wrap(mapNodePanel()); bindSrcTabs(el); bindChatLinks(el); el.scrollTop = 0; return; }
+  if (tab === "deck") { el.innerHTML = wrap(deckPanel()); bindSrcTabs(el); bindDeckPanel(el); return; }
+  if (tab === "paper") { el.innerHTML = wrap(paperPanel()); bindSrcTabs(el); bindChatLinks(el); const c = $("paperClose"); if (c) c.onclick = () => { paperSel = null; renderPanel(); }; el.scrollTop = 0; return; }
+  if (tab === "log") { el.innerHTML = wrap(infoPanel()); bindSrcTabs(el); bindChatLinks(el); const rb = $("rmBtn"); if (rb) rb.onclick = () => { panel = panel === "removed" ? "log" : "removed"; renderPanel(); }; return; }
+  el.innerHTML = wrap(selKey ? unitPanel(unitAt(selKey), selKey) : "<div class='sec'>근거</div><div class='hint' style='line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다. 표의 행과 그림 설명도 누를 수 있고, 글을 드래그하면 Claude 에게 물을 수 있습니다.</div>");
+  bindSrcTabs(el); bindChatLinks(el); el.scrollTop = 0;
+}
+/* 오른쪽 칸의 갈래: 근거 · 묻기 · 논문 · 기록 은 늘, 절 고치기(절 보기) · 쪽 고치기(발표 자료 보기) · 이름표(마인드맵에서 누른 것) 는 그 보기에서만 */
+function srcTabs() {
+  const t = [{ id: "unit", name: "근거", tip: "누른 문장의 근거 — 논문의 원문 문장" }, { id: "ask", name: "묻기", tip: "글을 드래그해 Claude 에게 묻기 · 이 장에서 물은 것" },
+    { id: "paper", name: "논문", tip: "읽은 논문 — 누르면 그 논문이 받치는 문장" }, { id: "log", name: "기록", tip: "이 장의 기록 — 훑은 서재 · 대조 · 뺀 문장 · 토큰" }];
+  if (view.kind === "sec" && view.si >= 0) t.push({ id: "secedit", name: "절 고치기", tip: "이 절을 Claude 에게 고쳐 달라고 하기" });
+  if (view.kind === "deck") t.push({ id: "deck", name: "쪽 고치기", tip: "발표 자료의 쪽을 Claude 에게 고쳐 달라고 하기" });
+  if (view.kind === "map" && mapSel) t.push({ id: "mapnode", name: "이름표", tip: "마인드맵에서 누른 이름표를 받치는 문장" });
+  return t;
+}
+function srcTabOf() {   /* panel 상태 → 지금 보기에 있는 갈래 */
+  const ids = srcTabs().map(t => t.id);
+  let id = panel === "info" || panel === "unit" ? "unit" : panel === "removed" ? "log" : panel;
+  if (!ids.includes(id)) id = "unit";
+  return id;
+}
+function srcBadge(id) {   /* 단추의 작은 표시: … 만드는 중 · ! 오류 · 수 */
+  let txt = "", cls = "";
+  if (id === "ask") { const ch = cur.chats || []; if (ch.some(c => c.pending)) { txt = "…"; cls = "run"; } else if (ch.length) txt = String(ch.length); }
+  else if (id === "paper") txt = String((cur.papers || []).filter(p => p.read).length);
+  else if (id === "log") { const n = (cur.removed || []).length; if (n) txt = "뺀 " + n; }
+  else if (id === "secedit") { if (cur.sec_edit_pending && cur.sec_edit_pending.si === view.si) { txt = "…"; cls = "run"; } else if (cur.sec_edit_error) { txt = "!"; cls = "err"; } else { const n = ((cur.sec_chat || {})[String(view.si)] || []).length; if (n) txt = String(n); } }
+  else if (id === "deck") { const d = typeof deckCur === "function" ? deckCur() : null; if (d && d.edit_pending) { txt = "…"; cls = "run"; } else if (d && d.edit_error) { txt = "!"; cls = "err"; } }
+  return txt ? "<span class='b" + (cls ? " " + cls : "") + "'>" + esc(txt) + "</span>" : "";
+}
+function srcTabsHtml(tab) { return "<div id='srctabs' class='noprint'>" + srcTabs().map(t => "<button data-stab='" + t.id + "'" + (t.id === tab ? " class='on'" : "") + " title='" + esc(t.tip) + "'>" + esc(t.name) + srcBadge(t.id) + "</button>").join("") + "</div>"; }
+function bindSrcTabs(el) {
+  el.querySelectorAll("[data-stab]").forEach(b => b.onclick = () => {
+    const id = b.dataset.stab;
+    if (id === "unit") panel = selKey ? "unit" : "info";
+    else if (id === "secedit") { secEditSi = view.si; panel = "secedit"; }
+    else if (id === "log") panel = panel === "removed" ? "removed" : "log";
+    else panel = id;
+    renderPanel();
+  });
 }
 function bindReaderLinks(el) {   /* 읽기 창으로 가는 링크 — 이미 열린 읽기 창은 앞으로 (target 링크만으로는 뒤에 숨은 채 바뀐다; 사용자 2026-10-09 '논문 원문으로 안 가짐') */
   el.querySelectorAll("a[target='athenaeum_reader']").forEach(a => a.onclick = ev => { ev.preventDefault(); const w = window.open(a.href, "athenaeum_reader"); if (w) { try { w.focus(); } catch (e) {} } });
@@ -1144,8 +1191,14 @@ function bindChatLinks(el) {
 }
 // 읽은 논문 하나 → 장에서 그 논문이 받치는 문장(절마다)과 그 논문에서 가져온 원문 문장 (사용자 2026-10-06: '우측에 읽은 논문 누르면 언급된 부분 볼 수 있게')
 function openPaper(pi) { paperSel = pi; panel = "paper"; renderPanel(); }
+function paperListPanel() {   /* 논문 갈래에 고른 논문이 없을 때 — 읽은 논문 목록 (전에는 「이 장의 기록」 안에 접혀 있었다) */
+  const papers = cur.papers || [], read = papers.filter(p => p.read);
+  return "<div class='sec'>읽은 논문 " + read.length + "편</div><div class='hint' style='line-height:1.6'>누르면 그 논문이 받치는 장의 문장과 가져온 원문 문장을 봅니다. 통째로 " + read.filter(p => p.mode === "full").length + " · 맞은 대목만 " + read.filter(p => p.mode !== "full").length + ".</div>" +
+    papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" + (p.top ? "★ " : "") + esc(p.journal || "") + " · " +
+      (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("");
+}
 function paperPanel() {
-  const pi = paperSel, p = cur.papers[pi]; if (!p) { panel = "info"; return infoPanel(); }
+  const pi = paperSel, p = cur.papers[pi]; if (!p) return paperListPanel();
   const hits = [];
   cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => (b.units || []).forEach((u, ui) => { if ((u.src || []).some(k => +k.split(":")[0] === pi)) hits.push({ key: si + "." + bi + "." + ui, u, si }); })));
   const num = k => +(k.split(":")[1].replace(/\D/g, "") || 0);
@@ -1158,7 +1211,7 @@ function paperPanel() {
   hits.forEach(x => { if (x.si !== lastSi) { lastSi = x.si; const sec = cur.chapter.sections[x.si]; h += "<div class='hint' style='padding:8px 0 2px;font-weight:600;color:var(--text-2)'>" + esc(sec.kind === "summary" ? "핵심 정리" : sec.title) + "</div>"; } h += "<div class='chl' data-unit='" + x.key + "'>" + esc(x.u.t) + "</div>"; });
   if (!hits.length) h += "<div class='hint'>이 논문은 장의 글에 쓰이지 않았습니다.</div>";
   if (srcKeys.length) h += "<details class='evd'><summary>이 논문에서 가져온 원문 문장 " + srcKeys.length + "개</summary>" + srcItemsHtml(srcKeys.map(k => [k, cur.src[k]])) + "</details>";
-  h += "<div class='row noprint' style='padding-top:var(--s3)'><button class='act' id='paperClose'>닫기</button></div>";
+  h += "<div class='row noprint' style='padding-top:var(--s3)'><button class='act' id='paperClose'>읽은 논문 목록으로</button></div>";
   return h;
 }
 function chatListHtml(list) {
@@ -1187,8 +1240,7 @@ function infoPanel() {
   const kv = (a, b) => "<div class='kv'><span>" + a + "</span><span>" + b + "</span></div>";
   const read = papers.filter(p => p.read);
   // 기본은 조용한 칸(사용자 2026-10-07: '읽은 논문·이 장의 기록이 계속 우측에 떠 있는 것도 조금') — 기록과 읽은 논문은 접어 두고, 「이 장의 기록」 단추로 열면 펼친다
-  let h = "<div class='sec'>근거</div><div class='hint' style='line-height:1.6'>문장을 누르면 그 근거인 원문 문장이 여기에 보입니다. 원문은 논문 파일에서 꺼낸 그대로입니다. 표의 행과 그림 설명도 누를 수 있고, 글을 드래그하면 Claude 에게 물을 수 있습니다.</div>" +
-    "<details class='evd'" + (infoOpen || panel === "removed" ? " open" : "") + "><summary>이 장의 기록</summary>" +
+  let h = "<div class='sec'>이 장의 기록</div>" +
     kv("훑은 서재", "논문 " + (sc.files || 0) + "편 · 문장 " + (sc.sents || 0).toLocaleString() + "개") +
     kv("읽은 논문", read.length + "편 (통째로 " + read.filter(p => p.mode === "full").length + " · 맞은 대목만 " + read.filter(p => p.mode !== "full").length + ")") +
     kv("뽑은 메모", (s.notes || 0) + "개") +
@@ -1199,14 +1251,9 @@ function infoPanel() {
     kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + (s.joined ? " · 절 사이 잇는 문장 손질 " + s.joined : "") + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
     kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
     kv("읽은 토큰", fmtTok(tok.in || 0) + (tok.cached ? " (그중 캐시 " + fmtTok(tok.cached) + ")" : "") + " · 호출 " + (cur.calls || 0) + "번");
-  if (panel === "removed") h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
+  if (panel === "removed" && rm.length) h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
     rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
-  h += "</details>";
-  h += "<details class='evd'><summary>읽은 논문 " + read.length + "편 — 누르면 그 논문이 언급된 문장</summary>" + papers.map((p, i) => "<div class='kv'><span>" + (p.n ? "[" + p.n + "]" : p.read ? "읽음" : "—") + "</span><span><a href='#' data-paper='" + i + "' title='" + esc(p.title) + "'>" + esc(p.short) + "</a> <span class='hint'>" + (p.top ? "★ " : "") + esc(p.journal || "") + " · " +
-      (p.mode === "full" ? "통째로" : p.read ? "맞은 대목" : "읽지 못함") + (p.read ? " · 메모 " + (p.nnotes || 0) : "") + (p.read && !p.n ? " · 장에 쓰이지 않음" : "") + "</span></span></div>").join("") + "</details>";
-  const chats = (cur.chats || []).slice().reverse();
-  if (chats.length) h += "<details class='evd' open><summary>Claude 와 나눈 대화 " + chats.length + "개</summary>" + chatListHtml(chats) + "</details>";
   return h;
 }
 
