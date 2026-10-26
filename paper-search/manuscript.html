@@ -68,6 +68,10 @@
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
   .cards { display: flex; flex-direction: column; gap: var(--s1); }
   .card { border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 6px 10px; font-size: 12.5px; line-height: 1.55; background: var(--surface); }
+  /* 쓰기 흐름 보드 (2026-10-27) */
+  .wb { margin: 4px 0 10px; } .wbr { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; } .wbr .wbk { font-weight: 600; min-width: 7em; } .wbr .btn { margin-left: auto; }
+  .wbt { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; } .wbt th { text-align: left; color: var(--text-3); font-weight: 600; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .wbt td { padding: 5px 6px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.45; } .wbt td.h { font-weight: 600; max-width: 180px; } .wbt .warn { color: var(--amber); } .wbt .ok { color: var(--green); } .wbt .btn { padding: 1px 7px; font-size: 11.5px; margin: 0 2px 2px 0; }
   .card .m { color: var(--text-3); font-size: 11px; display: flex; gap: var(--s2); align-items: baseline; }
   .card .m b { color: var(--text-2); font-weight: 600; }
   .card .m .id { font-family: ui-monospace, Consolas, monospace; }
@@ -1258,9 +1262,9 @@ function stInsert(chId) {
 // ---------- 서랍 ----------
 // 서랍의 탭: 열 개를 여섯 묶음으로. 묶음을 누르면 그 묶음에서 마지막에 보던 것이 열리고, 묶음 안의 것은 둘째 줄에서 고른다
 const TAB_GROUPS = [["대화", ["chat"], "고른 글마다의 메모와 Claude 대화"], ["근거", ["cards", "lib", "src", "refs"], "근거 카드 · 서재에서 뽑기(내 논문들에서 어떤 내용을 말한 대목) · Claude 에게 함께 보여 주는 작업 자료 · 원고의 참고문헌 목록"],
-  ["검토", ["arg", "notes", "rev", "check"], "논증 모형(원고의 글에서 세운 물음·공백·결과·주장과 그 받침·서론의 약속과 답·어긋난 곳) · 교수님·공저자 피드백 · 심사 의견(리비전) · 저널 규격 점검"], ["참고", ["stylus", "ex", "idea", "en"], "Stylus 로 절 쓰기(결론) · 잘 쓴 논문의 본보기 · 아이디어 · 영문(용어집)"],
+  ["검토", ["arg", "notes", "rev", "check"], "논증 모형(원고의 글에서 세운 물음·공백·결과·주장과 그 받침·서론의 약속과 답·어긋난 곳) · 교수님·공저자 피드백 · 심사 의견(리비전) · 저널 규격 점검"], ["쓰기", ["stylus"], "쓰기 흐름 — 논증 모형 · 절마다 설계도와 문단 쓰기(Stylus) · 결론 · 초록"], ["참고", ["ex", "idea", "en"], "잘 쓴 논문의 본보기 · 아이디어 · 영문(용어집)"],
   ["그림", ["figs"], "그림·도식"], ["내보내기", ["out"], ".docx 내보내기 · 워드 파일에 반영"]];
-const TAB_NAMES = { chat: "대화", cards: "카드", lib: "서재에서 뽑기", src: "자료", refs: "참고문헌", arg: "논증", notes: "피드백", rev: "리비전", check: "점검", stylus: "Stylus", ex: "본보기", idea: "아이디어", en: "영문", figs: "그림", out: "내보내기" };
+const TAB_NAMES = { chat: "대화", cards: "카드", lib: "서재에서 뽑기", src: "자료", refs: "참고문헌", arg: "논증", notes: "피드백", rev: "리비전", check: "점검", stylus: "쓰기", ex: "본보기", idea: "아이디어", en: "영문", figs: "그림", out: "내보내기" };
 let curTab = "cards";
 const activeTab = () => curTab;
 function tabBadge(k) {   // 묶음 이름 옆의 작은 숫자
@@ -2110,13 +2114,49 @@ function stylusOpen(nid) {
   if (nid === "front") { switchTab("stylus"); renderStylus(); const t = $("abNote"); if (t) { t.focus(); t.scrollIntoView({ block: "center" }); } return; }   /* 초록 (2026-10-26) */
   stylusState.node = nid; switchTab("stylus"); renderStylus(); const t = document.querySelector("#tab-stylus textarea"); if (t) t.focus();
 }
+function writeBoardHtml() {   /* 쓰기 흐름 — 이 원고가 어디까지 왔나: 논증 모형 · 절마다 설계도와 쓴 문단 · 결론 · 초록 · 점검 (2026-10-27) */
+  const a = doc.argument, plans = doc.plans || [], runs = doc.stylus || [], key = docKey();
+  const fmtD = t => t ? new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  const badOf = d => { const ss = ((d || {}).check || {}).sentences || []; return ss.filter(x => x.verdict === "over" || x.verdict === "none" || (x.verdict === "own" && x.type === "needs") || x.abrupt).length + ((d || {}).nums_missing || []).length; };
+  let argSt = "<span class='warn' style='color:var(--amber)'>아직 없음 — 먼저 세우면 설계도·문단·결론·초록이 모형 밖으로 나가지 않습니다</span>";
+  if (a) { const base = a.body_chars || 0, drift = base ? Math.abs(argCurChars() - base) / base : 0, unans = (a.promises || []).filter(p => !(p.answered_by || []).length).length;
+    argSt = fmtD(a.t) + " · 문제 " + (a.issues || []).length + " · 답 없는 약속 " + unans + (drift > 0.1 ? " · <span style='color:var(--amber)'>그 뒤 원고가 " + Math.round(drift * 100) + "% 바뀜 — 다시 세우기</span>" : ""); }
+  let h = "<div class='sec' style='padding-left:0'>쓰기 흐름 — 이 원고의 지금</div>" +
+    "<div class='hint'>차례: ① 논증 모형(원고가 지금 말하는 것) → ② 절마다 설계도를 세우고 문단 쓰기(결과·논의부터, 서론은 서재에서 근거를 뽑아) → ③ 결론 → ④ 초록 → ⑤ 점검. 모든 단계에 서재의 바탕·같은 자리의 실제 문단·연구 노트의 「분야 지형」(누가 말했는가에 따른 주장의 무게)이 같이 갑니다.</div>" +
+    "<div class='wb'><div class='wbr'><span class='wbk'>① 논증 모형</span><span>" + argSt + "</span><button class='btn" + (a ? "" : " pri") + "' data-wbgo='arg'>" + (a ? "보기 · 다시 세우기" : "세우기") + "</button></div>";
+  h += "<table class='wbt'><thead><tr><th>② 절</th><th>글</th><th>설계도</th><th>쓴 문단</th><th>확인할 곳</th><th></th></tr></thead><tbody>";
+  let group = null; const groups = [];
+  doc.outline.forEach(n => { if (n.level === 1 || !group) { group = { top: n, nodes: [n] }; groups.push(group); } else group.nodes.push(n); });
+  groups.forEach(g => {
+    const n = g.top, chars = g.nodes.reduce((t, x) => t + ((x[key] || "").trim().length), 0), pls = plans.filter(p => p.node === n.id), pl = pls[0];
+    const paras = pl ? pl.paras : [], drafts = paras.filter(p => p.draft), put = drafts.filter(p => p.draft.put).length, bad = drafts.reduce((t, p) => t + badOf(p.draft), 0), crit = pl && pl.critique ? (pl.critique.issues || []).length : 0;
+    const concl = STYLUS_CONCL_RX.test(n.heading || ""), cr = concl ? runs.filter(u => u.kind === "conclusion" && u.node === n.id)[0] : null;
+    h += "<tr><td class='h'>" + esc(n.heading.slice(0, 40)) + (g.nodes.length > 1 ? " <span class='hint' style='display:inline'>+" + (g.nodes.length - 1) + "</span>" : "") + "</td>" +
+      "<td>" + (chars ? chars.toLocaleString() + "자" : "<span class='warn'>비어 있음</span>") + "</td>" +
+      "<td>" + (pl ? "문단 " + paras.length + " · " + fmtD(pl.t) + (crit ? " · 약점 " + crit : "") + (pls.length > 1 ? " · 외 " + (pls.length - 1) : "") : "<span class='hint' style='display:inline'>—</span>") + "</td>" +
+      "<td>" + (pl ? (drafts.length ? "쓴 " + drafts.length + "/" + paras.length + (put ? " · 넣음 " + put : "") : "0/" + paras.length) : "") + (cr ? (pl ? " · " : "") + "결론 " + fmtD(cr.t) : "") + "</td>" +
+      "<td>" + (drafts.length ? (bad ? "<span class='warn'>" + bad + "</span>" : "<span class='ok'>0</span>") : "") + "</td>" +
+      "<td><button class='btn' data-wbplan='" + n.id + "' title='이 절의 설계도를 세우거나 보고, 문단마다 씁니다'>" + (pl ? "설계도 · 문단" : "설계도") + "</button>" + (concl ? "<button class='btn' data-wbconcl='" + n.id + "' title='Stylus 로 결론 쓰기'>결론</button>" : "") + "</td></tr>";
+  });
+  h += "</tbody></table>";
+  const ab = runs.filter(u => u.kind === "abstract")[0], abs = ((doc.front || {}).abstract || "").trim().length;
+  h += "<div class='wbr'><span class='wbk'>④ 초록</span><span>" + (abs ? abs.toLocaleString() + "자" : "<span style='color:var(--amber)'>비어 있음</span>") + (ab ? " · Stylus " + fmtD(ab.t) : "") + "</span><button class='btn' data-wbabs='1' title='Stylus 로 초록 쓰기 — 내용은 원고·논증 모형에서, 꼴은 그 저널 초록의 분포에서'>초록 쓰기</button></div>" +
+    "<div class='wbr'><span class='wbk'>⑤ 점검</span><span>논증 모형의 문제 · 저널 규격 · 참고문헌 · 심사 의견</span><button class='btn' data-wbgo='check'>점검</button></div></div>";
+  return h;
+}
+function bindBoard(el) {
+  el.querySelectorAll("[data-wbgo]").forEach(b => b.onclick = () => tabClick(b.dataset.wbgo));
+  el.querySelectorAll("[data-wbplan]").forEach(b => b.onclick = () => { const pl = (doc.plans || []).find(p => p.node === b.dataset.wbplan); planState.node = b.dataset.wbplan; planState.open = pl ? pl.id : null; renderStylus(); const t = $("plNode"); if (t) t.scrollIntoView({ block: "center" }); });
+  el.querySelectorAll("[data-wbconcl]").forEach(b => b.onclick = () => { stylusState.node = b.dataset.wbconcl; renderStylus(); const t = $("stNote"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+  el.querySelectorAll("[data-wbabs]").forEach(b => b.onclick = () => { const t = $("abNote"); if (t) { t.scrollIntoView({ block: "center" }); t.focus(); } });
+}
 function renderStylus() {
   const el = $("tab-stylus"); if (!el) return; if (!doc) { el.innerHTML = ""; return; }
   const st = stylusState, runs = (doc.stylus || []).filter(u => u.kind === "conclusion"), aruns = (doc.stylus || []).filter(u => u.kind === "abstract");
   const concl = doc.outline.filter(n => STYLUS_CONCL_RX.test(n.heading || ""));
   if (!st.node || !node(st.node)) st.node = concl.length ? concl[concl.length - 1].id : "";
   const keep = document.activeElement && document.activeElement.id === "stNote" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-  let h = planHtml() + "<div class='sec' style='padding-left:0;margin-top:14px'>Stylus · 결론 쓰기</div>" +
+  let h = writeBoardHtml() + planHtml() + "<div class='sec' style='padding-left:0;margin-top:14px'>Stylus · 결론 쓰기</div>" +
     "<div class='hint'>원고 전체(서론의 물음·방법·결과·논의)를 읽고 <b>결론의 논리</b>대로 씁니다 — 무엇을 했나(수행) → 물음의 차례대로 결과 한 문장 + 해석 한 문장 → 종합 → 의의·향후. 쓴 뒤 문장마다 원고의 어느 절이 받치는지 대조하고, 원고에 없는 수치를 찾아내고, 서재의 논문 결론 범위와 견줍니다. 걸린 곳은 한 번 고쳐 씁니다(5~8분). 결론은 서재가 아니라 <b>이 원고</b>에서만 씁니다.</div>" +
     "<div class='ctl' style='padding:6px 0 2px;margin-left:-8px;flex-wrap:wrap;align-items:center'>" +
     "<select id='stNode' style='font-size:12px;max-width:220px' title='결론을 쓸 절'>" + doc.outline.map(n => "<option value='" + n.id + "'" + (n.id === st.node ? " selected" : "") + ">" + esc((n.level === 2 ? "　" : "") + n.heading.slice(0, 34)) + "</option>").join("") + "</select>" +
@@ -2143,7 +2183,7 @@ function renderStylus() {
   el.querySelectorAll("[data-stundo]").forEach(b => b.onclick = () => stylusUndo(all[+b.dataset.stundo]));
   if (q("abNote")) { autogrow(q("abNote")); q("abNote").oninput = e => { absState.note = e.target.value; }; }
   if (q("abRun")) q("abRun").onclick = stylusAbsRun;
-  bindPlan(el);
+  bindBoard(el); bindPlan(el);
 }
 
 // ---------- 절 계획 — 깊은 계획 (2026-10-25, 사용자: '계획 단계를 더 심도 있게'): 논증 모형 + 서재에서 배운 바탕·같은 자리의 실제 문단 + 근거로 설계도를 세우고 → 심사위원이 공격해 고치고 → 문단마다 쓴다

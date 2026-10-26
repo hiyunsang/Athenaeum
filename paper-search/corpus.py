@@ -866,7 +866,7 @@ def exemplars(kind, role=None, journals=None, tags=None, topic=None, k=5, exclud
                 txt = " ".join(_sent_text(stem, sid) for sid in (p.get("sids") or [])[:12]).lower()
                 sc += 1.0 * sum(1 for w in topic if w in txt)
             sc += 1.5 if j in js else 0
-            sc += 0.8 if j in pref else 0
+            sc += 0.8 if j in pref else (-2.5 if (pref and (js & pref)) else 0)   # 우선 저널의 글을 쓸 때 그 밖 저널(AMT 급)의 문단은 뒤로 — 수준이 섞이지 않게 (사용자 2026-10-27)
             sc += 0.03 * max(0, (ann.get("year") or 2000) - 2000)
             sc += 0.5 if (ann.get("sents") or {}).get((p.get("sids") or [""])[0]) else 0
             scored.append((sc, stem, ann, p))

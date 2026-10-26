@@ -131,7 +131,7 @@
   <div id="side" class="on">
     <h3>Claude에게 질문</h3>
     <textarea id="askIn" placeholder="짧게 물어보세요… (Ctrl+Enter)"></textarea>
-    <div style="text-align:right;margin-top:4px"><button class="btn pri" id="askBtn">질문</button></div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:4px"><a href="#" class="act" id="fieldAsk" title="이 논문만이 아니라 이 분야에 관해 묻습니다 — 연구 노트에 이 논문의 요약을 출발점으로 한 「물음」 을 열고, Claude 는 서재 전부·공부 장을 알고 설명합니다">이 분야에 관해 묻기 ↗</a><span style="margin-left:auto"></span><button class="btn pri" id="askBtn">질문</button></div>
     <div id="qa"></div>
     <h3>메모</h3>
     <textarea id="noteIn" placeholder="메모… (Ctrl+Enter 저장)"></textarea>
@@ -1295,6 +1295,9 @@ async function restoreReadPos(k) {
   { const ttl = document.getElementById("ttl"); ttl.textContent = (info.year || "") + " · " + (info.journal || "") + " · " + (info.author || "");
     const tb = document.createElement("b"); tb.textContent = info.title || ""; ttl.appendChild(tb); }
   document.title = (info.author || "") + " " + (info.year || "") + " · Athenaeum";
+  { const fa = document.getElementById("fieldAsk"); if (fa) fa.onclick = ev => { ev.preventDefault();   /* 이 분야에 관해 묻기 → 연구 노트의 물음 (2026-10-27) */
+      const w = window.open("/notes?new=1&kind=ask&from=paper&fid=" + encodeURIComponent(file) + "&ftitle=" + encodeURIComponent(info.title || file.replace(/\.pdf$/i, "")) + "&ask=1", "athenaeum_notes", "width=1280,height=900");
+      if (w) { try { w.focus(); } catch (e) {} } }; }
   notesData = await (await fetch("/api/notes?file=" + encodeURIComponent(file))).json();
   renderSide();
   await showKind(kind);

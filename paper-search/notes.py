@@ -24,6 +24,8 @@ _HIST_LABS = {}
 VERSION = "연구 노트 (2026-10-25)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
+KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
+KIND_KO = {"topic": "연구 주제", "ask": "물음"}
 _EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None)}
 _LIB_BUDGET = 62000      # 서재 블록(글자) — 논문 287편이면 머리줄 ~35,000자 + 요약 한 줄 100자쯤 (재 봄 2026-10-08: 60,000 에 제목 100자로 두니 요약이 59자로 잘려 쓸모가 없었다)
 CARD_KEYS = ["question", "hypothesis", "design", "expected", "risks", "papers", "groups", "journals", "next"]
@@ -83,7 +85,7 @@ def _brief(nt):
             "gapcheck": bool(nt.get("gapcheck")), "gap_done": sum(1 for r in (nt.get("gapcheck") or {}).get("claims") or [] if r.get("verdict") in ("done", "partial")),
             "framing": bool(nt.get("framing")), "framing_pick": (nt.get("framing") or {}).get("pick") or "",
             "busy": any(nt.get(k + "_pending") for k in _JOBKINDS) or bool((nt.get("intro") or {}).get("writing")),
-            "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", "")}
+            "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", ""), "kind": nt.get("kind") or "topic"}
 
 
 def list_notes():
@@ -103,20 +105,40 @@ def list_notes():
 def new_note(body):
     title = re.sub(r"\s+", " ", str(body.get("title") or "")).strip()[:120]
     seed_text = str(body.get("seed") or "").strip()[:4000]
+    fr = body.get("from") if isinstance(body.get("from"), dict) else {}
+    kind = body.get("kind") if body.get("kind") in KIND else "topic"
+    if fr.get("kind") == "paper" and fr.get("id"):   # 읽기 화면의 「이 분야에 관해 묻기」 — 그 논문의 요약이 출발점 (2026-10-27)
+        seed_text = seed_text or _paper_seed(str(fr.get("id")), str(fr.get("title") or ""))
+        if not title:
+            title = re.sub(r"\s+", " ", str(fr.get("title") or "")).strip()[:120] or os.path.splitext(os.path.basename(str(fr.get("id"))))[0][:120]
     if not title and seed_text:
         title = seed_text.split("\n")[0][:80]
     if not title:
-        return {"error": "주제를 적어 주세요"}
+        return {"error": "물음을 적어 주세요" if kind == "ask" else "주제를 적어 주세요"}
     nid = "nt_" + time.strftime("%Y%m%d_%H%M%S")
     k = 0
     while os.path.exists(_path(nid)):
         k += 1
         nid = "nt_" + time.strftime("%Y%m%d_%H%M%S") + "_%d" % k
-    fr = body.get("from") if isinstance(body.get("from"), dict) else {}
-    nt = {"id": nid, "title": title, "status": "idea", "t": time.time(), "thread": [], "card": None,
-          "seed": {"text": seed_text, "from": {"kind": str(fr.get("kind") or "")[:20], "id": str(fr.get("id") or "")[:80], "title": str(fr.get("title") or "")[:160]}} if (seed_text or fr) else None}
+    nt = {"id": nid, "title": title, "kind": kind, "status": "idea", "t": time.time(), "thread": [], "card": None,
+          "seed": {"text": seed_text, "from": {"kind": str(fr.get("kind") or "")[:20], "id": str(fr.get("id") or "")[:200], "title": str(fr.get("title") or "")[:200]}} if (seed_text or fr) else None}
     _save(nt)
     return {"note": nt}
+
+
+def _paper_seed(file, title):
+    """논문 하나를 출발점으로 — 요약 파일의 앞부분(없으면 제목만). 전문은 「서재 찾아보기」 로 읽는다."""
+    stem = os.path.splitext(os.path.basename(file))[0]
+    try:
+        with open(os.path.join(cfg["GEN_DIR"], stem + ".요약.md"), encoding="utf-8") as f:
+            txt = f.read()
+    except OSError:
+        txt = ""
+    txt = re.sub(r"\n{3,}", "\n\n", txt).strip()
+    head = "논문 「%s」 를 읽고 묻는다. 파일: %s\n" % (title or stem, file)
+    if not txt:
+        return head + "(이 논문의 요약은 아직 없다 — 「서재 찾아보기」 를 켜면 번역·요약 파일을 읽을 수 있다.)"
+    return head + "[이 논문의 요약]\n" + txt[:3300] + ("…" if len(txt) > 3300 else "")
 
 
 def save_fields(nid, body):
@@ -130,6 +152,8 @@ def save_fields(nid, body):
                 nt["title"] = t
         if body.get("status") in STATUS:
             nt["status"] = body["status"]
+        if body.get("kind") in KIND:   # 물음 → 연구 주제로 세우기 (2026-10-27)
+            nt["kind"] = body["kind"]
         if isinstance(body.get("card"), dict):
             nt["card"] = _clean_card(body["card"], nt.get("card") or {})
             nt["card_edited"] = time.time()
@@ -203,7 +227,7 @@ def _lab_path():
 
 def lab_get():
     d = cfg["load_json"](_lab_path(), None)
-    return d if isinstance(d, dict) else {"text": "", "url": "", "page": "", "page_t": 0, "updated": 0}
+    return d if isinstance(d, dict) else {"text": "", "url": "", "page": "", "page_t": 0, "updated": 0, "field": ""}
 
 
 def lab_save(body):
@@ -212,6 +236,8 @@ def lab_save(body):
         d = lab_get()
         if "text" in body:
             d["text"] = str(body.get("text") or "")[:6000]
+        if "field" in body:   # 분야 지형 — 핵심 저자·그룹·저널 등급·우리 자리 (2026-10-27)
+            d["field"] = str(body.get("field") or "")[:6000]
         if "url" in body:
             u = str(body.get("url") or "").strip()[:300]
             if u != (d.get("url") or ""):
@@ -303,16 +329,28 @@ def lab_fetch():
 def _lab_block():
     """배경의 첫 블록 — 연구자가 적어 둔 장비·역량과 홈페이지 글. 비어 있으면 넣지 않는다(그때는 규칙의 '[우리 연구실] 이 있으면' 이 비켜 간다)"""
     d = lab_get()
-    text, page = (d.get("text") or "").strip(), (d.get("page") or "").strip()
-    if not text and not page:
+    text, page, field = (d.get("text") or "").strip(), (d.get("page") or "").strip(), (d.get("field") or "").strip()
+    if not text and not page and not field:
         return "", {"lab": 0}
     out = ["# 우리 연구실 — 연구자가 적어 둔 장비·측정 역량·할 수 없는 것. 실험·측정이 이 연구실에서 되는지 가를 때의 기준이다: 여기 없는 장비·측정은 외부(공동 장비 센터·협력 연구실·외주)에 맡겨야 하는 것으로 보고, 연구자가 '없다' 고 적은 것은 없는 것이다."]
     if text:
         out.append(text)
     if page:
         out.append("[연구실 홈페이지에서 읽은 글%s]\n%s" % ((" — " + d["url"]) if d.get("url") else "", page[:5000]))
+    if field:
+        out.append(_FIELD_HEAD + "\n" + field[:4000])
     s = "\n".join(out)
     return s, {"lab": len(s)}
+
+
+_FIELD_HEAD = ("[분야 지형 — 연구자가 적어 둔 것: 핵심 저자·그룹과 그들이 쓰는 저널, 저널의 등급, 우리 연구실의 자리. 주장의 무게를 가르는 기준이다 — 여기 적힌 대가·그룹과 우선 저널(★)·리뷰가 세운 틀은 분야의 정설로 받아 쓰고, "
+               "그 밖 저널의 단일 논문 결론은 '그 연구에서는' 하고 조건을 붙인 보기로만. 우리의 주장도 우리 자리에 맞는 세기로.]")
+
+
+def field_text():
+    """「분야 지형」 을 원고의 글 규칙에 붙이는 꼴 (manuscript._knowledge_block 이 cfg["field_text"] 로 부른다, 2026-10-27). 비어 있으면 ''"""
+    f = (lab_get().get("field") or "").strip()
+    return ("\n" + _FIELD_HEAD + "\n" + f[:4000] + "\n") if f else ""
 
 
 def _lib_block(budget=_LIB_BUDGET):
@@ -486,9 +524,23 @@ _RULE = (
     "- 답은 사람이 읽는 한국어 글이다. 두괄식으로: 첫 문장에 판단(이 주제가 설 만한가, 무엇이 핵심인가, 무엇이 문제인가), 그 다음에 까닭, 마지막에 다음에 할 일. 짧은 문장으로 한 번에 한 가지씩. 인사말·칭찬·잘된 점의 나열·되묻기만 하는 답은 쓰지 않는다. 마크다운 제목·굵게 표시 없이 문단으로 쓴다. 따질 것이 여럿이면 번호 목록으로 — 항목마다 줄을 바꾸고 '① 혼동: …' 처럼 두세 낱말의 머리말과 쌍점으로 연다(화면이 항목마다 한 줄로 그린다).\n"
     "- 공저자처럼 따진다: 서재 안에 같은 것을 이미 한 연구가 있는가(있으면 그 논문을 들고, 어디까지 밝혀졌고 어디서 엇갈리는가 — 공부 장의 '답하지 못한 것'과 'Claude 의 생각'도 재료다), 새로움이 어디에 있는가, 어떤 실험·해석·측정으로 보일 수 있는가, 어느 저널·어느 연구 그룹의 일과 맞닿는가. 좋게만 말하지 말고 약점과 반론을 먼저 말한다.\n"
     "- 논문은 (첫 저자 연도) 로 가리킨다 — 서재의 논문은 그대로. 서재에 없는 논문이나 당신의 지식으로 보태는 것은 '서재 밖:' 으로 시작하는 문단에 따로 적어 갈라 둔다(연구자가 확인해야 한다). 지어낸 수치·인용은 절대 쓰지 않는다.\n"
+    "- 주장의 무게를 가른다: 우선 저널(서재 목록의 ★ — IJMTM·JMPT·CIRP 급)·리뷰·[분야 지형]에 적힌 대가 그룹이 세운 것은 분야의 틀로 받아 쓰고, 그 밖 저널(AMT 급)의 단일 논문 결론은 '그 연구에서는' 하고 조건을 붙인 보기로만 — 그 하나로 정설·일반 경향을 말하지 않는다. "
+    "누가 말했는가에 따라 할 수 있는 말의 세기가 다르다: 대가의 리뷰가 하는 일반화를 신진의 논문 하나로 하지 않고, 우리의 주장도 우리 자리(대학원 연구실)에 맞게.\n"
+    "- 새 연구 주제를 내기 전에 분야 사람의 눈으로 거른다: ★ 논문·대가 그룹이 이미 한 것, [우리 연구실]로 안 되는 것, 그 밖 저널 논문 하나의 결론에 기댄 것, 분야 사람이 보기에 뻔하거나 터무니없는 것은 내지 않는다(거른 까닭을 한 줄로). "
+    "남긴 주제에는 '왜 이 주제가 이 분야 사람에게 그럴듯한가' 를 한 문장으로 붙인다.\n"
     "- 세상의 문헌을 더 봐야 할 물음이 생기면 답 끝에 '탐색: <검색할 주제 한 줄(한국어나 영어)>' 줄을 1~3개 적는다 — 연구자가 그 줄을 눌러 논문 탐색을 돌린다. 서재의 논문을 깊이 읽어야 하면 '공부: <주제 한 줄>' 줄을 적어도 된다.\n"
     "- 실험·측정·장비를 말할 때는 [우리 연구실](있을 때)에 비추어 우리 장비로 되는지 가른다. 우리 연구실에 없는 측정·장비(예: EBSD·TEM·XRD·나노인덴터)는 '외부: <측정> — 어디서(공동 장비 센터·협력 연구실·외주)·대략의 비용과 기간' 으로 적고, 그 측정 없이도 가설을 가를 수 있는 대안이 있으면 같이 적는다. [우리 연구실] 이 없으면 가르지 않는다.\n"
     "- 연구자의 말에 결정이 보이면(이 주제로 간다, 이렇게 하자) 그것을 한 문장으로 짚어 두고 다음 물음으로 넘긴다. 내부 표시·규칙 이름은 쓰지 않는다.\n")
+
+
+_RULE_ASK = (
+    "답하는 법 — 이것은 분야에 관한 물음이지 연구 주제의 심사가 아니다:\n"
+    "- 답은 사람이 읽는 한국어 글이다. 두괄식으로: 첫 문장에 답의 핵심, 그 다음에 풀이, 마지막에 더 볼 것. 짧은 문장으로 한 번에 한 가지씩. 인사말·칭찬·되묻기만 하는 답은 쓰지 않는다. 마크다운 제목·굵게 표시 없이 문단으로 쓴다. 따질 것이 여럿이면 항목마다 줄을 바꾸고 '① 머리말: …' 처럼 두세 낱말의 머리말과 쌍점으로 연다(화면이 항목마다 한 줄로 그린다).\n"
+    "- 이 분야에 처음 들어온 대학원생에게 설명하듯 쓴다: 처음 나오는 개념은 그 자리에서 한 문장으로 풀고, 큰 그림(무엇이 왜 문제이고 어떤 설명들이 겨루는가) → 이 논문·이 물음이 그 안에서 서는 자리 → 서재의 다른 논문이 말하는 것의 차례로. 묻지 않았으면 연구 주제로서의 새로움·실험 설계·저널·약점을 따지지 않는다.\n"
+    "- 받침은 배경(서재·공부 장·지난 탐색)과 [출발점]의 요약이다. 논문은 (첫 저자 연도) 로 가리키고 서재의 논문은 그대로 쓴다. 서재에 없는 논문이나 당신의 지식으로 보태는 것은 '서재 밖:' 으로 시작하는 문단에 따로 적어 갈라 둔다(연구자가 확인해야 한다). 지어낸 수치·인용은 절대 쓰지 않는다.\n"
+    "- 설명의 무게도 가른다: 우선 저널(서재 목록의 ★)·리뷰·[분야 지형]의 대가 그룹이 세운 것은 분야의 정설로, 그 밖 저널의 단일 논문 결과는 '한 연구에서는' 으로 — 어느 쪽인지 독자가 알게 쓴다.\n"
+    "- 서재의 논문을 깊이 읽어야 제대로 답할 수 있으면 답 끝에 '공부: <주제 한 줄>' 줄을, 세상의 문헌을 더 봐야 하면 '탐색: <검색할 주제 한 줄>' 줄을 1~3개 적는다 — 연구자가 그 줄을 눌러 돌린다. 이 물음이 연구 주제로 자랄 만하면 마지막에 한 문장으로 그렇게 말해 준다(연구자가 「주제로 세우기」 를 누른다).\n"
+    "- 내부 표시·규칙 이름은 쓰지 않는다.\n")
 
 
 def _card_text(card):
@@ -506,10 +558,13 @@ def _card_text(card):
 def _prompt(nt, question, lib, others):
     seed = nt.get("seed") or {}
     fr = seed.get("from") or {}
-    out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))
+    isask = (nt.get("kind") or "topic") == "ask"   # 물음 — 분야를 배우려는 대화 (2026-10-27)
+    out = "[%s] %s (%s)\n" % ("이 물음" if isask else "이 주제", nt.get("title") or "", "분야에 관한 물음 — 연구 주제가 아니다" if isask else STATUS_KO.get(nt.get("status"), "아이디어"))
     if seed.get("text"):
-        src = {"study": "공부 장", "explore": "논문 탐색", "ms": "원고"}.get(fr.get("kind"), "")
-        out += "[출발점]%s\n%s\n" % ((" (%s 「%s」 에서)" % (src, fr.get("title"))) if src and fr.get("title") else "", seed["text"][:3000])
+        src = {"study": "공부 장", "explore": "논문 탐색", "ms": "원고", "paper": "논문"}.get(fr.get("kind"), "")
+        out += "[출발점]%s\n%s\n" % ((" (%s 「%s」 에서)" % (src, fr.get("title"))) if src and fr.get("title") else "", seed["text"][:3600])
+        if fr.get("kind") == "paper" and fr.get("id"):
+            out += "(이 논문의 파일은 \"%s\" — 서재 찾아보기를 켰으면 번역 폴더의 \"%s.번역.md\"(전문 번역, 문장마다 [sN])·\".요약.md\" 를 읽을 수 있다.)\n" % (fr["id"], os.path.splitext(os.path.basename(str(fr["id"])))[0])
     ct = _card_text(nt.get("card"))
     if ct:
         out += "\n[지금까지 정리한 주제 카드]\n" + ct + "\n"
@@ -526,7 +581,7 @@ def _prompt(nt, question, lib, others):
         out += "\n[아직 답하지 않은 반론]\n" + "\n".join("- [%s] %s" % (REVIEWER_KO.get(o.get("who"), o.get("who")), o.get("t")) for o in opens[:10]) + "\n"
     if others:
         out += "\n[연구 노트의 다른 주제] " + " · ".join("%s(%s)" % (o["title"][:50], STATUS_KO.get(o["status"], "")) for o in others[:30]) + "\n"
-    out += "\n[물음]\n" + question + "\n\n" + _RULE
+    out += "\n[물음]\n" + question + "\n\n" + (_RULE_ASK if isask else _RULE)
     if lib:
         out += ("\n[서재를 찾아볼 수 있다]\n연구자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
                 "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(이름은 서재 목록의 '연도_저널_저자_제목' 꼴 — Glob 으로 찾는다).\n"
@@ -592,7 +647,7 @@ def _ask_job(nid):
     t0 = time.time()
     res, err, cancelled = None, "", False
     try:
-        others = [o for o in list_notes() if o["id"] != nid]
+        others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
         res = run(_prompt(nt, question, lib, others), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
@@ -1126,6 +1181,7 @@ _FRAMING_RULE = (
     "differs 그 연구와 다른 점 한 문장(없으면 '다르지 않다' 고 적는다 — 심사위원이 새로움을 물을 것이다) · needs 이 틀이 설계에 더 요구하는 것 1~3개(대조군·측정·시편·분해능) · journal 어울리는 저널 약어와 그 독자가 묻는 것 · risk 이 틀의 가장 큰 약점 한 문장 · "
     "fit high|mid|low 토의·[우리 연구실]·서재로 보아 이 연구가 그 틀을 감당할 수 있는가. "
     "서재의 논문은 '(첫 저자 연도)' 로, 지어낸 수치·인용은 쓰지 않는다. [공백 검증] 에 '이미 됨' 으로 나온 공백을 틀의 gap 으로 쓰지 않는다. recommend 는 하나, why 는 왜 그것인가 2~3문장(다른 틀을 접는 까닭도).\n"
+    "틀은 분야 사람의 눈으로 거른다: ★ 논문·[분야 지형]의 대가 그룹이 이미 한 것, [우리 연구실]로 못 하는 것, 그 밖 저널 논문 하나의 결론에 기댄 것은 내지 않거나 fit low 로 두고 risk 에 그 까닭을 적는다. 남긴 틀의 why 에는 왜 이 분야 사람에게 그럴듯한가를 적는다.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"framings\": [{\"id\": \"F1\", \"name\": \"…\", \"kind\": \"mechanism|method|material|model|scale|application\", \"question\": \"…\", \"claim\": \"…\", \"gap\": \"…\", \"cites\": [\"첫 저자 연도\"], "
     "\"near\": [\"첫 저자 연도\"], \"differs\": \"…\", \"needs\": [\"…\"], \"journal\": \"…\", \"risk\": \"…\", \"fit\": \"high|mid|low\"}], \"recommend\": \"F1\", \"why\": \"…\"}")
 
@@ -2140,7 +2196,7 @@ def handle_get(h, url):
         with open(os.path.join(cfg["BASE"], "notes.html"), "rb") as f:
             return h._send(200, f.read(), "text/html; charset=utf-8")
     if p == "/api/notes":
-        return h._send(200, {"items": list_notes(), "version": VERSION, "status": STATUS, "status_ko": STATUS_KO, "card_keys": CARD_KEYS, "card_ko": CARD_KO,
+        return h._send(200, {"items": list_notes(), "version": VERSION, "status": STATUS, "status_ko": STATUS_KO, "kind": KIND, "kind_ko": KIND_KO, "card_keys": CARD_KEYS, "card_ko": CARD_KO,
                              "plan_keys": PLAN_KEYS, "reviewers": REVIEWERS})
     if p == "/api/notes/get":
         nt = _load(_q(url, "id"))
