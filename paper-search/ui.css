@@ -115,8 +115,8 @@ button { font: inherit; }
         padding: 2px 8px; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
 .chip:hover { border-color: var(--accent); }
 .chip span { font-weight: 600; }
-/* 섹션 제목 */
-.sec { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; margin: var(--s4) 0 var(--s1); }
+/* 섹션 제목 — 본문과 갈라 보이게 또렷한 글자 + 아래 1px 선 (사용자 2026-10-26: '제목들이 글이랑 구분이 잘 안 됨 — 선이라도'). 칸 머리말(.cf .k 등)도 같은 꼴 */
+.sec { font-size: 12px; font-weight: 700; letter-spacing: 0; color: var(--text); text-transform: none; margin: var(--s4) 0 var(--s2); padding-bottom: 3px; border-bottom: 1px solid var(--line); }
 /* 목록 행 */
 .list-row { padding: 10px 12px 11px; border-bottom: 1px solid var(--line); }
 .list-row:hover { background: var(--hover); }

@@ -28,7 +28,7 @@
   #cardbody { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s3) var(--s4) var(--s8); }
   #cardbody > .sec:first-child { margin-top: var(--s1); }
   /* 왼쪽: 새 주제 · 주제 목록(상태별) */
-  .sideh { display: flex; align-items: center; gap: var(--s2); padding: 10px var(--s3) 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; }
+  .sideh { display: flex; align-items: center; gap: var(--s2); padding: 10px var(--s3) 4px; font-size: 12px; font-weight: 700; letter-spacing: 0; color: var(--text); text-transform: none; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
   .sideh .n { color: var(--text-3); font-weight: 400; }
   .newbox { padding: 0 var(--s3) var(--s3); border-bottom: 1px solid var(--line); }
   .newbox textarea { width: 100%; resize: vertical; min-height: 64px; }
@@ -62,7 +62,7 @@
   .items .items { margin: .25em 0 0; } .items .items li { margin-bottom: .2em; }   /* 항목 안의 (1)(2)(3) */
   .lh { font-weight: 600; margin: 0 0 .35em; } .prop { color: var(--amber); font-weight: 600; }
   /* 카드·설계서의 칸: 보기(항목마다 줄·머리말 굵게) ↔ 누르면 고치기 (사용자 2026-10-26: '여전히 이런데 어떻게 바꾸지') */
-  .cf .k .act { float: right; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; padding: 0 2px; line-height: inherit; }
+  .cf .k .act { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; padding: 0 2px; line-height: inherit; white-space: nowrap; }
   .fv { font-size: 12.5px; line-height: 1.6; padding: 4px 6px; margin: 0 -6px; border: 1px solid transparent; border-radius: var(--r); cursor: text; word-break: keep-all; }
   .fv:hover { border-color: var(--line); background: var(--surface); }
   .fv p { margin: 0 0 .45em; white-space: pre-wrap; } .fv p:last-child, .fv .items:last-child { margin-bottom: 0; } .fv p.beyond { color: var(--amber); }
@@ -83,8 +83,8 @@
   .welcome h2 { font-family: var(--font-serif); font-size: 22px; font-weight: 600; color: var(--text); margin: 0 0 var(--s3); }
   .welcome ul { padding-left: 1.2em; } .welcome li { margin-bottom: .35em; }
   /* 오른쪽: 주제 카드 */
-  .cf { padding: 6px 0 2px; }
-  .cf .k { font-size: 11px; font-weight: 600; letter-spacing: .03em; color: var(--text-2); text-transform: uppercase; margin-bottom: 3px; }
+  .cf { padding: 2px 0 4px; }
+  .cf .k { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0; color: var(--text); text-transform: none; margin: 10px 0 5px; padding-bottom: 3px; border-bottom: 1px solid var(--line); }   /* 칸 머리말 — 본문과 갈라 보이게 (2026-10-26) */
   .cf textarea { width: 100%; resize: none; min-height: 40px; overflow: hidden; line-height: 1.55; font-size: 12.5px; background: var(--surface); }
   .cf textarea:focus { background: var(--surface); }
   .cm { color: var(--text-3); font-size: 11.5px; margin: var(--s2) 0; line-height: 1.5; }
