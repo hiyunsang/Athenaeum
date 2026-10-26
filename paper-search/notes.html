@@ -56,10 +56,17 @@
   .msg.me { color: var(--text-2); } .msg.me .body { white-space: pre-wrap; }
   .msg p { margin: 0 0 .7em; white-space: pre-wrap; word-break: keep-all; } .msg p:last-child { margin-bottom: 0; }
   .msg p.beyond { background: var(--amber-bg); color: var(--amber); padding: 4px 8px; border-radius: var(--r); }
-  .msg .items { list-style: none; margin: 0 0 .7em; padding: 0; } .msg .items li { display: flex; gap: 7px; margin: 0 0 .4em; white-space: pre-wrap; word-break: keep-all; } .msg .items li:last-child { margin-bottom: 0; }
-  .msg .items .no { flex: none; color: var(--accent); font-weight: 600; min-width: 1.1em; } .msg .items li b { font-weight: 600; }
-  .msg .items li.beyond { background: var(--amber-bg); color: var(--amber); padding: 4px 8px; border-radius: var(--r); } .msg .items li.beyond .no { color: var(--amber); }
-  .msg .lh { font-weight: 600; margin: 0 0 .35em; }
+  .items { list-style: none; margin: 0 0 .7em; padding: 0; } .items li { display: flex; gap: 7px; margin: 0 0 .4em; white-space: pre-wrap; word-break: keep-all; } .items li:last-child { margin-bottom: 0; }
+  .items .no { flex: none; color: var(--accent); font-weight: 600; min-width: 1.1em; } .items li b { font-weight: 600; } .items li .bd { min-width: 0; }
+  .items li.beyond { background: var(--amber-bg); color: var(--amber); padding: 4px 8px; border-radius: var(--r); } .items li.beyond .no { color: var(--amber); }
+  .items .items { margin: .25em 0 0; } .items .items li { margin-bottom: .2em; }   /* 항목 안의 (1)(2)(3) */
+  .lh { font-weight: 600; margin: 0 0 .35em; } .prop { color: var(--amber); font-weight: 600; }
+  /* 카드·설계서의 칸: 보기(항목마다 줄·머리말 굵게) ↔ 누르면 고치기 (사용자 2026-10-26: '여전히 이런데 어떻게 바꾸지') */
+  .cf .k .act { float: right; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; padding: 0 2px; line-height: inherit; }
+  .fv { font-size: 12.5px; line-height: 1.6; padding: 4px 6px; margin: 0 -6px; border: 1px solid transparent; border-radius: var(--r); cursor: text; word-break: keep-all; }
+  .fv:hover { border-color: var(--line); background: var(--surface); }
+  .fv p { margin: 0 0 .45em; white-space: pre-wrap; } .fv p:last-child, .fv .items:last-child { margin-bottom: 0; } .fv p.beyond { color: var(--amber); }
+  .fv .items { margin: .1em 0 .45em; } .fv .items li { margin-bottom: .3em; } .fv .ph { color: var(--text-3); }
   .msg .go { display: block; margin: 2px 0; padding: 3px 0; color: var(--accent); text-align: left; }
   .msg .go::before { content: "↗ "; color: var(--text-3); }
   .waitbox { padding: var(--s3) 0; }
@@ -253,23 +260,77 @@ function claudeHtml(text) {
 }
 const BEYOND_TIP = " title='서재와 배경에 없어 Claude 가 제 지식으로 보탠 부분입니다 — 확인이 필요합니다'";
 const CIRC_RX = /^[\u2460-\u2473]/;   /* ① … ⑳ */
-function itemHtml(t, tag) {   /* 목록 항목 하나 — 짧은 머리말 + 쌍점은 굵게, '서재 밖:' 은 앰버 (사용자 2026-10-26: '써 놓은 글도 가시성이 아쉬움') */
-  const beyond = /^서재 밖\s*[:：]/.test(t), m = beyond ? null : t.match(/^([^:：.。\n]{1,18}?)\s*[:：]\s+/);
-  const body = m ? "<b>" + esc(m[1]) + "</b>: " + esc(t.slice(m[0].length)) : esc(t);
-  return "<li" + (beyond ? " class='beyond'" + BEYOND_TIP : "") + "><span class='no'>" + esc(tag) + "</span><span>" + body + "</span></li>";
+const LABEL_RX = /^([^:：.。\n]{1,18}?)\s*[:：]\s+/;   /* '머리말: ' */
+function itemHtml(t, tag, extra) {   /* 목록 항목 하나 — 짧은 머리말 + 쌍점은 굵게, '서재 밖:' 은 앰버, '제안:' 은 앰버 머리말 (사용자 2026-10-26: '써 놓은 글도 가시성이 아쉬움') */
+  const beyond = /^서재 밖\s*[:：]/.test(t), prop = /^제안\s*[:：]/.test(t), m = (beyond || prop) ? null : t.match(LABEL_RX);
+  let body = m ? "<b>" + esc(m[1]) + "</b>: " + esc(t.slice(m[0].length)) : esc(t);
+  if (prop) body = "<span class='prop'>제안</span>: " + esc(t.replace(/^제안\s*[:：]\s*/, ""));
+  return "<li" + (beyond ? " class='beyond'" + BEYOND_TIP : "") + ">" + (tag ? "<span class='no'>" + esc(tag) + "</span>" : "") + "<div class='bd'>" + body + (extra || "") + "</div></li>";
+}
+function listOf(p) {   /* ① ② ③ … 또는 (1) (2) (3) … 이 1부터 이어지면 {lead, items} — 글 가운데의 '①과 같이'·'식 (1)' 참조는 그대로 */
+  const ways = [[/(?:\s+|(?<=[.。!?)\]]))(?=[\u2460-\u2473])/, x => CIRC_RX.test(x) ? x[0] : "", t => t.charCodeAt(0) - 0x245f],
+                [/(?:\s+|(?<=[.。!?]))(?=\(\d{1,2}\)\s*\S)/, x => (x.match(/^\(\d{1,2}\)/) || [""])[0], t => +t.slice(1, -1)]];
+  for (const [rx, tagOf, code] of ways) {
+    const parts = p.split(rx).map(x => x.trim()).filter(Boolean), items = parts.filter(tagOf), lead = parts.filter(x => !tagOf(x));
+    if (items.length < 2 || lead.length > 1 || (lead.length && tagOf(parts[0]))) continue;
+    if (!items.every((x, k) => code(tagOf(x)) === k + 1)) continue;
+    const its = items.map(x => ({ tag: tagOf(x), t: x.slice(tagOf(x).length).trim() }));
+    if (its.some(it => it.t.length < 6)) continue;
+    return { lead: lead[0] || "", items: its };
+  }
+  return null;
+}
+function labeled(p) {   /* '재료: … 장비: … 조건: …' — 문장 끝 뒤에 짧은 머리말과 쌍점이 둘 이상이면 항목마다 줄 */
+  const parts = p.split(/(?<=[.。!?)])\s+(?=[^\s:：.。()]{1,12}\s*[:：]\s)/).map(x => x.trim()).filter(Boolean);
+  const items = parts.filter(x => LABEL_RX.test(x)), lead = parts.filter(x => !LABEL_RX.test(x));
+  if (items.length < 2 || lead.length > 1 || (lead.length && LABEL_RX.test(parts[0]))) return null;
+  return { lead: lead[0] || "", items: items.map(t => ({ tag: "", t })) };
+}
+function leadHtml(t) { return !t ? "" : t.length <= 40 ? "<div class='lh'>" + esc(t) + "</div>" : "<p>" + esc(t) + "</p>"; }
+function itemsHtml(items) {
+  return "<ul class='items'>" + items.map(it => {
+    const sub = it.t.length > 60 ? listOf(it.t) : null;   /* 항목 안의 (1)(2)(3) 은 한 층 더 */
+    return sub ? itemHtml(sub.lead, it.tag, itemsHtml(sub.items)) : itemHtml(it.t, it.tag);
+  }).join("") + "</ul>";
 }
 function paraHtml(p) {
-  /* ① ② ③ … 을 한 문단에 늘어놓은 답 → 항목마다 줄로. 차례가 ①부터 이어질 때만(글 가운데의 '①과 같이' 참조는 그대로) */
-  const parts = p.split(/\s+(?=[\u2460-\u2473])/).map(x => x.trim()).filter(Boolean), nums = parts.filter(x => CIRC_RX.test(x));
-  if (nums.length >= 2 && nums.every((x, i) => x.charCodeAt(0) === 0x2460 + i)) {
-    let h = "";
-    if (!CIRC_RX.test(parts[0])) h += parts[0].length <= 40 ? "<div class='lh'>" + esc(parts[0]) + "</div>" : "<p>" + esc(parts[0]) + "</p>";
-    return h + "<ul class='items'>" + nums.map(x => itemHtml(x.slice(1).trim(), x[0])).join("") + "</ul>";
+  /* ① ② ③ … (1)(2)(3) … '머리말: …' 을 한 문단에 늘어놓은 글 → 항목마다 줄로 */
+  const L = listOf(p) || labeled(p);
+  if (L) {
+    const L2 = L.lead.length > 60 ? labeled(L.lead) : null;   /* '재료: … 장비: … 조건: … 판별 수단은 셋이다. (1) …' — 앞글도 머리말마다 줄 */
+    return (L2 ? leadHtml(L2.lead) + itemsHtml(L2.items) : leadHtml(L.lead)) + itemsHtml(L.items);
   }
-  /* 줄마다 '- ' · '1.' 로 시작하는 목록 */
-  const ls = p.split("\n"), mk = ls.map(l => l.match(/^\s*(?:([-•·])|(\d{1,2})[.)])\s+(.+)$/));
-  if (ls.length >= 2 && mk.every(Boolean)) return "<ul class='items'>" + mk.map(m => itemHtml(m[3].trim(), m[2] ? m[2] + "." : "·")).join("") + "</ul>";
-  return "<p" + (/^서재 밖\s*[:：]/.test(p) ? " class='beyond'" + BEYOND_TIP : "") + ">" + esc(p) + "</p>";
+  /* 줄마다 '- ' · '1.' · '①' · '머리말:' 로 시작하는 목록 */
+  const ls = p.split("\n").map(l => l.trim()).filter(Boolean);
+  if (ls.length >= 2) {
+    const mk = ls.map(l => l.match(/^(?:([-•·])|(\d{1,2})[.)]|([\u2460-\u2473]))\s*(.+)$/));
+    if (mk.every(Boolean)) return itemsHtml(mk.map(m => ({ tag: m[2] ? m[2] + "." : m[3] || "·", t: m[4].trim() })));
+    if (ls.every(l => LABEL_RX.test(l))) return itemsHtml(ls.map(t => ({ tag: "", t })));
+  }
+  const beyond = /^서재 밖\s*[:：]/.test(p), prop = /^제안\s*[:：]/.test(p);
+  return "<p" + (beyond ? " class='beyond'" + BEYOND_TIP : "") + ">" + (prop ? "<span class='prop'>제안</span>: " + esc(p.replace(/^제안\s*[:：]\s*/, "")) : esc(p)) + "</p>";
+}
+/* 카드·설계서의 칸 — 보기(위의 목록 규칙) + 숨은 textarea: 누르면 고치고 벗어나면 다시 보기 (사용자 2026-10-26: '여전히 이런데 어떻게 바꾸지') */
+function fieldView(t, list, ph) {
+  if (!String(t || "").trim()) return "<span class='ph'>" + esc(ph || "비어 있음 — 누르면 적습니다") + "</span>";
+  if (list) return itemsHtml(String(t).split("\n").map(x => x.trim()).filter(Boolean).map(x => ({ tag: "·", t: x.replace(/^[-•·]\s*/, "") })));
+  return claudeHtml(t);
+}
+function fieldHtml(t, attr, list, ph) {
+  t = t || "";
+  return "<div class='fv" + (String(t).trim() ? "" : " empty") + "' title='누르면 고칩니다'>" + fieldView(t, list, ph) + "</div><textarea " + attr + (list ? " data-list='1'" : "") + " hidden placeholder='" + esc(ph || "") + "'>" + esc(t) + "</textarea>";
+}
+function bindFields(el, sel, onInput) {
+  el.querySelectorAll(sel).forEach(t => {
+    const fv = t.previousElementSibling, kb = t.parentElement.querySelector(".k .act");
+    if (!fv || !fv.classList.contains("fv")) return;
+    const edit = () => { fv.hidden = true; t.hidden = false; fit(t); t.focus(); };
+    fv.onclick = e => { if (e.target.closest("a,button")) return; edit(); };
+    if (kb) kb.onclick = edit;
+    t.oninput = () => { fit(t); onInput(t); };
+    t.onkeydown = e => { if (e.key === "Escape") t.blur(); };
+    t.onblur = () => { fv.innerHTML = fieldView(t.value, !!t.dataset.list, t.placeholder); fv.classList.toggle("empty", !t.value.trim()); t.hidden = true; fv.hidden = false; };
+  });
 }
 function msgHtml(m) {
   if (m.role === "user") return "<div class='msg me'><div class='who'>나 · " + fmtDate(m.t) + "</div><div class='body'>" + esc(m.text) + "</div></div>";
@@ -389,7 +450,7 @@ function cardHtml(answered) {
   if (cur.card_error) h += "<div class='warnbox'>" + esc(cur.card_error) + "</div>";
   if (c) {
     h += "<div class='cm'>" + (cur.card_t ? fmtDate(cur.card_t) + " 에 " + esc(cur.card_model || "Claude") + " 가 정리" : "") + (cur.card_edited ? " · 손으로 고침" : "") + " · 칸을 고치면 바로 저장됩니다</div>";
-    META.card_keys.forEach(k => { const v = c[k]; const txt = Array.isArray(v) ? v.join("\n") : (v || ""); h += "<div class='cf'><div class='k'>" + esc(META.card_ko[k] || k) + "</div><textarea data-k='" + k + "' placeholder='" + (Array.isArray(v) || /papers|groups|journals|next/.test(k) ? "한 줄에 하나" : "") + "'>" + esc(txt) + "</textarea></div>"; });
+    META.card_keys.forEach(k => { const v = c[k], list = Array.isArray(v) || /papers|groups|journals|next/.test(k); h += "<div class='cf fe'><div class='k'>" + esc(META.card_ko[k] || k) + "<button class='act' title='이 칸을 고칩니다 (글을 눌러도 됩니다)'>고치기</button></div>" + fieldHtml(Array.isArray(v) ? v.join("\n") : (v || ""), "data-k='" + k + "'", list, list ? "한 줄에 하나" : "") + "</div>"; });
   } else if (!cur.card_pending) {
     h += "<div class='hint' style='line-height:1.6'>토의가 한 번 이상 오가면 「대화에서 정리」 로 카드를 만듭니다. 그 뒤로는 칸을 직접 고치고, 토의가 더 쌓이면 다시 정리합니다.</div>";
   }
@@ -408,6 +469,8 @@ function renderCard() {
   const el = $("cardbody");
   renderTabs();
   if (!cur) { el.innerHTML = "<div class='sec'>주제 카드</div><div class='hint' style='line-height:1.6'>주제를 열면 오른쪽 칸이 갈래 단추(카드 · 틀 · 설계서 · 반론 · 서론 · 점검 · 이어서 · 연구실)로 나뉩니다 — 누른 갈래만 보입니다.</div>" + labHtml() + bgHtml(); bindLab(); bindBg(); return; }
+  const ae = document.activeElement;
+  if (ae && el.contains(ae) && ae.matches && ae.matches("textarea[data-k],textarea[data-pk]")) return;   /* 칸을 고치는 중 — 다시 그리면 고치던 글이 날아간다 */
   const answered = (cur.thread || []).some(m => m.role === "claude");
   let h = "";
   if (cardTab === "card") h = cardHtml(answered);
@@ -420,8 +483,10 @@ function renderCard() {
   else h = labHtml() + bgHtml();
   el.innerHTML = h;
   el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  el.querySelectorAll(".go[data-q]").forEach(a => a.onclick = () => openBig("/explore?q=" + encodeURIComponent(a.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
+  el.querySelectorAll(".go[data-study]").forEach(a => a.onclick = () => openBig("/study?topic=" + encodeURIComponent(a.dataset.study), "athenaeum_study", "width=1440,height=920"));
   const g = $("cardGo"); if (g) g.onclick = async () => { g.disabled = true; const r = await api("/api/notes", { op: "card", id: cur.id, effort: lsGet("notes_effort", "xhigh") === "fast" ? "fast" : "xhigh" }); if (r.error) { alert(r.error); g.disabled = false; return; } cur.card_pending = Date.now() / 1000; renderCard(); schedulePoll(); };
-  el.querySelectorAll(".cf textarea[data-k]").forEach(t => { fit(t); t.oninput = () => { fit(t); clearTimeout(cardSaveT); cardSaveT = setTimeout(saveCard, 800); }; });
+  bindFields(el, ".cf textarea[data-k]", () => { clearTimeout(cardSaveT); cardSaveT = setTimeout(saveCard, 800); });
   const ge = $("goExplore"); if (ge) ge.onclick = () => openBig("/explore?q=" + encodeURIComponent(cur.title) + "&go=1", "athenaeum_explore", "width=1280,height=900");
   const gs = $("goStudy"); if (gs) gs.onclick = () => openBig("/study?topic=" + encodeURIComponent(cur.title), "athenaeum_study", "width=1440,height=920");
   /* 설계서 · 반론 · 원고 초안 (2026-10-19) */
@@ -455,7 +520,7 @@ function renderCard() {
     navigator.clipboard.writeText(txt).then(() => { const was = b.textContent; b.textContent = "복사됨"; setTimeout(() => b.textContent = was, 1200); });
   });
   el.querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { b.disabled = true; const r = await api("/api/notes", { op: "cancel_job", id: cur.id, kind: b.dataset.cancel }); if (r.error) alert(r.error); setTimeout(refresh, 800); });
-  el.querySelectorAll(".cf textarea[data-pk]").forEach(t => { fit(t); t.oninput = () => { fit(t); clearTimeout(planSaveT); planSaveT = setTimeout(savePlan, 800); }; });
+  bindFields(el, ".cf textarea[data-pk]", () => { clearTimeout(planSaveT); planSaveT = setTimeout(savePlan, 800); });
   el.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
   el.querySelectorAll("[data-q]").forEach(b => b.onclick = () => openBig("/explore?q=" + encodeURIComponent(b.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
   el.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { if (cur.pending) return; draft = "'" + b.dataset.ask + "' — 이것을 정해야 한다. 서재의 논문과 지금까지의 토의로 보아 어느 쪽이 나은가, 까닭은?"; renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.scrollIntoView(); } });
@@ -675,7 +740,7 @@ function planHtml(answered) {
     (p.sections || []).forEach(s => {
       const cites = (s.cites || []).map(c => c.file ? "<a class='cite ok' data-open='" + esc(c.file) + "' title='서재에 있음 — 누르면 PDF 를 엽니다: " + esc(c.file) + "'>" + esc(c.key) + " ✓</a>"
         : "<span class='cite no' title='서재에서 못 찾음 — 서재 밖의 논문이거나 이름·연도가 다릅니다'>" + esc(c.key) + " ?</span>").join(" ");
-      h += "<div class='cf'><div class='k'>" + esc(s.h) + "</div><textarea data-pk='" + esc(s.k) + "'>" + esc(s.t || "") + "</textarea>" + (cites ? "<div class='cites'>" + cites + "</div>" : "") + "</div>";
+      h += "<div class='cf fe'><div class='k'>" + esc(s.h) + "<button class='act' title='이 칸을 고칩니다 (글을 눌러도 됩니다)'>고치기</button></div>" + fieldHtml(s.t || "", "data-pk='" + esc(s.k) + "'", false, "") + (cites ? "<div class='cites'>" + cites + "</div>" : "") + "</div>";
     });
     if ((p.gaps || []).length) h += "<div class='cf'><div class='k'>서재에 없어 확인할 것</div><ul class='pl'>" + p.gaps.map(x => "<li>" + esc(x) + " <button class='act' data-q=\"" + esc(x.slice(0, 200)) + "\" title='이것으로 논문 탐색'>탐색 ↗</button></li>").join("") + "</ul></div>";
     if ((p.checks || []).length) h += "<div class='cf'><div class='k'>연구자가 정할 것</div><ul class='pl'>" + p.checks.map(x => "<li>" + esc(x) + " <button class='act' data-ask=\"" + esc(x.slice(0, 300)) + "\" title='이것을 묻는 칸에 채웁니다'>대화로 ↗</button></li>").join("") + "</ul></div>";
