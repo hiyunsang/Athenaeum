@@ -83,6 +83,7 @@
   .chain .c .pr { font-style: italic; } .chain .c .de { color: var(--text-2); font-size: 12.5px; } .chain .c .an { color: var(--text-2); font-size: 12.5px; }
   .empty { padding: var(--s5) 0; color: var(--text-3); font-size: 13px; line-height: 1.6; }
   button.sm { padding: 2px 8px; font-size: 12px; }
+  .mv { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; line-height: 1.5; } .mv .mh { font-weight: 600; } .mv .mh .kd { color: var(--text-3); font-weight: 400; font-size: 12px; } .mv .mh .sc { font-size: 11px; font-weight: 600; color: var(--amber); } .mv.forest .mh .sc { color: var(--green); } .mv .mh a { font-weight: 400; } .mv .ms { color: var(--text-2); font-size: 12.5px; } .mv .mw { color: var(--text-3); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -108,6 +109,7 @@
     <div class="sideh">지금</div>
     <div class="box">
       <div class="row"><input type="number" id="runN" min="1" max="400" value="5"> 편 <button class="sm" id="runNow">지금 학습</button> <button class="sm" id="stopNow">멈추기</button></div>
+      <div class="row"><button class="sm" id="mvNow" title="주석이 있는 논문마다 연구 갈래(변수 확장 · 새 측정 · 기전 재정의 · 타 분야 구조 · 전제 시험 · 모델 · 리뷰)와 숲·나무를 Opus 가 한 번 가른다 — 편당 4천~8천 토큰. 연구 노트의 「큰 물음」 이 서재의 숲 논문을 본보기로 쓴다">연구 갈래 붙이기</button> <span class="hint" id="mvState" style="margin:0"></span></div>
       <div class="row"><button class="sm" id="upNow" title="★ 저널이 아닌 논문은 Sonnet 으로 읽는 것이 기본 — 토큰이 넉넉할 때 Opus 로 다시 읽으면 주석이 더 세밀해지고(공백·역할), 끝나면 바탕을 다시 세운다. 편당 3만~4만 토큰(Opus)">Sonnet 으로 읽은 것을 Opus 로 다시</button></div>
       <div class="state" id="state"></div>
     </div>
@@ -117,7 +119,7 @@
     <div class="nx" id="nx"></div>
   </div>
   <div id="main">
-    <div class="tabs"><a data-tab="know" class="on">바탕 — 이 저널은 이렇게 쓴다</a><a data-tab="papers">논문 주석</a></div>
+    <div class="tabs"><a data-tab="know" class="on">바탕 — 이 저널은 이렇게 쓴다</a><a data-tab="papers">논문 주석</a><a data-tab="moves">연구 갈래 — 숲과 나무</a></div>
     <div class="page" id="pg"></div>
   </div>
 </div>
@@ -151,6 +153,10 @@ function renderSide() {
   $("progN").textContent = "주석 " + S.annotated + "편 · 토큰 " + fmtTok(S.tok);
   $("upNow").textContent = S.upgradable ? "Sonnet 으로 읽은 " + S.upgradable + "편을 Opus 로 다시" : "모두 " + (st.model === "opus" ? "Opus" : st.model) + " 로 읽었다";
   $("upNow").disabled = !S.upgradable || !!x.batch_on;
+  const mv = S.moves || {}, mr = mv.run;   /* 연구 갈래 (2026-10-28) */
+  $("mvState").textContent = (mv.n ? "갈래 " + mv.n + "편 · 숲 " + mv.forest + " · 나무 " + mv.tree : "아직 없음") + (mr && mr.on ? " · 붙이는 중 " + mr.done + "/" + mr.n0 + (mr.fail ? " (실패 " + mr.fail + ")" : "") + " · 토큰 " + fmtTok(mr.tok) : mv.pending ? " · 남은 " + mv.pending + "편" : "");
+  $("mvNow").disabled = !!(mr && mr.on) || !mv.pending;
+  $("mvNow").textContent = mr && mr.on ? "붙이는 중…" : mv.pending ? "연구 갈래 붙이기 (" + mv.pending + "편)" : "연구 갈래 — 모두 붙였다";
   $("jl").innerHTML = S.journals.filter(j => j.total > 0).slice(0, 18).map(j => "<div class='j" + (j.pref ? " pref" : "") + "'><span class='a'>" + (j.pref ? "★ " : "") + esc(j.abbr) + "</span><span class='bar'><i style='width:" + Math.round(100 * j.done / Math.max(1, j.total)) + "%'></i></span><span class='c'>" + j.done + "/" + j.total + "</span></div>").join("");
   $("nx").innerHTML = S.next.length ? S.next.map(s => "· " + esc(s.slice(0, 64))).join("<br>") : "없음 — 번역한 논문은 모두 주석이 있다";
 }
@@ -161,7 +167,8 @@ async function saveSettings() {
 }
 for (const id of ["sOn", "sH0", "sH1", "sPer", "sModel", "sRest", "sSyn", "sWork"]) $(id).onchange = saveSettings;
 $("runNow").onclick = async () => { await api("/api/learn", { op: "run_now", n: +$("runN").value || 5 }); refresh(); };
-$("stopNow").onclick = async () => { await api("/api/learn", { op: "stop" }); refresh(); };
+$("stopNow").onclick = async () => { await api("/api/learn", { op: "stop" }); await api("/api/learn", { op: "moves_stop" }); refresh(); };
+$("mvNow").onclick = async () => { const mv = S.moves || {}; if (!mv.pending) return; if (!confirm("주석이 있는 " + mv.pending + "편에 연구 갈래(숲·나무)를 붙입니다 — Opus 한 번씩, 편당 4천~8천 토큰. 시작할까요?")) return; await api("/api/learn", { op: "moves", workers: +$("sWork").value || 6 }); refresh(); };
 $("upNow").onclick = async () => { if (!S.upgradable) return; if (!confirm("Sonnet 으로 읽은 " + S.upgradable + "편을 Opus 로 다시 읽습니다 — 편당 3만~4만 토큰(Opus), 끝나면 바탕을 다시 세웁니다. 시작할까요?")) return; await api("/api/learn", { op: "run_now", n: S.upgradable, upgrade: true }); refresh(); };
 
 /* ---- 바탕 ---- */
@@ -251,7 +258,19 @@ async function openPaper() {
   box.innerHTML = h;
   $("reann").onclick = async () => { if (!confirm("이 논문의 주석을 다시 만들까요? (Claude 호출 2~3번)")) return; await api("/api/learn", { op: "annotate", file: paperSel + ".pdf", force: true }); alert("다시 만들기를 시작했습니다 — 2~4분 뒤 다시 고르면 새 주석이 보입니다."); };
 }
-document.querySelectorAll(".tabs a").forEach(a => a.onclick = () => { document.querySelectorAll(".tabs a").forEach(x => x.classList.toggle("on", x === a)); tab = a.dataset.tab; if (tab === "know") renderKnowList(); else renderPapers(); });
+/* ---- 연구 갈래 — 숲과 나무 (2026-10-28) ---- */
+async function renderMoves() {
+  const d = await api("/api/learn/moves"); const st = d.status || {}, ko = st.ko || {};
+  let h = "<div class='hint' style='margin-bottom:8px'>연구 갈래 = 주석(물음·공백·기여·서론·결론 요지)만 읽고 Opus 가 가른 '어떤 종류의 연구인가'. 숲 = 여러 논문에 걸친 현상 · 공유 전제 · 타 분야 구조에서 출발한 것, 나무 = 기존 틀 안의 변수·재료·조건 확장(좋은 논문도 나무일 수 있다). 연구 노트의 「큰 물음」 이 숲 논문을 본보기로 씁니다.</div>";
+  h += "<div class='meta'>" + (st.n || 0) + "편 · 숲 " + (st.forest || 0) + " · 나무 " + (st.tree || 0) + (st.by ? " · " + Object.keys(st.by).filter(k => st.by[k]).map(k => esc(ko[k] || k) + " " + st.by[k]).join(" · ") : "") + "</div>";
+  const items = d.items || [];
+  if (!items.length) h += "<div class='empty'>아직 없습니다 — 왼쪽 「연구 갈래 붙이기」.</div>";
+  const row = x => "<div class='mv " + esc(x.scope) + "'><div class='mh'>" + (x.star ? "★ " : "") + esc(x.author) + " " + (x.year || "") + " <span class='kd'>" + esc(x.journal || "") + " · " + esc(x.move_ko || x.move) + "</span> <span class='sc'>" + (x.scope === "forest" ? "숲" : "나무") + "</span> <a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(x.stem + ".pdf") + "&nolog=1'>" + esc(x.stem.replace(/^\d{4}_[^_]+_[^_]+_/, "").slice(0, 90)) + "</a></div><div class='ms'>" + esc(x.seed || "") + (x.from_field ? " · 가져온 구조: " + esc(x.from_field) : "") + (x.assumption ? " · 흔든 전제: " + esc(x.assumption) : "") + "</div><div class='mw'>" + esc(x.why || "") + "</div></div>";
+  const F = items.filter(x => x.scope === "forest"), T = items.filter(x => x.scope !== "forest");
+  h += "<div class='sideh' style='padding-left:0'>숲 " + F.length + "</div>" + F.map(row).join("") + "<details style='margin-top:10px'><summary class='sideh' style='padding-left:0;cursor:pointer'>나무 " + T.length + "</summary>" + T.map(row).join("") + "</details>";
+  $("pg").innerHTML = h;
+}
+document.querySelectorAll(".tabs a").forEach(a => a.onclick = () => { document.querySelectorAll(".tabs a").forEach(x => x.classList.toggle("on", x === a)); tab = a.dataset.tab; if (tab === "know") renderKnowList(); else if (tab === "moves") renderMoves(); else renderPapers(); });
 refresh().then(() => renderKnowList());
 setInterval(refresh, 15000);
 </script>
