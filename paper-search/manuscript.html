@@ -2419,13 +2419,17 @@ async function stylusUndoAbs(u) {
 
 // ---------- 결정으로 기록: 여기서 정한 것을 작업 자료 폴더의 결정 파일에 한 줄로 (Claude 채팅과 같은 파일을 같이 고친다) ----------
 let decCtx = null;
+const DEC_KINDS = {   /* 기록의 종류 — 결정 / 거절한 제안 / 할 일 (2026-10-27). sec = 기본 제목, ph = 칸 안내, what = 못 찾았을 때 */
+  decision: { name: "결정", sec: "", ph: "결정 내용 한 줄", hint: "다음 대화에서도 지킬 방침", what: "정해진 것" },
+  reject: { name: "거절한 제안", sec: "거절한 제안", ph: "받아들이지 않은 제안과 그 까닭 — 한 줄", hint: "같은 제안이 되풀이되지 않게", what: "거절한 제안" },
+  todo: { name: "할 일", sec: "할 일", ph: "어느 절에서 무엇을 어떻게 — 한 줄", hint: "'- [ ]' 체크 상자 줄로 남깁니다", what: "할 일" } };
 function closeDecision() { const p = $("decPop"); if (p) p.style.display = "none"; decCtx = null; }
-async function openDecision(ctx) {   // ctx = {thread, quote, where, note} (Claude 가 한 줄로 정리) 또는 {prefill, section} (그대로 넣기)
+async function openDecision(ctx) {   // ctx = {kind, thread, quote, where, note, pick(답에서 고른 대목 — 칸에 그대로)} (Claude 가 한 줄로 정리) 또는 {prefill, section} (그대로 넣기)
   if (!doc) return;
   let pop = $("decPop");
   if (!pop) {
     pop = document.createElement("div"); pop.id = "decPop";
-    pop.innerHTML = "<div class='mh'><b>결정으로 기록</b><span>작업 자료의 결정 파일에 한 줄 — Claude 채팅에서도 이 파일을 봅니다</span><span style='margin-left:auto'></span><button class='btn' id='decX'>닫기</button></div>" +
+    pop.innerHTML = "<div class='mh'><b>작업 자료에 기록</b><span>결정 · 거절한 제안 · 할 일을 결정 파일에 한 줄 — Claude 채팅에서도 이 파일을 봅니다</span><span style='margin-left:auto'></span><button class='btn' id='decX'>닫기</button></div>" +
       "<div id='decBody'></div>";
     document.body.appendChild(pop);
     $("decX").onclick = closeDecision;
@@ -2446,9 +2450,12 @@ async function openDecision(ctx) {   // ctx = {thread, quote, where, note} (Clau
   const saved = doc.decision_file && files.find(f => key(f) === key(doc.decision_file));
   let cur = saved || files.find(f => /결정|decision|plan|방침/i.test(f.name)) || files[0] || fresh;
   const opts = files.concat(files.some(f => key(f) === key(fresh)) ? [] : [fresh]);
-  body.innerHTML = "<div class='row'><span>파일</span><select id='decFile' style='flex:1'>" + opts.map((f, k) => "<option value='" + k + "'" + (key(f) === key(cur) ? " selected" : "") + ">" + esc((f.fresh ? "새 파일: " : "") + f.path.split(/[\\/]/).pop() + "/" + f.name) + "</option>").join("") + "</select></div>" +
+  let kind = DEC_KINDS[ctx.kind] ? ctx.kind : "decision";
+  const secWant = () => ctx.section || DEC_KINDS[kind].sec;
+  body.innerHTML = "<div class='row'><span>종류</span><select id='decKind'>" + Object.keys(DEC_KINDS).map(k => "<option value='" + k + "'" + (k === kind ? " selected" : "") + ">" + DEC_KINDS[k].name + "</option>").join("") + "</select><div class='hint' id='decKindHint' style='flex:1'>" + esc(DEC_KINDS[kind].hint) + "</div></div>" +
+    "<div class='row'><span>파일</span><select id='decFile' style='flex:1'>" + opts.map((f, k) => "<option value='" + k + "'" + (key(f) === key(cur) ? " selected" : "") + ">" + esc((f.fresh ? "새 파일: " : "") + f.path.split(/[\\/]/).pop() + "/" + f.name) + "</option>").join("") + "</select></div>" +
     "<div class='row'><span>제목</span><select id='decSec' style='flex:1'></select><input type='text' id='decSecNew' placeholder='새 제목' style='flex:1;display:none'></div>" +
-    "<textarea id='decText' rows='3' placeholder='결정 내용 한 줄'></textarea>" +
+    "<textarea id='decText' rows='3' placeholder='" + esc(DEC_KINDS[kind].ph) + "'></textarea>" +
     "<div id='decRep' class='hint' style='padding:2px 0'></div>" +
     "<div class='mfoot'><span class='hint' id='decMsg' style='display:inline;flex:1'></span><button class='btn' id='decAsk' title='이 대화에서 정해진 것을 Claude 가 한 줄로 정리합니다 (약 10초)'>Claude 가 정리</button><button class='btn pri' id='decSave'>기록</button></div>";
   let replaces = "", fileText = "";
@@ -2468,26 +2475,28 @@ async function openDecision(ctx) {   // ctx = {thread, quote, where, note} (Clau
   };
   const draft = async () => {
     $("decMsg").textContent = "Claude 가 정리하는 중… (직접 적어도 됩니다)"; $("decAsk").disabled = true;
-    let r; try { r = await api("/api/ms/source", { id: doc.id, op: "decide", path: cur.path, name: cur.fresh ? "" : cur.name, thread: ctx.thread || [], quote: ctx.quote || "", where: ctx.where || "", note: ctx.note || "" }); } catch (e) { r = { error: "서버 연결 실패" }; }
+    let r; try { r = await api("/api/ms/source", { id: doc.id, op: "decide", kind, pick: ctx.pick || "", path: cur.path, name: cur.fresh ? "" : cur.name, thread: ctx.thread || [], quote: ctx.quote || "", where: ctx.where || "", note: ctx.note || "" }); } catch (e) { r = { error: "서버 연결 실패" }; }
     if (decCtx !== ctx || !$("decAsk")) return;
     $("decAsk").disabled = false;
     if (r.error) { $("decMsg").textContent = "⚠ " + r.error; return; }
-    if (!r.text) { $("decMsg").textContent = "이 대화에서 정해진 것을 찾지 못했습니다. 직접 적어 주세요."; return; }
+    if (!r.text) { $("decMsg").textContent = "이 대화에서 " + DEC_KINDS[kind].what + "을 찾지 못했습니다. 직접 적어 주세요."; return; }
     if (!$("decText").value.trim()) $("decText").value = r.text;
     setSecs(r.section); setRep(r.replaces); $("decMsg").textContent = "고쳐서 기록하세요";
   };
-  $("decFile").onchange = () => loadFile(ctx.section);
-  await loadFile(ctx.section);
+  $("decFile").onchange = () => loadFile(secWant());
+  await loadFile(secWant());
   if (decCtx !== ctx) return;
   $("decAsk").onclick = draft;
+  $("decKind").onchange = () => { kind = $("decKind").value; $("decText").placeholder = DEC_KINDS[kind].ph; $("decKindHint").textContent = DEC_KINDS[kind].hint; if (!ctx.section) setSecs(DEC_KINDS[kind].sec); };
   if (ctx.prefill) { $("decText").value = ctx.prefill; $("decAsk").style.display = (ctx.thread || []).length ? "" : "none"; }
+  else if (ctx.pick) { $("decText").value = ctx.pick; $("decMsg").textContent = "고른 대목을 고쳐서 기록하세요 — 「Claude 가 정리」 로 한 줄로 줄일 수도 있습니다"; }   /* 답에서 드래그한 대목: Claude 를 부르지 않고 그대로 */
   else if ((ctx.thread || []).length || ctx.note) draft();
   $("decText").focus();
   $("decSave").onclick = async () => {
     const text = $("decText").value.trim(); if (!text) { $("decText").focus(); return; }
     const section = $("decSec").value === "__new" ? $("decSecNew").value.trim() : $("decSec").value;
     $("decSave").disabled = true;
-    const r = await api("/api/ms/source", { id: doc.id, op: "add_decision", path: cur.path, name: cur.name, section, text, replaces });
+    const r = await api("/api/ms/source", { id: doc.id, op: "add_decision", kind, path: cur.path, name: cur.name, section, text, replaces });
     if ($("decSave")) $("decSave").disabled = false;
     if (r.error) { $("decMsg").textContent = "⚠ " + r.error; return; }
     doc.decision_file = { path: cur.path, name: cur.name }; save(true);
@@ -2656,6 +2665,19 @@ function selBarShow(e, html, bind) {
 }
 document.addEventListener("mouseup", e => {
   if (e.target.closest && e.target.closest("#selBar")) return;
+  const msg = doc && e.target.closest && e.target.closest(".card.memo[data-mid] .fbmsg.claude");   /* 답의 글을 드래그 → 그 대목을 할 일·거절한 제안·결정으로 (2026-10-27) */
+  if (msg) {
+    const sel = window.getSelection(), inMsg = sel && !sel.isCollapsed && msg.contains(sel.anchorNode) && msg.contains(sel.focusNode);
+    const txt = inMsg ? normWs(sel.toString() || (sel.rangeCount ? sel.getRangeAt(0).cloneContents().textContent : "")) : "";   /* 숨은 탭에서는 toString 이 비어 Range 의 글로 */
+    if (txt.length >= 4) {
+      const mid = msg.closest("[data-mid]").dataset.mid, m = (doc.memos || []).find(x => String(x.id) === mid);
+      const pick = txt.replace(/^(\d{1,2}[.)]|[①-⑳]|[-•*])\s*/, "");
+      const ctx = k => ({ kind: k, pick, thread: m ? m.thread || [] : [], quote: m ? m.quote : "", where: m ? selHeading(m.node) : "", note: m ? m.note : "" });
+      selBarShow(e, "<button class='btn pri' data-a='todo' title='고른 대목을 작업 자료의 결정 파일 「할 일」 에 한 줄로'>할 일로</button><button class='btn' data-a='reject' title='고른 제안을 받아들이지 않은 것으로 기록 — 같은 제안이 되풀이되지 않게'>거절한 제안으로</button><button class='btn' data-a='decision' title='고른 대목을 결정으로 기록'>결정으로</button>",
+        bar => bar.querySelectorAll("button").forEach(btn => btn.onclick = () => { selBarHide(); openDecision(ctx(btn.dataset.a)); }));
+      return;
+    }
+  }
   const ta = e.target, tg = taTarget(ta);
   if (!doc || !tg) { selBarHide(); return; }
   const a = ta.selectionStart, b = ta.selectionEnd;
@@ -2748,9 +2770,115 @@ function chatThreadHtml(m) {
   const altBody = (base, a) => { const b = cl ? cleanDiff(base, a) : wordDiff(base, a); return { html: b, cut: cl && !/<ins>/.test(b) && normWs(a).length < normWs(base).length }; };
   return th.map((x, i) => x.role === "user" ? x.quiet ? "" : "<div class='fbmsg user'><b>나:</b> " + (x.swap ? "대안으로 바꿈" + (x.swap.undone ? " <span class='hint' style='display:inline'>— 되돌렸음</span>"
         : i === lastSwap ? " · <a href='#' class='act' data-undo='" + i + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도 되돌릴 수 있습니다)'>고치기 전으로 되돌리기</a>" : "") : esc(x.text)) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole || x.ev || x.stylus ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.stylus || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole || x.ev || x.stylus ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.stylus || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + chatEditsBlock(m, x, i) + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>"; }).join("") +
       (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend((x.alts || []).length || (x.rw || []).length ? Object.assign({}, x, { text: (x.alts || []).join(" ") + " " + (x.rw || []).map(r => r.text).join(" ") }) : x) + "</div>").join("");
+}
+// ---------- 제안을 조각마다 반영: 답(제안)을 원고 문단마다의 고침(전→후)으로 나눠 하나씩 바꾸기·건너뛰기·고쳐 달라기 (2026-10-27) ----------
+const editsLive = new Map();   /* "대화 id:답 번호" → {t0, rid, fix} — 나누는 중 */
+function chatEditsBlock(m, x, i) {   // 답 아래: 나누는 중이면 기다림 막대, 나눈 것이 있으면 고침 목록, 아니면 단추 하나
+  if (!m || x.role !== "claude") return "";
+  const live = editsLive.get(m.id + ":" + i), ed = x.edits;
+  let h = "";
+  if (live) h += waitHtml(live.fix != null ? "그 한 곳을 다시 내는 중" : "제안을 문단마다의 고침으로 나누는 중", live.t0, durGet("edits|" + chatEffort(), live.fix != null ? 60 : 120),
+    "<div class='hint'><a href='#' class='act' data-ecancel='" + i + "'>취소</a></div>");
+  else if (ed) h += chatEditsHtml(m, x, i);
+  else if ((x.text || "").length > 120 || x.editsErr) h += "<div class='acts'><button class='btn' data-edits='" + i + "' title='이 답의 제안을 원고의 문단마다 전→후 로 나눠 보여 줍니다. 한 곳씩 바꾸거나 건너뛰거나, 어떻게 고칠지 말해 다시 받을 수 있습니다 (Opus 1~3분)'>조각마다 반영</button></div>";
+  if (x.editsErr && !live) h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ " + esc(x.editsErr) + "</div>";
+  return h;
+}
+function chatEditsHtml(m, x, i) {
+  const ed = x.edits, cl = altView() === "clean", left = ed.items.filter(e => !e.done && !e.skip), done = ed.items.filter(e => e.done).length;
+  let h = "<div class='rvprop chedits'><div class='hint'>제안을 나눈 고침 " + ed.items.length + "곳" + (done ? " · 바꿈 " + done : "") + (ed.note ? " — " + esc(ed.note) : "") +
+    "<span style='float:right'>" + esc([ed.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[ed.effort] || "", tokNote(ed.tok), ed.sec ? Math.round(ed.sec) + "초" : ""].filter(Boolean).join(" · ")) + "</span></div>";
+  h += ed.items.map((e, k) => {
+    const where = esc(e.heading) + " · " + (e.type === "insert" ? (e.para ? "문단 " + e.para + " 뒤에 새 문단" : "맨 앞에 새 문단") : "문단 " + e.para + (e.type === "delete" ? " 삭제" : ""));
+    const st = e.done ? " <b style='color:var(--green)'>바꿈</b>" : e.skip ? " <span style='color:var(--text-3)'>건너뜀</span>" : "";
+    const ref = i + ":" + k, goq = esc(e.done && e.type !== "delete" ? e.after : e.before || e.after);
+    const body = e.done || e.skip ? "" : "<div class='rvdiff" + (cl && e.type === "edit" ? " clean" : "") + "'>" + (e.type === "insert" ? "<ins>" + esc(e.after) + "</ins>" : e.type === "delete" ? "<del>" + esc(e.before) + "</del>" : cl ? cleanDiff(e.before, e.after) : wordDiff(e.before, e.after)) + "</div>";
+    const acts = e.done ? "<div class='acts'><a href='#' class='act' data-eundo='" + ref + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도)'>되돌리기</a><a href='#' class='act' data-ego='" + e.node + "' data-goq='" + goq + "'>그 자리로</a></div>"
+      : e.skip ? "<div class='acts'><a href='#' class='act' data-eunskip='" + ref + "'>다시 보기</a></div>"
+      : "<div class='acts'><button class='btn pri' data-eapply='" + ref + "' title='이 한 곳을 원고에 바꿔 넣습니다 (글 칸에서 Ctrl+Z 로 되돌릴 수 있습니다)'>바꾸기</button><button class='btn' data-eskip='" + ref + "'>건너뛰기</button>" +
+        "<button class='btn' data-efix='" + ref + "' title='이 한 곳을 어떻게 고칠지 말하면 Claude 가 이 곳만 다시 냅니다 (약 1분)'>이렇게 고쳐…</button><a href='#' class='act' data-ego='" + e.node + "' data-goq='" + goq + "' style='margin-left:auto'>그 자리로</a></div>" +
+        "<div class='fbq' data-efixrow='" + ref + "' style='display:none'><input class='eIn' placeholder='이 곳을 어떻게 — 예: 수치는 빼고 경향만 · 두 문장으로 · 1 m/min 에 한정해' value='" + esc(e.note || "") + "'><button class='btn' data-efixgo='" + ref + "'>다시 내기</button></div>";
+    return "<div class='rvedit'><div class='hint'>" + where + st + (e.point ? " · <span title='제안의 어느 항목'>" + esc(e.point) + "</span>" : "") + "</div>" + (e.why && !e.done && !e.skip ? "<div class='hint'>" + esc(e.why) + "</div>" : "") + body + acts + "</div>";
+  }).join("");
+  if ((ed.skipped || []).length) h += "<div class='rvedit'><div class='hint'>원고를 바꾸지 않는 항목 · 먼저 확인할 것</div>" + ed.skipped.map(t => "<div class='hint'>· " + esc(t) + "</div>").join("") + "</div>";
+  h += "<div class='acts'>" + (left.length > 1 ? "<button class='btn' data-eall='" + i + "' title='건너뛰지 않은 곳을 차례로 모두 바꿔 넣습니다'>남은 " + left.length + "곳 모두 바꾸기</button>" : "") +
+    "<button class='btn' data-edits='" + i + "' title='지금 글을 놓고 다시 나눕니다 (바꾼 곳·건너뛴 곳 표시는 없어집니다)'>다시 나누기</button><a href='#' class='act' data-eclose='" + i + "' style='margin-left:auto'>닫기</a></div></div>";
+  return h;
+}
+function chatEdits(m, i, fixK, note) {   // 서버 chat_edits: 답을 고침으로 나눈다 (fixK 가 있으면 그 한 곳만 note 대로 다시)
+  const key = m.id + ":" + i; if (editsLive.has(key)) return;
+  const rid = "ed" + Date.now(), effort = chatEffort(), only = fixK != null ? m.thread[i].edits.items[fixK] : null;
+  editsLive.set(key, { t0: Date.now(), rid, fix: fixK }); chatRefresh(m.id);
+  (async () => {
+    await saveNow();
+    let r; try { r = await api("/api/ms/chat_edits", { id: doc.id, memo: m.id, i, effort, rid, note: note || "", only: only ? { node: only.node, para: only.para, type: only.type, after: only.after, point: only.point } : null }); } catch (e) { r = { error: "서버 연결 실패" }; }
+    const live = editsLive.get(key); editsLive.delete(key);
+    const mm = memoById(m.id), x = mm && mm.thread[i]; if (!x) return;
+    if (r.cancelled) { chatRefresh(m.id); return; }
+    if (r.error || (only && !(r.edits || []).length)) { x.editsErr = r.error || "그 곳을 다시 내지 못했습니다 — 지시를 바꿔 보세요"; chatRefresh(m.id); return; }
+    delete x.editsErr;
+    if (live) durPut("edits|" + effort + (only ? "|fix" : ""), (Date.now() - live.t0) / 1000);
+    if (only && x.edits && x.edits.items[fixK]) {
+      const cur = x.edits.items[fixK], ne = r.edits.find(y => y.node === cur.node && y.type === cur.type) || r.edits[0];
+      Object.assign(cur, ne, { id: cur.id, note });   /* 자리(before·para)도 서버가 지금 글에서 다시 잡은 것으로 */
+    } else x.edits = { items: r.edits || [], skipped: r.skipped || [], note: r.note || "", model: r.model || "", effort: r.effort || "", tok: r.tok, sec: r.sec, t: r.t };
+    save(true); chatRefresh(m.id);
+  })();
+}
+async function chatEditsCancel(m, i) { const live = editsLive.get(m.id + ":" + i); if (!live) return; try { await api("/api/claude_cancel", { job: "ms:" + live.rid }); } catch (e) {} }
+function chatEditPut(nid, key, a, len, repl) {   // 원고의 그 자리를 바꾼다 — 글 칸이 보이면 insertText (Ctrl+Z 가 산다), 아니면 doc 에 바로. → 글 칸을 썼는지
+  const ta = taFor(nid, key);
+  if (ta) { ta.focus(); ta.setSelectionRange(a, a + len); if (!document.execCommand("insertText", false, repl)) { ta.setRangeText(repl, a, a + len, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); } return true; }
+  const cur0 = selText(nid, key), next = cur0.slice(0, a) + repl + cur0.slice(a + len);
+  if (nid === "front") doc.front.abstract = next; else node(nid)[key] = next;
+  return false;
+}
+function chatEditApply(m, i, k, quiet) {   // 고침 하나를 원고에. 리비전의 반영과 같은 규칙으로 남은 고침의 기준(before·prev)을 옮긴다
+  const ed = m.thread[i].edits, e = ed.items[k]; if (!e || e.done) return true;
+  const key = e.node === "front" ? "abstract" : (e.key || m.key);
+  if (e.node !== "front" && !node(e.node)) { if (!quiet) alert("그 절이 개요에서 없어졌습니다."); return false; }
+  const ta = taFor(e.node, key), cur0 = ta ? ta.value : selText(e.node, key);
+  let a, len, repl;
+  if (e.type === "insert" && !e.para) { a = 0; len = 0; repl = e.after + "\n\n"; }
+  else {
+    a = cur0.indexOf(e.before);
+    if (a < 0) { if (!quiet) alert("그 사이 문단이 바뀌어 자리를 찾지 못했습니다. 「다시 나누기」 로 지금 글에서 다시 나눠 주세요."); return false; }
+    len = e.before.length;
+    if (e.type === "edit") repl = e.after;
+    else if (e.type === "insert") repl = e.before + "\n\n" + e.after;
+    else { repl = ""; let b = a + len; while (b < cur0.length && cur0[b] === "\n") b++; len = b - a; }
+  }
+  const took = cur0.slice(a, a + len), usedTa = chatEditPut(e.node, key, a, len, repl);
+  ed.items.forEach(x => {
+    if (x === e || x.done) return;
+    if (e.type === "edit") { if (x.type === "insert" && x.before === e.before) x.before = e.after; if (x.type === "delete" && x.prev === e.before) x.prev = e.after; }
+    if (e.type === "delete") { if (x.type === "insert" && x.before === e.before) { x.before = e.prev || ""; if (!x.before) x.para = 0; } if (x.type === "delete" && x.prev === e.before) x.prev = e.prev || ""; }
+    if (e.type === "insert" && x.type === "insert" && !!x.para === !!e.para && x.before === e.before) { x.before = e.after; x.para = x.para || 1; }
+  });
+  e.done = { t: Date.now() / 1000, put: repl, took };
+  if (e.type !== "delete") caseAdd("swap", e.before, e.after, e.point || e.why);   /* 교정 기억: 저자가 Claude 의 고침을 받아들였다 */
+  if (!quiet) { save(true); if (!usedTa) { renderTree(); if (cur === e.node) renderEditor(); } chatRefresh(m.id); }
+  return usedTa ? true : "doc";
+}
+function chatEditAll(m, i) {
+  const ed = m.thread[i].edits; let n = 0, viaDoc = false;
+  ed.items.forEach((e, k) => { if (!e.done && !e.skip) { const r = chatEditApply(m, i, k, true); if (r) { n++; if (r === "doc") viaDoc = true; } } });
+  save(true); if (viaDoc) { renderTree(); renderEditor(); } chatRefresh(m.id);
+  if (!n) alert("바꿔 넣은 곳이 없습니다 — 자리를 찾지 못한 고침은 「다시 나누기」 로 지금 글에서 다시 나눠 주세요.");
+}
+function chatEditUndo(m, i, k) {   // 바꾼 것을 고치기 전으로: 넣은 글을 찾아 원래 글로 (지운 문단은 앞 문단 뒤에 되살린다)
+  const e = m.thread[i].edits.items[k]; if (!e || !e.done) return;
+  const key = e.node === "front" ? "abstract" : (e.key || m.key);
+  if (e.node !== "front" && !node(e.node)) { alert("그 절이 개요에서 없어졌습니다."); return; }
+  const ta = taFor(e.node, key), cur0 = ta ? ta.value : selText(e.node, key), miss = "원고에서 그 자리를 찾지 못했습니다 (그 뒤에 그 글을 고치셨습니다).\n\n머리줄 「이력」 에서 지난 판과 견줘 되돌릴 수 있습니다.";
+  let a, len;
+  if (e.done.put) { a = cur0.indexOf(e.done.put); if (a < 0) { alert(miss); return; } len = e.done.put.length; }
+  else { if (e.prev) { const p = cur0.indexOf(e.prev); if (p < 0) { alert(miss); return; } a = p + e.prev.length; while (a < cur0.length && cur0[a] === "\n") a++; } else a = 0; len = 0; }
+  const usedTa = chatEditPut(e.node, key, a, len, e.done.took);
+  delete e.done; save(true); if (!usedTa) { renderTree(); if (cur === e.node) renderEditor(); } chatRefresh(m.id);
 }
 // 다시 쓴 글(절 범위에서 '다시 써 줘'): 지금 글과 문단 단위로 견줘 보여 주고, 그 절의 글을 통째로 바꾼다
 const rwCache = new Map();
@@ -2862,7 +2990,8 @@ function chatCardHtml(m) {
   if (st === "err" || st === "lost") h += "<div class='fbmsg user' style='color:var(--amber)'>⚠ 답을 받지 못했습니다" + (m.error ? " — " + esc(m.error) : " (기다리는 동안 창이나 서버가 닫혔습니다)") + " <a href='#' class='act' data-retry='1'>다시 묻기</a></div>";
   h += "</div>" + chatInputHtml(m.id, st === "wait" ? "답을 기다리는 동안 다음 물음을 적어 둘 수 있습니다" : "이어서 묻기 · 메모 (Ctrl+Enter 로 묻기)", m.scope) +
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
-    "<button class='btn' data-dec='1' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다'>결정으로 기록</button><span style='margin-left:auto'></span>" +
+    "<button class='btn' data-dec='decision' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다 (거절한 제안 · 할 일도 고를 수 있습니다)'>결정으로 기록</button>" +
+    "<button class='btn' data-dec='todo' title='이 대화에서 하기로 한 일을 결정 파일의 「할 일」 에 한 줄로 — 답의 글을 드래그하면 그 대목만 보냅니다'>할 일로</button><span style='margin-left:auto'></span>" +
     "<button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
   return h + "</div>";
 }
@@ -2973,7 +3102,7 @@ function chatBind(card) {
   if (!m) return;
   if (cq("[data-retry]")) cq("[data-retry]").onclick = e => { e.preventDefault(); chatAsk(id, null, true); };
   if (cq("[data-cancel]")) cq("[data-cancel]").onclick = e => { e.preventDefault(); e.target.textContent = "끊는 중…"; chatCancel(id); };
-  if (cq("[data-dec]")) cq("[data-dec]").onclick = () => openDecision({ thread: m.thread || [], quote: m.quote, where: selHeading(m.node), note: [m.note, (chatDraft[id] || "").trim()].filter(Boolean).join("\n") });
+  all("[data-dec]").forEach(b => b.onclick = () => openDecision({ kind: b.dataset.dec, thread: m.thread || [], quote: m.quote, where: selHeading(m.node), note: [m.note, (chatDraft[id] || "").trim()].filter(Boolean).join("\n") }));
   if (cq("[data-mgo]")) cq("[data-mgo]").onclick = () => selGoto(m);
   if (cq("[data-mdel]")) cq("[data-mdel]").onclick = () => { if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
   if (cq(".memoDone")) cq(".memoDone").onchange = e => { m.done = e.target.checked; if (m.done) chatOpen.delete(id); save(); memoUi(); };
@@ -2983,6 +3112,19 @@ function chatBind(card) {
   all("[data-altview]").forEach(a => a.onclick = e => { e.preventDefault(); localStorage.setItem("ms_alt_view", altView() === "clean" ? "diff" : "clean"); rwCache.clear(); renderChat(); });
   all("[data-rw]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rw.split(":").map(Number); chatRewrite(m, i, k); });
   all("[data-rwcopy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rwcopy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].rw[k].text); b.textContent = "복사됨"; });
+  const ik = v => v.split(":").map(Number);   /* 제안을 조각마다 반영 (2026-10-27) */
+  all("[data-edits]").forEach(b => b.onclick = () => chatEdits(m, +b.dataset.edits));
+  all("[data-ecancel]").forEach(a => a.onclick = e => { e.preventDefault(); a.textContent = "끊는 중…"; chatEditsCancel(m, +a.dataset.ecancel); });
+  all("[data-eapply]").forEach(b => b.onclick = () => { const [i, k] = ik(b.dataset.eapply); chatEditApply(m, i, k); });
+  all("[data-eall]").forEach(b => b.onclick = () => chatEditAll(m, +b.dataset.eall));
+  all("[data-eskip]").forEach(b => b.onclick = () => { const [i, k] = ik(b.dataset.eskip); m.thread[i].edits.items[k].skip = true; save(true); chatRefresh(m.id); });
+  all("[data-eunskip]").forEach(a => a.onclick = e => { e.preventDefault(); const [i, k] = ik(a.dataset.eunskip); delete m.thread[i].edits.items[k].skip; save(true); chatRefresh(m.id); });
+  all("[data-eundo]").forEach(a => a.onclick = e => { e.preventDefault(); const [i, k] = ik(a.dataset.eundo); chatEditUndo(m, i, k); });
+  all("[data-ego]").forEach(a => a.onclick = e => { e.preventDefault(); selGoto({ node: a.dataset.ego, key: a.dataset.ego === "front" ? "abstract" : m.key, quote: a.dataset.goq || "" }); });
+  all("[data-efix]").forEach(b => b.onclick = () => { const row = cq("[data-efixrow='" + b.dataset.efix + "']"); if (!row) return; row.style.display = row.style.display === "none" ? "" : "none"; if (row.style.display !== "none") row.querySelector("input").focus(); });
+  all("[data-efixgo]").forEach(b => b.onclick = () => { const row = cq("[data-efixrow='" + b.dataset.efixgo + "']"), note = row ? row.querySelector("input").value.trim() : ""; if (!note) { if (row) row.querySelector("input").focus(); return; } const [i, k] = ik(b.dataset.efixgo); chatEdits(m, i, k, note); });
+  all(".eIn").forEach(inp => inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); const go = inp.closest("[data-efixrow]").querySelector("[data-efixgo]"); if (go) go.click(); } });
+  all("[data-eclose]").forEach(a => a.onclick = e => { e.preventDefault(); if (!confirm("나눈 고침 목록을 닫을까요? (바꿔 넣은 글은 원고에 그대로 남습니다)")) return; delete m.thread[+a.dataset.eclose].edits; save(true); chatRefresh(m.id); });
   all("[data-copy]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.copy.split(":").map(Number); navigator.clipboard.writeText(m.thread[i].alts[k]); b.textContent = "복사됨"; });
 }
 function chatNewDrop() { chatNew = null; delete chatDraft.new; if (chatActive === "new") chatActive = null; renderChat(); marksRefresh(); }

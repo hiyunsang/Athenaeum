@@ -4419,21 +4419,34 @@ def add_decision(text, section, line, replaces=""):
 
 
 def decision_draft(doc, body):
-    """대화(고른 글을 놓고 나눈 것)에서 확정된 결정을 작업 자료 파일에 남길 한 줄로. → {text, section, replaces}"""
+    """대화(고른 글을 놓고 나눈 것)에서 확정된 결정 · 거절한 제안 · 할 일(kind)을 작업 자료 파일에 남길 한 줄로. → {text, section, replaces}"""
     fp = _linked_file(doc, body.get("path"), body.get("name"))
     cur = _read_text(fp) if fp else ""
     thread = "\n".join("[%s] %s%s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1200],
                                       ("\n  (대안: " + " / ".join(str(a)[:200] for a in m.get("alts") or []) + ")") if m.get("alts") else "")
                        for m in (body.get("thread") or [])[-10:])
-    prompt = ("저자와 Claude 가 논문 원고의 한 부분을 놓고 나눈 대화다. 이 대화에서 **정해진 것**을, 이 논문의 작업 자료 파일(결정 사항 기록)에 남길 한 줄로 정리하라. JSON 으로만 답하라:\n"
-              "{\"text\": \"- 결정 내용 한 줄 (이유가 있으면 짧게 덧붙임)\", \"section\": \"넣을 제목\", \"replaces\": \"이 결정이 파일의 기존 줄을 뒤집거나 고치는 것이면 그 줄을 글자 그대로, 아니면 빈 문자열\"}\n"
-              "규칙:\n- 다음 대화에서도 지켜야 할 것만 적는다: 용어·표기·문체 방침, 무엇을 넣고 뺄지, 수치를 어떻게 적을지, 심사 대응 방침 등. 그 문장 하나의 단순한 다듬기는 결정이 아니다.\n"
-              "- 저자가 받아들였거나 분명히 정한 것만. '(대안으로 바꿈)' 은 저자가 그 대안을 골랐다는 뜻이다. 정해진 것이 없으면 text 를 빈 문자열로.\n"
-              "- section 은 아래 파일의 제목(## …) 가운데 알맞은 것의 글자 그대로. 맞는 제목이 없으면 짧은 새 제목.\n"
-              "- 파일의 말투와 형식을 따른다. 날짜는 붙이지 마라(프로그램이 붙인다). Claude 의 의견이 아니라 결정된 내용을 적는다.\n\n"
-              "[결정 파일: %s]\n%s\n\n[원고에서 고른 글 — %s]\n%s\n\n[대화]\n%s%s"
-              % (body.get("name") or "(새 파일)", cur[:12000] or "(아직 비어 있음)", str(body.get("where") or ""), str(body.get("quote") or "")[:2000], thread or "(없음)",
-                 ("\n\n[저자의 메모]\n" + str(body.get("note"))[:1000]) if body.get("note") else ""))
+    kind = str(body.get("kind") or "decision")   # 결정 / 거절한 제안(reject) / 할 일(todo) — 2026-10-27
+    pick = re.sub(r"\s+", " ", str(body.get("pick") or "")).strip()[:1500]   # 저자가 답에서 드래그해 고른 대목
+    head = {
+        "reject": ("이 대화에서 **Claude 가 제안했지만 저자가 받아들이지 않은 것**을, 이 논문의 작업 자료 파일에 남길 한 줄로 정리하라 — 다음 대화(여기와 Claude 채팅)에서 같은 제안을 되풀이하지 않게. JSON 으로만 답하라:\n"
+                   "{\"text\": \"- 제안: 무엇을 어떻게 하자는 것이었나 — 저자의 까닭: …\", \"section\": \"거절한 제안\", \"replaces\": \"\"}\n"
+                   "규칙:\n- 저자가 말로 거절·보류했거나 '(고치기 전으로 되돌림)' 한 제안만. 대안을 쓰지 않고 지나간 것은 거절로 보지 않는다.\n"
+                   "- 까닭은 저자가 말한 것만 적고, 말하지 않았으면 까닭 부분을 비운다(지어내지 않는다).\n- 받아들이지 않은 제안이 없으면 text 를 빈 문자열로.\n"),
+        "todo": ("이 대화에서 **저자가 하기로 한 일**(받아들인 지적 가운데 아직 원고에 반영하지 않은 것)을, 이 논문의 작업 자료 파일에 남길 할 일 한 줄로 정리하라. JSON 으로만 답하라:\n"
+                 "{\"text\": \"- 어느 절: 무엇을 어떻게 (왜 — 짧게)\", \"section\": \"할 일\", \"replaces\": \"\"}\n"
+                 "규칙:\n- 저자가 받아들였거나 하겠다고 한 것만. Claude 의 지적을 전부 옮기지 않는다.\n- 이미 '(대안으로 바꿈)' 으로 반영된 것은 끝난 일이라 적지 않는다.\n"
+                 "- [저자가 답에서 고른 대목] 이 있으면 그 대목이 할 일이다 — 어느 절에서 무엇을 어떻게 할지로 바꿔 적는다.\n- 할 일이 없으면 text 를 빈 문자열로.\n"),
+    }.get(kind, "이 대화에서 **정해진 것**을, 이 논문의 작업 자료 파일(결정 사항 기록)에 남길 한 줄로 정리하라. JSON 으로만 답하라:\n"
+                "{\"text\": \"- 결정 내용 한 줄 (이유가 있으면 짧게 덧붙임)\", \"section\": \"넣을 제목\", \"replaces\": \"이 결정이 파일의 기존 줄을 뒤집거나 고치는 것이면 그 줄을 글자 그대로, 아니면 빈 문자열\"}\n"
+                "규칙:\n- 다음 대화에서도 지켜야 할 것만 적는다: 용어·표기·문체 방침, 무엇을 넣고 뺄지, 수치를 어떻게 적을지, 심사 대응 방침 등. 그 문장 하나의 단순한 다듬기는 결정이 아니다.\n"
+                "- 저자가 받아들였거나 분명히 정한 것만. '(대안으로 바꿈)' 은 저자가 그 대안을 골랐다는 뜻이다. 정해진 것이 없으면 text 를 빈 문자열로.\n")
+    tail = ("- section 은 아래 파일의 제목(## …) 가운데 알맞은 것의 글자 그대로. 맞는 제목이 없으면 짧은 새 제목.\n"
+            "- 파일의 말투와 형식을 따른다. 날짜는 붙이지 마라(프로그램이 붙인다). Claude 의 의견이 아니라 저자 쪽에서 정해진 내용을 적는다.\n\n"
+            "[결정 파일: %s]\n%s\n\n[원고에서 고른 글 — %s]\n%s\n\n[대화]\n%s%s%s"
+            % (body.get("name") or "(새 파일)", cur[:12000] or "(아직 비어 있음)", str(body.get("where") or ""), str(body.get("quote") or "")[:2000], thread or "(없음)",
+               ("\n\n[저자가 답에서 고른 대목]\n" + pick) if pick else "",
+               ("\n\n[저자의 메모]\n" + str(body.get("note"))[:1000]) if body.get("note") else ""))
+    prompt = "저자와 Claude 가 논문 원고의 한 부분을 놓고 나눈 대화다. " + head + tail   # % 는 tail 안에서만 — + 로 이은 조각에 % 를 걸지 않는다
     raw = (cfg["claude_text"](prompt, timeout=120, model="sonnet") or "").strip()
     m = re.search(r"\{.*\}", raw, re.S)
     try:
@@ -4464,6 +4477,8 @@ def source_op(doc, body):
             return {"error": "기록할 글이 없습니다"}
         if not re.match(r"^[-*•]\s", line):
             line = "- " + line
+        if body.get("kind") == "todo" and not re.match(r"^- \[[ xX]\]", line):   # 할 일은 체크 상자 줄로 — 끝나면 저자(나 Claude 채팅)가 [x] 로 (2026-10-27)
+            line = "- [ ] " + re.sub(r"^[-*•]\s+", "", line)
         if body.get("date", True) and not re.search(r"\(\d{4}-\d{2}-\d{2}\)\s*$", line):
             line += " (%s)" % time.strftime("%Y-%m-%d")
         cur = _read_text(fp) if exists else "# 결정 사항\n"
@@ -5138,6 +5153,148 @@ def _sec_nodes(doc, nid):
                 break
             out.append(n)
     return out
+
+
+def _edit_listing(doc, key, proposal):
+    """원고를 절 id · 문단 번호와 함께 — [(절 id, 제목, 글의 키, [문단])]. 아주 긴 원고(9만 자 넘게)면 제안이 번호·이름으로 가리킨 절만(하나도 못 맞추면 전체)."""
+    alt = "draft_en" if key == "draft" else "draft"
+    f = doc.get("front") or {}
+    items = []
+    ab = (f.get("abstract") or "").strip()
+    if ab:
+        items.append(("front", "초록 (Abstract)", "abstract", [x.strip() for x in re.split(r"\n\s*\n", ab) if x.strip()]))
+    for n in doc.get("outline") or []:
+        k = key if (n.get(key) or "").strip() else alt
+        t = (n.get(k) or "").strip()
+        if t:
+            items.append((str(n.get("id")), str(n.get("heading") or ""), k, [x.strip() for x in re.split(r"\n\s*\n", t) if x.strip()]))
+    if sum(len(p) for it in items for p in it[3]) > 90000:
+        low = proposal.lower()
+
+        def hit(nid, head):
+            if nid == "front":
+                return "초록" in proposal or "abstract" in low
+            num = re.match(r"\s*(\d+(?:\.\d+)*)", head)
+            if num and re.search(r"(?<![\d.])" + re.escape(num.group(1)) + r"(?![\d.])", proposal):
+                return True
+            words = re.findall(r"[A-Za-z가-힣]{3,}", head)[:3]
+            return bool(words) and all(w.lower() in low for w in words)
+        sel = [it for it in items if hit(it[0], it[1])]
+        if sel:
+            items = sel
+    return items
+
+
+def chat_edits(doc, body):
+    """대화의 답(제안)을 원고 문단마다의 고침으로 나눈다 — 저자가 한 곳씩 보고 바꾸거나 건너뛰거나 고쳐 달라고 한다 (2026-10-27).
+    리비전의 propose 와 같은 방식: 절 id·문단 번호로 받아 before/after 로 돌려주고 반영은 화면에서. only = 그 한 곳만 저자의 지시(note)대로 다시.
+    → {edits[{id, node, key, heading, type, para, before, after, prev, point, why}], skipped[], note, model, effort, tok, sec, i}"""
+    memo = next((m for m in doc.get("memos") or [] if m.get("id") == body.get("memo")), None)
+    if not memo:
+        return {"error": "대화를 찾지 못했습니다"}
+    th = memo.get("thread") or []
+    try:
+        i = int(body.get("i"))
+    except (TypeError, ValueError):
+        i = max((k for k, x in enumerate(th) if x.get("role") == "claude"), default=-1)
+    if i < 0 or i >= len(th) or th[i].get("role") != "claude":
+        return {"error": "답을 찾지 못했습니다"}
+    proposal = str(th[i].get("text") or "").strip()
+    if not proposal:
+        return {"error": "답이 비어 있습니다"}
+    key = "draft_en" if memo.get("key") == "draft_en" else "draft"
+    items = _edit_listing(doc, key, proposal)
+    only = body.get("only") if isinstance(body.get("only"), dict) else None
+    if only:
+        items = [it for it in items if it[0] == str(only.get("node") or "")] or items
+    if not items:
+        return {"error": "원고에 아직 글이 없습니다"}
+    note = str(body.get("note") or "").strip()
+    hist = "\n".join("[%s] %s" % ("저자" if m.get("role") == "user" else "Claude", str(m.get("text") or "")[:1200])
+                     for m in th[:i][-6:] if not m.get("quiet") and not m.get("swap") and m.get("text"))
+    sample = " ".join(p for it in items for p in it[3])[:2000]
+    lang_en = (doc.get("meta") or {}).get("lang") == "en" or sum(1 for ch in sample if ord(ch) < 128) > len(sample) * 0.8
+    listing = "\n\n".join("== %s: %s ==\n%s" % (nid, head, "\n".join("[%d] %s" % (k + 1, p) for k, p in enumerate(paras))) for nid, head, _, paras in items)
+    system, pre, whole = _ctx(doc, memo.get("node"), key, proposal[:3000], True)
+    rule = ("당신은 기계가공 분야 국제 저널 논문의 공저자다. 아래 [제안]은 이 원고를 놓고 Claude 가 저자에게 한 답이고, 저자가 그 제안을 원고에 반영하려 한다. "
+            "제안 가운데 원고의 글을 실제로 바꾸는 것만 골라 **문단 하나하나의 고침**으로 나눠라 — 저자가 한 곳씩 보고 바꾸거나 건너뛴다. JSON 으로만 답하라:\n"
+            "{\"edits\": [{\"node\": \"절 id (아래 목록의 == id ==)\", \"para\": 문단 번호, \"type\": \"edit|insert|delete\", \"text\": \"고친 문단 전체 (insert 면 새 문단, delete 면 빈 문자열)\", "
+            "\"point\": \"제안의 어느 항목인지 (번호나 첫 몇 낱말)\", \"why\": \"무엇을 왜 바꾸나 — 한국어 한 줄\"}], "
+            "\"skipped\": [\"원고를 바꾸지 않는 항목 · 저자가 먼저 확인할 것 — 한 줄씩\"], \"note\": \"한국어 한두 문장\"}\n"
+            "규칙:\n- 글은 %s로. 제안이 가리킨 문단만 고치고, 제안과 무관한 문장·수치·인용 번호 [n]·그림 번호·수식($…$)은 그대로 둔다.\n"
+            "- edits 의 text 는 그 번호 문단 자신을 고친 글 전체다. 문단을 없애거나 합칠 때는 delete 를 따로 내고 내용을 다른 번호로 밀어 옮겨 쓰지 마라. 문단 순서는 바꾸지 마라. insert 의 para 는 그 뒤에 넣을 문단 번호(맨 앞이면 0).\n"
+            "- 제안이 '확인한 뒤'·'데이터를 받으면'·'나중에' 같은 조건을 단 항목과 저자에게 묻는 항목은 edits 에 넣지 말고 skipped 에 적는다. 제안이 비워 둔 값([ ]건 같은 것)은 지어내지 말고 글에도 [ ] 로 남긴다.\n"
+            "- 한 항목이 여러 절을 고치면 절마다 따로. 같은 문단에 두 항목이 걸리면 하나의 edit 로 합친다. 원고에 없는 수치·결과·문헌을 지어내지 마라.\n"
+            "- 제안이 고친 글을 이미 적어 두었으면 그 글을 쓰고, 방향만 말했으면 그 방향대로 문단을 고쳐 써라 — 제안의 말(한국어 설명)을 문단에 옮겨 적지 마라.\n"
+            "- 저자가 대화에서 거절한 방향은 따르지 않는다. 초록(front)은 길이를 거의 늘리지 않는다.\n"
+            % ("영어 학술 문체" if lang_en else "한국어 학술 문체"))
+    if only:
+        rule += ("\n[이 한 곳만] 절 %s 문단 %s (%s)%s — 앞서 낸 안:\n%s\n저자의 지시: %s\n→ 이 한 곳만 저자의 지시대로 다시 내라. edits 에는 그 하나만(같은 node·para·type), 나머지는 비워라.\n"
+                 % (only.get("node"), only.get("para"), only.get("type"), (" · " + str(only.get("point") or "")[:120]) if only.get("point") else "", str(only.get("after") or "")[:4000], note or "(없음)"))
+    prompt = (pre + rule + "\n[제안]\n" + proposal[:12000] + (("\n\n[앞선 대화]\n" + hist) if hist else "") +
+              (("\n\n[저자의 추가 지시]\n" + note) if note and not only else "") +
+              "\n\n[원고 — 절 id 와 문단 번호. edits 의 node 는 == 뒤의 id, para 는 [번호]" + ("" if whole else " (원고 전체는 위에)") + "]\n" + listing)
+    model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
+    run = cfg.get("claude_run")
+    t0 = time.time()
+    meta = {}
+    if run:
+        res = run(prompt, timeout=900, model=model, effort=effort, tools="", system=system or None, job=("ms:" + str(body.get("rid"))) if body.get("rid") else None)
+        if (res or {}).get("cancelled"):
+            return {"cancelled": True, "error": "취소했습니다"}
+        raw = (res or {}).get("text", "")
+        meta = {"model": (res or {}).get("model", ""), "tok": (res or {}).get("tok")}
+    else:
+        raw = cfg["claude_text"]((system or "") + prompt, timeout=600, model=model, effort=effort) or ""
+    mm = re.search(r"\{.*\}", raw, re.S)
+    try:
+        r = json.loads(mm.group(0)) if mm else None
+    except ValueError:
+        r = None
+    if not isinstance(r, dict):
+        return {"error": "Claude 응답을 읽지 못했습니다" + _why()}
+    by = {nid: (head, k, paras) for nid, head, k, paras in items}
+    order = {it[0]: n for n, it in enumerate(items)}
+    out = []
+    for e in r.get("edits") or []:
+        if not isinstance(e, dict):
+            continue
+        nid = str(e.get("node") or "").strip()
+        if nid not in by:
+            continue
+        head, k, paras = by[nid]
+        typ = e.get("type") if e.get("type") in ("edit", "insert", "delete") else "edit"
+        try:
+            p = int(e.get("para"))
+        except (TypeError, ValueError):
+            continue
+        t = str(e.get("text") or "").strip()
+        if typ == "edit":
+            if not (0 < p <= len(paras)) or not t or _norm_ws(t) == _norm_ws(paras[p - 1]):
+                continue
+            item = {"type": "edit", "para": p, "before": paras[p - 1], "after": t}
+        elif typ == "insert":
+            if not (0 <= p <= len(paras)) or not t:
+                continue
+            item = {"type": "insert", "para": p, "before": paras[p - 1] if p >= 1 else "", "after": t}
+        else:
+            if not (0 < p <= len(paras)):
+                continue
+            item = {"type": "delete", "para": p, "before": paras[p - 1], "after": "", "prev": paras[p - 2] if p >= 2 else ""}
+        item.update({"node": nid, "key": k, "heading": head, "point": str(e.get("point") or "")[:160], "why": str(e.get("why") or "")[:300]})
+        out.append(item)
+    out.sort(key=lambda e: (order[e["node"]], e["para"], {"edit": 0, "delete": 0, "insert": 1}[e["type"]]))
+    seen, dedup = set(), []
+    for e in out:   # 같은 문단의 edit·delete 가 둘이면 앞의 것만
+        kk = (e["node"], e["para"], e["type"] == "insert")
+        if kk in seen and e["type"] != "insert":
+            continue
+        seen.add(kk)
+        dedup.append(e)
+    for n, e in enumerate(dedup):
+        e["id"] = "e%d" % (n + 1)
+    return {"edits": dedup, "skipped": [str(x)[:300] for x in (r.get("skipped") or []) if str(x).strip()][:20], "note": str(r.get("note") or "")[:500],
+            "model": meta.get("model", ""), "effort": effort or "", "tok": meta.get("tok"), "sec": round(time.time() - t0, 1), "i": i, "t": time.time()}
 
 
 def _ask_selection(doc, body):
@@ -6876,6 +7033,11 @@ def handle_post(h, body):
             if not doc:
                 return h._send(400, {"error": "원고 없음"})
             return h._send(200, ask_selection(doc, body))
+        if p == "/api/ms/chat_edits":   # 답(제안)을 문단마다의 고침으로 나누기 — 화면이 하나씩 반영한다 (2026-10-27)
+            doc = load_ms(body.get("id"))
+            if not doc:
+                return h._send(400, {"error": "원고 없음"})
+            return h._send(200, chat_edits(doc, body))
         if p == "/api/ms/math":   # 수식 미리보기: LaTeX → MathML (브라우저가 직접 그린다)
             items = (body.get("items") or [])[:400]
             return h._send(200, {"mml": [mathtex.to_mathml(str(it.get("tex") or "")[:4000], bool(it.get("display"))) for it in items]})
