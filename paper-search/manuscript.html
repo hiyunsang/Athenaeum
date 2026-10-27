@@ -616,7 +616,7 @@ function renderDocMode() {
       "<a href='#' data-go='" + n.id + "'>문단 모드 →</a></div></div>").join("") + "</div>";
   ed.querySelectorAll("[data-memos]").forEach(a => a.onclick = e => { e.preventDefault(); memoJump(a.dataset.memos); });
   ed.querySelectorAll("[data-stylus]").forEach(a => a.onclick = e => { e.preventDefault(); stylusOpen(a.dataset.stylus); });
-  ed.querySelectorAll("[data-asksec]").forEach(a => a.onclick = e => { e.preventDefault(); openSel({ nid: a.dataset.asksec, key, quote: "", start: 0, scope: "sec" }, null, "ask"); });
+  ed.querySelectorAll("[data-asksec]").forEach(a => a.onclick = e => { e.preventDefault(); openSel({ nid: a.dataset.asksec, key, quote: "", start: 0, scope: "sec" }, null, "ask", true); });
   renderDocMeta();
   $("docLang").onchange = e => { localStorage.setItem("ms_doclang", e.target.value); renderDocMode(); };
   autogrow($("docTitle")); $("docTitle").oninput = () => { f.title = $("docTitle").value.replace(/\n/g, " "); doc.title = f.title; save(); $("msSel").options[$("msSel").selectedIndex].text = f.title; };
@@ -2680,7 +2680,7 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey && !e.altKey && (e.key === "k" || e.key === "K")) {   // 고른 글이 있으면 바로 대화로
     const ta = document.activeElement, tg = taTarget(ta);
     if (tg && ta.selectionEnd - ta.selectionStart >= 2) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, end: ta.selectionEnd, quote: ta.value.slice(ta.selectionStart, ta.selectionEnd) }, tg), null, "ask"); }
-    else if (tg) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, quote: "", scope: "para" }, tg), null, "ask"); }   // 고른 글이 없으면 커서가 있는 문단을 놓고
+    else if (tg) { e.preventDefault(); selBarHide(); openSel(Object.assign({ start: ta.selectionStart, quote: "", scope: "para" }, tg), null, "ask", true); }   // 고른 글이 없으면 커서가 있는 문단을 놓고 (늘 새 카드)
   }
 });
 const SEL_CHIPS = [["더 간결하게", "더 간결하게 줄여 줘"], ["더 자연스럽게", "뜻은 그대로 두고 더 자연스러운 학술 문체로 고쳐 줘"], ["다른 표현", "같은 뜻의 다른 표현을 보여 줘"], ["논리 점검", "이 부분의 논리와 근거에 빈 곳이 있는지 봐 줘"], ["심사자라면", "심사자라면 이 부분에서 무엇을 물을까?"], ["영어로", "영어 학술 문체로 옮겨 줘"]];
@@ -2717,7 +2717,7 @@ function chatScope(sc) {   // 새로 묻는 글의 범위를 바꾼다
 const chatEffort = () => localStorage.getItem("ms_sel_effort") || "xhigh";
 const chatLib = () => localStorage.getItem("ms_sel_lib") !== "0";   // Claude 가 내 서재(번역·논문모음)를 찾아보게 할지
 function closeSel() { chatNew = null; }
-function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있는 대화(memo)를 서랍의 「대화」에 연다
+function openSel(ctx, memo, mode, fresh) {   // 드래그한 글(ctx) 또는 이미 있는 대화(memo)를 서랍의 「대화」에 연다. fresh = 같은 자리의 지난 대화가 있어도 새 카드로 (「+ 묻기」·Ctrl+K·「이 절에 묻기」 — 2026-10-27, 지난 대화만 다시 열려 '새로 묻기가 안 뜬다')
   if (!doc) return;
   if (ctx && !memo) {   // 범위를 정한다: 문단이면 그 자리의 문단을 찾고, 절·원고 전체면 고른 글 없이
     ctx = Object.assign({ scope: "sel" }, ctx); ctx.home = { nid: ctx.nid, key: ctx.key }; ctx.pos = ctx.start || 0;
@@ -2726,7 +2726,7 @@ function openSel(ctx, memo, mode) {   // 드래그한 글(ctx) 또는 이미 있
     if (scopeWide(ctx.scope)) { Object.assign(ctx, { quote: "", start: 0, end: 0 }); if (ctx.scope === "doc") { ctx.nid = "front"; ctx.key = "abstract"; } }
   }
   const same = x => !x.done && x.node === ctx.nid && x.key === ctx.key && (scopeWide(ctx.scope) ? x.scope === ctx.scope : !scopeWide(x.scope) && x.quote === ctx.quote);
-  const m = memo || (doc.memos || []).find(same) || null;   // 같은 글(같은 절)의 대화가 있으면 이어서
+  const m = memo || (!fresh && (doc.memos || []).find(same)) || null;   // 드래그한 글이 같은 대화가 있으면 이어서 (fresh 면 늘 새 카드)
   if (chatSide()) chatOpen.clear();   // 글 옆 보기에서는 한 번에 하나만 펼친다 (좁은 여백에 긴 대화가 여럿이면 다른 카드가 제 글에서 멀어진다)
   if (m) { chatOpen.add(m.id); if (m.unread) { m.unread = false; save(); } if (m.done) chatShowDone = true; }
   else chatNew = Object.assign({ mode: mode || "ask" }, ctx);
@@ -2880,7 +2880,7 @@ function renderChat() {
   const nsrc = (doc.sources || []).filter(x => x.on !== false).length + (doc.source_dirs || []).filter(d => d.on !== false).reduce((a, d) => a + (((srcScan[d.path] || {}).files || []).length || 1), 0);
   const side = chatSide();
   const top = "<div class='sec chtop'>대화 " + live.length + "개 <span class='hint' style='font-weight:400;text-transform:none'>" + [cnt(["new"]) ? "새 답 " + cnt(["new"]) : "", cnt(["wait"]) ? "생각 중 " + cnt(["wait"]) : ""].filter(Boolean).join(" · ") + "</span><span style='margin-left:auto'></span>" +
-    "<a href='#' class='act' id='chWide' style='font-weight:400;text-transform:none' title='드래그하지 않고 묻기: 커서가 있는 문단, 그 절 전체, 원고 전체를 놓고 묻습니다. 글 칸에 커서를 두고 Ctrl+K 를 눌러도 됩니다'>+ 묻기</a>" +
+    "<a href='#' class='act' id='chWide' style='font-weight:400;text-transform:none' title='드래그하지 않고 원고 전체를 놓고 새로 묻습니다 — 카드의 「범위」 에서 커서가 있던 문단·그 절로 바꿀 수 있습니다. 글 칸에 커서를 두고 Ctrl+K 를 누르면 그 문단부터'>+ 묻기</a>" +
     (chatOpen.size ? "<a href='#' class='act' id='chFold' style='font-weight:400;text-transform:none'>" + (side ? "접기" : "모두 접기") + "</a>" : "") +
     "<span class='chview' title='글 옆에 = 워드의 메모처럼, 대화를 그 글 옆에 놓고 글을 따라 움직입니다 · 목록 = 모든 대화를 원고 순서대로 한 줄로'><a href='#' data-view='side'" + (side ? " class='on'" : "") + ">글 옆에</a><a href='#' data-view='list'" + (side ? "" : " class='on'") + ">목록</a></span>" +
     "<select id='chEffort' title='Claude 가 얼마나 깊이 생각할지. 엑스트라 = Opus 가 꼼꼼히(기본, 30초~1분 반), 최대 = 가장 깊이(더 오래 걸리고 사용량이 많음), Fable = 가장 뛰어난 모델(사용량이 가장 많음), 빠름 = Sonnet(10~20초)'>" + [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]].map(o => "<option value='" + o[0] + "'" + (chatEffort() === o[0] ? " selected" : "") + ">" + o[1] + "</option>").join("") + "</select></div>";
@@ -2899,12 +2899,12 @@ function renderChat() {
   if (side) {   // 글 옆에: 지금 가운데 칸에 그 글이 있는 대화만, 그 글의 높이에
     const here = m => !!taFor(m.node, m.key), order = done => chatGroups(done).reduce((a, g) => a.concat(g.memos), []).filter(here);
     const on = order(false), away = live.length - on.length;
-    const notes = [!on.length && !chatNew ? "원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 대화는 그 글 옆에 놓이고 글을 따라 움직입니다" : "",
+    const notes = [!on.length && !chatNew ? "원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K), 드래그 없이 원고 전체를 놓고 물으려면 「+ 묻기」. 대화는 그 글 옆에 놓이고 글을 따라 움직입니다" : "",
       away ? "지금 화면에 없는 절의 대화 " + away + "개 — <a href='#' class='act' data-view='list'>목록으로 보기</a>" : "", doneLink, srcLink].filter(Boolean);
     h = "<div class='chhead'>" + top + (notes.length ? "<div class='hint'>" + notes.join(" · ") + "</div>" : "") + "</div>" +
       "<div id='chLane'><div id='chLaneIn'>" + newCard + on.concat(chatShowDone ? order(true) : []).map(chatCardHtml).join("") + "</div></div>";
   } else {
-    h = top + "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (srcLink ? " " + srcLink : "") + "</div>" + newCard;
+    h = top + "<div class='hint' style='padding-bottom:6px'>원고의 글을 드래그 → 「Claude 에게」 · 「메모」 (Ctrl+K). 드래그 없이 원고 전체·절을 놓고 물으려면 「+ 묻기」. 여러 곳을 잇달아 물어도 되고, 대화는 원고에 나오는 순서로 놓입니다." + (srcLink ? " " + srcLink : "") + "</div>" + newCard;
     chatGroups(false).forEach(g => { h += "<div class='rvrev' style='padding-left:0'><a href='#' data-ggo='" + esc(g.nid) + "' style='color:var(--text);text-decoration:none' title='이 절을 가운데에 열기'>" + esc(g.heading.slice(0, 44)) + "</a> <span class='hint' style='display:inline;font-weight:400'>" + g.memos.length + "</span></div>" + g.memos.map(chatCardHtml).join(""); });
     if (dn) h += "<div class='rvrev' style='padding-left:0'>" + doneLink + "</div>" + (chatShowDone ? chatGroups(true).map(g => g.memos.map(chatCardHtml).join("")).join("") : "");
   }
@@ -2915,11 +2915,11 @@ function renderChat() {
   const q = id => el.querySelector("#" + id);
   if (q("chEffort")) q("chEffort").onchange = e => localStorage.setItem("ms_sel_effort", e.target.value);
   if (q("chFold")) q("chFold").onclick = e => { e.preventDefault(); chatOpen.clear(); renderChat(); };
-  if (q("chWide")) q("chWide").onclick = e => {   // 드래그하지 않고 묻기: 마지막으로 쓰던 글 칸의 커서가 있는 문단부터 (범위는 카드에서 바꾼다)
+  if (q("chWide")) q("chWide").onclick = e => {   /* 드래그하지 않고 묻기: 늘 새 카드, 기본 범위는 원고 전체 — 범위 줄에서 커서가 있던 문단·그 절로 바꿀 수 있다 (2026-10-27) */
     e.preventDefault();
     const ta = lastTa && document.body.contains(lastTa) && taTarget(lastTa) ? lastTa : null;
-    const tg = ta ? taTarget(ta) : cur === "front" ? { nid: "front", key: "abstract" } : node(cur) ? { nid: cur, key: docKey() } : null;
-    if (tg) openSel(Object.assign({ start: ta ? ta.selectionStart : 0, quote: "", scope: ta ? "para" : "sec" }, tg), null, "ask");
+    const tg = ta ? taTarget(ta) : cur === "front" ? { nid: "front", key: "abstract" } : node(cur) ? { nid: cur, key: docKey() } : { nid: "front", key: "abstract" };
+    openSel(Object.assign({ start: ta ? ta.selectionStart : 0, quote: "", scope: "doc" }, tg), null, "ask", true);
   };
   if (q("chSrc")) q("chSrc").onclick = e => { e.preventDefault(); switchTab("src"); };
   if (q("chDoneT")) q("chDoneT").onclick = e => { e.preventDefault(); chatShowDone = !chatShowDone; renderChat(); };
@@ -3007,7 +3007,8 @@ function chatLayout() {
   if (lr.width < 80 || cr.width < 80) return;   // 숨은 탭·접힌 창: 폭이 0 이라 높이를 잴 수 없다
   const off = cr.top - lr.top, gap = 6, its = [];
   inn.querySelectorAll(".card.memo").forEach(card => {
-    const id = card.id === "chNew" ? "new" : card.dataset.mid, y = chatAnchorY(id);
+    const id = card.id === "chNew" ? "new" : card.dataset.mid; let y = chatAnchorY(id);
+    if (y == null && id === "new") y = c.scrollTop + 8;   /* 새 카드의 글(원고 전체 → 초록)이 화면에 없어도 숨기지 않고 보이는 자리의 맨 위에 (2026-10-27) */
     card.style.display = y == null ? "none" : "";
     if (y != null) its.push({ card, id, want: Math.max(0, y + off - 4) });
   });
