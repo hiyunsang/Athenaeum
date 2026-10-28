@@ -2917,6 +2917,7 @@ _SCOPE_RULE = (
     "{\"topics\": [{\"topic\": \"장 제목처럼 — 서재 훑기가 잡을 재료·공정·현상·방법의 이름을 그대로 넣어서\", \"focus\": \"무엇을 중심으로 하고 무엇을 빼는지 한 구절\", \"papers\": [K번호들]}]}. "
     "후보 논문이 실제로 받치는 것만(6편 이상), 2~4개. 새 주제를 낼 일이 아니면 JSON 을 적지 않는다.\n"
     "- 한 장에 읽는 논문은 위에 적은 편수까지다. 그보다 많이 받치는 주제는 읽히지 않는 논문이 생긴다고 말해 준다.\n"
+    "- 연구자가 바라는 장이 [후보 논문] 밖의 논문을 필요로 하면(주제를 바꾸거나 넓히자는 말, 후보에 없는 계보·역사·방법) 후보에서 억지로 고르지 말고 그렇다고 첫 문장에 말한 뒤, 서재를 다시 훑을 주제 문장을 JSON 의 topics 로 적는다 — 그 항목에 \"rescan\": true 를 두고, papers 에는 후보 가운데 거기 드는 것만(없으면 빈 목록). 다시 훑을 주제 문장에는 훑기가 잡을 모델·현상·방법·재료의 이름을 영어와 한국어로 그대로 넣는다(예: 'Merchant 전단면 모델·Oxley·슬립선장(slip-line field)·사영역').\n"
     "- 서재 밖 지식으로 보태는 말은 '서재 밖:' 으로 시작하는 문단에 갈라 적는다.\n"
     "- 글은 평문으로: 굵게 표시(**)·제목 기호(#)는 쓰지 않고, 항목은 '- ' 로 시작하는 줄로. JSON 블록을 붙였으면 그 뒤에는 아무 말도 적지 않는다.")
 
@@ -2936,6 +2937,7 @@ def _scope_prompt(sc, question):
     head = ("연구자가 자기 서재의 논문만으로 전공 교과서 한 장을 쓰려고 [주제]를 적었다. 프로그램이 서재를 훑어 그 주제에 걸리는 논문 %d편을 찾았고(한 장에 읽을 수 있는 것은 %d편), "
             "한 장에 담기엔 넓다고 보아 [제안된 좁힌 주제]를 냈다. 연구자가 그 제안을 놓고 묻는다. 아래 재료만으로 답하라.\n\n"
             "[주제] %s\n[계획이 본 범위] %s\n[훑은 개념] %s\n\n[제안된 좁힌 주제]\n%s\n\n"
+            "(후보 논문은 [주제] 의 낱말로 서재를 훑어 걸린 것뿐이다 — 서재에 있어도 이 목록에 없는 논문은 너에게 보이지 않는다. 연구자가 그런 논문을 바라면 다시 훑을 주제를 제안한다.)\n"
             "[후보 논문] (K번호 | 첫 저자 연도 · 저널 | 제목 | 한 줄 요약 — 주제 문장이 많은 순)\n%s\n\n[지난 문답]\n%s\n\n[물음]\n%s\n\n"
             ) % (int(sc.get("n") or 0), int(sc.get("cap") or 0), sc.get("topic", "")[:400], plan.get("scope", ""), concepts, opts, "\n".join(sc.get("rows") or []), prev, question[:3000])
     return head + _SCOPE_RULE
@@ -2970,7 +2972,7 @@ def _scope_topics(text, sc):
             if mk and 1 <= int(mk.group()) <= nrows and int(mk.group()) not in ks:
                 ks.append(int(mk.group()))
         out.append({"topic": str(o["topic"]).strip()[:160], "focus": str(o.get("focus") or "").strip()[:200], "n": len(ks), "papers": ks,
-                    "files": [files[k - 1] for k in ks if k - 1 < len(files)], "claude": True})
+                    "files": [files[k - 1] for k in ks if k - 1 < len(files)], "claude": True, "rescan": bool(o.get("rescan"))})   # rescan: 후보 밖의 논문이 필요해 그 주제로 다시 훑으라는 제안
     return body, out
 
 

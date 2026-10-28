@@ -1285,22 +1285,23 @@ $("go").onclick = async () => {
   if (!sc.broad) return startStudy(topic);   /* 넓은데 제안이 없어도(좁히기 답을 못 받음) 시작하지 않고 '이대로 넓게' + 묻기 칸을 보인다 (2026-10-28) */
   sc.options = sc.options || [];
   /* 제안 하나는 라디오 한 줄 — Claude 가 답에서 낸 주제도 같은 꼴로 뒤에 붙는다 (2026-10-28) */
-  const optHtml = (o, i, mine) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='radio' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (mine ? " <span style='color:var(--accent);font-size:11px'>Claude 가 답에서 제안</span>" : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>";
+  const optHtml = (o, i, mine) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='radio' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (mine ? " <span style='color:var(--accent);font-size:11px'>Claude 가 답에서 제안</span>" + (o.rescan ? " <span style='color:var(--amber);font-size:11px'>· 후보 밖의 논문이 필요 — 「다시 훑기」</span>" : "") : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>";
   const bindOpts = () => $("newMsg").querySelectorAll("input[name=scopeopt]").forEach(inp => inp.onchange = () => { const v = inp.value; $("topic").value = v === "all" ? topic : sc.options[+v].topic; });
   $("newMsg").innerHTML = "<div style='color:var(--amber);margin-bottom:4px'>이 주제는 서재 " + sc.n + "편에 걸립니다 — " + esc(sc.why || "한 장에 담기엔 넓어 보입니다") + "</div><div id='scOpts'>" + sc.options.map((o, i) => optHtml(o, i, false)).join("") + "</div>" +
     "<label style='display:block;padding:4px 0'><input type='radio' name='scopeopt' value='all'" + (sc.options.length ? "" : " checked") + "> 이대로 넓게 (서재 " + sc.n + "편 가운데 " + sc.cap + "편까지 읽음)</label>" +
-    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button> <span class='hint'>고른 주제는 위 칸에 채워지니 고쳐도 됩니다</span></div>" + scopeAskHtml();
+    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button><button class='act' id='scopeRescan' title='위 칸의 주제로 서재를 다시 훑어 후보와 제안을 새로 받습니다 (Sonnet, 1분쯤)'>이 주제로 다시 훑기</button> <span class='hint'>고른 주제는 위 칸에 채워지니 고쳐도 됩니다 — 주제를 바꿨으면 「다시 훑기」 로 후보부터 새로</span></div>" + scopeAskHtml(sc);
   bindOpts();
   $("topic").value = sc.options.length ? sc.options[0].topic : topic;
   $("scopeGo").onclick = () => { const t = $("topic").value.trim(); if (!t) return; $("go").dataset.skip = t; startStudy(t); };
+  $("scopeRescan").onclick = () => { if (!$("topic").value.trim()) { $("topic").focus(); return; } $("go").dataset.skip = ""; $("go").click(); };   /* 바뀐 주제로 훑기부터 다시 (2026-10-28, 사용자: 제안 셋이 맘에 안 들어 묻는 칸에 다른 주제를 적음) */
   bindScopeAsk(sc, optHtml, bindOpts);
 };
 /* 주제 좁히기 제안을 놓고 Claude 에게 묻기 (2026-10-28, 사용자: 제안이 뜬 자리를 보이며 '여기서도 물어볼 수 있게끔') — 장이 아직 없어 답은 이 칸에만 남는다.
    서버(scope_ask)는 훑은 후보 60편의 제목·한 줄 요약과 제안을 재료로 답하고, 주제를 합치거나 나누자고 하면 새 주제를 K번호로 확인해 돌려준다 → 고르기에 더한다 */
 const SC_EFFORT = { xhigh: "Opus · 엑스트라", max: "Opus · 최대", high: "Opus · 보통", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름" };
-function scopeAskHtml() {
-  const eff = lsGet("study_scope_effort", "") || $("effort").value;
-  return "<div class='scask'><div class='sec'>이 제안을 놓고 Claude 에게 묻기</div><div id='scThread'></div>" +
+function scopeAskHtml(sc) {
+  const eff = lsGet("study_scope_effort", "") || "xhigh";   /* 폼의 모델(쓰기용)과 따로 — Opus 최대는 이 물음에 10분을 넘겼다 (2026-10-28) */
+  return "<div class='scask'><div class='sec'>이 제안을 놓고 Claude 에게 묻기</div><div class='hint' style='margin:0 0 var(--s2)'>후보 " + (sc && sc.n ? sc.n + "편" : "목록") + " 안에서만 답합니다 — 다른 갈래의 논문이 필요한 주제면 위 칸의 주제를 고쳐 「이 주제로 다시 훑기」. Sonnet 30초쯤 · Opus 엑스트라 2~4분 · Opus 최대는 10분을 넘길 수 있고 15분에 끊깁니다.</div><div id='scThread'></div>" +
     "<div class='ask'><textarea id='scIn' placeholder='예: 첫째와 셋째를 합치면 몇 편인가 · 둥근 날 모델만으로 한 장이 서나 · 주제마다 어떤 논문이 드나 (Ctrl+Enter)'></textarea>" +
     "<div class='row'><select id='scEff' title='답하는 모델'>" + Object.keys(SC_EFFORT).map(k => "<option value='" + k + "'" + (k === eff ? " selected" : "") + ">" + SC_EFFORT[k] + "</option>").join("") + "</select><button class='primary' id='scGo'>묻기</button></div><div class='hint' id='scMsg'></div></div></div>";
 }
@@ -1313,7 +1314,7 @@ function bindScopeAsk(sc, optHtml, bindOpts) {
     const q = t.value.trim(); if (!q || go.disabled) return;
     thread.push({ role: "user", text: q, t: Date.now() / 1000 }); draw(); t.value = ""; go.disabled = true;
     const t0 = Date.now();
-    $("scMsg").innerHTML = "Claude 생각 중 · <span id='scSec'>0초</span> <button class='act' id='scCancel' title='돌고 있는 호출을 끊고 물음을 입력 칸에 되돌립니다'>취소</button>";
+    $("scMsg").innerHTML = "Claude 생각 중 · <span id='scSec'>0초</span> <span style='color:var(--text-3)'>(" + (eff.value === "fast" ? "30초쯤" : eff.value === "max" ? "10분 넘을 수 있음 · 15분에 끊김" : "2~4분") + ")</span> <button class='act' id='scCancel' title='돌고 있는 호출을 끊고 물음을 입력 칸에 되돌립니다'>취소</button>";
     const tick = setInterval(() => { const el = $("scSec"); if (el) el.textContent = fmtDur(Math.round((Date.now() - t0) / 1000)); }, 1000);
     $("scCancel").onclick = () => { $("scCancel").disabled = true; api("/api/study", { op: "scope_cancel", sid: sc.sid }).catch(() => {}); };
     let r; try { r = await api("/api/study", { op: "scope_ask", sid: sc.sid, question: q, effort: eff.value }); } catch (e) { r = { error: "서버 연결 실패" }; }
