@@ -2873,6 +2873,10 @@ def scope_check(body):
         m = ms.paper_meta(c["file"])
         line = ms._paper_line(c["file"])
         rows.append("K%d | %s · %s | %s%s" % (k + 1, ms.paper_short(c["file"]), m.get("journal", ""), str(m.get("title") or "")[:140], (" | " + line[:160]) if line else ""))
+    sc_id = "sc%d" % int(time.time() * 1000)
+    out["sid"] = sc_id   # 이 훑기를 놓고 묻는 열쇠(scope_ask) — options 목록은 같은 객체라 아래서 채워지는 것이 그대로 든다
+    _scope_keep(sc_id, {"topic": topic[:800], "plan": st["plan"], "rows": rows, "files": [c["file"] for c in cands[:60]], "n": len(cands), "cap": cap,
+                        "options": out["options"], "thread": [], "pending": None, "t": time.time()})
     prompt = (
         "연구자가 자기 서재의 논문만으로 전공 교과서 한 장을 쓰려 한다. 적은 [주제]가 서재 논문 %d편에 걸리는데 한 장에 읽을 수 있는 것은 %d편이다. 후보 논문의 제목과 한 줄 요약을 보고, "
         "이 주제가 한 장에 담기에 넓은지 판단하고 넓으면 좁힌 주제를 2~4개 제안하라.\n"
@@ -2890,9 +2894,138 @@ def scope_check(body):
                 except (TypeError, ValueError):
                     n = 0
                 out["options"].append({"topic": str(o["topic"]).strip()[:160], "focus": str(o.get("focus") or "").strip()[:200], "n": n})
-        if not out["options"]:
-            out["broad"] = False
+        if out["broad"] and not out["options"]:   # 넓다고는 했는데 제안이 없다 — 시작하지 말고 묻기 칸에서 나누기를 물을 수 있게 (2026-10-28)
+            out["why"] = (out["why"] + " " if out["why"] else "") + "(좁힌 주제 제안은 받지 못했습니다 — 아래 묻기 칸에서 나누기를 물을 수 있습니다)"
+    else:   # 좁히기 답 자체를 못 받았다(Claude 응답 없음·JSON 아님) — 후보가 상한을 크게 넘으므로 조용히 쓰기를 시작하지 않는다 (시험 중 실제로 한 번 그렇게 돼 Opus 쓰기가 시작됐다)
+        out["broad"] = True
+        out["why"] = "후보가 한 장 분량을 크게 넘는데 좁힌 주제 제안을 받지 못했습니다" + _why() + " — 아래 묻기 칸에서 나누기를 묻거나, 이대로 넓게 쓸 수 있습니다"
     return out
+
+
+# ---------- 주제 좁히기 제안을 놓고 묻기 (2026-10-28, 사용자: 좁힌 주제 제안이 뜬 자리를 보이며 '여기서도 물어볼 수 있게끔') ----------
+# 장 파일이 아직 없으므로 훑은 결과(후보 60편의 줄·계획·제안·문답)는 메모리(_SCOPE)에 잠시 둔다. 답은 같은 요청 안에서 돌려준다(창을 닫으면 사라진다 —
+# 연구자가 폼 앞에 앉아 있는 자리다). 취소는 claude_cancel(job). 연구자가 주제를 합치거나 나누자고 하면 Claude 가 답 끝에 JSON 으로 새 주제를 적고,
+# 프로그램이 후보 목록의 K번호로 확인해(없는 번호는 버림) 화면의 고르기에 더한다 — 지어낸 편수가 아니라 후보 목록에서 센 편수.
+_SCOPE = {}
+_SCOPE_LOCK = threading.Lock()
+_SCOPE_RULE = (
+    "답하는 법:\n"
+    "- 한국어로, 두괄식으로: 첫 문장에 답, 그 다음에 까닭. 짧은 문장으로 한 번에 한 가지씩. 인사말·되묻는 말·잘된 점의 나열은 넣지 않는다. 따질 것이 여럿이면 항목마다 줄을 바꾸고 두세 낱말 머리말과 쌍점으로 연다.\n"
+    "- 논문은 [후보 논문] 목록에 있는 것만 들고, 'Fang 2005 (K3)' 처럼 K번호를 같이 적는다. 목록에 없는 논문을 끌어오지 않고, 제목과 한 줄 요약만으로는 알 수 없는 것은 모른다고 적는다.\n"
+    "- 어느 주제에 어떤 논문이 드는지 물으면 주제마다 K번호 목록으로 답한다. 편수는 목록에서 세어서 적는다.\n"
+    "- 연구자가 주제를 합치거나 나누거나 바꾸자고 하면(또는 더 나은 좁히기를 물으면) 답 끝에 JSON 블록 하나를 붙인다: "
+    "{\"topics\": [{\"topic\": \"장 제목처럼 — 서재 훑기가 잡을 재료·공정·현상·방법의 이름을 그대로 넣어서\", \"focus\": \"무엇을 중심으로 하고 무엇을 빼는지 한 구절\", \"papers\": [K번호들]}]}. "
+    "후보 논문이 실제로 받치는 것만(6편 이상), 2~4개. 새 주제를 낼 일이 아니면 JSON 을 적지 않는다.\n"
+    "- 한 장에 읽는 논문은 위에 적은 편수까지다. 그보다 많이 받치는 주제는 읽히지 않는 논문이 생긴다고 말해 준다.\n"
+    "- 서재 밖 지식으로 보태는 말은 '서재 밖:' 으로 시작하는 문단에 갈라 적는다.\n"
+    "- 글은 평문으로: 굵게 표시(**)·제목 기호(#)는 쓰지 않고, 항목은 '- ' 로 시작하는 줄로. JSON 블록을 붙였으면 그 뒤에는 아무 말도 적지 않는다.")
+
+
+def _scope_keep(sid, rec):
+    with _SCOPE_LOCK:
+        _SCOPE[sid] = rec
+        for k in sorted(_SCOPE, key=lambda x: _SCOPE[x].get("t", 0))[:-12]:   # 최근 12개만
+            _SCOPE.pop(k, None)
+
+
+def _scope_prompt(sc, question):
+    opts = "\n".join("%d. %s — %s (%d편)" % (i + 1, o.get("topic", ""), o.get("focus", ""), int(o.get("n") or 0)) for i, o in enumerate(sc.get("options") or [])) or "(없음)"
+    plan = sc.get("plan") or {}
+    concepts = "; ".join("%s%s: %s" % (c.get("name", ""), " (필수)" if c.get("must") else "", ", ".join((c.get("en") or [])[:6])) for c in plan.get("concepts") or []) or "(없음)"
+    prev = "\n".join(("나: " if m.get("role") == "user" else "Claude: ") + (m.get("text") or "")[:1500] for m in (sc.get("thread") or [])[-8:]) or "(없음)"
+    head = ("연구자가 자기 서재의 논문만으로 전공 교과서 한 장을 쓰려고 [주제]를 적었다. 프로그램이 서재를 훑어 그 주제에 걸리는 논문 %d편을 찾았고(한 장에 읽을 수 있는 것은 %d편), "
+            "한 장에 담기엔 넓다고 보아 [제안된 좁힌 주제]를 냈다. 연구자가 그 제안을 놓고 묻는다. 아래 재료만으로 답하라.\n\n"
+            "[주제] %s\n[계획이 본 범위] %s\n[훑은 개념] %s\n\n[제안된 좁힌 주제]\n%s\n\n"
+            "[후보 논문] (K번호 | 첫 저자 연도 · 저널 | 제목 | 한 줄 요약 — 주제 문장이 많은 순)\n%s\n\n[지난 문답]\n%s\n\n[물음]\n%s\n\n"
+            ) % (int(sc.get("n") or 0), int(sc.get("cap") or 0), sc.get("topic", "")[:400], plan.get("scope", ""), concepts, opts, "\n".join(sc.get("rows") or []), prev, question[:3000])
+    return head + _SCOPE_RULE
+
+
+def _scope_topics(text, sc):
+    """답 끝의 {"topics": [...]} 를 떼어 (답 글, 확인된 주제들). papers 는 K번호로 후보 목록에서 확인 — 없는 번호는 버리고 편수는 프로그램이 센다."""
+    m = None
+    for mm in re.finditer(r"\{\s*\"topics\"", text):
+        m = mm
+    if not m:
+        return text.strip(), []
+    a = m.start()
+    b = text.rfind("}")
+    if b <= a:
+        return text.strip(), []
+    d = _json_of(text[a:b + 1])
+    if not d:
+        return text.strip(), []
+    body = (text[:a] + text[b + 1:]).strip()
+    body = re.sub(r"```(?:json)?\s*(?:```)?\s*$", "", body).strip()   # 코드 울타리 자투리
+    body = re.sub(r"\n```(?:json)?\s*\n?```", "", body).strip()
+    nrows = len(sc.get("rows") or [])
+    files = sc.get("files") or []
+    out = []
+    for o in (d.get("topics") or [])[:4]:
+        if not isinstance(o, dict) or not str(o.get("topic") or "").strip():
+            continue
+        ks = []
+        for p in o.get("papers") or []:
+            mk = re.search(r"\d+", str(p))
+            if mk and 1 <= int(mk.group()) <= nrows and int(mk.group()) not in ks:
+                ks.append(int(mk.group()))
+        out.append({"topic": str(o["topic"]).strip()[:160], "focus": str(o.get("focus") or "").strip()[:200], "n": len(ks), "papers": ks,
+                    "files": [files[k - 1] for k in ks if k - 1 < len(files)], "claude": True})
+    return body, out
+
+
+def scope_ask(body):
+    """좁힌 주제 제안을 놓고 묻는다 → {answer, topics[{topic, focus, n, papers, files}], model, sec, tok} · {cancelled} · {error}. 같은 요청 안에서 답한다(1~4분)."""
+    sid = str(body.get("sid") or "")
+    with _SCOPE_LOCK:
+        sc = _SCOPE.get(sid)
+    if not sc:
+        return {"error": "훑은 결과가 남아 있지 않습니다(서버가 다시 켜졌을 수 있습니다) — 「쓰기 시작」을 다시 눌러 주세요"}
+    q = str(body.get("question") or "").strip()
+    if len(q) < 2:
+        return {"error": "물음을 적어 주세요"}
+    if sc.get("pending"):
+        return {"error": "앞 물음의 답을 아직 기다리는 중입니다"}
+    model, eff = ms._SEL_EFFORT.get(body.get("effort") or "xhigh", ms._SEL_EFFORT["xhigh"])
+    run = cfg.get("claude_run")
+    if not run:
+        return {"error": "이 서버는 Claude 를 부를 수 없습니다"}
+    t0 = time.time()
+    job = "study:scope:%s:%d" % (sid, int(t0 * 1000))
+    sc["pending"] = job
+    prompt = _scope_prompt(sc, q)
+    try:
+        try:
+            res = run(prompt, timeout=900, model=model, effort=eff, tools="", job=job)
+        except TypeError:          # 시험 틀의 claude_run 은 job 을 모른다
+            res = run(prompt, timeout=900, model=model, effort=eff, tools="")
+    except Exception as e:
+        sc["pending"] = None
+        return {"error": "Claude 호출 실패: " + str(e)[:200]}
+    sc["pending"] = None
+    if (res or {}).get("cancelled"):
+        return {"cancelled": True}
+    text = ((res or {}).get("text") or "").strip()
+    if not text:
+        return {"error": "Claude 응답이 없습니다" + _why()}
+    answer, topics = _scope_topics(text, sc)
+    sc["thread"] += [{"role": "user", "text": q, "t": t0}, {"role": "claude", "text": answer, "topics": topics, "t": time.time()}]
+    for o in topics:   # 다음 물음의 [제안된 좁힌 주제] 에도 든다 (화면의 고르기와 같은 차례)
+        sc["options"].append({"topic": o["topic"], "focus": o["focus"], "n": o["n"]})
+    return {"answer": answer, "topics": topics, "model": (res or {}).get("model") or "", "sec": round(time.time() - t0), "tok": (res or {}).get("tok")}
+
+
+def scope_cancel(body):
+    with _SCOPE_LOCK:
+        sc = _SCOPE.get(str(body.get("sid") or ""))
+    job = (sc or {}).get("pending")
+    if not job:
+        return {"error": "기다리는 물음이 없습니다"}
+    cancel = cfg.get("claude_cancel")
+    if not cancel:
+        return {"error": "이 서버는 취소를 지원하지 않습니다"}
+    cancel(job)
+    return {"ok": True}
 
 
 def _paper_record(f, role="core"):
@@ -4230,6 +4363,10 @@ def handle_post(h, body):
             return h._send(200, start(body))
         if op == "scope":
             return h._send(200, scope_check(body))
+        if op == "scope_ask":
+            return h._send(200, scope_ask(body))
+        if op == "scope_cancel":
+            return h._send(200, scope_cancel(body))
         if op == "rewrite":
             return h._send(200, rewrite_start(sid))
         if op == "resume":
