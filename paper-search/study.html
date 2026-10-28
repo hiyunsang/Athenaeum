@@ -1285,11 +1285,25 @@ $("go").onclick = async () => {
   if (!sc.broad) return startStudy(topic);   /* 넓은데 제안이 없어도(좁히기 답을 못 받음) 시작하지 않고 '이대로 넓게' + 묻기 칸을 보인다 (2026-10-28) */
   sc.options = sc.options || [];
   /* 제안 하나는 라디오 한 줄 — Claude 가 답에서 낸 주제도 같은 꼴로 뒤에 붙는다 (2026-10-28) */
-  const optHtml = (o, i, mine) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='radio' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (mine ? " <span style='color:var(--accent);font-size:11px'>Claude 가 답에서 제안</span>" + (o.rescan ? " <span style='color:var(--amber);font-size:11px'>· 후보 밖의 논문이 필요 — 「다시 훑기」</span>" : "") : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>";
-  const bindOpts = () => $("newMsg").querySelectorAll("input[name=scopeopt]").forEach(inp => inp.onchange = () => { const v = inp.value; $("topic").value = v === "all" ? topic : sc.options[+v].topic; });
+  const optHtml = (o, i, mine) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='checkbox' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (mine ? " <span style='color:var(--accent);font-size:11px'>Claude 가 답에서 제안</span>" + (o.rescan ? " <span style='color:var(--amber);font-size:11px'>· 후보 밖의 논문이 필요 — 「다시 훑기」</span>" : "") : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>";
+  const bindOpts = () => {   /* 체크 상자 여러 개 — 둘 이상이면 합친 주제를 위 칸에 (2026-10-28, 사용자: '선택지 여러 개 눌러서 할 수 있게끔 — 첫째·셋째가 맘에 들 수도') */
+    const inputs = [...$("newMsg").querySelectorAll("input[name=scopeopt]")];
+    const sync = src => {
+      if (src && src.value === "all" && src.checked) inputs.forEach(x => { if (x !== src) x.checked = false; });
+      else if (src && src.value !== "all" && src.checked) { const a = inputs.find(x => x.value === "all"); if (a) a.checked = false; }
+      const picked = inputs.filter(x => x.checked && x.value !== "all").map(x => sc.options[+x.value]).filter(Boolean);
+      const allOn = inputs.some(x => x.value === "all" && x.checked);
+      $("topic").value = allOn || !picked.length ? topic : picked.map(o => o.topic).join(" · ");
+      const m = $("scMulti");
+      if (m) m.innerHTML = picked.length > 1 ? "주제 " + picked.length + "개를 합쳐 위 칸에 넣었습니다 — 많아야 " + picked.reduce((t, o) => t + (o.n || 0), 0) + "편(겹치면 덜). 「이 주제로 다시 훑기」 로 후보를 확인하거나 <button class='act' id='scMerge'>Claude 에게 합친 주제 다듬기</button>" : "";
+      const mg = $("scMerge");
+      if (mg) mg.onclick = () => { const t = $("scIn"), g = $("scGo"); if (!t || !g) return; t.value = "체크한 주제 " + picked.map(o => "'" + o.topic + "'").join(" 와 ") + " 를 한 장의 주제로 합쳐 줘. 겹치는 논문과 합친 편수를 세고, 합친 주제 문장을 제안해 줘."; g.click(); };
+    };
+    inputs.forEach(inp => inp.onchange = () => sync(inp));
+  };
   $("newMsg").innerHTML = "<div style='color:var(--amber);margin-bottom:4px'>이 주제는 서재 " + sc.n + "편에 걸립니다 — " + esc(sc.why || "한 장에 담기엔 넓어 보입니다") + "</div><div id='scOpts'>" + sc.options.map((o, i) => optHtml(o, i, false)).join("") + "</div>" +
-    "<label style='display:block;padding:4px 0'><input type='radio' name='scopeopt' value='all'" + (sc.options.length ? "" : " checked") + "> 이대로 넓게 (서재 " + sc.n + "편 가운데 " + sc.cap + "편까지 읽음)</label>" +
-    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button><button class='act' id='scopeRescan' title='위 칸의 주제로 서재를 다시 훑어 후보와 제안을 새로 받습니다 (Sonnet, 1분쯤)'>이 주제로 다시 훑기</button> <span class='hint'>고른 주제는 위 칸에 채워지니 고쳐도 됩니다 — 주제를 바꿨으면 「다시 훑기」 로 후보부터 새로</span></div>" + scopeAskHtml(sc);
+    "<label style='display:block;padding:4px 0'><input type='checkbox' name='scopeopt' value='all'" + (sc.options.length ? "" : " checked") + "> 이대로 넓게 (서재 " + sc.n + "편 가운데 " + sc.cap + "편까지 읽음)</label><div class='hint' id='scMulti' style='margin:0 0 4px'></div>" +
+    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button><button class='act' id='scopeRescan' title='위 칸의 주제로 서재를 다시 훑어 후보와 제안을 새로 받습니다 (Sonnet, 1분쯤)'>이 주제로 다시 훑기</button> <span class='hint'>체크한 주제가 위 칸에 채워지고, 둘 이상이면 합쳐집니다 — 고쳐도 되고, 주제를 바꿨으면 「다시 훑기」 로 후보부터 새로</span></div>" + scopeAskHtml(sc);
   bindOpts();
   $("topic").value = sc.options.length ? sc.options[0].topic : topic;
   $("scopeGo").onclick = () => { const t = $("topic").value.trim(); if (!t) return; $("go").dataset.skip = t; startStudy(t); };
