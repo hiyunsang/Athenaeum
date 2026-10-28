@@ -61,6 +61,7 @@
   .ix .ixi:hover h2 { color: var(--accent); }
   .ix .ixi .ixm { color: var(--text-3); font-size: 12px; } .ix .ixi .ixm .now { color: var(--accent); }
   .ix .ixi .ixt { color: var(--text-2); font-size: 12.5px; margin-top: 4px; line-height: 1.5; }
+  .ix .ixi .ixm .ixdel { float: right; padding: 0 4px; opacity: .55; } .ix .ixi:hover .ixm .ixdel { opacity: 1; }   /* 장 목록에서 바로 지우기 (2026-10-28) */
   /* 발표 자료 모음 — 모든 장의 자료를 한눈에, 머리줄의 「발표 자료」 (사용자 2026-10-12: '발표자료를 그냥 위에 장 목록 옆에 띄우고') */
   .dkgal { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }
   .dkgal .dkcard { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); cursor: pointer; overflow: hidden; display: flex; flex-direction: column; }
@@ -441,11 +442,12 @@ async function decksSync() {   /* 장 목록은 장의 상태가 바뀔 때만 �
 function indexHtml() {
   return "<div class='page ix'><div class='ixh'><h1>장 목록</h1><span class='hint'>" + items.length + "장 — 누르면 그 장이 열립니다. 최근에 Claude 에게 물은 것은 오른쪽 칸에.</span></div>" + batchBoxHtml() +
     (items.length ? items.map(x => { const s = x.stats || {}; return "<article class='ixi' data-id='" + esc(x.id) + "'><h2>" + esc(x.title || x.topic) + "</h2>" +
-      "<div class='ixm'>" + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") + (s.comments ? " · Claude 의 생각" : "") + ((x.chats || []).length ? " · 대화 " + x.chats.length : "") : " · " + stateText(x)) + "</div>" +
+      "<div class='ixm'>" + (x.status !== "running" ? "<button class='act warn ixdel' data-del='" + esc(x.id) + "' title='이 장을 지웁니다 (되돌릴 수 없음)'>지우기</button>" : "") + (cur && cur.id === x.id ? "<span class='now'>지금 장</span> · " : "") + fmtDate(x.t) + (x.status === "done" ? " · 논문 " + (s.cited || 0) + "편 · 문장 " + (s.units || 0) + (s.figs ? " · 그림 " + s.figs : "") + (s.tables ? " · 표 " + s.tables : "") + (s.comments ? " · Claude 의 생각" : "") + ((x.chats || []).length ? " · 대화 " + x.chats.length : "") : " · " + stateText(x)) + "</div>" +
       (x.topic && x.topic !== x.title ? "<div class='ixt'>주제: " + esc(x.topic) + "</div>" : "") + "</article>"; }).join("") : "<div class='hint'>아직 쓴 장이 없습니다. 왼쪽에서 주제를 적고 「쓰기 시작」.</div>") + "</div>";
 }
 function bindIndex() {
   $("main").querySelectorAll(".ixi").forEach(a => a.onclick = () => openStudy(a.dataset.id));
+  $("main").querySelectorAll(".ixdel").forEach(b => b.onclick = e => { e.stopPropagation(); delStudy(b.dataset.del); });   /* 줄을 여는 click 보다 먼저 (2026-10-28, 사용자: '장 목록에 있는 거 지우는 버튼도 안 보여') */
   bindBatch();
 }
 // 모두 다시 만들기 대기열 (사용자 2026-10-11: '확고히 한 이후에는 나머지 전부 다시 만들 건데') — 고른 장을 차례로 하나씩: 논문 다시 읽기 → 그림 색인 → 짜기부터 → 편집자 패스 → 대조 → 용어·생각·물음
@@ -556,10 +558,15 @@ function bindRun() {
   const r = $("resumeBtn"); if (r) r.onclick = async () => { r.disabled = true; const x = await api("/api/study", { op: "resume", id: cur.id }); if (x.error) alert(x.error); await refresh(true); loadList(); };
   const d = $("delBtn"); if (d) d.onclick = delStudy;
 }
-async function delStudy() {
-  if (!cur || !confirm("「" + ((cur.chapter || cur.plan || {}).title || cur.topic) + "」 를 지울까요?")) return;
-  const r = await api("/api/study", { op: "delete", id: cur.id }); if (r.error) { alert(r.error); return; }
-  cur = null; curId = ""; lsSet("study_last", ""); await loadList(); renderMain(); renderPanel();
+async function delStudy(id) {   /* id 없이(단추의 onclick 은 event 를 넘긴다) 부르면 지금 장 */
+  if (typeof id !== "string") id = cur ? cur.id : "";
+  if (!id) return;
+  const it = items.find(x => x.id === id) || {};
+  const title = (cur && cur.id === id) ? ((cur.chapter || cur.plan || {}).title || cur.topic) : (it.title || it.topic || id);
+  if (!confirm("「" + title + "」 를 지울까요?")) return;
+  const r = await api("/api/study", { op: "delete", id }); if (r.error) { alert(r.error); return; }
+  if (cur && cur.id === id) { cur = null; curId = ""; lsSet("study_last", ""); }
+  await loadList(); renderMain(); renderPanel();
 }
 
 // ---- 다 쓴 장: 보기마다 따로 그린다
