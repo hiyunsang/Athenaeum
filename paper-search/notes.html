@@ -108,7 +108,8 @@
   .mx td.hy { min-width: 150px; } .mx .kd { color: var(--text-3); font-size: 10.5px; } .mx td.c { text-align: center; font-weight: 600; width: 26px; cursor: help; } .mx td.dp { color: var(--accent); } .mx td.dm { color: var(--amber); } .mx td.dz { color: var(--text-2); } .mx td.dt, .mx td.dq { color: var(--text-3); font-weight: 400; }
   .mxobs { font-size: 11.5px; line-height: 1.5; color: var(--text-2); } .mxobs .hint { display: inline; }
   .frm { padding: 6px 0 6px 6px; border-bottom: 1px solid var(--line-2); border-left: 2px solid transparent; font-size: 12px; line-height: 1.5; } .frm.on { border-left-color: var(--accent); background: var(--accent-bg); } .frm .fh { font-weight: 600; cursor: pointer; display: block; } .frm .fh input { vertical-align: -1px; } .frm .kd { color: var(--text-3); font-size: 10.5px; font-weight: 400; } .frm .rec { color: var(--green); font-size: 10.5px; } .frm .fit { font-size: 10.5px; font-weight: 400; color: var(--text-3); } .frm .fit.high { color: var(--green); } .frm .fit.low { color: var(--amber); } .frm .fq { margin-top: 2px; } .frm .fc { color: var(--text-2); font-size: 11.5px; margin-top: 1px; } .frm .dr { font-weight: 600; color: var(--text-3); font-size: 11px; } .frm .cites { display: inline; }
-  .frm .kd.forest { color: var(--green); } .frm .kd.tree { color: var(--amber); } .frm .mapt { border-collapse: collapse; margin: 2px 0 0; font-size: 11.5px; } .frm .mapt td { padding: 0 8px 0 0; vertical-align: top; color: var(--text-2); } .frm .mapt td.a { color: var(--text-3); } .frm .fc.out { color: var(--amber); } .frm .gl { margin: 2px 0 0; padding-left: 1.1em; font-size: 11.5px; } .frm .gl li { margin-bottom: 2px; } .frm .gl .own { color: var(--accent); font-size: 11px; } .frm .gl .hint { display: block; }
+  .frm .kd.forest { color: var(--green); } .frm .kd.tree { color: var(--amber); } .frm .mapt { border-collapse: collapse; margin: 2px 0 0; font-size: 11.5px; } .frm .mapt td { padding: 0 8px 0 0; vertical-align: top; color: var(--text-2); } .frm .mapt td.a { color: var(--text-3); } .frm .fc.out { color: var(--amber); } .frm .gl { margin: 2px 0 0; padding-left: 1.1em; font-size: 11.5px; } .frm .gl li { margin-bottom: 2px; } .frm .gl .own { color: var(--accent); font-size: 11px; } .frm .gl .hint { display: block; } .frm .kd.gen { color: var(--accent); } .frm .chk { margin-top: 3px; padding-top: 3px; border-top: 1px dashed var(--line-2); } .frm .chk .hint { display: block; } .frm .chk .own { color: var(--accent); font-size: 11px; }
+  .wbox { padding: 0 var(--s3) 4px; border-bottom: 1px solid var(--line); font-size: 11.5px; } .wbox summary { cursor: pointer; list-style: none; } .wbox summary::-webkit-details-marker { display: none; } .wbox .wi { padding: 4px 0; border-top: 1px solid var(--line-2); line-height: 1.45; } .wbox .wi:first-of-type { border-top: 0; } .wbox .wi .t { color: var(--text); } .wbox .wi .m { color: var(--text-3); font-size: 10.5px; } .wbox .wi .m a.act { font-size: 10.5px; } .wbox .wi .own { color: var(--accent); } .wbox .wi button.act { padding: 0 8px 0 0; font-size: 10.5px; }
   .dsgi { padding: 6px 0; border-bottom: 1px solid var(--line-2); font-size: 12px; line-height: 1.5; } .dsgi .dh { font-weight: 600; } .dsgi .dh .hint { display: inline; font-weight: 400; } .dsgi .dq { color: var(--text); margin-top: 1px; } .dsgi .dg { color: var(--text-2); } .dsgi .dm { color: var(--text-2); font-size: 11.5px; margin-top: 2px; } .dsgi .dr { font-weight: 600; color: var(--text-3); font-size: 11px; } .dsgi .dc { margin-top: 2px; font-size: 11.5px; color: var(--text-2); }
   .dsgt { width: 100%; border-collapse: collapse; font-size: 11.5px; line-height: 1.45; margin-top: 4px; } .dsgt th, .dsgt td { text-align: left; vertical-align: top; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line-2); } .dsgt th { color: var(--text-3); font-weight: 600; font-size: 11px; } .dsgt td .hint { display: inline; }
   .feas .fm { font-weight: 600; margin-right: 4px; } .feas .fm.ok { color: var(--accent); } .feas .fm.no { color: var(--amber); } .feas .fm.unk { color: var(--text-3); } .feas .fh { color: var(--text-2); }
@@ -138,6 +139,7 @@
       <div style="display:flex;gap:6px;align-items:center"><button class="primary" id="newGo">주제 열기</button><button class="act" id="newAsk" title="연구 주제가 아니라 분야를 배우려는 물음 — Claude 가 서재 전부·공부 장을 알고 설명합니다. 읽기 화면의 「이 분야에 관해 묻기」 는 그 논문의 요약을 출발점으로 엽니다">물음 열기</button></div>
       <div class="hint">주제는 공저자처럼 따지고(새로움·실험·반론), 물음은 분야를 설명합니다. 자란 물음은 「주제로 세우기」 로 연구 주제가 됩니다. 공부의 「답하지 못한 것」·탐색 결과·읽기 화면에서도 열 수 있습니다.</div>
     </div>
+    <div id="wanted"></div>
     <div id="list"></div>
   </aside>
   <main id="main">
@@ -160,13 +162,35 @@ const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n 
 const EFFORT = { xhigh: "Opus · 엑스트라", max: "Opus · 최대", high: "Opus · 보통", fast: "Sonnet · 빠름" };
 let META = { status: ["idea", "review", "adopt", "hold"], status_ko: { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" }, kind_ko: { topic: "연구 주제", ask: "물음" }, card_keys: [], card_ko: {}, plan_ko: {}, reviewer_ko: {} };
 const FROM_KO = { study: "공부 장", explore: "논문 탐색", ms: "원고", paper: "논문" };   /* 출발점이 어디서 왔나 */
-let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null;
+let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null, wanted = [];
 const URLP = new URLSearchParams(location.search);
 
 // ---------- 목록 ----------
 async function loadList() {
   let r; try { r = await api("/api/notes"); } catch (e) { return; }
   items = r.items || []; if (r.status) { META = r; META.plan_ko = Object.fromEntries(r.plan_keys || []); META.reviewer_ko = Object.fromEntries(r.reviewers || []); } renderList();
+  loadWanted(false);
+}
+async function loadWanted(sync) {   /* 받을 논문 대기열 — 큰 물음이 적은 서재 밖 원 논문·리뷰 (2026-10-28) */
+  let r; try { r = await api("/api/notes/wanted" + (sync ? "?sync=1" : "")); } catch (e) { return; }
+  wanted = r.items || []; renderWanted();
+}
+function renderWanted() {
+  const el = $("wanted"); if (!el) return;
+  if (!wanted.length) { el.innerHTML = ""; return; }
+  const got = wanted.filter(x => x.got).length, isOpen = lsGet("notes_wanted_open", "1") === "1";
+  let h = "<details class='wbox'" + (isOpen ? " open" : "") + "><summary class='sideh' title='큰 물음이 적은 서재 밖 논문(원 논문·리뷰) — 받아서 다운로드 폴더에 두면 수집이 서재에 넣고, 다음 물음·설계서·갈래가 읽습니다'>받을 논문 <span class='n'>" + (wanted.length - got) + "</span>" + (got ? " <span class='hint' style='display:inline'>· 서재에 들어옴 " + got + "</span>" : "") + " <button class='act' id='wSync' style='margin-left:auto' title='서재에 들어왔는지 다시 봅니다 (제목 대조)'>서재 확인</button></summary>";
+  wanted.slice().sort((a, b) => (a.got ? 1 : 0) - (b.got ? 1 : 0) || (b.t || 0) - (a.t || 0)).forEach(x => {
+    h += "<div class='wi'><div class='t'>" + (x.doi ? "<a href='" + esc(x.doi) + "' target='_blank' title='DOI 로 열기'>" + esc(x.title) + "</a>" : esc(x.title)) + "</div><div class='m'>" + (x.authors ? esc(x.authors) + " · " : "") + (x.year || "?") + (x.venue ? " · " + esc(x.venue) : "") +
+      ((x.from || []).length ? " · " + x.from.map(f => "<a class='act' data-nid='" + esc(f.nid) + "' title='" + esc(f.why || "") + "'>" + esc(f.title) + " " + esc(f.qid) + "</a>").join(", ") : "") + "</div>" +
+      (x.got ? "<div class='m own'>★ 서재에 있음 — " + esc(x.got) + "</div>" : "<div class='m'><button class='act' data-q=\"" + esc(x.title.slice(0, 200)) + "\" title='제목으로 논문 탐색'>탐색 ↗</button><button class='act' data-wdel='" + esc(x.key) + "'>지우기</button></div>") + "</div>";
+  });
+  el.innerHTML = h + "</details>";
+  const dt = el.querySelector("details"); if (dt) dt.ontoggle = () => lsSet("notes_wanted_open", dt.open ? "1" : "0");
+  el.querySelectorAll("[data-q]").forEach(b => b.onclick = () => openBig("/explore?q=" + encodeURIComponent(b.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
+  el.querySelectorAll("[data-nid]").forEach(a => a.onclick = async () => { await open(a.dataset.nid); setTab("framing"); });
+  el.querySelectorAll("[data-wdel]").forEach(b => b.onclick = async () => { const r = await api("/api/notes", { op: "wanted_del", key: b.dataset.wdel }); wanted = r.items || []; renderWanted(); });
+  const sb = $("wSync"); if (sb) sb.onclick = e => { e.preventDefault(); e.stopPropagation(); sb.textContent = "확인 중…"; loadWanted(true); };
 }
 function renderList() {
   const el = $("list");
@@ -198,7 +222,7 @@ async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 
   if (!cur) return;
   let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(cur.id)); } catch (e) { return; }
   if (!cur || r.error || !r.note || r.note.id !== cur.id) return;
-  const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error, n.intro, n.intro_pending, n.intro_error, n.intro_edited, n.matrix, n.matrix_pending, n.matrix_error, n.argmap, n.argmap_pending, n.argmap_error, n.gapcheck, n.gapcheck_pending, n.gapcheck_error, n.framing, n.framing_pending, n.framing_error, n.forest, n.forest_pending, n.forest_error];
+  const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error, n.intro, n.intro_pending, n.intro_error, n.intro_edited, n.matrix, n.matrix_pending, n.matrix_error, n.argmap, n.argmap_pending, n.argmap_error, n.gapcheck, n.gapcheck_pending, n.gapcheck_error, n.framing, n.framing_pending, n.framing_error, n.forest, n.forest_pending, n.forest_error, n.forest_stage];
   const before = JSON.stringify(keys(cur)), after = JSON.stringify(keys(r.note));
   const wasPending = !!cur.pending;
   const pb = TAB_PEND(cur), pa = TAB_PEND(r.note);
@@ -407,7 +431,7 @@ async function send() {
 // ---------- 오른쪽: 갈래 단추로 나눈 칸 (2026-10-26, 사용자: '기능 많은 건 좋은데 계속 스크롤링해야 한다 — 위에 누가 봐도 누르면 되는 단추를 나누고, 눌러서 바꾸는 걸로') ----------
 const CARD_TABS = [
   { id: "card", name: "카드", tip: "주제 카드 — 토의에서 정해진 것 아홉 칸 (연구 물음 · 가설 · 설계 · 예상 결과 · 위험 · 논문 · 연구 그룹 · 저널 · 다음 할 일)" },
-  { id: "framing", name: "틀", tip: "큰 물음(숲) — 여러 논문에 걸친 현상 · 공유 전제 · 타 분야 구조에서 출발하는 물음 → 연구의 틀 — 같은 실험을 기전 · 측정법 · 재료 지침 · 모델 검증 가운데 무엇으로 세울 것인가" },
+  { id: "framing", name: "틀", tip: "큰 물음(숲) — 여러 논문에 걸친 현상 · 공유 전제 · 타 분야의 연구 짜임·방법에서 출발하는 물음(한 단계 위의 층으로 넓혀) → 연구의 틀 — 같은 실험을 기전 · 측정법 · 재료 지침 · 모델 검증 가운데 무엇으로 세울 것인가" },
   { id: "plan", name: "설계서", tip: "실험 설계서 열 칸 · 유사 연구의 설계(서재 주석에서)" },
   { id: "review", name: "반론", tip: "심사위원 셋(실험 · 이론 · 저널)의 반론" },
   { id: "intro", name: "서론", tip: "서론 구조 — 문단마다 역할 · 요지 · 할 말 · 받칠 논문, 심사위원의 비평, 문단 쓰기" },
@@ -716,25 +740,34 @@ function gapcheckHtml() {   /* 공백 검증 — 서론 구조의 공백 문장�
   return h;
 }
 const FR_KIND = { mechanism: "기전", method: "측정·관찰법", material: "재료·공정", model: "모델 검증", scale: "척도 효과", application: "적용 지침" }, FR_FIT = { high: "잘 맞음", mid: "보통", low: "버거움" };
-const FQ_KIND = { phenomenon: "현상", assumption: "전제", import: "타 분야 구조" };
+const FQ_KIND = { phenomenon: "현상", assumption: "전제", import: "타 분야의 짜임·방법" }, EXISTS_KO = { yes: "그렇게 서 있음", partly: "일부만 확인", no: "확인 안 됨" }, ALREADY_KO = { none: "없음", partial: "일부", done: "있음" };
 function forestHtml() {   /* 큰 물음 — 숲을 보는 출발점, 틀 앞에서 고른다 (2026-10-28, 사용자: '네가 내는 주제는 남이 한 것 틈에서 찾는 나무 연구 — 숲을 보고 타 분야 구조를 가져오는 것을 반영할 수 없나') */
   const q = cur.forest, pend = cur.forest_pending, answered = (cur.thread || []).some(m => m.role === "claude");
   let h = "<div class='sec secline'>큰 물음 — 숲" + (q && q.pick ? "<span class='n' style='background:var(--green)'>" + esc(q.pick) + "</span>" : "") + "<span class='r'>" +
-    (pend ? "<span style='color:var(--accent)'>찾는 중…</span> <button class='act' data-cancel='forest'>취소</button>"
-      : "<button class='act' id='forestGo'" + (answered ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + " title='틈 메우기가 아닌 물음 — 여러 논문에 걸친 현상 · 분야가 공유하는 전제 · 다른 분야의 구조(대응표)에서 출발하는 물음 2~4개. 물음마다 틀릴 수 있는 예측 하나, 다시 정리되는 기존 결과, 왜 아직 안 됐나, 우리 연구실로 되는가, 받을 논문(서재 밖). 재료는 서재 주석의 논문 층과 서재의 숲 논문 — Opus 3~5분'>" + (q ? "큰 물음 다시 찾기" : "큰 물음 찾기") + "</button>") + "</span></div>";
+    (pend ? "<span style='color:var(--accent)'>" + (cur.forest_stage === "check" ? "타 분야의 짜임·방법을 세상 문헌으로 확인하는 중…" : "찾는 중…") + "</span> <button class='act' data-cancel='forest'>취소</button>"
+      : "<button class='act' id='forestGo'" + (answered ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + " title='틈 메우기가 아닌 물음 — 여러 논문에 걸친 현상 · 분야가 공유하는 전제 · 다른 분야의 연구 짜임·방법(대응표)에서 출발하는 물음 2~4개 — 주제가 속한 한 단계 위의 층으로 재료를 넓혀 재료 없이도 서는 물음을 하나 이상. 물음마다 틀릴 수 있는 예측 하나, 다시 정리되는 기존 결과, 왜 아직 안 됐나, 우리 연구실로 되는가, 받을 논문(서재 밖). 타 분야의 짜임은 세상 문헌(OpenAlex)으로 확인합니다 — Opus 5~8분'>" + (q ? "큰 물음 다시 찾기" : "큰 물음 찾기") + "</button>") + "</span></div>";
   if (cur.forest_error) h += "<div class='warnbox'>" + esc(cur.forest_error) + "</div>";
   if (q) {
     const m = q.material || {};
     h += "<div class='cm'>" + fmtDate(q.t) + " · " + esc(q.model || "Claude") + (q.sec ? " · " + fmtDur(q.sec) : "") + " · 물음 " + q.items.length + (m.near ? " · 둘레 논문 " + m.near + "편" : "") + (m.tagged ? " · 서재 갈래 " + m.tagged + "편(숲 " + (m.forest || 0) + ")" : " · <span style='color:var(--amber)'>서재 갈래 없음 — 학습 창의 「연구 갈래 붙이기」</span>") + (q.pick ? " · 고른 물음 " + esc(q.pick) + " <button class='act' id='qUnpick'>선택 풀기</button>" : " · 아직 고르지 않음(추천 " + esc(q.recommend || "") + ")") + "</div>";
+    if ((q.layers || []).length) h += "<div class='cm'>한 단계 위: " + q.layers.map(l => esc(l.name)).join(" → ") + (m.wide ? " · 위층 논문 " + m.wide + "편" : " · <span style='color:var(--amber)'>위층 논문 0편</span>") + "</div>";
+    if (q.check_err) h += "<div class='hint' style='color:var(--amber)'>타 분야 확인: " + esc(q.check_err) + "</div>";
     const cite = c => c.file ? "<a class='cite ok' data-open='" + esc(c.file) + "' title='서재에 있음 — 누르면 PDF: " + esc(c.file) + "'>" + esc(c.key) + " ✓</a>" : "<span class='cite no' title='서재에서 못 찾음'>" + esc(c.key) + " ?</span>";
     const cites = cs => (cs || []).length ? " <span class='cites'>" + cs.map(cite).join(" ") + "</span>" : "";
     q.items.forEach(x => {
       const on = q.pick === x.id;
-      h += "<div class='frm" + (on ? " on" : "") + "'><label class='fh'><input type='radio' name='qpick' data-qpick='" + esc(x.id) + "'" + (on ? " checked" : "") + "> <b>" + esc(x.id) + "</b> " + esc(x.name) + " <span class='kd'>" + esc(FQ_KIND[x.kind] || x.kind) + "</span>" + (q.recommend === x.id ? " <span class='rec'>추천</span>" : "") + " <span class='fit " + esc(x.fit) + "'>" + (FR_FIT[x.fit] || "") + "</span></label>" +
+      h += "<div class='frm" + (on ? " on" : "") + "'><label class='fh'><input type='radio' name='qpick' data-qpick='" + esc(x.id) + "'" + (on ? " checked" : "") + "> <b>" + esc(x.id) + "</b> " + esc(x.name) + " <span class='kd'>" + esc(FQ_KIND[x.kind] || x.kind) + "</span>" + (x.general ? " <span class='kd gen' title='이 주제의 재료·공정 없이도 서는 물음 — 그 재료는 첫 시험 재료'>재료 무관</span>" : "") + (q.recommend === x.id ? " <span class='rec'>추천</span>" : "") + " <span class='fit " + esc(x.fit) + "'>" + (FR_FIT[x.fit] || "") + "</span></label>" +
         "<div class='fq'>" + esc(x.question) + "</div>" +
         (x.phenomenon ? "<div class='fc'><span class='dr'>걸친 현상</span> " + esc(x.phenomenon) + cites(x.cites) + "</div>" : "") +
         (x.assumption ? "<div class='fc'><span class='dr'>흔드는 전제</span> " + esc(x.assumption) + "</div>" : "") +
-        ((x.mapping || []).length ? "<div class='fc'><span class='dr'>가져오는 구조" + (x.from_field ? " (" + esc(x.from_field) + ")" : "") + "</span><table class='mapt'>" + x.mapping.map(mm => "<tr><td class='a'>" + esc(mm.there) + "</td><td>↔ " + esc(mm.here) + "</td></tr>").join("") + "</table></div>" : "") +
+        (x.structure ? "<div class='fc'><span class='dr'>가져오는 짜임·방법" + (x.from_field ? " (" + esc(x.from_field) + ")" : "") + "</span> " + esc(x.structure) + "</div>" : "") +
+        ((x.mapping || []).length ? "<div class='fc'><span class='dr'>대응표" + (!x.structure && x.from_field ? " (" + esc(x.from_field) + ")" : "") + "</span><table class='mapt'>" + x.mapping.map(mm => "<tr><td class='a'>" + esc(mm.there) + "</td><td>↔ " + esc(mm.here) + "</td></tr>").join("") + "</table></div>" : "") +
+        (x.method ? "<div class='fc'><span class='dr'>이 문제에서의 실험</span> " + esc(x.method) + "</div>" : "") +
+        (x.source ? "<div class='fc'><span class='dr'>원 논문 (Claude 의 기억)</span> " + esc(x.source) + "</div>" : "") +
+        (x.check ? "<div class='fc chk'><span class='dr'>세상 문헌으로 확인</span> 그 분야에 " + esc(EXISTS_KO[x.check.exists] || x.check.exists) + (x.check.note ? " — " + esc(x.check.note) : "") +
+          ((x.check.canon || []).length ? "<div class='hint'>원 논문·리뷰: " + x.check.canon.map(c => (c.doi ? "<a href='" + esc(c.doi) + "' target='_blank'>" : "") + esc(c.title) + (c.doi ? "</a>" : "") + " (" + (c.year || "?") + (c.venue ? ", " + esc(c.venue) : "") + ")" + (c.owned ? " <span class='own'>★ 서재</span>" : "") + (c.why ? " — " + esc(c.why) : "")).join(" / ") + "</div>" : "") +
+          "<div class='hint'>이 분야에 이미 가져온 사람: " + esc(ALREADY_KO[x.check.already] || x.check.already) + ((x.check.taken || []).length ? " — " + x.check.taken.map(c => (c.doi ? "<a href='" + esc(c.doi) + "' target='_blank'>" : "") + esc(c.title) + (c.doi ? "</a>" : "") + " (" + (c.year || "?") + ")" + (c.owned ? " <span class='own'>★ 서재</span>" : "") + (c.how ? ": " + esc(c.how) : "")).join(" / ") : "") +
+          ((x.check.n_a || x.check.n_b) ? " <span style='color:var(--text-3)'>(DB 그 분야 " + (x.check.n_a || 0) + " · 이 분야 " + (x.check.n_b || 0) + "편)</span>" : "") + "</div></div>" : "") +
         (x.prediction ? "<div class='fc'><span class='dr'>예측</span> " + esc(x.prediction) + "</div>" : "") +
         (x.reorganizes ? "<div class='fc'><span class='dr'>다시 정리되는 것</span> " + esc(x.reorganizes) + cites(x.re_cites) + "</div>" : "") +
         ((x.near || []).length ? "<div class='fc'><span class='dr'>이미 한 것(가까운 연구)</span> " + x.near.map(cite).join(" ") + "</div>" : "") +
@@ -742,16 +775,16 @@ function forestHtml() {   /* 큰 물음 — 숲을 보는 출발점, 틀 앞에�
         (x.ours ? "<div class='fc'><span class='dr'>우리 연구실</span> " + esc(x.ours) + "</div>" : "") +
         (x.plausible ? "<div class='fc'><span class='dr'>왜 그럴듯한가</span> " + esc(x.plausible) + "</div>" : "") +
         (x.outside ? "<div class='fc out'><span class='dr'>서재 밖</span> " + esc(x.outside) + " <span class='hint' style='display:inline'>— 확인할 것</span></div>" : "") +
-        ((x.gets || []).length ? "<div class='fc'><span class='dr'>받을 논문</span><ul class='gl'>" + x.gets.map(g => "<li>" + esc(g.title) + (g.authors ? " — " + esc(g.authors) : "") + " <span class='hint' style='display:inline'>(" + (g.year || "?") + (g.venue ? ", " + esc(g.venue) : "") + ")</span>" + (g.owned ? " <span class='own'>★ 서재에 있음</span>" : " <button class='act' data-q=\"" + esc(g.title.slice(0, 200)) + "\" title='제목으로 논문 탐색 — 받아서 서재에 넣으면 다음 물음·설계서가 읽습니다'>탐색 ↗</button>") + (g.why ? "<div class='hint'>" + esc(g.why) + "</div>" : "") + "</li>").join("") + "</ul></div>" : "") +
+        ((x.gets || []).length ? "<div class='fc'><span class='dr'>받을 논문</span><ul class='gl'>" + x.gets.map(g => "<li>" + (g.doi ? "<a href='" + esc(g.doi) + "' target='_blank' title='DOI 로 열기'>" + esc(g.title) + "</a>" : esc(g.title)) + (g.authors ? " — " + esc(g.authors) : "") + " <span class='hint' style='display:inline'>(" + (g.year || "?") + (g.venue ? ", " + esc(g.venue) : "") + ")</span>" + (g.owned ? " <span class='own'>★ 서재에 있음</span>" : " <button class='act' data-q=\"" + esc(g.title.slice(0, 200)) + "\" title='제목으로 논문 탐색 — 받아서 서재에 넣으면 다음 물음·설계서가 읽습니다'>탐색 ↗</button>") + (g.why ? "<div class='hint'>" + esc(g.why) + "</div>" : "") + "</li>").join("") + "</ul></div>" : "") +
         "<div class='fc'><button class='act' data-ask=\"" + esc((x.name + " — " + x.question + (x.prediction ? " 예측: " + x.prediction : "")).slice(0, 300)) + "\">대화로 ↗</button></div></div>";
     });
     if (q.why) h += "<div class='hint' style='line-height:1.55;margin-top:4px'>추천 까닭: " + esc(q.why) + "</div>";
     if ((q.dropped || []).length) h += "<div class='hint' style='line-height:1.55'>버린 나무 후보: " + esc(q.dropped.join(" / ")) + "</div>";
-    h += "<div class='hint'>" + (q.pick ? "틀 · 설계서 · 서론 구조 · 반론 · 토의가 이 물음 아래에서 섭니다 — 이미 만든 것은 다시 만들어야 반영됩니다." : "하나를 고르면 틀 · 설계서 · 서론 구조가 그 물음 아래에서 섭니다. 타 분야 구조는 서재로 확인할 수 없어 '서재 밖' 으로 갈라 둡니다.") + "</div>";
+    h += "<div class='hint'>" + (q.pick ? "틀 · 설계서 · 서론 구조 · 반론 · 토의가 이 물음 아래에서 섭니다 — 이미 만든 것은 다시 만들어야 반영됩니다." : "하나를 고르면 틀 · 설계서 · 서론 구조가 그 물음 아래에서 섭니다. 타 분야의 짜임·방법은 세상 문헌(OpenAlex)으로 확인해 원 논문을 받을 논문(왼쪽 칸)에 올립니다 — 받아 서재에 넣으면 ★.") + "</div>";
   } else if (!pend) {
-    h += "<div class='hint' style='line-height:1.6'>틈 메우기(남이 하다 만 것 · 거의 다 한 것 · 틈에서 찾기)는 나무를 보는 연구입니다. 여기서는 여러 논문에 걸친 현상, 분야가 공유하는 전제, 다른 분야의 구조에서 출발하는 큰 물음을 찾습니다 — 물음마다 틀릴 수 있는 예측 하나와 대응표를 요구합니다. 토의가 한 번 오간 뒤 찾습니다.</div>";
+    h += "<div class='hint' style='line-height:1.6'>틈 메우기(남이 하다 만 것 · 거의 다 한 것 · 틈에서 찾기)는 나무를 보는 연구입니다. 여기서는 여러 논문에 걸친 현상, 분야가 공유하는 전제, 다른 분야의 연구 짜임·방법(내용이 아니라 물음을 세우는 꼴·측정과 해석의 절차)에서 출발하는 큰 물음을 찾습니다 — 주제가 속한 한 단계 위의 층으로 재료를 넓혀 재료 없이도 서는 물음을 하나 이상 두고, 물음마다 틀릴 수 있는 예측 하나와 대응표를 요구합니다. 토의가 한 번 오간 뒤 찾습니다.</div>";
   }
-  if (!pend) h += "<textarea id='fqReq' placeholder='요청(선택) — 예: 타 분야 구조 쪽으로 / 전제를 흔드는 물음만 / 실험 없이 서재 자료만으로 가를 수 있는 것' style='min-height:30px;margin-top:4px'></textarea>";
+  if (!pend) h += "<textarea id='fqReq' placeholder='요청(선택) — 예: 타 분야의 방법론 쪽으로 / 전제를 흔드는 물음만 / 실험 없이 서재 자료만으로 가를 수 있는 것 / 파괴역학의 짜임으로' style='min-height:30px;margin-top:4px'></textarea>";
   return h;
 }
 function framingHtml() {   /* 연구의 틀 — 같은 실험을 무엇으로 세울 것인가, 설계서 앞에서 고른다 (2026-10-26) */

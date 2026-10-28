@@ -618,6 +618,16 @@ def groups():
     return {"★": {"name": "·".join(pref), "abbrs": set(pref)}, "ALL": {"name": "서재 전체", "abbrs": None}}
 
 
+def outside_stems():
+    """연구 노트의 받을 논문 가운데 서재에 들어온 것 — 다른 분야의 논문이라 바탕('이 저널은 이렇게 쓴다')·분포에는 넣지 않는다(주석·갈래·큰 물음의 재료에는 든다) (2026-10-28)"""
+    try:
+        p = os.path.join(os.path.dirname(cfg["ARCHIVE"]), "연구노트", "_받을논문.json")
+        d = cfg["load_json"](p, None) if cfg.get("load_json") else None
+        return {_stem(x.get("got")) for x in ((d or {}).get("items") or []) if isinstance(x, dict) and x.get("got")}
+    except Exception:
+        return set()
+
+
 def group_items(g):
     gi = groups().get(g)
     if not gi:
@@ -625,6 +635,10 @@ def group_items(g):
     items = all_annotated()
     if gi["abbrs"] is not None:
         items = [(s, a) for s, a in items if (a.get("journal") or "").upper() in gi["abbrs"]]
+    else:
+        ex = outside_stems()
+        if ex:
+            items = [(s, a) for s, a in items if s not in ex]
     return sorted(items, key=lambda sa: -(sa[1].get("year") or 0))
 
 
@@ -1218,8 +1232,9 @@ def _rank_annotated(topic=None, journals=None, cited=(), ko=None, exclude=()):
     return rows
 
 
-def forest_material(topic=None, journals=None, cited=(), ko=None, k=40, cap=16000):
-    """연구 노트의 「큰 물음」 물음에 붙일 두 블록: ① 이 주제와 가까운 논문 k편이 '무엇을 묻고 무엇을 공백으로 세웠나'(논문 층) + 갈래 꼬리표 ② 서재의 숲 논문(본보기). → (글, 통계)"""
+def forest_material(topic=None, journals=None, cited=(), ko=None, k=40, cap=16000, wide=None, wide_ko=None, wide_name="", k2=40):
+    """연구 노트의 「큰 물음」 물음에 붙일 블록: ① 이 주제와 가까운 논문 k편이 '무엇을 묻고 무엇을 공백으로 세웠나'(논문 층) + 갈래 꼬리표 ② [한 단계 위] — 주제가 속한 더 큰 물음의 층(wide·wide_ko 낱말)으로 끌어온 k2편(둘레와 겹치지 않는 것; 2026-10-28 — 둘레가 한 그룹의 논문뿐이면 물음이 그 틀 안의 의심이 된다)
+    ③ 서재의 숲 논문(본보기). → (글, 통계)"""
     rows = _rank_annotated(topic, journals, cited, ko)
     near = [r for r in rows if r[1] >= 2.0 or r[0] == 0][:k]
     mv = moves_load()["items"]
@@ -1235,6 +1250,20 @@ def forest_material(topic=None, journals=None, cited=(), ko=None, k=40, cap=1600
             break
         L.append(b)
         size += len(b)
+    W = []
+    if wide or wide_ko:
+        up = [r for r in _rank_annotated(wide, journals, (), wide_ko, exclude=[stem for _t, _s, stem, _a in near]) if r[1] >= 2.0][:k2]
+        if up:
+            cap += 9000
+            W.append("[한 단계 위 — '%s' 층의 낱말로 끌어온 %d편: 이 주제의 재료·공정 밖에서 같은 부류의 현상을 다룬 논문들(줄마다 같은 꼴). 큰 물음은 둘레 논문과 이 논문들을 겹쳐 그 틀 자체를 묻는 데서 나온다 — 재료를 바꿔도 서는 물음]" % (wide_name or "위층", len(up)))
+            for tier, sc, stem, ann in up:
+                pp = ann.get("paper") or {}
+                y, j, au = _meta(stem)
+                b = "— %s%s %s (%s) %s 물음: %s / 공백: %s / 기여: %s" % ("★ " if j in _pref() else "", au, y, j, tag(stem), str(pp.get("question") or "")[:180], str(pp.get("gap") or "")[:180], str(pp.get("contribution") or "")[:140])
+                if size + len(b) > cap * 0.8:
+                    break
+                W.append(b)
+                size += len(b)
     forest = [(stem, r) for stem, r in mv.items() if isinstance(r, dict) and r.get("ok") and r.get("scope") == "forest"]
     sc_of = {stem: sc for _t, sc, stem, _a in rows}
     forest.sort(key=lambda x: (-(sc_of.get(x[0], 0)), 0 if _meta(x[0])[1] in _pref() else 1, -(_meta(x[0])[0] or 0)))
@@ -1253,8 +1282,8 @@ def forest_material(topic=None, journals=None, cited=(), ko=None, k=40, cap=1600
     head = ""
     if st["n"]:
         head = "[서재 %d편의 연구 갈래 — 숲 %d · 나무 %d; %s]\n" % (st["n"], st["forest"], st["tree"], " · ".join("%s %d" % (MOVE_KO[m], st["by"].get(m, 0)) for m in MOVES if st["by"].get(m)))
-    text = head + "\n".join(L) + "\n" + ("\n".join(F) + "\n" if F else "")
-    return text, {"near": len(L) - 1, "forest": len(forest), "forest_shown": min(len(forest), 14), "tagged": st["n"], "chars": len(text)}
+    text = head + "\n".join(L) + "\n" + ("\n".join(W) + "\n" if W else "") + ("\n".join(F) + "\n" if F else "")
+    return text, {"near": len(L) - 1, "wide": max(0, len(W) - 1), "forest": len(forest), "forest_shown": min(len(forest), 14), "tagged": st["n"], "chars": len(text)}
 
 
 # ---------- 배경 학습 ----------

@@ -530,7 +530,7 @@ _RULE = (
     "- 새 연구 주제를 내기 전에 분야 사람의 눈으로 거른다: ★ 논문·대가 그룹이 이미 한 것, [우리 연구실]로 안 되는 것, 그 밖 저널 논문 하나의 결론에 기댄 것, 분야 사람이 보기에 뻔하거나 터무니없는 것은 내지 않는다(거른 까닭을 한 줄로). "
     "남긴 주제에는 '왜 이 주제가 이 분야 사람에게 그럴듯한가' 를 한 문장으로 붙인다.\n"
     "- 새 주제는 나무와 숲을 갈라 적는다(연구자 2026-10-28: '남이 하다 만 것·거의 다 한 것·남이 한 것 틈에서 찾는 것은 나무를 보는 연구 — 대단한 연구는 숲을 보고 타 분야에서 구조를 가져온다'): "
-    "기존 틀 안의 변수·재료·조건 확장은 [나무], 여러 논문에 걸친 현상에서 출발하거나 분야가 공유하는 전제(평면변형·정상 상태·균질 재료 같은)를 흔들거나 다른 분야의 구조를 대응표와 함께 가져오는 것은 [숲]. 주제마다 머리에 [나무]·[숲] 을 붙이고 나무만 내지 않는다 — 숲을 하나 이상 넣되 틀릴 수 있는 예측 하나를 같이 적는다. "
+    "기존 틀 안의 변수·재료·조건 확장은 [나무], 여러 논문에 걸친 현상에서 출발하거나 분야가 공유하는 전제(평면변형·정상 상태·균질 재료 같은)를 흔들거나 다른 분야의 연구 짜임·방법을 대응표와 함께 가져오는 것은 [숲](타 분야에서 가져오는 것은 그 분야의 내용이 아니라 물음을 세우는 꼴·대조군·판정의 논리·측정과 해석의 절차다). 주제마다 머리에 [나무]·[숲] 을 붙이고 나무만 내지 않는다 — 숲을 하나 이상 넣되 틀릴 수 있는 예측 하나를 같이 적는다. "
     "[택한 큰 물음] 이 있으면 주제는 그 물음 아래에서 낸다. 숲을 세우는 데 서재 밖의 논문이 꼭 필요하면 '받을 논문: 첫 저자 연도, 제목 — 왜' 줄로 적는다(연구자가 받아 서재에 넣는다; 확실한 논문만).\n"
     "- 세상의 문헌을 더 봐야 할 물음이 생기면 답 끝에 '탐색: <검색할 주제 한 줄(한국어나 영어)>' 줄을 1~3개 적는다 — 연구자가 그 줄을 눌러 논문 탐색을 돌린다. 서재의 논문을 깊이 읽어야 하면 '공부: <주제 한 줄>' 줄을 적어도 된다.\n"
     "- 실험·측정·장비를 말할 때는 [우리 연구실](있을 때)에 비추어 우리 장비로 되는지 가른다. 우리 연구실에 없는 측정·장비(예: EBSD·TEM·XRD·나노인덴터)는 '외부: <측정> — 어디서(공동 장비 센터·협력 연구실·외주)·대략의 비용과 기간' 으로 적고, 그 측정 없이도 가설을 가를 수 있는 대안이 있으면 같이 적는다. [우리 연구실] 이 없으면 가르지 않는다.\n"
@@ -1190,22 +1190,311 @@ def _matrix_text(m, brief=False):
 # 낸 물음마다 반증 가능한 예측 하나·대응표·우리 연구실로 되는가·받을 논문(서재 밖). 고른 물음은 틀·설계서·서론 구조·반론·토의에 [택한 큰 물음] 으로 간다.
 _FOREST_RULE = (
     "연구자가 던진 주제를 놓고 '큰 물음' 을 2~4개 낸다. 큰 물음은 틈 메우기가 아니다 — 남이 하다 만 것, 거의 다 한 것, 남이 한 것들 사이의 빈 칸(새 재료·새 조건·새 치수에 같은 방법)은 내지 않는다(그런 후보가 떠오르면 dropped 에 한 줄로 적고 버린다). 큰 물음은 세 갈래 가운데 하나에서 나온다:\n"
-    "① phenomenon 현상: [이 주제 둘레에서 분야가 묻는 것]·배경의 공부 장(엇갈림의 까닭·답하지 못한 것)·서재 목록을 가로질러 셋 이상의 논문에서 되풀이되거나 서로 엇갈리는 현상을 찾고, 그것들을 한 번에 설명할 숨은 변수·조건·틀을 묻는다. "
+    "① phenomenon 현상: [이 주제 둘레에서 분야가 묻는 것]·[한 단계 위]·배경의 공부 장(엇갈림의 까닭·답하지 못한 것)·서재 목록을 가로질러 셋 이상의 논문에서 되풀이되거나 서로 엇갈리는 현상을 찾고, 그것들을 한 번에 설명할 숨은 변수·조건·틀을 묻는다. "
     "② assumption 전제: 그 논문들이 말없이 공유하는 전제(평면변형·정상 상태·균질·날카로운 공구·단열 전단·연속체 같은)를 찾아 그것이 어디서 깨지며 깨지면 무엇이 달라지는지 묻는다 — 누가 어디서 전제하는지를 서재 논문으로 든다. "
-    "③ import 타 분야 구조: 다른 분야(유체·파괴역학·마찰화학·지질·생체·통계물리 …)에 성숙한 이론이 있는 같은 꼴의 문제를 찾아 대응표(저쪽 개념 ↔ 이쪽 개념, 둘 이상)를 세우고 그 이론이 이 분야에서 내는 예측을 묻는다 — 이것은 서재로 확인할 수 없으므로 outside 에 적는다.\n"
-    "물음마다: name 짧은 이름 · question 큰 물음 한 문장 · phenomenon 걸친 현상(어느 논문들에서 무엇이 되풀이·엇갈리는가, cites) · assumption 흔드는 전제(②일 때, 누가 전제하나) · mapping 대응표(③일 때)와 from_field · "
+    "흔드는 전제는 서로 다른 연구 그룹 셋 이상이 공유하는 분야의 전제여야 한다; 한 그룹의 모델이 둔 가정(그 모델 안의 두 단계가 한 기전인가 같은)을 의심하는 것은 그 그룹 연구의 나무다 — dropped 에. "
+    "③ import 타 분야의 연구 짜임·방법: 다른 분야(유체·파괴역학·마찰화학·지질·생태·통계물리·역학 …)에서 연구의 짜임이나 방법론을 가져온다 — 그 분야의 내용(사실·수치·재료)을 이 문제에 섞는 것이 아니다. 가져올 수 있는 것은 둘: "
+    "(가) 그 분야가 물음을 세우는 꼴 — 변수를 어떤 축으로 놓고, 무엇을 대조군·영가설로 두며, 어떤 양의 어떤 꼴(문턱·지수·척도 법칙·분포)로 판정하는가 (나) 측정·해석의 방법 — 실험 설계·통계·역산·척도화·시험 절차. "
+    "structure 에 가져오는 짜임·방법의 이름을 한 줄로(그 분야에서 부르는 이름으로), mapping 은 짜임의 요소끼리(저쪽의 축·대조군·문턱·지수 ↔ 이쪽의 무엇, 둘 이상), method 에 그 짜임대로 이 문제의 실험을 세우면 어떻게 생기는가 두세 문장, "
+    "source 에 그 짜임을 세운 원 논문·리뷰·교과서(아는 대로 — 확실한 것만). 이것은 서재로 확인할 수 없으므로 outside 에 적는다 — 뒤에 프로그램이 세상 문헌으로 확인한다.\n"
+    "[한 단계 위] 가 있으면: 물음 가운데 적어도 하나는 이 주제의 재료·공정 없이도 서는 물음이어야 한다(general true) — 그 재료는 그 물음을 가장 세게 시험할 첫 시험 재료일 뿐이고 다른 재료·공정에서도 같은 예측이 선다; 재료를 바꾸면 사라지는 물음은 general false. "
+    "한 그룹·한 재료의 논문 묶음 안에서만 도는 물음은 그 틀 안의 의심이다 — [한 단계 위] 의 논문들과 겹쳐 그 틀 자체를 묻는 물음으로 올린다.\n"
+    "물음마다: name 짧은 이름 · question 큰 물음 한 문장 · general true|false · phenomenon 걸친 현상(어느 논문들에서 무엇이 되풀이·엇갈리는가, cites) · assumption 흔드는 전제(②일 때, 누가 전제하나) · structure·mapping·method·source (③일 때) 와 from_field · "
     "prediction 아직 아무도 재지 않은, 틀릴 수 있는 예측 하나('X 를 바꾸면 Y 가 Z 로 바뀐다' 꼴 — '…를 밝힌다' 는 예측이 아니다) · reorganizes 이 물음에 답하면 다시 정리되는 기존 결과(어느 논문의 어느 결과가 같은 원인의 두 얼굴이 되는가, re_cites) · "
     "why_not 왜 아직 아무도 안 했나(측정이 없었나, 척도가 달랐나, 분야 경계였나) · ours [우리 연구실] 에 비추어 되는 것과 외부에 맡길 것 · plausible 왜 이 분야 사람(★ 저널 심사자·[분야 지형]의 대가)에게 그럴듯한가 한 문장 · outside 서재 밖에서 가져온 것(연구자가 확인할 것; 없으면 빈 문자열) · "
     "papers_to_get 이 물음을 세우는 데 꼭 필요한데 서재에 없는 논문 0~4편 — 연구자가 받아 서재에 넣는다. 실제로 있다고 확신하는 논문만, 제목·첫 저자·연도·저널을 아는 대로 적고 why 에 왜 필요한가; 확실하지 않으면 적지 않는다 · fit high|mid|low 토의·[우리 연구실]·서재로 보아 이 연구실이 감당할 수 있는가.\n"
     "거르기: ★ 논문·[분야 지형]의 대가 그룹이 이미 세운 물음이면 그것은 near 에 '첫 저자 연도' 로 적고 물음을 그 너머로 옮긴다(이미 한 것을 다시 내지 않는다). 분야 사람이 보기에 터무니없는 것(척도·재료가 안 맞는 비유, 측정 불가능한 예측)은 내지 않는다. 서재의 논문은 '(첫 저자 연도)' 로, 지어낸 수치·인용은 쓰지 않는다. "
     "[서재의 숲 논문] 은 어떤 종류의 출발점이 대단한 연구를 만들었는가의 본보기다 — 그 논문의 물음을 되풀이하지 말고 그 종류의 출발점을 이 주제에서 찾는다. recommend 는 하나, why 는 왜 그것인가 2~3문장.\n"
-    "JSON 으로만 답하라(한국어, 마크다운 없이): {\"questions\": [{\"id\": \"Q1\", \"name\": \"…\", \"kind\": \"phenomenon|assumption|import\", \"question\": \"…\", \"phenomenon\": \"…\", \"cites\": [\"첫 저자 연도\"], "
-    "\"assumption\": \"…\", \"mapping\": [{\"there\": \"저쪽 개념\", \"here\": \"이쪽 대응\"}], \"from_field\": \"…\", \"prediction\": \"…\", \"reorganizes\": \"…\", \"re_cites\": [\"첫 저자 연도\"], \"near\": [\"첫 저자 연도\"], "
+    "JSON 으로만 답하라(한국어, 마크다운 없이): {\"questions\": [{\"id\": \"Q1\", \"name\": \"…\", \"kind\": \"phenomenon|assumption|import\", \"general\": true, \"question\": \"…\", \"phenomenon\": \"…\", \"cites\": [\"첫 저자 연도\"], "
+    "\"assumption\": \"…\", \"structure\": \"…\", \"mapping\": [{\"there\": \"저쪽 짜임의 요소\", \"here\": \"이쪽 대응\"}], \"method\": \"…\", \"source\": \"…\", \"from_field\": \"…\", \"prediction\": \"…\", \"reorganizes\": \"…\", \"re_cites\": [\"첫 저자 연도\"], \"near\": [\"첫 저자 연도\"], "
     "\"why_not\": \"…\", \"ours\": \"…\", \"plausible\": \"…\", \"outside\": \"…\", \"papers_to_get\": [{\"title\": \"…\", \"authors\": \"첫 저자 등\", \"year\": 2015, \"venue\": \"…\", \"why\": \"…\"}], \"fit\": \"high|mid|low\"}], "
     "\"recommend\": \"Q1\", \"why\": \"…\", \"dropped\": [\"버린 나무 후보 — 한 줄씩\"]}")
 
-_FQ_KIND_KO = {"phenomenon": "현상", "assumption": "전제", "import": "타 분야 구조"}
+_FQ_KIND_KO = {"phenomenon": "현상", "assumption": "전제", "import": "타 분야의 짜임·방법"}
 _FOREST_MAT = {}   # 주제 id → 재료 통계 (_apply_forest 가 기록에 옮긴다)
+_EXISTS_KO = {"yes": "그렇게 서 있음", "partly": "일부만 확인", "no": "확인 안 됨"}
+_ALREADY_KO = {"none": "없음", "partial": "일부", "done": "있음"}
+_CANON_KO = {"origin": "원 논문", "review": "리뷰", "method": "방법 논문"}
+
+# 한 단계 넓히기(2026-10-28, 사용자가 탄탈럼 큰 물음을 읽고 '연구 주제가 작아서 그런가 별로 — 기존 연구에서 조금 다르거나 의심하거나' → 둘레 논문 31편이 한 그룹의 틀이라 물음이 그 틀 안의 의심이 됐다):
+# 물음을 내기 전에 주제가 속한 더 큰 물음의 층을 2~3단계 세우고(짧은 Opus 호출 하나), 그 층의 낱말로 둘레 논문을 40편 더 끌어와(corpus.forest_material 의 wide) 재료가 한 그룹을 넘게 한다. 규칙은 '재료 없이도 서는 물음 하나 이상'.
+_LAYERS_RULE = (
+    "아래 연구 주제가 속한 더 큰 물음의 층을 2~3단계 세워라 — 카메라를 한 단계씩 줌아웃하듯: 1층 = 이 재료·공정을 포함하는 현상의 부류(같은 현상을 다른 재료·공정에서 다룬 논문이 들어오게), 2층 = 재료·공정에 무관한 역학·물리·재료과학의 물음, 3층 = 그 위의 일반 원리(있으면). "
+    "층마다 name 한국어 한 줄, en 영어 낱말·구 4~8개(그 층의 논문 제목에 나올 법한 말 — 재료 이름이 아니라 현상·기전·양의 이름; 짧은 어간으로), ko 한국어 낱말 3~6개(논문의 물음·공백 요약에 나올 법한 명사). 주제의 재료 이름은 어느 층에도 넣지 않는다. "
+    "JSON 으로만: {\"layers\": [{\"name\": \"…\", \"en\": [\"…\"], \"ko\": [\"…\"]}]}")
+
+
+def _forest_layers(nt):
+    """한 단계 넓히기 — 주제가 속한 더 큰 물음의 층(짧은 호출 하나, Opus 보통). → [{name, en, ko}] (못 받으면 [])"""
+    run = cfg.get("claude_run")
+    if not run:
+        return []
+    head = "[주제] %s\n" % (nt.get("title") or "")
+    ct = _card_text(nt.get("card"))
+    if ct:
+        head += "[주제 카드]\n" + ct[:1500] + "\n"
+    head += "[주제 낱말] " + ", ".join(_intro_topic(nt)[:8]) + " / " + ", ".join(_ko_topic(nt)[:8]) + "\n"
+    try:
+        res = run(head + "\n" + _LAYERS_RULE, timeout=240, model="opus", effort=None, tools="")
+        d = _json_of((res or {}).get("text"))
+    except Exception:
+        return []
+    out = []
+    for x in (d.get("layers") if isinstance(d, dict) and isinstance(d.get("layers"), list) else [])[:3]:
+        if not isinstance(x, dict):
+            continue
+        en = [re.sub(r"\s+", " ", str(w)).strip().lower() for w in (x.get("en") if isinstance(x.get("en"), list) else []) if str(w).strip()][:8]
+        ko = [re.sub(r"\s+", " ", str(w)).strip() for w in (x.get("ko") if isinstance(x.get("ko"), list) else []) if str(w).strip()][:6]
+        if en or ko:
+            out.append({"name": re.sub(r"\s+", " ", str(x.get("name") or "")).strip()[:140], "en": en, "ko": ko})
+    return out
+
+
+# 타 분야의 짜임·방법 확인(2026-10-28, 사용자: '타 분야에서 가져오는 건 어떻게 하지? 연구 분야가 서재에밖에 없어서' / '내용을 섞으라는 게 아니라 연구 구조나 방법론을 가져오는 느낌'):
+# import 물음마다 탐색 기계로 [A] 그 분야 쪽(짜임·방법의 이름으로 검색, 관련도 + 피인용 상위) · [B] 이 분야 쪽(짜임 + 주제 낱말) 초록을 받아 Claude(배경 없이)가 그 짜임이 정말 그렇게 서 있나·원 논문·이미 가져온 사람을 가른다.
+_FCHK_RULE = (
+    "아래는 연구자의 '큰 물음' 가운데 다른 분야의 연구 짜임·방법을 가져오려는 것들과, 학술 DB 에서 찾아온 후보 논문 두 묶음이다 — [A] 그 분야 쪽(짜임·방법의 이름으로 검색) · [B] 이 분야 쪽(그 짜임·방법 + 이 주제의 낱말로 검색). 초록에 적힌 것만으로 가려라. "
+    "가져오는 것은 그 분야의 내용이 아니라 연구의 짜임(변수의 축·대조군·판정의 꼴)과 방법(측정·해석 절차)이다 — 그 눈으로 본다.\n"
+    "물음마다: exists yes|partly|no = [A] 의 초록으로 보아 그 짜임·방법이 그 분야에 정말 그렇게 서 있는가(대응표의 요소들이 실제 그 분야의 변수·판정인가) · note 한 줄(한국어 — 대응표에서 고칠 것·틀린 요소·더 맞는 이름이 있으면; 없으면 빈 문자열) · "
+    "canon [A] 가운데 그 짜임을 세운 원 논문·리뷰·방법 논문 0~4(k 는 A 번호, role origin|review|method, why 한 줄 — 연구자가 받아 읽을 것) · already none|partial|done = [B] 가운데 그 짜임·방법을 이미 이 분야(절삭·가공)에 가져온 논문이 있는가(제목만 비슷한 것·주제가 겹칠 뿐인 것은 넣지 않는다) · taken [B] 의 그 논문들(k 는 B 번호, how 한 줄 — 무엇을 어디까지 가져왔나).\n"
+    "JSON 으로만: {\"items\": [{\"id\": \"Q3\", \"exists\": \"yes|partly|no\", \"note\": \"…\", \"canon\": [{\"k\": 2, \"role\": \"origin|review|method\", \"why\": \"…\"}], \"already\": \"none|partial|done\", \"taken\": [{\"k\": 1, \"how\": \"…\"}]}]}")
+
+
+def _merge_nodes(nodes, n):
+    seen, out = set(), []
+    for it in nodes:
+        if it.get("id") and it["id"] not in seen and it.get("title"):
+            seen.add(it["id"])
+            out.append({"id": it["id"], "title": str(it.get("title") or "")[:200], "year": it.get("year") or 0, "venue": str(it.get("venue") or "")[:60], "doi": it.get("doi") or "",
+                        "cit": it.get("cit") or 0, "abstract": str(it.get("abstract") or "")[:450]})
+        if len(out) >= n:
+            break
+    return out
+
+
+def _forest_check(nid, model, eff):
+    """타 분야의 짜임·방법을 가져오는 큰 물음(import)을 세상 문헌으로 확인하고 받을 논문 대기열을 채운다. 화면은 forest_stage = check 로 '확인 중'. (2026-10-28)"""
+    with _LOCK:
+        nt = _load(nid)
+        fo = (nt or {}).get("forest") or {}
+        if not nt or not fo.get("items"):
+            return
+        imps = [x for x in fo["items"] if x.get("kind") == "import" and (x.get("structure") or x.get("mapping"))]
+        if not imps or not (cfg.get("plan_search") and cfg.get("build_boolean") and cfg.get("openalex_boolean")):
+            try:
+                wanted_add(nt)
+            except Exception:
+                pass
+            return
+        nt["forest_pending"] = time.time()
+        nt["forest_stage"] = "check"
+        _save(nt)
+        pend = nt["forest_pending"]
+    t0 = time.time()
+    here = _intro_topic(nt)[:6]
+    rows, checks, err, cancelled = [], {}, "", False
+    try:
+        for x in imps:
+            row = {"id": x["id"], "a": [], "b": [], "expr_a": "", "expr_b": "", "n_a": 0, "n_b": 0, "err": ""}
+            try:
+                there = " / ".join(str(m.get("there") or "") for m in x.get("mapping") or [])
+                qa = "%s 분야의 '%s' — 이 연구 짜임·방법을 세운 원 논문과 리뷰를 그 분야 안에서 찾는다(이 주제의 재료·공정 낱말은 넣지 않는다). 짜임의 요소: %s" % (x.get("from_field") or "다른 분야", x.get("structure") or (x.get("name") or ""), there[:300])
+                plan = cfg["plan_search"](qa) or {}
+                cs = [c for c in (plan.get("concepts") or []) if c.get("terms")]
+                req = [c for c in cs if c.get("required")]
+                expr_a = cfg["build_boolean"](req if len(req) >= 2 else cs[:3], plan.get("exclude"))
+                row["expr_a"] = expr_a
+                if expr_a:
+                    found, cnt = cfg["openalex_boolean"](expr_a, year="", per_page=30)
+                    if cnt == 0 and len(cs) > 2:
+                        expr2 = cfg["build_boolean"](cs[:2], plan.get("exclude"))
+                        if expr2 and expr2 != expr_a:
+                            found, cnt = cfg["openalex_boolean"](expr2, year="", per_page=30)
+                            if cnt:
+                                expr_a = expr2
+                                row["expr_a"] = expr_a
+                    top, _c = cfg["openalex_boolean"](expr_a, year="", per_page=15, sort="cited_by_count:desc")
+                    row["n_a"] = cnt
+                    row["a"] = _merge_nodes(list(top) + list(found), 36)
+                core = (req or cs)[:1]
+                if core and here:
+                    expr_b = cfg["build_boolean"](core + [{"name": "this field", "terms": here, "required": True}], None)
+                    row["expr_b"] = expr_b
+                    if expr_b:
+                        fb, cb = cfg["openalex_boolean"](expr_b, year="", per_page=30)
+                        row["n_b"] = cb
+                        row["b"] = _merge_nodes(list(fb), 24)
+            except Exception as e:
+                row["err"] = str(e)[:160]
+            rows.append(row)
+        try:
+            om = cfg["owned_map"]([{"id": p["id"], "title": p["title"]} for r in rows for p in r["a"] + r["b"]]) if cfg.get("owned_map") else {}
+        except Exception:
+            om = {}
+        for r in rows:
+            for p in r["a"] + r["b"]:
+                p["owned"] = om.get(p["id"], "")
+        by = {x["id"]: x for x in imps}
+        L = []
+        for r in rows:
+            x = by[r["id"]]
+            L.append("[%s %s — %s] 물음: %s\n가져오는 짜임·방법: %s\n대응표: %s\n이 문제에서의 실험: %s" % (x["id"], x.get("name") or "", x.get("from_field") or "", x.get("question") or "", x.get("structure") or "",
+                                                                                   " / ".join("%s ↔ %s" % (m.get("there"), m.get("here")) for m in x.get("mapping") or []), x.get("method") or ""))
+            if r["a"]:
+                L.append("[A] 그 분야 쪽 후보 — 검색식: %s · 전체 %d편 가운데 %d편(피인용 상위 + 관련도)" % (r["expr_a"][:300], r["n_a"], len(r["a"])))
+                for k, p in enumerate(r["a"]):
+                    L.append("A%d) %s (%s, %s; 피인용 %s)%s — %s" % (k + 1, p["title"], p["year"], p["venue"], p.get("cit", 0), " ★서재" if p.get("owned") else "", p["abstract"] or "(초록 없음)"))
+            else:
+                L.append("[A] 후보 없음" + ((" — " + r["err"]) if r["err"] else ""))
+            if r["b"]:
+                L.append("[B] 이 분야 쪽 후보 — 검색식: %s · 전체 %d편 가운데 %d편" % (r["expr_b"][:300], r["n_b"], len(r["b"])))
+                for k, p in enumerate(r["b"]):
+                    L.append("B%d) %s (%s, %s)%s — %s" % (k + 1, p["title"], p["year"], p["venue"], " ★서재" if p.get("owned") else "", p["abstract"] or "(초록 없음)"))
+            else:
+                L.append("[B] 후보 없음")
+            L.append("")
+        run = cfg.get("claude_run")
+        res = run("\n".join(L) + "\n" + _FCHK_RULE, timeout=900, model=model, effort=eff, tools="", job=_job_key(nid, "forest", pend)) if (run and any(r["a"] or r["b"] for r in rows)) else None
+        cancelled = bool((res or {}).get("cancelled"))
+        d = _json_of((res or {}).get("text")) if (res and not cancelled) else None
+        tok, sec = (res or {}).get("tok"), round(time.time() - t0)
+        S = lambda v, n=300: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+        for it in (d.get("items") if isinstance(d, dict) and isinstance(d.get("items"), list) else []):
+            if not isinstance(it, dict) or str(it.get("id") or "") not in by:
+                continue
+            r = next((r for r in rows if r["id"] == it["id"]), None)
+            if not r:
+                continue
+            canon, taken = [], []
+            for c in (it.get("canon") if isinstance(it.get("canon"), list) else [])[:4]:
+                try:
+                    k = int(c.get("k") or 0) - 1
+                except Exception:
+                    continue
+                if 0 <= k < len(r["a"]):
+                    canon.append(dict({k2: v for k2, v in r["a"][k].items() if k2 != "abstract"}, role=c.get("role") if c.get("role") in ("origin", "review", "method") else "method", why=S(c.get("why"))))
+            for c in (it.get("taken") if isinstance(it.get("taken"), list) else [])[:4]:
+                try:
+                    k = int(c.get("k") or 0) - 1
+                except Exception:
+                    continue
+                if 0 <= k < len(r["b"]):
+                    taken.append(dict({k2: v for k2, v in r["b"][k].items() if k2 != "abstract"}, how=S(c.get("how"))))
+            checks[it["id"]] = {"exists": it.get("exists") if it.get("exists") in ("yes", "partly", "no") else "partly", "note": S(it.get("note")), "canon": canon,
+                                "already": it.get("already") if it.get("already") in ("none", "partial", "done") else ("partial" if taken else "none"), "taken": taken,
+                                "n_a": r["n_a"], "n_b": r["n_b"], "expr_a": r["expr_a"], "expr_b": r["expr_b"], "t": time.time(), "sec": sec, "tok": tok, "model": (res or {}).get("model") or model}
+        if not checks and not cancelled:
+            err = ("확인 판정을 받지 못했습니다" + _why()) if any(r["a"] or r["b"] for r in rows) else "그 분야 쪽 후보 논문을 찾지 못했습니다(검색식: %s)" % "; ".join(r["expr_a"][:80] or r["err"] for r in rows)
+    except Exception as e:
+        err = "확인 실패: " + str(e)[:200]
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return
+        nt.pop("forest_pending", None)
+        nt.pop("forest_stage", None)
+        fo = nt.get("forest") or {}
+        if fo.get("items") and not cancelled:
+            for x in fo["items"]:
+                ck = checks.get(x["id"])
+                if not ck:
+                    continue
+                x["check"] = ck
+                have = {_wkey(g.get("title")): g for g in x.get("gets") or []}
+                for c in ck["canon"]:
+                    k = _wkey(c.get("title"))
+                    if k in have:
+                        if not have[k].get("doi"):
+                            have[k]["doi"] = c.get("doi") or ""
+                        continue
+                    g = {"title": c.get("title") or "", "authors": "", "year": c.get("year") or 0, "venue": c.get("venue") or "", "doi": c.get("doi") or "",
+                         "why": ("%s — %s" % (_CANON_KO.get(c.get("role"), ""), c.get("why") or "")).strip(" —"), "owned": c.get("owned") or "", "from_check": True}
+                    x.setdefault("gets", []).append(g)
+                    have[k] = g
+            fo["check_t"] = time.time()
+            fo["check_err"] = err
+        try:
+            wanted_add(nt)
+        except Exception:
+            pass
+        _save(nt)
+
+
+# ---------- 받을 논문 대기열 (2026-10-28, 사용자: '서재 밖 좋은 논문이 필요하면 알아서 내게 묻고 다운받아도 돼') — 큰 물음이 적은 서재 밖 논문(원 논문·리뷰)을 연구노트\_받을논문.json 에 모으고, 서재에 들어오면(탐색의 보유 대조) ★ ----
+def _wanted_path():
+    return os.path.join(cfg["DIR"], "_받을논문.json")
+
+
+def _wkey(t):
+    return re.sub(r"[^a-z0-9]", "", str(t or "").lower())[:60]
+
+
+def wanted_list(sync=False):
+    """받을 논문 대기열. sync 면 아직 안 들어온 것을 서재와 다시 대조한다"""
+    with _LOCK:
+        d = cfg["load_json"](_wanted_path(), None) or {}
+        items = [x for x in (d.get("items") or []) if isinstance(x, dict) and x.get("title")]
+        if sync and cfg.get("owned_map") and any(not x.get("got") for x in items):
+            try:
+                om = cfg["owned_map"]([{"id": x.get("key") or _wkey(x["title"]), "title": x["title"]} for x in items if not x.get("got")])
+            except Exception:
+                om = {}
+            ch = False
+            for x in items:
+                k = x.get("key") or _wkey(x["title"])
+                if not x.get("got") and om.get(k):
+                    x["got"], x["got_t"], ch = om[k], time.time(), True
+            if ch:
+                cfg["save_json"](_wanted_path(), {"items": items})
+        return items
+
+
+def wanted_add(nt):
+    """이 주제의 큰 물음에 적힌 받을 논문을 대기열에 더한다 — 같은 제목은 한 줄, 어느 주제의 어느 물음에서 왔는지 from 에 쌓는다"""
+    fo = (nt or {}).get("forest") or {}
+    if not fo.get("items"):
+        return
+    with _LOCK:
+        d = cfg["load_json"](_wanted_path(), None) or {}
+        items = [x for x in (d.get("items") or []) if isinstance(x, dict) and x.get("title")]
+        by = {}
+        for x in items:
+            x["key"] = x.get("key") or _wkey(x["title"])
+            by[x["key"]] = x
+        ch = False
+        for q in fo["items"]:
+            for g in q.get("gets") or []:
+                k = _wkey(g.get("title"))
+                if len(k) < 8:
+                    continue
+                src = {"nid": nt.get("id"), "qid": q.get("id"), "title": (nt.get("title") or "")[:80], "why": (g.get("why") or "")[:300]}
+                x = by.get(k)
+                if not x:
+                    x = {"key": k, "title": g.get("title") or "", "authors": g.get("authors") or "", "year": g.get("year") or 0, "venue": g.get("venue") or "", "doi": g.get("doi") or "", "from": [src], "t": time.time(), "got": g.get("owned") or ""}
+                    items.append(x)
+                    by[k] = x
+                    ch = True
+                else:
+                    if not any(s.get("nid") == src["nid"] and s.get("qid") == src["qid"] for s in x.get("from") or []):
+                        x.setdefault("from", []).append(src)
+                        ch = True
+                    for f in ("doi", "authors", "venue"):
+                        if not x.get(f) and g.get(f):
+                            x[f] = g[f]
+                            ch = True
+                    if not x.get("got") and g.get("owned"):
+                        x["got"], x["got_t"], ch = g["owned"], time.time(), True
+        if ch:
+            cfg["save_json"](_wanted_path(), {"items": items[-200:]})
+
+
+def wanted_del(key):
+    with _LOCK:
+        d = cfg["load_json"](_wanted_path(), None) or {}
+        items = [x for x in (d.get("items") or []) if isinstance(x, dict) and x.get("title") and (x.get("key") or _wkey(x["title"])) != key]
+        cfg["save_json"](_wanted_path(), {"items": items})
+        return {"items": items}
+
 
 
 def _forest_prompt(nt):
@@ -1221,15 +1510,27 @@ def _forest_prompt(nt):
     fr = _framing_text(nt.get("framing"), brief=True)
     if fr:
         out += "\n" + fr
+    layers = _forest_layers(nt)   # 한 단계 넓히기 — 주제가 속한 더 큰 물음의 층 (2026-10-28)
+    wide = [w for L in layers for w in (L.get("en") or [])]
+    wide_ko = [w for L in layers for w in (L.get("ko") or [])]
+    if layers:
+        out += ("\n[한 단계 위 — 이 주제가 속한 더 큰 물음의 층(줌아웃)] " + " → ".join("%d층 %s (%s)" % (i + 1, L["name"], ", ".join((L.get("en") or [])[:5])) for i, L in enumerate(layers)) +
+                "\n아래 둘레 논문에 이 층의 논문이 [한 단계 위] 묶음으로 더해져 있다. 물음은 이 층에서 세운다 — 주제의 재료·공정은 그 물음을 가장 세게 시험할 첫 시험 재료일 뿐이다.\n")
     mat = cfg.get("forest_material")
+    st, text = {}, ""
     if mat:
         try:
-            text, st = mat(topic=_intro_topic(nt), journals=_intro_journals(nt), cited=_intro_cited(nt), ko=_ko_topic(nt), k=40)
+            try:
+                text, st = mat(topic=_intro_topic(nt), journals=_intro_journals(nt), cited=_intro_cited(nt), ko=_ko_topic(nt), k=40, wide=wide, wide_ko=wide_ko, wide_name=" → ".join(L["name"] for L in layers))
+            except TypeError:   # wide 를 모르는 옛 corpus
+                text, st = mat(topic=_intro_topic(nt), journals=_intro_journals(nt), cited=_intro_cited(nt), ko=_ko_topic(nt), k=40)
         except Exception as e:
             text, st = "", {"error": str(e)[:120]}
-        _FOREST_MAT[nt.get("id")] = st
         if text:
             out += "\n" + text
+    st = dict(st or {})
+    st["layers"] = layers
+    _FOREST_MAT[nt.get("id")] = st
     out += ("\n[배경도 재료다] 시스템 프롬프트의 공부 장(이 서재로는 답하지 못한 것 · Claude 의 생각의 엇갈림의 까닭 · 근거의 강약), 서재가 많이 인용하는데 없는 뿌리 문헌, 분야 지형(대가 그룹·저널 등급), 서재 목록 전체 — "
             "큰 물음은 한 편의 '어디서 멈췄나' 가 아니라 이것들을 가로지르는 데서 나온다.\n")
     fo = nt.get("forest") or {}
@@ -1262,9 +1563,11 @@ def _apply_forest(nt, d, res, t0):
                 yr = int(str(p.get("year") or "")[:4])
             except ValueError:
                 yr = 0
-            gets.append({"title": S(p.get("title"), 240), "authors": S(p.get("authors"), 120), "year": yr, "venue": S(p.get("venue"), 80), "why": S(p.get("why"), 300), "owned": ""})
+            gets.append({"title": S(p.get("title"), 240), "authors": S(p.get("authors"), 120), "year": yr, "venue": S(p.get("venue"), 80), "doi": "", "why": S(p.get("why"), 300), "owned": ""})
         items.append({"id": qid, "name": S(q.get("name"), 80), "kind": q.get("kind") if q.get("kind") in _FQ_KIND_KO else "phenomenon", "question": S(q.get("question")),
+                      "general": (q.get("general") if isinstance(q.get("general"), bool) else str(q.get("general") or "").strip().lower() in ("true", "1", "yes")),
                       "phenomenon": S(q.get("phenomenon"), 700), "cites": cites_of(q.get("cites"), 10), "assumption": S(q.get("assumption"), 500), "mapping": mapping, "from_field": S(q.get("from_field"), 120),
+                      "structure": S(q.get("structure"), 200), "method": S(q.get("method"), 700), "source": S(q.get("source"), 300),
                       "prediction": S(q.get("prediction"), 500), "reorganizes": S(q.get("reorganizes"), 600), "re_cites": cites_of(q.get("re_cites"), 8), "near": cites_of(q.get("near"), 4),
                       "why_not": S(q.get("why_not"), 400), "ours": S(q.get("ours"), 500), "plausible": S(q.get("plausible"), 300), "outside": S(q.get("outside"), 600), "gets": gets,
                       "fit": q.get("fit") if q.get("fit") in ("high", "mid", "low") else "mid"})
@@ -1287,8 +1590,9 @@ def _apply_forest(nt, d, res, t0):
         rec = items[0]["id"]
     old = nt.get("forest") or {}
     pick = old.get("pick") if old.get("pick") in ids else ""
+    matst = _FOREST_MAT.pop(nt.get("id"), None)
     nt["forest"] = {"items": items, "recommend": rec, "why": S(d.get("why"), 800), "dropped": [S(x, 200) for x in (d.get("dropped") if isinstance(d.get("dropped"), list) else [])[:5] if S(x)],
-                    "pick": pick, "pick_t": old.get("pick_t") if pick else None, "material": _FOREST_MAT.pop(nt.get("id"), None),
+                    "pick": pick, "pick_t": old.get("pick_t") if pick else None, "material": matst, "layers": (matst or {}).get("layers") or [],
                     "t": time.time(), "model": res.get("model", ""), "sec": round(time.time() - t0), "tok": res.get("tok")}
 
 
@@ -1316,13 +1620,23 @@ def _forest_text(fo, brief=False, all_items=False):
     keys = lambda cs: ", ".join(c["key"] for c in cs or [])
 
     def full(q):
-        L = ["%s %s (%s · 맞음 %s)" % (q["id"], q.get("name") or "", _FQ_KIND_KO.get(q.get("kind"), q.get("kind")), q.get("fit")), "물음: " + (q.get("question") or "")]
+        L = ["%s %s (%s%s · 맞음 %s)" % (q["id"], q.get("name") or "", _FQ_KIND_KO.get(q.get("kind"), q.get("kind")), " · 재료 무관" if q.get("general") else "", q.get("fit")), "물음: " + (q.get("question") or "")]
         if q.get("phenomenon"):
             L.append("걸친 현상: " + q["phenomenon"] + ((" (" + keys(q.get("cites")) + ")") if q.get("cites") else ""))
         if q.get("assumption"):
             L.append("흔드는 전제: " + q["assumption"])
+        if q.get("structure"):
+            L.append("가져오는 짜임·방법%s: %s" % ((" (" + q["from_field"] + ")") if q.get("from_field") else "", q["structure"]))
         if q.get("mapping"):
-            L.append("가져오는 구조%s: " % ((" (" + q["from_field"] + ")") if q.get("from_field") else "") + " / ".join("%s ↔ %s" % (m["there"], m["here"]) for m in q["mapping"]))
+            L.append("대응표%s: " % ((" (" + q["from_field"] + ")") if (q.get("from_field") and not q.get("structure")) else "") + " / ".join("%s ↔ %s" % (m["there"], m["here"]) for m in q["mapping"]))
+        if q.get("method"):
+            L.append("이 문제에서의 실험: " + q["method"])
+        if q.get("source"):
+            L.append("원 논문(Claude 의 기억): " + q["source"])
+        ck = q.get("check") or {}
+        if ck:
+            L.append("세상 문헌으로 확인: 그 분야에 %s%s · 이 분야에 이미 가져온 사람 %s%s" % (_EXISTS_KO.get(ck.get("exists"), "?"), (" — " + ck["note"]) if ck.get("note") else "", _ALREADY_KO.get(ck.get("already"), "?"),
+                                                                              (" (" + " / ".join("%s %s: %s" % ((t.get("title") or "")[:80], t.get("year") or "", t.get("how") or "") for t in (ck.get("taken") or [])[:3]) + ")") if ck.get("taken") else ""))
         if q.get("prediction"):
             L.append("예측: " + q["prediction"])
         if q.get("reorganizes"):
@@ -1338,10 +1652,10 @@ def _forest_text(fo, brief=False, all_items=False):
         if q.get("outside"):
             L.append("서재 밖: " + q["outside"])
         if q.get("gets"):
-            L.append("받을 논문: " + " / ".join("%s%s (%s%s)%s" % (g["title"], (" — " + g["authors"]) if g.get("authors") else "", g.get("year") or "?", (", " + g["venue"]) if g.get("venue") else "", " [서재에 있음]" if g.get("owned") else "") for g in q["gets"]))
+            L.append("받을 논문: " + " / ".join("%s%s (%s%s)%s%s" % (g["title"], (" — " + g["authors"]) if g.get("authors") else "", g.get("year") or "?", (", " + g["venue"]) if g.get("venue") else "", (" " + g["doi"]) if g.get("doi") else "", " [서재에 있음]" if g.get("owned") else "") for g in q["gets"]))
         return "\n".join(L)
 
-    line = lambda q: "%s %s (%s): %s%s" % (q["id"], q.get("name") or "", _FQ_KIND_KO.get(q.get("kind"), q.get("kind")), q.get("question") or "", (" — 예측: " + q["prediction"]) if q.get("prediction") else "")
+    line = lambda q: "%s %s (%s%s): %s%s" % (q["id"], q.get("name") or "", _FQ_KIND_KO.get(q.get("kind"), q.get("kind")), " · 재료 무관" if q.get("general") else "", q.get("question") or "", (" — 예측: " + q["prediction"]) if q.get("prediction") else "")
     if pick and not all_items:
         return ("[택한 큰 물음 — 연구자가 고른 것. 이 연구는 틈 메우기가 아니라 이 현상·전제·구조를 가르는 연구다: 틀의 물음·공백·주장, 설계서의 물음과 가설, 서론의 공백·목적은 이 물음 아래에서 세운다]\n" + (line(pick) if brief else full(pick)) + "\n")
     if all_items:
@@ -1369,7 +1683,7 @@ _FRAMING_RULE = (
     "fit high|mid|low 토의·[우리 연구실]·서재로 보아 이 연구가 그 틀을 감당할 수 있는가. "
     "서재의 논문은 '(첫 저자 연도)' 로, 지어낸 수치·인용은 쓰지 않는다. [공백 검증] 에 '이미 됨' 으로 나온 공백을 틀의 gap 으로 쓰지 않는다. recommend 는 하나, why 는 왜 그것인가 2~3문장(다른 틀을 접는 까닭도).\n"
     "틀은 분야 사람의 눈으로 거른다: ★ 논문·[분야 지형]의 대가 그룹이 이미 한 것, [우리 연구실]로 못 하는 것, 그 밖 저널 논문 하나의 결론에 기댄 것은 내지 않거나 fit low 로 두고 risk 에 그 까닭을 적는다. 남긴 틀의 why 에는 왜 이 분야 사람에게 그럴듯한가를 적는다.\n"
-    "scope: 그 틀이 기존 틀 안의 변수·재료·조건 확장(남이 하다 만 것·틈 메우기)이면 tree, 여러 논문에 걸친 현상·공유 전제·다른 분야의 구조에서 출발하면 forest. [택한 큰 물음] 이 있으면 틀은 그 물음 아래에서 세운다 — 물음·공백·주장이 그 현상·전제·구조를 가르는 것이어야 하고, 변수 확장으로 내려앉은 틀은 tree 로 적고 risk 에 그 까닭을 적는다. forest 틀을 하나 이상 둔다.\n"
+    "scope: 그 틀이 기존 틀 안의 변수·재료·조건 확장(남이 하다 만 것·틈 메우기)이면 tree, 여러 논문에 걸친 현상·공유 전제·다른 분야의 연구 짜임·방법에서 출발하면 forest(다른 분야에서는 내용이 아니라 짜임·방법을 가져온다). [택한 큰 물음] 이 있으면 틀은 그 물음 아래에서 세운다 — 물음·공백·주장이 그 현상·전제·구조를 가르는 것이어야 하고, 변수 확장으로 내려앉은 틀은 tree 로 적고 risk 에 그 까닭을 적는다. forest 틀을 하나 이상 둔다.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"framings\": [{\"id\": \"F1\", \"name\": \"…\", \"kind\": \"mechanism|method|material|model|scale|application\", \"scope\": \"forest|tree\", \"question\": \"…\", \"claim\": \"…\", \"gap\": \"…\", \"cites\": [\"첫 저자 연도\"], "
     "\"near\": [\"첫 저자 연도\"], \"differs\": \"…\", \"needs\": [\"…\"], \"journal\": \"…\", \"risk\": \"…\", \"fit\": \"high|mid|low\"}], \"recommend\": \"F1\", \"why\": \"…\"}")
 
@@ -2215,6 +2529,11 @@ def _bg_job(nid, kind):
         if kind == "intro" and not err:
             nt["intro_pending"] = time.time()   # 이어서 비평 — 화면은 같은 기다림 막대를 보인다
         _save(nt)
+    if kind == "forest" and not err:
+        try:
+            _forest_check(nid, model, eff)   # 타 분야의 짜임·방법을 세상 문헌으로 확인 + 받을 논문 대기열 (2026-10-28)
+        except Exception:
+            pass
     if kind == "intro" and not err:
         try:
             _intro_critique(nid, model, eff)
@@ -2425,6 +2744,8 @@ def handle_get(h, url):
         if _q(url, "text") == "1":
             return h._send(200, (d.get("page") or "").encode("utf-8"), "text/plain; charset=utf-8")
         return h._send(200, d)
+    if p == "/api/notes/wanted":             # 받을 논문 대기열 (2026-10-28); ?sync=1 은 서재에 들어왔는지 다시 봄
+        return h._send(200, {"items": wanted_list(sync=_q(url, "sync") == "1")})
     if p == "/api/notes/bg":
         full = _q(url, "text") == "1"
         d = background_view(full)
@@ -2453,6 +2774,10 @@ def handle_post(h, body):
             return h._send(200, framing_pick(nid, body))
         if op == "forest_pick":                  # 큰 물음 고르기 (2026-10-28)
             return h._send(200, forest_pick(nid, body))
+        if op == "wanted_del":                   # 받을 논문 대기열 (2026-10-28)
+            return h._send(200, wanted_del(str(body.get("key") or "")))
+        if op == "wanted_sync":
+            return h._send(200, {"items": wanted_list(sync=True)})
         if op == "objection":
             return h._send(200, objection_set(nid, body))
         if op == "intro_write":                  # 서론 문단 쓰기 — 원고의 문단 쓰기 그대로 (2026-10-25)
