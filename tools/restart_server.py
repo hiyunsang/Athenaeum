@@ -52,7 +52,37 @@ def running_jobs():
         names += [(x.get("title") or "")[:50] + " (공부 — " + " · ".join(x.get("jobs") or []) + ")" for x in busy]
     except Exception:
         pass
+    try:   # 연구 노트 — 묻기·설계서·반론·서론 구조·카드·문단 쓰기 (2026-10-29: 재시작이 18초 전에 보낸 물음을 죽였고 화면이 73분을 기다렸다)
+        d = json.load(urllib.request.urlopen(URL + "/api/notes", timeout=15))
+        live = [x for x in d.get("items", []) if x.get("pending") or x.get("busy")]
+        n += len(live)
+        names += [(x.get("title") or "")[:50] + " (연구 노트 — " + ("묻기" if x.get("pending") else "배경 작업") + ")" for x in live]
+    except Exception:
+        pass
+    procs = claude_procs()   # 어느 모듈이 띄웠든 서버의 claude -p 프로세스 — 원고 대화·탐색·발표 자료처럼 위에서 못 세는 것까지
+    n += len(procs)
+    names += ["claude 프로세스 pid %s (%s부터) — 어느 창의 물음인지 보고 끝나길 기다릴 것" % (pid, t) for pid, t in procs]
     return n, names
+
+
+def claude_procs():
+    """서버가 띄운 claude 프로세스 [(pid, 시작 시각)] — 부모가 서버이거나 명령줄에 -p 가 있는 것. 데스크톱 앱의 claude(stream-json)는 뺀다."""
+    parents = server_pids()
+    cmd = ('Get-CimInstance Win32_Process | Where-Object { $_.Name -like "claude*" -and $_.CommandLine -notlike "*stream-json*" } '
+           '| ForEach-Object { $_.ProcessId.ToString() + "|" + $_.ParentProcessId + "|" + $_.CreationDate.ToString("HH:mm:ss") + "|" + $_.CommandLine }')
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, creationflags=NO_WINDOW, timeout=60)
+    except Exception:
+        return []
+    out = []
+    for line in r.stdout.decode("utf-8", "replace").splitlines():
+        parts = line.split("|", 3)
+        if len(parts) < 4:
+            continue
+        pid, ppid, t, cl = [x.strip() for x in parts]
+        if ppid in parents or " -p " in (" " + cl + " "):
+            out.append((pid, t))
+    return out
 
 
 def server_pids():

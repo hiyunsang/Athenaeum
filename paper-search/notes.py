@@ -46,6 +46,58 @@ def init(**kw):
     cfg.update(kw)
     cfg["DIR"] = os.path.join(os.path.dirname(cfg["ARCHIVE"]), "연구노트")
     os.makedirs(cfg["DIR"], exist_ok=True)
+    if kw.get("sweep"):   # 서버가 켤 때만(server 가 sweep=True 를 준다) — 시험 틀이 init 을 부르면 도는 서버의 작업을 죽은 것으로 보게 된다
+        try:
+            n = sweep_stale()
+            if n:
+                print("notes: 서버가 다시 켜져 끊긴 작업 %d개를 정리했습니다" % n, flush=True)
+        except Exception as e:
+            try:
+                print("notes sweep_stale:", e, flush=True)
+            except Exception:
+                pass
+
+
+_STALE = "서버가 다시 켜져 끊겼습니다 — 다시 해 주세요"
+
+
+def sweep_stale():
+    """서버를 켤 때 남아 있는 *_pending 은 전부 죽은 작업이다(켤 때는 도는 작업이 없다) — 공부의 sweep_stale 과 같은 원리.
+    2026-10-29: 코드 반영 재시작이 18초 전에 보낸 물음(Opus 최대 · 서재 찾아보기)을 죽였는데 pending 이 남아 화면이 73분을
+    '예상보다 오래 걸리고 있습니다' 로 기다렸다. 묻기의 물음은 대화의 마지막 user 턴으로 남겨 둔다 — error 가 있으면 화면이
+    그 글을 입력 칸에 되돌리고 ask() 가 그 턴을 갈아 끼운다. 돌려주는 값은 정리한 주제 수."""
+    n = 0
+    for name in sorted(os.listdir(cfg["DIR"])):
+        if name.startswith("_") or not name.endswith(".json"):
+            continue
+        nt = cfg["load_json"](os.path.join(cfg["DIR"], name), None)
+        if not isinstance(nt, dict) or not nt.get("id"):
+            continue
+        ch = False
+        if nt.get("pending"):
+            nt.pop("pending", None)
+            nt["error"] = "서버가 다시 켜져 이 물음이 끊겼습니다 — 다시 물어 주세요"
+            ch = True
+        for k in _JOBKINDS:
+            if nt.get(k + "_pending"):
+                nt.pop(k + "_pending", None)
+                nt[k + "_error"] = _STALE
+                ch = True
+        if nt.get("forest_stage"):
+            nt.pop("forest_stage", None)
+            ch = True
+        if nt.get("card_pending"):
+            nt.pop("card_pending", None)
+            nt["card_error"] = _STALE
+            ch = True
+        if isinstance(nt.get("intro"), dict) and nt["intro"].get("writing"):
+            nt["intro"].pop("writing", None)
+            nt["intro_error"] = _STALE + " (서론 문단 쓰기)"
+            ch = True
+        if ch:
+            _save(nt)
+            n += 1
+    return n
 
 
 def _why():

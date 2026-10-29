@@ -3382,7 +3382,7 @@ study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sav
 
 # ---------- 연구 노트 (연구 주제를 놓고 Claude 와 토의 — 서재 전체·공부 장·탐색 기록·인용 이웃·원고를 알고 답한다. 사용자 2026-10-08) ----------
 import notes
-notes.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
+notes.init(sweep=True, BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
            paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, ms_new=ms.new_ms, ms_save=ms.save_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
 
 # ---------- 서재 학습 (2026-10-25, 사용자: '서재의 논문을 다 학습하고, 서론은 왜 이런 구조고 이 문장은 왜 이런 문장인지 전부') ----------
