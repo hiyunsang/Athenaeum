@@ -160,6 +160,13 @@
   .sttab tr.u.on td { background: var(--sel-bg); } .sttab tr.u.on { box-shadow: none; }
   .sttab td.c { color: var(--accent); white-space: nowrap; font-size: .92em; }
   /* 그림: 논문 PDF 에서 잘라 온 것 — 설명 문장은 본문 문장처럼 근거가 있다 */
+  .steq { margin: .6em 0 1.1em; } .steq .eqrow { display: flex; align-items: center; gap: 12px; } .steq .mml { flex: 1; text-align: center; overflow-x: auto; padding: 4px 0; } .steq .mml math { font-size: 1.12em; }
+  .steq .mml.fail { color: var(--text-3); font-size: .85em; font-family: var(--font-mono, monospace); } .steq .eqno { color: var(--text-3); white-space: nowrap; font-family: var(--font); }
+  .steq img.orig { display: block; max-width: 100%; margin: 4px auto; border: 1px solid var(--line); border-radius: var(--r); background: #fff; } .steq img.orig[hidden] { display: none; }
+  .steq figcaption { font-family: var(--font); font-size: .84em; color: var(--text-2); line-height: 1.55; margin-top: .3em; } .steq .fno { font-weight: 600; color: var(--text); margin-right: .25em; } .steq .src { color: var(--text-3); }
+  .steq details { margin-top: 2px; } .steq summary { cursor: pointer; color: var(--text-3); font-size: .92em; } .steq details .ko { color: var(--text-3); margin-top: 2px; }
+  .steq .ftag { display: inline-block; border: 1px solid var(--line-2); border-radius: var(--r); padding: 0 5px; font-size: .78em; color: var(--text-2); margin-left: 5px; vertical-align: 1px; }
+  .imath math { font-size: 1.04em; }
   .stfig { margin: .5em 0 1.2em; }
   .stfig img { display: block; max-width: 100%; max-height: 540px; border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
   .stfig figcaption { font-family: var(--font); font-size: .84em; color: var(--text-2); line-height: 1.55; margin-top: .45em; }
@@ -257,7 +264,7 @@
         <textarea id="topic" rows="3" placeholder="공부할 주제 (예: 단결정 실리콘 절삭)"></textarea>
         <div class="row">
           <select id="depth" title="읽을 논문의 수"><option value="small">핵심만 · 10편까지</option><option value="mid">보통 · 20편까지</option><option value="wide">넓게 · 36편까지</option></select>
-          <select id="pace" title="절의 분량 — 늘어난 분량은 설명(왜·무엇과 이어지는지)에 씁니다"><option value="mid">보통 · 절 35~55문장</option><option value="brief">간결 · 20~35</option><option value="full">자세히 · 50~75</option></select>
+          <select id="pace" title="절의 분량 — 늘어난 분량은 설명(왜·무엇과 이어지는지)에 씁니다"><option value="free">제한 없음 · 이해에 필요한 만큼</option><option value="mid">보통 · 절 35~55문장</option><option value="brief">간결 · 20~35</option><option value="full">자세히 · 50~75</option></select>
           <select id="effort" title="쓰는 모델"><option value="xhigh">Opus · 엑스트라</option><option value="high">Opus · 보통</option><option value="max">Opus · 최대</option><option value="fable">Fable · 엑스트라</option><option value="fast">Sonnet · 빠름 (대조는 Opus)</option></select>
           <label class="hint" title="통째로 읽을 논문에 번역이 없으면 읽기 전에 먼저 번역합니다 — 편당 3~8분, 번역 한 번 값(요약은 만들지 않습니다). 끄면 그 논문은 PDF 본문으로 읽습니다 — 근거 문장의 번역·쪽이 없습니다"><input type="checkbox" id="prep" checked> 번역이 없는 핵심 논문은 먼저 번역한다 (편마다 번역 한 번 값)</label>
         </div>
@@ -286,7 +293,7 @@ const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" 
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["prep", "번역이 없는 핵심 논문 먼저 번역하기"], ["read", "논문을 읽고 메모 뽑기"],
-  ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["edit", "편집자 다듬기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
+  ["figs", "논문의 그림·수식 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["edit", "편집자 다듬기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
 const STAGE_KO = Object.assign(Object.fromEntries(STAGES), { claims: "절마다 논지 세우기", figs_bg: "논문의 그림 읽기 (읽는 동안 배경에서)" });   /* 기록 표의 단계 이름 (2026-10-29) */
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실", dup: "같은 절의 다른 문장과 같은 말", rep: "같은 절의 다른 문장과 같은 말 (말만 바꿈)" };
@@ -594,23 +601,56 @@ async function delStudy(id) {   /* id 없이(단추의 onclick 은 event 를 넘
 const paperOf = key => cur.papers[+key.split(":")[0]];
 const citeNums = u => [...new Set((u.src || []).map(k => paperOf(k).n).filter(Boolean))].sort((a, b) => a - b);
 const unitAt = key => { const [a, b, c] = key.split(".").map(Number); return cur.chapter.sections[a].blocks[b].units[c]; };
+/* 수식 (2026-10-29, 사용자: '수식에 관한 장인데 수식이 하나도 없어'): 서버가 수식 색인(eqindex)의 LaTeX 전사를 블록 eq 로 주고, 본문 문장의 $…$ 도 같이 —
+   원고의 수식 엔진(/api/ms/math → MathML)으로 그린다. 그림이 진본이라 「원문 수식」 단추로 늘 볼 수 있고, 엔진이 못 그리면 그림으로 떨어진다 */
+const mathText = t => esc(t).replace(/\$([^$\n]{1,200}?)\$/g, (m, x) => "<span class='imath' data-tex='" + x.replace(/'/g, "&#39;") + "'>" + m + "</span>");
+let mathT = null;
+function mathSoon() { if (mathT) return; mathT = setTimeout(() => { mathT = null; renderMath(); }, 30); }
+async function renderMath() {
+  const els = [...document.querySelectorAll("[data-tex]:not([data-mml])")];
+  if (!els.length) return;
+  els.forEach(el => el.dataset.mml = "1");
+  let r = null;
+  try { r = await api("/api/ms/math", { items: els.map(el => ({ tex: el.dataset.tex, display: el.dataset.display === "1" })) }); } catch (e) { r = null; }
+  const mml = (r && r.mml) || [];
+  els.forEach((el, i) => {
+    const m = mml[i];
+    if (m && m.indexOf("<math") === 0) { el.innerHTML = m; el.classList.add("ok"); return; }
+    el.classList.add("fail");
+    const fig = el.closest(".steq"), img = fig && fig.querySelector("img.orig");
+    if (img && img.getAttribute("src")) { img.hidden = false; el.hidden = true; }
+  });
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-eqorig]"); if (!b) return;
+  const f = b.closest(".steq"), img = f && f.querySelector("img.orig");
+  if (img) { img.hidden = !img.hidden; b.textContent = img.hidden ? "원문 수식" : "원문 수식 닫기"; }
+});
 function unitHtml(u, key) {
   const ns = citeNums(u);
-  return "<span class='u" + (u.role === "claim" ? " claim" : "") + (key === selKey ? " on" : "") + (askedSet.has(key) ? " asked" : "") + "' data-u='" + key + "'>" + esc(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
+  return "<span class='u" + (u.role === "claim" ? " claim" : "") + (key === selKey ? " on" : "") + (askedSet.has(key) ? " asked" : "") + "' data-u='" + key + "'>" + mathText(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : "") + "</span>";
 }
 function figNums() {   // 장 전체에서 그림·표의 차례 번호 — 절 하나만 볼 때도 같은 번호
   if (cur._nums) return cur._nums;
-  const m = {}; let f = 0, t = 0;
-  cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => { if (b.fig) m[si + "." + bi] = b.fig.no || ++f; else if (b.table) m[si + "." + bi] = b.table.no || ++t; }));
+  const m = {}; let f = 0, t = 0, q = 0;
+  cur.chapter.sections.forEach((sec, si) => sec.blocks.forEach((b, bi) => { if (b.fig) m[si + "." + bi] = b.fig.no || ++f; else if (b.table) m[si + "." + bi] = b.table.no || ++t; else if (b.eq) m[si + "." + bi] = b.eq.no || ++q; }));
   return cur._nums = m;
 }
 // 블록: 소제목 · 문단 · 표(행마다 근거) · 그림(논문 PDF 에서 잘라 온 것 + 설명 문장) · 번외(kind: extra)
-const blocksHtml = (sec, si) => sec.blocks.map((b, bi) => {
+const blocksHtml = (sec, si) => (mathSoon(), sec.blocks.map((b, bi) => {
   const key = si + "." + bi, ex = b.kind === "extra" ? " extra" : "";
   if (b.h) return b.kind === "extra" ? "<h3 class='extra'>번외</h3>" : "<h3>" + esc(b.h) + "</h3>";
   if (b.table) return "<table class='sttab" + ex + "'><caption><b>표 " + figNums()[key] + ".</b> " + esc(b.table.cap || "") + "</caption>" +
     ((b.table.cols || []).length ? "<thead><tr>" + b.table.cols.map(c => "<th>" + esc(c) + "</th>").join("") + "<th></th></tr></thead>" : "") + "<tbody>" +
     b.units.map((u, ui) => { const k = key + "." + ui, ns = citeNums(u); return "<tr class='u" + (k === selKey ? " on" : "") + (askedSet.has(k) ? " asked" : "") + "' data-u='" + k + "'>" + (u.cells || [u.t]).map(c => "<td>" + esc(c) + "</td>").join("") + "<td class='c'>" + (ns.length ? "[" + ns.join(",") + "]" : "") + "</td></tr>"; }).join("") + "</tbody></table>";
+  if (b.eq) { const e = b.eq, p = cur.papers[e.pi] || {}, u = b.units[0], imgsrc = e.img ? "/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(e.img) : "";
+    const vars = (e.vars || []).length ? "<div class='ko'>기호: " + e.vars.map(v => esc(v.s) + " = " + esc(v.m)).join(" · ") + "</div>" : "";
+    return "<figure class='steq" + ex + "'><div class='eqrow'><div class='mml' data-tex='" + esc(e.latex || "").replace(/'/g, "&#39;") + "' data-display='1'" + (e.latex ? "" : " hidden") + ">" + esc(e.latex || "") + "</div><span class='eqno'>(식 " + figNums()[key] + ")</span></div>" +
+      (imgsrc ? "<img class='orig' src='" + imgsrc + "' alt=''" + (e.latex ? " hidden" : "") + ">" : "") +
+      "<figcaption><span class='fno'>식 " + figNums()[key] + ".</span>" + unitHtml(u, key + ".0") + " <span class='src'>— " + esc(p.short || "") + (p.n ? " [" + p.n + "]" : "") + (e.n ? ", 식 (" + esc(e.n) + ")" : "") + (e.page ? ", p." + e.page : "") + "</span>" +
+      (e.latex ? "<span class='ftag' title='LaTeX 는 논문의 수식 그림을 읽은 Claude 의 전사 — 「원문 수식」 으로 확인'>전사</span>" : "") + (imgsrc ? " <button class='act' data-eqorig>원문 수식</button>" : "") +
+      (e.partial ? " <span class='hint'>(그림이 식의 일부만 담았을 수 있음)</span>" : "") +
+      (e.what || vars ? "<details><summary>식 읽기(수식 그림을 본 Claude 가 적은 것)</summary>" + (e.what ? "<div class='ko'>" + esc(e.what) + "</div>" : "") + vars + "</details>" : "") + "</figcaption></figure>"; }
   if (b.fig) { const f = b.fig, p = cur.papers[f.pi] || {}, u = b.units[0];
     return "<figure class='stfig" + ex + "'><img src='/api/study/fig?id=" + encodeURIComponent(cur.id) + "&name=" + encodeURIComponent(f.img) + "' alt=''>" +
       "<figcaption><span class='fno'>그림 " + figNums()[key] + ".</span>" + unitHtml(u, key + ".0") + " <span class='src'>— " + esc(p.short || "") + (p.n ? " [" + p.n + "]" : "") + ", " + (f.kind === "fig" ? "Fig. " : "Table ") + f.n + ", p." + f.page + "</span>" +
@@ -618,7 +658,7 @@ const blocksHtml = (sec, si) => sec.blocks.map((b, bi) => {
       (f.cap_en || f.desc ? "<details><summary>원문 캡션" + (f.desc ? " · 그림 읽기" : "") + "</summary>" + (f.cap_en ? "<div>" + esc(f.cap_en) + "</div>" : "") + (f.cap_ko ? "<div class='ko'>" + esc(f.cap_ko) + "</div>" : "") +
         (f.desc ? "<div class='ko'>그림 읽기(그림을 본 Claude 가 적은 것): " + esc(f.desc) + "</div>" : "") + "</details>" : "") + "</figcaption></figure>"; }
   return "<p" + (ex ? " class='extra'" : "") + ">" + b.units.map((u, ui) => unitHtml(u, key + "." + ui)).join(" ") + "</p>";
-}).join("");
+}).join(""));
 const crumb = (t, extra) => "<div class='crumb noprint'><a href='#' data-v='overview'>" + esc(cur.chapter.title) + "</a><span class='sp'>›</span><span>" + esc(t) + "</span>" + (extra || "") + "</div>";
 function secPapersHtml(sec) {   // 이 절에 쓰인 논문: [번호] 저자 연도 — 그 연구가 무엇을 어떤 재료·조건으로 했나 (논문을 읽을 때 Claude 가 적은 한 줄)
   const idx = [...new Set(sec.blocks.flatMap(b => (b.units || []).flatMap(u => (u.src || []).map(k => +k.split(":")[0]))))].map(i => cur.papers[i]).filter(p => p && p.n).sort((a, b) => a.n - b.n);

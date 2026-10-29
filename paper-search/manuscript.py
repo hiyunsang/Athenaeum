@@ -7040,7 +7040,13 @@ def handle_post(h, body):
             return h._send(200, chat_edits(doc, body))
         if p == "/api/ms/math":   # 수식 미리보기: LaTeX → MathML (브라우저가 직접 그린다)
             items = (body.get("items") or [])[:400]
-            return h._send(200, {"mml": [mathtex.to_mathml(str(it.get("tex") or "")[:4000], bool(it.get("display"))) for it in items]})
+
+            def _mml(it):      # 한 식이 깨져도 나머지는 그린다 — 공부의 수식 블록(전사한 LaTeX)이 한 번에 수십 개를 보낸다 (2026-10-29)
+                try:
+                    return mathtex.to_mathml(str(it.get("tex") or "")[:4000], bool(it.get("display")))
+                except Exception:
+                    return ""
+            return h._send(200, {"mml": [_mml(it) for it in items]})
         if p == "/api/ms/wordsync":   # 워드 반영: 여기서 고친 글을 가져온 워드 파일(사본)에
             doc = load_ms(body.get("id"))
             if not doc:

@@ -1110,18 +1110,58 @@ def _fi():
     return figindex
 
 
+def _ei():
+    """수식 색인 모듈(eqindex) — figindex 와 같은 식으로 공부의 cfg 로 초기화. 사용자(2026-10-29): '수식에 대해 이야기하는데 수식이 없음'"""
+    import eqindex
+    if not eqindex.cfg.get("DIR"):
+        eqindex.init(GEN_DIR=cfg["GEN_DIR"], ARCHIVE=cfg["ARCHIVE"], load_json=cfg["load_json"], save_json=cfg["save_json"], claude_run=cfg.get("claude_run"))
+    return eqindex
+
+
+def _eq_index_all(st, quiet=False):
+    """읽을 논문마다 수식 색인(없는 것만, Sonnet 이 수식 그림을 읽어 LaTeX·뜻·기호) — 쓰기가 모델의 식을 걸고 풀어 쓰는 재료. 결과는 st.eqidx 통계. quiet 는 _fig_index_all 과 같다"""
+    ei = _ei()
+    items = [(p["file"], p.get("title") or "") for p in st["papers"] if quiet or p.get("read")]
+    t0 = time.time()
+
+    def tick(f, d):
+        with _LOCK:
+            tok = (d or {}).get("tok") or {}
+            if tok and isinstance(st.get("tok"), dict):
+                st["tok"]["in"] = st["tok"].get("in", 0) + int(tok.get("in") or 0)
+                st["tok"]["cached"] = st["tok"].get("cached", 0) + int(tok.get("cached") or 0)
+            st["calls"] = (st.get("calls") or 0) + int((d or {}).get("calls") or 0)
+    res = ei.ensure(items, model="sonnet", workers=_nwork(len(items)), on_done=tick)
+    neq = nkey = nmml = 0
+    for d in res.values():
+        a, b, c = ei.summary(d)
+        neq += a
+        nkey += b
+        nmml += c
+    with _LOCK:
+        st["eqidx"] = {"papers": len(items), "eqs": neq, "key": nkey, "mml": nmml, "sec": round(time.time() - t0), "fail": sum(1 for d in res.values() if not (d or {}).get("ok"))}
+    _log(st, "논문 %d편의 수식 %d개를 읽어 두었습니다 (핵심 관계식 %d개 · 엔진이 그리는 식 %d개, %d초)" % (len(items), neq, nkey, nmml, round(time.time() - t0)))
+
+
 def _fig_index_bg(st):
-    """그림 색인을 배경 스레드로 — 번역·읽기와 무관한 일이라 읽는 동안 같이 돈다(전에는 읽기 뒤에 따로 6분, 2026-10-29). 색인이 이미 있으면 None.
-    번역(재료 준비)이 끝난 뒤에 띄울 것 — 색인 v2 는 정렬표에서 그림을 말한 본문 문장을 찾아 쓴다"""
-    if st.get("figidx"):
+    """그림 색인과 수식 색인을 배경 스레드로 — 번역·읽기와 무관한 일이라 읽는 동안 같이 돈다(전에는 읽기 뒤에 따로 6분, 2026-10-29). 둘 다 이미 있으면 None.
+    번역(재료 준비)이 끝난 뒤에 띄울 것 — 색인 v2 는 정렬표에서 그림을 말한 본문 문장을 찾아 쓰고, 수식 색인은 번역문의 [[EQ]] 자리를 읽는다"""
+    if st.get("figidx") and st.get("eqidx"):
         return None
 
     def work():
-        try:
-            _fig_index_all(st, quiet=True)
-        except Exception as e:
-            with _LOCK:
-                st["figidx"] = {"err": str(e)[:200]}
+        if not st.get("figidx"):
+            try:
+                _fig_index_all(st, quiet=True)
+            except Exception as e:
+                with _LOCK:
+                    st["figidx"] = {"err": str(e)[:200]}
+        if not st.get("eqidx"):
+            try:
+                _eq_index_all(st, quiet=True)
+            except Exception as e:
+                with _LOCK:
+                    st["eqidx"] = {"err": str(e)[:200]}
     th = threading.Thread(target=work, name="study-figs", daemon=True)
     th.start()
     return th
@@ -1246,26 +1286,99 @@ def _fig_list(st, sec):
             if nid in notes:
                 strong.add(notes[nid][0])
     strong |= {pi for pi, k in cnt.items() if k >= 2}
+    # 2026-10-29 사용자: '그림이 너무 적어 … 쓸모없는 것들도 많음' → 강한 논문의 그림은 종류를 가리지 않고 후보에(도식·장치 먼저, 그다음 사진·그래프), 20장까지 — 고르는 잣대는 규칙 13
+    ranked = sorted([p for p in pset if p in strong], key=lambda i: (0 if st["papers"][i].get("top") else 1, 0 if st["papers"][i].get("role") == "core" else 1, i))
+    prank = {pi: r for r, pi in enumerate(ranked)}
     schem = []
-    for pi in sorted([p for p in pset if p in strong], key=lambda i: (0 if st["papers"][i].get("top") else 1, 0 if st["papers"][i].get("role") == "core" else 1, i)):
+    for pi in ranked:
         for x in (index(pi) or {}).get("figs") or []:
             k = (pi, "fig", x.get("n"))
-            if x.get("type") in ("schematic", "setup") and x.get("quality") != "poor" and x.get("what") and k not in allow:
-                schem.append((pi, x))
-    for pi, x in schem[:12]:
+            if x.get("quality") != "poor" and x.get("what") and k not in allow:
+                schem.append((0 if x.get("type") in ("schematic", "setup") else 1, prank[pi], pi, x))
+    schem.sort(key=lambda z: (z[0], z[1]))
+    for _o, _r, pi, x in schem[:20]:
         k = (pi, "fig", x["n"])
         label = "P%d Fig. %d" % (pi + 1, x["n"])
         allow[k] = {"cap": "%s: %s" % (label, x["cap"][:400]), "src": [], "desc": x.get("what", ""), "ftype": x.get("type", "")}
-        lines.append("[%s — 근거 문장이 가리키지 않는 그림: 개념·기전·장치를 처음 설명하는 자리에만] %s (p.%s): %s" % (fi.TYPES.get(x["type"], "도식"), label, x.get("page", "?"), x["cap"][:200]))
+        where = "개념·기전·장치를 처음 설명하는 자리에만" if x.get("type") in ("schematic", "setup") else "그 현상·경향을 실제로 설명하는 문장 옆에만"
+        lines.append("[%s — 근거 문장이 가리키지 않는 그림: %s] %s (p.%s): %s" % (fi.TYPES.get(x["type"], x.get("type") or "그림"), where, label, x.get("page", "?"), x["cap"][:200]))
         lines.append(reading(x))
-    return "\n".join(lines[:110]), allow
+    return "\n".join(lines[:170]), allow
 
 
-_PACE = {"brief": "20~35", "mid": "35~55", "full": "50~75"}   # 절의 문장 수 — 간결 / 보통(기본) / 자세히 (사용자 2026-10-11: '너무 급한 것 같다')
+def _eq_list(st, sec):
+    """[수식 목록] — 이 절의 근거 문장 곁(±3문장)에 있는 식과, 이 절의 대표·강한 논문의 핵심 관계식(key). 수식 색인(eqindex)의 전사(LaTeX)·뜻·기호·소개 문장을 붙인다.
+    → (목록 글, {("eq", 논문 순번, k): {img, n, latex, what, vars, partial, page, sid, psid, ctx, mml_ok}}) — _write_prompt 가 그림 허용 목록에 합쳐 _parse_units 가 '수식: P5 E2' 줄을 받는다 (2026-10-29)"""
+    ei = _ei()
+    notes = _all_notes(st)
+    lines, allow, idx = [], {}, {}
+
+    def index(pi):
+        if pi not in idx:
+            try:
+                idx[pi] = ei.load(st["papers"][pi]["file"])
+            except Exception:
+                idx[pi] = None
+        return idx[pi]
+
+    def num(sid):
+        try:
+            return int(str(sid).lstrip("s"))
+        except ValueError:
+            return -10 ** 9
+    strong, cnt, evid = set(), {}, {}
+    for c in sec.get("claims") or []:
+        for nid in c.get("notes") or []:
+            if nid in notes:
+                pi, n = notes[nid]
+                cnt[pi] = cnt.get(pi, 0) + 1
+                evid.setdefault(pi, set()).update(num(x) for x in n["s"])
+        for nid in c.get("anchor") or []:
+            if nid in notes:
+                strong.add(notes[nid][0])
+    for nid in sec.get("extra") or []:
+        if nid in notes:
+            pi, n = notes[nid]
+            evid.setdefault(pi, set()).update(num(x) for x in n["s"])
+    strong |= {pi for pi, k in cnt.items() if k >= 2}
+
+    def add(pi, k, e, why):
+        key = ("eq", pi, k)
+        if key in allow or not e.get("latex"):
+            return
+        allow[key] = {"img": e["img"], "n": e.get("n") or "", "latex": e["latex"], "what": e.get("what") or "", "vars": e.get("vars") or [], "partial": bool(e.get("partial")),
+                      "page": e.get("page"), "sid": e.get("sid") or "", "psid": e.get("psid") or "", "ctx": e.get("ctx") or "", "mml_ok": bool(e.get("mml_ok", True))}
+        lines.append("P%d E%d%s (p.%s)%s: $%s$" % (pi + 1, k, (" — 원문 식 (%s)" % e["n"]) if e.get("n") else "", e.get("page") or "?", why, e["latex"][:300]))
+        if e.get("what"):
+            lines.append("    뜻: %s" % e["what"][:200])
+        if e.get("vars"):
+            lines.append("    기호: " + " · ".join("%s = %s" % (v.get("s"), v.get("m")) for v in e["vars"][:8]))
+        if e.get("ctx"):
+            lines.append("    소개 문장 %s: \"%s\"" % (e.get("sid"), e["ctx"][:240]))
+        if e.get("partial"):
+            lines.append("    (전사가 불완전할 수 있음 — 그림이 식의 일부만 담았다)")
+    order = sorted(evid.keys(), key=lambda i: (0 if st["papers"][i].get("top") else 1, 0 if st["papers"][i].get("role") == "core" else 1, i))
+    for pi in order:
+        for k, e in enumerate((index(pi) or {}).get("eqs") or [], 1):
+            if any(abs(num(e.get("sid")) - x) <= 3 for x in evid[pi]):
+                add(pi, k, e, " [근거 문장 곁의 식]")
+    for pi in order:
+        if pi not in strong:
+            continue
+        for k, e in enumerate((index(pi) or {}).get("eqs") or [], 1):
+            if len(allow) >= 24:
+                break
+            if e.get("key"):
+                add(pi, k, e, " [이 논문의 핵심 관계식]")
+    return "\n".join(lines[:160]), allow
+
+
+_PACE = {"brief": "한 절은 20~35문장이다(핵심 정리 제외).", "mid": "한 절은 35~55문장이다(핵심 정리 제외).", "full": "한 절은 50~75문장이다(핵심 정리 제외).",
+         "free": "절의 길이에 제한이 없다(핵심 정리 제외) — 읽는 사람이 모델의 유도·조건·엇갈림을 끝까지 따라올 수 있게 필요한 만큼 쓴다. 다만 되풀이로 늘리지 않는다."}   # 간결 / 보통 / 자세히 / 제한 없음 (2026-10-11 '너무 급한 것 같다' → 2026-10-29 '길이 제한 없어도 돼, 최대한 잘 이해하는 게 1차 목표')
 
 
 def _write_rules(st):
-    return _WRITE_RULES.replace("{PACE}", _PACE.get((st.get("opts") or {}).get("pace") or "mid", "35~55"))
+    return _WRITE_RULES.replace("{PACE}", _PACE.get((st.get("opts") or {}).get("pace") or "mid", _PACE["mid"]))
 
 
 _WRITE_RULES = (
@@ -1289,7 +1402,7 @@ _WRITE_RULES = (
     "그 연구만의 장치·방법을 말해야 할 때만, 절에 두셋까지. 그때는 [논문]에 적힌 이름과 연도만 쓴다. 인용 번호는 쓰지 않는다(프로그램이 붙인다).\n"
     "7. 논문끼리 결과나 설명이 다르면 한쪽으로 뭉개지 말고 둘 다 조건과 함께 적는다. 연구들이 같은 것을 보았는지, 어디서 갈리는지는 설명의 흐름 속에서 말하고, 그 문장에는 관계된 메모를 모두 ⟦ ⟧ 에 적는다 — "
     "근거 문장들이 실제로 그 관계를 보일 때만. 앞 문장들을 되풀이하는 정리 문장은 두지 않는다 — 문단 끝에도, 절 끝에도('정리하면 …' 문단은 이미 한 말의 되풀이다). 절의 끝은 규칙 16 대로 [다음 절]로 잇는 한 문장이다.\n"
-    "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 수식은 말로 풀어 쓴다.\n"
+    "8. 한국어 문장: 평서문(~다). 번역투와 명사 나열을 피하고 한 문장에 한 가지를 말한다. 전문 용어는 [용어]의 한국어를 쓰고 이 절에서 처음 나올 때 영어를 괄호에 넣는다. 식은 규칙 20 대로 [수식 목록]에서 걸어 싣고, 본문 문장 속의 기호·짧은 식은 $…$ 로 적는다.\n"
     "9. 문장의 크기: 문장은 생각의 단위다. 한 생각을 받치는 사실이 여럿이면 한 문장에 묶고(메모 번호를 모두 적는다), 한 메모가 조건·해석을 길게 담으면 둘로 나눈다. "
     "다만 실험의 세부(장치·속도·날끝 반경·관찰 수단)를 한 문장에 다 싣지 않는다 — 그 사실이 언제 참인지를 정하는 조건 하나둘만 두고 나머지는 뺀다. 괄호 삽입은 처음 나온 영어 용어에만. "
     "읽는 사람은 메모가 몇 개였는지 모른다 — 문단을 읽고 나면 사실의 목록이 아니라 하나의 설명이어야 한다. 잇는 문장은 필요한 만큼. 설계도의 메모를 다 쓰지 않는다: 논지마다 [대표] 메모 하나둘을 서너 문장으로 깊게(무엇을 어떤 조건에서 어떻게 보았나), [보기] 메모는 한 문장이나 표의 행으로, 붙을 자리가 없으면 뺀다. 교과서는 서재의 색인이 아니다.\n"
@@ -1299,7 +1412,7 @@ _WRITE_RULES = (
     "12. 표 — 리뷰 논문의 비교 표처럼: 둘 이상의 연구가 같은 양을 다른 재료·조건에서 재었으면 수치를 본문에 나열하지 말고 표로 묶는다(행 = 논문이나 조건, 열 = 재료·조건·값·비고). 본문에는 경향이나 범위를 말하는 한 문장만 둔다(사용자 2026-10-11: '수치 나열보다 표가 낫다'). '표: 캡션' 한 줄 다음에 | 로 칸을 나눈 머리 행과 자료 행, 자료 행마다 끝에 그 행의 근거인 메모 번호. "
     "칸의 수치·단위·조건은 근거 그대로(표의 행도 본문 문장과 똑같이 원문과 대조된다). 표에 넣은 수치를 본문 문장에 되풀이하지 않는다. 절마다 많아야 둘.\n"
     "13. 그림: [그림 목록]에는 두 갈래가 있다 — (가) 설계도의 근거 문장이 가리키는 그림(사진·그래프·도식) (나) 이 절 논문들의 도식·장치 그림(근거 문장이 가리키지 않아도 된다). 교과서처럼 놓는다: "
-    "개념·기전·장치를 처음 설명하는 문단에는 그것을 그린 도식 하나(나), 관찰을 말하는 대목 옆에 사진, 경향·수치를 말하는 대목 옆에 그래프(가). 절에 둘에서 넷, 같은 그림을 두 번 싣지 않는다. 그림을 채우려고 고르지 않는다 — 그 그림 없이도 설명이 서면 넣지 않는다. "
+    "개념·기전·장치를 처음 설명하는 문단에는 그것을 그린 도식 하나(나), 관찰을 말하는 대목 옆에 사진, 경향·수치를 말하는 대목 옆에 그래프(가). 절에 셋에서 여덟 — 이해를 돕는 그림(기전·모델·슬립선장·정의를 그린 도식, 현상을 보이는 사진, 경향을 보이는 그래프)이면 더 넣어도 된다(사용자: '그림이 너무 적다'). 같은 그림을 두 번 싣지 않는다. 그림을 채우려고 고르지 않는다 — 그 그림이 이 절의 어느 문장을 받치는지 말할 수 없으면 넣지 않는다(장치 사진·보조 자료·다른 재료의 그림은 그것이 설명의 대상일 때만). "
     "(나)의 도식은 그 문단이 그 개념·장치를 실제로 설명할 때만 — 뒤의 절에서 쓸 그림을 미리 싣거나 '다른 절에서 다룬다' 며 거는 것, 이 절이 다루지 않는 재료의 그림(금속의 결정학 절에 사파이어 결정면 그림 같은)은 넣지 않는다. "
     "그림을 넣을 때는 그 그림을 걸고 풀어 쓴다: 앞 문단의 한 문장이 ⟨그림⟩ 으로 가리키고('…가 ⟨그림⟩에 보인다' — 번호는 프로그램이 붙인다), 바로 뒤에 '그림: P5 Fig. 4 — 설명. ⟦메모 번호⟧' 한 줄. "
     "설명은 한두 문장으로 무엇이 무엇인지(부분·화살표·영역·축이 가리키는 것)와 독자가 봐야 할 곳을 말한다 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만, 그 밖의 수치·결론은 보태지 않는다. "
@@ -1307,14 +1420,18 @@ _WRITE_RULES = (
     "14. 번외: 설계도에 [번외]가 있을 때만, 절 끝 '### 번외' 아래에 그 메모를 메모마다 한 문장으로(조건과 함께). 논지와 어긋나는 메모는 어긋난다고 적는다.\n"
     "15. 저널의 무게: [논문]의 ★ 는 연구자가 정한 우선 저널이다. 설명의 기둥(현상·기전·법칙을 말하는 문장)은 ★ 논문과 리뷰의 메모로 세운다. ★ 가 아닌 저널의 연구 논문의 결과는 그 조건과 수치를 보기로 덧붙이는 자리('…에서도 …가 관찰되었다', 표의 행)에 두고, "
     "그 결론을 일반화하는 문장의 받침으로 삼지 않는다. 배경·정의·방법·재인용 메모는 저널과 무관하게 쓴다.\n"
-    "16. 분량과 수치: 한 절은 {PACE}문장이다(핵심 정리 제외). 분량은 사실을 더 넣어 채우는 것이 아니라 설명을 펴는 데 쓴다 — 왜 그런지(기전), 무엇과 이어지는지, 조건이 바뀌면 어떻게 되는지를 한두 문장씩 더 두어, 사실에서 사실로 급히 건너뛰는 자리가 없게. 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 [다음 절]로 넘기는 잇는 문장 한둘이다(⟦-⟧ 로, 새 사실 없이) — 이 절이 말한 것을 다시 늘어놓는 '정리하면 …' 문단은 두지 않는다. 같은 사실(재료의 한 성질, 한 수치, 한 기전)은 절 안에서 한 번만 말한다 — 다시 필요하면 앞을 가리키는 한 구절('앞서 본 낮은 열전도도 탓에')로 받는다.\n"
+    "16. 분량과 수치: {PACE} 분량은 사실을 더 넣어 채우는 것이 아니라 설명을 펴는 데 쓴다 — 왜 그런지(기전), 무엇과 이어지는지, 조건이 바뀌면 어떻게 되는지를 한두 문장씩 더 두어, 사실에서 사실로 급히 건너뛰는 자리가 없게. 리뷰 논문의 한 소절처럼 — 많이 싣는 것이 아니라 고른 것을 깊게 설명하는 것이 교과서다. 수치는 본문에 논지를 세우는 대표값 하나만 두고, 견줄 수치가 셋 이상이면 표로 옮긴다(표의 수치는 본문에 되풀이하지 않는다). 절의 끝은 [다음 절]로 넘기는 잇는 문장 한둘이다(⟦-⟧ 로, 새 사실 없이) — 이 절이 말한 것을 다시 늘어놓는 '정리하면 …' 문단은 두지 않는다. 같은 사실(재료의 한 성질, 한 수치, 한 기전)은 절 안에서 한 번만 말한다 — 다시 필요하면 앞을 가리키는 한 구절('앞서 본 낮은 열전도도 탓에')로 받는다.\n"
     "17. 수치는 전제와 함께: 한 연구의 장치 설정값·계산값(해상도·노출 시간·주파수·장면 크기·화소 크기 같은 것)은 그것을 정한 전제(배율·절삭속도·요구 정확도·가정)가 같은 문장에 있을 때만 싣는다. "
     "'해상도를 512×512 로 두면 장면이 0.58 mm 가 된다' 처럼 전제 없이 결과만 적으면 읽는 사람은 그 수가 어디서 나오는지 따라갈 수 없다 — 그런 수의 나열(짜깁기)은 쓰지 않는다. "
     "방법의 세부는 교과서의 설명이 아니다: 원리(무엇과 무엇 사이의 절충인가, 무엇이 무엇을 정하는가)를 말로 설명하고, 한 연구의 값은 전제가 든 보기 한 문장('예컨대 ×15 배율·절삭속도 3 m/min 에서는 노출 50 μs 가 번짐을 두 화소 안에 묶었다')으로만, 그것도 논지에 필요할 때만. "
     "전제가 메모·근거에 없으면 수치를 빼고 원리만 쓴다.\n"
     "18. 용어: [용어]의 한국어를 그대로 쓴다 — 같은 영어 용어를 절마다·문단마다 다른 한국어로 옮기지 않는다(연성 영역 절삭 / 연성 모드 절삭 / 연성역 절삭 가운데 하나만). 처음 나올 때만 영어를 괄호에.\n"
     "19. 읽는 사람은 이 분야에 처음 들어온 대학원생이다. 처음 나오는 전문 개념은 그 자리에서 한 문장으로 풀어 준 뒤 쓴다(이름과 괄호 속 영어만으로 지나가지 않는다) — 정의 → 왜 그것이 여기서 중요한가 → 그것을 보인 연구의 차례로, 쉬운 것에서 어려운 것으로. "
-    "첫 절(입문)에는 실험의 세부(시편 종류·온도별 측정값·모델 파라미터·외삽값)를 싣지 않는다 — 그런 메모는 뒤 절의 몫이다.\n")
+    "첫 절(입문)에는 실험의 세부(시편 종류·온도별 측정값·모델 파라미터·외삽값)를 싣지 않는다 — 그런 메모는 뒤 절의 몫이다.\n"
+    "20. 수식: [수식 목록]의 식은 그 논문의 수식 그림을 Claude 가 LaTeX 로 전사한 것이다(뜻·기호는 앞뒤 문장에서 적은 것). 모델·관계식·정의를 설명하는 자리에는 그 식을 싣는다 — '관계식이 나온다'·'식으로 표현된다' 하고 말로만 넘어가지 않는다(교과서는 식을 보여 주고 푼다). "
+    "본문 문장이 ⟨수식⟩ 으로 가리키고('…는 ⟨수식⟩으로 쓴다' — 번호는 프로그램이 붙인다) 바로 뒤에 '수식: P5 E2 — 설명. ⟦메모 번호⟧' 한 줄: 설명은 한두 문장으로 식이 무엇을 무엇으로 구하는지와 기호의 뜻(목록의 뜻·기호·소개 문장이 말하는 것만 — 식의 유도 까닭·조건은 메모가 말할 때만). "
+    "식을 유도하는 흐름(어느 식에서 어느 식이 나오는지)이 메모·근거에 있으면 그 차례대로 싣는다. 목록에 없는 식은 쓸 수 없고 식을 고쳐 적지 않는다(프로그램이 목록의 전사와 원문 그림을 싣는다). 본문 문장 속의 기호·짧은 식은 $…$ 로 적는다($\\phi$, $\\tau_s/k$ 처럼 — 프로그램이 그린다). "
+    "같은 식을 두 번 싣지 않는다. 절에 필요한 만큼 — 핵심 관계식은 빠뜨리지 않고, 중간 산식은 유도를 따라가는 데 필요할 때만.\n")
 
 
 # Stylus — 원고의 글쓰기 지능과 같은 규칙을 공부의 글에도 (사용자 2026-10-06: '공부 기능에 글 쓸 때 기존에 쓰던 글 지능인 Stylus 적용'). 규칙은 manuscript._LIBX_STYLE 한 곳에만 두고 여기서 고른다.
@@ -1348,6 +1465,8 @@ def _write_prompt(st, k):
     if claimed:
         plist, nlist, pset = _claim_block(st, sec)
         figtxt, figs = _fig_list(st, sec)
+        eqtxt, eqs = _eq_list(st, sec)
+        figs.update(eqs)                 # 허용 목록 하나에 그림(논문, kind, n)과 식("eq", 논문, k)을 같이 — _parse_units 가 둘 다 본다
         body_secs = [s for s in ol["sections"] if s.get("kind") != "summary"]
         pos = body_secs.index(sec) if sec in body_secs else -1
         prev_s = body_secs[pos - 1] if pos > 0 else None
@@ -1355,7 +1474,8 @@ def _write_prompt(st, k):
         near = ("[앞 절] %s — 끝낸 생각: %s\n" % (prev_s["title"], " / ".join(c["t"] for c in (prev_s.get("claims") or [])[-2:]) or prev_s.get("aim", "")) if prev_s else "[앞 절] 없음 — 이 절이 장의 첫 절이다. 장의 범위를 여는 잇는 문장으로 시작한다.\n") + \
                ("[다음 절] %s — %s\n" % (next_s["title"], next_s.get("aim", "")) if next_s else "[다음 절] 없음 — 이 절이 본문의 마지막 절이다.\n")
         material = ("[설계도] 이 절이 펴는 생각의 차례와 그 받침 — 문단의 틀이 아니라 설계도다. 생각 아래가 그것을 받치는 메모이고, 메모 아래는 그 근거인 논문의 원문 문장이다. 글은 이 차례를 따라 한 편으로 이어 쓴다.\n%s\n\n%s\n"
-                    "[그림 목록] (두 갈래 — 설계도의 근거 문장이 'Fig. N' 으로 가리키는 논문의 그림·표(그 그림을 가리키는 원문 문장과 함께), 그리고 이 절 논문들의 도식·장치 그림. '그림 읽기' 는 그림을 본 Claude 가 적은 것 — 어느 그림이 무엇을 보여 주는지 그것으로 안다. 여기 있는 것만 고를 수 있다. 비어 있으면 이 절에는 그림을 넣지 않는다)\n%s") % (nlist, near, figtxt or "(없음)")
+                    "[그림 목록] (두 갈래 — 설계도의 근거 문장이 'Fig. N' 으로 가리키는 논문의 그림·표(그 그림을 가리키는 원문 문장과 함께), 그리고 이 절 논문들의 도식·장치 그림. '그림 읽기' 는 그림을 본 Claude 가 적은 것 — 어느 그림이 무엇을 보여 주는지 그것으로 안다. 여기 있는 것만 고를 수 있다. 비어 있으면 이 절에는 그림을 넣지 않는다)\n%s\n\n"
+                    "[수식 목록] (이 절의 근거 문장 곁에 있는 식과 이 절 논문들의 핵심 관계식 — 논문의 수식 그림을 읽은 Claude 가 LaTeX 로 전사한 것, 뜻·기호는 앞뒤 문장에서. 여기 있는 것만 '수식: P5 E2' 로 걸 수 있다. 비어 있으면 식을 싣지 않는다)\n%s") % (nlist, near, figtxt or "(없음)", eqtxt or "(없음)")
     else:
         plist, nlist = _note_block(st, sec["notes"])
         material = "[메모] (메모 아래는 그 근거인 논문의 원문 문장)\n%s" % nlist
@@ -1368,8 +1488,8 @@ def _write_prompt(st, k):
                 "- 이 절은 장 끝의 '핵심 정리'다. 6~10줄, 줄마다 이 장의 핵심 사실 하나를 한 문장으로. 줄 끝의 ⟦ ⟧ 안에 근거인 메모 번호. 소제목·이음 문장·문단 나눔 없이.\n\n")
     elif claimed:
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n앞 절을 받아 이 절을 여는 문장(사실 없음). ⟦-⟧\n사실을 말하는 문장(조건과 함께). ⟦N3.2⟧\n이어진 두 사실을 관계를 드러내며 한 문장에. ⟦N5.1, N3.2⟧\n그 사실들이 뜻하는 것을 받아 다음 사실로 넘어가는 문장. ⟦N7.1⟧\n다음 문단으로 넘기는 문장(사실 없음). ⟦-⟧\n¶\n"
-                "앞 문단을 받아 이어 가는 문장. ⟦N7.1⟧\n…가 ⟨그림⟩에 보인다 하고 그림을 가리키는 문장. ⟦N5.1⟧\n그림: P5 Fig. 4 — 그림을 풀어 쓰는 한두 문장(무엇이 무엇이고 독자가 어디를 봐야 하는지). ⟦N5.1⟧\n¶\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
-                "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄(그 줄의 설명은 한두 문장이어도 된다).\n"
+                "앞 문단을 받아 이어 가는 문장. ⟦N7.1⟧\n…가 ⟨그림⟩에 보인다 하고 그림을 가리키는 문장. ⟦N5.1⟧\n그림: P5 Fig. 4 — 그림을 풀어 쓰는 한두 문장(무엇이 무엇이고 독자가 어디를 봐야 하는지). ⟦N5.1⟧\n¶\n…는 ⟨수식⟩으로 쓴다 하고 식을 가리키는 문장. ⟦N3.1⟧\n수식: P3 E2 — 식이 무엇을 무엇으로 구하는지와 기호의 뜻을 푸는 한두 문장. ⟦N3.1⟧\n¶\n…\n표: 보고된 임계 절삭 두께\n| 논문 | 조건 | 임계 두께 | 판정 방법 |\n| Fang 1998 | (100) Si, 0° 공구 | 236 nm | 홈 표면의 균열 | ⟦N4.3⟧\n¶\n### 번외\n번외 메모 하나를 조건과 함께 한 문장으로. ⟦N7.4⟧\n<<<END>>>\n"
+                "- 한 줄에 한 문장. 줄 끝의 ⟦ ⟧ 안에 그 문장의 근거인 메모 번호. ¶ 한 줄은 문단을 나눈다. 표는 '표:' 줄로 시작하고 행마다 끝에 메모 번호. 그림은 '그림:' 한 줄(그 줄의 설명은 한두 문장이어도 된다). 식은 '수식: P번호 E번호 — 설명' 한 줄.\n"
                 "- ⟦-⟧ = 사실이 없는 잇는 문장(앞을 받아 다음을 여는 말, 개념을 잇는 말, 왜 이것을 보는지 말하는 말). 새 사실·수치·원인을 담지 않는다. 사실을 말하는 문장이면 메모 번호를 적는다.\n\n")
     else:
         form = ("출력 형식 — 이 형식만 쓴다:\n<<<SEC>>>\n문장 하나. ⟦N3.2⟧\n문장 하나. ⟦N3.4, N7.1⟧\n¶\n### 소제목 (필요할 때만)\n앞의 사실들을 묶는 문장. ⟦-⟧\n<<<END>>>\n"
@@ -1393,6 +1513,7 @@ _REF_ANY = re.compile(r"\s*" + _REF_OPEN + r"\s*(?:N\d+\.\d+|-)(?:\s*[,;]\s*N\d+
 
 _FIG_LINE = re.compile(r"^(?:그림|figure|fig\.?)\s*[:：]\s*P\s*(\d{1,2})\s*(fig\.?|figure|table|표|그림)\s*(\d{1,3})\s*[—\-–:.]*\s*(.*)$", re.I)
 _CLAIM_MARK = re.compile(r"^(?:[◆◇■●▶►]|논지\s*\d*\s*[:：])\s*")
+_EQ_LINE = re.compile(r"^(?:수식|식|eq\.?|equation)\s*[:：]\s*P\s*(\d{1,2})\s*E\s*(\d{1,3})\s*[—\-–:.]*\s*(.*)$", re.I)   # 수식 색인의 식을 거는 줄 (2026-10-29)
 
 
 def _parse_units(text, valid, figs=None):
@@ -1441,6 +1562,23 @@ def _parse_units(text, valid, figs=None):
             tab["units"].append({"t": " | ".join(c for c in cells if c)[:400], "cells": [c[:120] for c in cells[:8]], "notes": refs[:6]})
             continue
         tab = None
+        me = _EQ_LINE.match(ln)
+        if me:
+            pi, k = int(me.group(1)) - 1, int(me.group(2))
+            mm = _REF_END.search(me.group(3))
+            t = _REF_ANY.sub("", (me.group(3)[:mm.start()] if mm else me.group(3))).strip()
+            if figs and ("eq", pi, k) in figs and len(t) >= 4:
+                eg = figs[("eq", pi, k)]
+                vtxt = " · ".join("%s = %s" % (v.get("s"), v.get("m")) for v in (eg.get("vars") or [])[:8])
+                eb = {"eq": {"pi": pi, "k": k, "img": eg["img"], "n": eg.get("n") or "", "latex": eg["latex"], "page": eg.get("page"), "partial": bool(eg.get("partial")),
+                             "what": eg.get("what") or "", "vars": list(eg.get("vars") or [])[:8], "mml_ok": bool(eg.get("mml_ok", True))},
+                      "units": [{"t": t[:700], "notes": refs_of(mm)[:6], "cap": ("원문 식 (%s): " % eg["n"] if eg.get("n") else "식: ") + eg["latex"][:600],
+                                 "fsrc": ["%d:%s" % (pi, x) for x in (eg.get("psid"), eg.get("sid")) if x][:2], "fdesc": ((eg.get("what") or "") + ((" 기호: " + vtxt) if vtxt else ""))[:400], "eq": True}]}
+                if kind:
+                    eb["kind"] = kind
+                blocks.append(eb)
+            cur = None
+            continue
         mf = _FIG_LINE.match(ln)
         if mf:
             pi, n = int(mf.group(1)) - 1, int(mf.group(3))
@@ -1736,12 +1874,12 @@ def _verify_prompt(st, units, terms):
     for i, u in units:
         src = _src_text(st, _unit_src(st, u))
         miss = u.get("nummiss") or []
-        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(그림 설명 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만) " if u.get("cap") else ""
+        tag = "(논지 문장 — 여러 근거를 묶어 말한 것) " if u.get("role") == "claim" else "(표의 행 — 칸은 | 로 나눔) " if u.get("cells") else "(수식 설명 — 전사한 식과 그 소개 문장·식 읽기가 말하는 것만) " if u.get("eq") else "(그림 설명 — 캡션·그림 읽기·그 그림을 가리키는 원문 문장이 말하는 것만) " if u.get("cap") else ""
         lines.append("u%d: %s%s%s" % (i, tag, u["t"], ("   (프로그램: 수치 %s 가 근거에 보이지 않음)" % ", ".join(miss)) if miss else ""))
         if not src and not u.get("cap"):
             lines.append("   (근거 표시 없음 — 이음 문장)")
         if u.get("cap"):
-            lines.append("   캡션 — %s" % u["cap"][:500])
+            lines.append(("   식(전사) — %s" if u.get("eq") else "   캡션 — %s") % u["cap"][:500])
         if u.get("fdesc"):
             lines.append("   그림 읽기(그림을 본 Claude 가 적은 것) — %s" % u["fdesc"][:400])
         for pi, sid, own, s in src:
@@ -1892,10 +2030,25 @@ def _fig_file(st, fig):
             "ftype": x.get("type") or fig.get("ftype") or "", "desc": ((x.get("what") or "") + ((" 그래프: " + x["data"]) if x.get("data") else ""))[:600]}
 
 
+def _eq_file(st, eq):
+    """수식 색인의 그림(번역\\수식\\<stem>\\pN_K.png)을 공부\\그림\\<id>\\P5_eq2.png 로 복사 → {img}. 그림이 없어도 전사가 있으면 싣는다(img "")"""
+    try:
+        p = st["papers"][eq["pi"]]
+        src_p = os.path.join(_ei().img_dir(p["file"]), eq.get("img") or "")
+        name = "P%d_eq%d.png" % (eq["pi"] + 1, eq["k"])
+        if eq.get("img") and os.path.isfile(src_p):
+            os.makedirs(_fig_dir(st["id"]), exist_ok=True)
+            shutil.copyfile(src_p, os.path.join(_fig_dir(st["id"]), name))
+            return {"img": name}
+    except Exception:
+        pass
+    return {"img": ""} if eq.get("latex") else None
+
+
 def _wrap(st):
-    """남은 문장으로 장을 묶는다: 인용 번호(처음 나온 순서), 근거 문장 모음, 참고문헌, 그림 자르기."""
-    order, src, secs, seen_figs = [], {}, [], {}
-    nunit = nfact = nfixed = nclaim = nmulti = ntab = nfig = nextra = nschem = 0
+    """남은 문장으로 장을 묶는다: 인용 번호(처음 나온 순서), 근거 문장 모음, 참고문헌, 그림 자르기, 수식 그림 복사."""
+    order, src, secs, seen_figs, seen_eqs = [], {}, [], {}, {}
+    nunit = nfact = nfixed = nclaim = nmulti = ntab = nfig = nextra = nschem = neq = 0
     by = {}
     for sec in st["sections"]:
         blocks = []
@@ -1913,6 +2066,15 @@ def _wrap(st):
                 if not info:          # 논문에서 그 그림을 잘라 내지 못하면 그림도 설명도 싣지 않는다
                     continue
                 nb["fig"] = dict(nb["fig"], **info)
+            if nb.get("eq"):
+                ekey = (nb["eq"]["pi"], nb["eq"]["k"])
+                if ekey in seen_eqs:       # 같은 식이 다른 절에 또 — 두 번 싣지 않고 ⟨수식⟩ 은 먼저 실린 번호를
+                    blocks.append({"eqref": seen_eqs[ekey]})
+                    continue
+                info = _eq_file(st, nb["eq"])
+                if not info:
+                    continue
+                nb["eq"] = dict(nb["eq"], **info)
             us = []
             for u in b["units"]:
                 ss = _src_text(st, _unit_src(st, u))
@@ -1959,25 +2121,34 @@ def _wrap(st):
                     nb["fig"]["no"] = nfig
                     seen_figs[(nb["fig"]["pi"], nb["fig"]["kind"], nb["fig"]["n"])] = nfig
                     nschem += 1 if nb["fig"].get("ftype") in ("schematic", "setup") else 0
+                if nb.get("eq"):
+                    neq += 1
+                    nb["eq"]["no"] = neq
+                    seen_eqs[(nb["eq"]["pi"], nb["eq"]["k"])] = neq
         # 본문의 ⟨그림⟩·⟨표⟩ 는 그 뒤에 오는 그림·표의 번호로 (교과서처럼 '그림 3에 보인다'). 뒤에 그림이 없으면 표시만 뗀다
         for i, b in enumerate(blocks):
-            if "h" in b or b.get("fig") or b.get("table") or b.get("figref"):
+            if "h" in b or b.get("fig") or b.get("table") or b.get("figref") or b.get("eq") or b.get("eqref"):
                 continue
-            nxt = {"fig": None, "table": None}
+            nxt = {"fig": None, "table": None, "eq": None}
             for b2 in blocks[i + 1:]:
                 if b2.get("fig") and nxt["fig"] is None:
                     nxt["fig"] = b2["fig"]["no"]
                 if b2.get("figref") and nxt["fig"] is None:
                     nxt["fig"] = b2["figref"]
+                if b2.get("eq") and nxt["eq"] is None:
+                    nxt["eq"] = b2["eq"]["no"]
+                if b2.get("eqref") and nxt["eq"] is None:
+                    nxt["eq"] = b2["eqref"]
                 if b2.get("table") and nxt["table"] is None:
                     nxt["table"] = b2["table"]["no"]
             for u in b["units"]:
                 t = re.sub(r"[⟨〈<]그림[⟩〉>]", ("그림 %d" % nxt["fig"]) if nxt["fig"] else "", u["t"])
                 t = re.sub(r"[⟨〈<]표[⟩〉>]", ("표 %d" % nxt["table"]) if nxt["table"] else "", t)
-                t = re.sub(r"(?<=[가-힣A-Za-z0-9,.])(그림|표) (\d+)", r" \1 \2", t)      # 낱말에 붙었으면 띄우고
-                t = re.sub(r"\(\s+(그림|표) ", r"(\1 ", t)                               # 괄호 안에서는 붙인다
+                t = re.sub(r"[⟨〈<](?:수식|식)[⟩〉>]", ("식 %d" % nxt["eq"]) if nxt["eq"] else "", t)
+                t = re.sub(r"(?<=[가-힣A-Za-z0-9,.])(그림|표|식) (\d+)", r" \1 \2", t)      # 낱말에 붙었으면 띄우고
+                t = re.sub(r"\(\s+(그림|표|식) ", r"(\1 ", t)                               # 괄호 안에서는 붙인다
                 u["t"] = re.sub(r"\s{2,}", " ", t).strip()
-        blocks = [b for b in blocks if not b.get("figref")]
+        blocks = [b for b in blocks if not b.get("figref") and not b.get("eqref")]
         if blocks:
             secs.append({"title": sec["title"], "aim": sec.get("aim", ""), "kind": sec.get("kind", ""), "blocks": blocks})
     nclaim = sum(len(s.get("claims") or []) for s in st["outline"].get("sections") or [])   # 설계도의 생각 수
@@ -2000,7 +2171,7 @@ def _wrap(st):
     st["stats"] = {"units": nunit, "fact": nfact, "bridge": nunit - nfact, "fixed": nfixed, "removed": len(st.get("removed") or []), "dups": sum(1 for x in st.get("removed") or [] if x.get("v") == "dup"), "cited": len(order),
                    "read": sum(1 for p in st["papers"] if p.get("read")), "notes": len(_all_notes(st)), "srcs": len(src),
                    "sents_read": sum(p.get("nsent", 0) for p in st["papers"] if p.get("read") and p.get("mode") == "full"),
-                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "schem": nschem, "extra": nextra, "dropped": sum(len(x.get("dropped") or []) for x in st["outline"].get("sections") or []), "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
+                   "claims": nclaim, "multi": nmulti, "tables": ntab, "figs": nfig, "eqs": neq, "schem": nschem, "extra": nextra, "dropped": sum(len(x.get("dropped") or []) for x in st["outline"].get("sections") or []), "journals": _journal_stats(st, order), "joined": st.get("joined_n", 0)}
 
 
 # ---------- 6-1 절 사이 잇기 (2026-10-07) ----------
@@ -2570,6 +2741,9 @@ def _sec_text(st, k):
         elif b.get("fig"):
             f, u = b["fig"], (b.get("units") or [{}])[0]
             out.append("그림: P%d %s %d — %s %s" % (f["pi"] + 1, "Fig." if f.get("kind") == "fig" else "Table", f["n"], u.get("t", ""), refs(u)))
+        elif b.get("eq"):
+            e, u = b["eq"], (b.get("units") or [{}])[0]
+            out.append("수식: P%d E%d — %s %s" % (e["pi"] + 1, e["k"], u.get("t", ""), refs(u)))
         else:
             for u in b.get("units") or []:
                 out.append(u["t"] + " " + refs(u))
@@ -3197,7 +3371,7 @@ def _batch_job():
         _BATCH["cur"] = None
 
 
-def rewrite_start(sid):
+def rewrite_start(sid, body=None):
     """다 쓴 장을 짜기부터 새 규칙으로 다시 쓴다(읽은 논문·메모·그림 색인은 그대로 — 읽기 비용이 없다) → 새 장. 옛 장은 그대로 남는다."""
     src = _load(sid)
     if not src or not src.get("papers") or not any(p.get("read") for p in src["papers"]):
@@ -3208,6 +3382,11 @@ def rewrite_start(sid):
     st = json.loads(json.dumps({k: src[k] for k in ("topic", "opts", "plan", "scan", "papers", "figidx") if k in src}, ensure_ascii=False))
     for p in st["papers"]:
         p.pop("n", None)
+    body = body or {}
+    if body.get("effort") in ms._SEL_EFFORT:      # 다시 쓸 때 모델·분량을 바꿀 수 있다 (2026-10-29: 최대로 쓴 장을 엑스트라·제한 없음으로)
+        st["opts"]["effort"] = body["effort"]
+    if body.get("pace") in _PACE:
+        st["opts"]["pace"] = body["pace"]
     st.update(id=nid, t=time.time(), status="running", stage="outline", calls=0, sec=0, tok={"in": 0, "cached": 0}, removed=[], joined=False, log=[], rewrite_of=sid)
     _save(st)
     return _spawn(nid)
@@ -3274,6 +3453,11 @@ def _fig_label(st, fig):
     return "%s%s, %s %d, p.%s" % (p["short"], (" [%d]" % p["n"]) if p.get("n") else "", "Fig." if fig.get("kind") == "fig" else "Table", fig["n"], fig.get("page", "?"))
 
 
+def _eq_label(st, eq):
+    p = st["papers"][eq["pi"]]
+    return "%s%s%s%s" % (p["short"], (" [%d]" % p["n"]) if p.get("n") else "", (", 식 (%s)" % eq["n"]) if eq.get("n") else "", (", p.%s" % eq["page"]) if eq.get("page") else "")
+
+
 def _block_text(st, b, cite, ids=None):
     """블록 하나를 글로(md·대화 배경 공용). cite(u) = ' [3,5]' 꼴, ids(ui) = 문장 id 머리(없으면 빈 글). 그림·표의 번호는 문단 순서대로 붙이지 않고 출처로 가리킨다"""
     if "h" in b:
@@ -3286,6 +3470,9 @@ def _block_text(st, b, cite, ids=None):
             cells = list(u.get("cells") or [u["t"]])[:len(cols)] + [""] * max(0, len(cols) - len(u.get("cells") or []))
             rows.append("| " + " | ".join(pre(ui) + c if i == 0 else c for i, c in enumerate(cells)) + " |" + cite(u).strip() + " |")
         return rows
+    if b.get("eq"):
+        u = (b.get("units") or [{}])[0]
+        return ["식 %s: $$%s$$ — %s%s%s (%s · LaTeX 는 전사)" % (b["eq"].get("no") or "", b["eq"].get("latex") or "", pre(0), u.get("t", ""), cite(u), _eq_label(st, b["eq"]))]
     if b.get("fig"):
         u = (b.get("units") or [{}])[0]
         return ["그림: %s%s%s (%s)" % (pre(0), u.get("t", ""), cite(u), _fig_label(st, b["fig"]))]
@@ -4423,7 +4610,7 @@ def handle_post(h, body):
         if op == "scope_cancel":
             return h._send(200, scope_cancel(body))
         if op == "rewrite":
-            return h._send(200, rewrite_start(sid))
+            return h._send(200, rewrite_start(sid, body))
         if op == "resume":
             return h._send(200, resume(sid))
         if op == "stop":

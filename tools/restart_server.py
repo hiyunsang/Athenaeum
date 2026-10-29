@@ -55,13 +55,30 @@ def running_jobs():
     return n, names
 
 
+def server_pids():
+    """명령줄에 paper-search 의 server.py 가 든 파이썬 프로세스 — netstat 이 포트 주인을 못 알려 줄 때의 폴백.
+    (다른 포트의 시험 서버도 같이 잡힌다 — 폴백은 netstat 이 빈손일 때만 쓴다.)"""
+    cmd = ('Get-CimInstance Win32_Process | Where-Object { $_.Name -like "python*" -and $_.CommandLine -like "*paper-search*server.py*" } '
+           '| Select-Object -ExpandProperty ProcessId')
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, creationflags=NO_WINDOW, timeout=60)
+        return {p.strip() for p in r.stdout.decode("utf-8", "replace").split()
+                if p.strip().isdigit() and int(p) not in (0, os.getpid())}
+    except Exception:
+        return set()
+
+
 def pids_on_port():
     r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, creationflags=NO_WINDOW)
     pids = set()
     for line in r.stdout.splitlines():
         parts = line.split()
-        if len(parts) >= 5 and parts[1].endswith(":%d" % PORT) and parts[3] == "LISTENING":
+        if len(parts) >= 5 and parts[1].endswith(":%d" % PORT) and parts[3] == "LISTENING" and parts[4] != "0":
             pids.add(parts[4])
+    if not pids:
+        # 2026-10-29: Claude 의 샌드박스 안에서는 netstat 이 주인 pid 를 0 으로 보여 '서버 종료 (pid 0)' 만 찍고
+        # 옛 서버가 그대로 남았다(옛 코드가 계속 돌아 다시 쓰기가 옛 옵션으로 시작됐다). 그때는 명령줄로 찾는다.
+        pids = server_pids()
     return pids
 
 
