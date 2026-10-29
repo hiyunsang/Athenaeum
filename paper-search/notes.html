@@ -41,7 +41,7 @@
   .oi .m { color: var(--text-3); font-size: 11px; margin-top: 2px; } .oi .m .run { color: var(--accent); }
   .empty { padding: var(--s4) var(--s3); color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
   /* 가운데: 토의 */
-  #thwrap { flex: 1; min-height: 0; overflow-y: auto; }
+  #thwrap { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* 논지 popover 의 기준 */
   .page { max-width: var(--read-width); margin: 0 auto; padding: var(--s5) var(--s6) var(--s6); }
   .th { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
   .th textarea.tt { flex: 1; min-width: 240px; font-family: var(--font-serif); font-size: 20px; font-weight: 600; line-height: 1.3; border: 0; padding: 2px 0; background: transparent; resize: none; overflow: hidden; }   /* 긴 물음도 제목이 된다 — 줄바꿈해 다 보이게 */
@@ -72,7 +72,13 @@
   .msg .go::before { content: "↗ "; color: var(--text-3); }
   .stc { color: var(--accent); cursor: pointer; font-size: 10.5px; font-weight: 600; border: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; margin-left: 2px; text-decoration: none; white-space: nowrap; } .stc:hover { background: var(--accent-bg); }   /* 답 속의 공부 장 논지 번호 — 누르면 공부 창의 그 문장 (2026-10-29) */
   .tabhelp { font-size: 11.5px; color: var(--text-2); line-height: 1.55; padding: 2px 0 6px; border-bottom: 1px solid var(--line-2); margin-bottom: 6px; } .tabhelp .act { font-size: 11px; } .tabhelp div { margin-top: 3px; }
-  .askhelp { font-size: 11px; color: var(--text-2); line-height: 1.55; padding: 4px 0 0; } #askStudy { max-width: 180px; }
+  .askhelp { font-size: 11px; color: var(--text-2); line-height: 1.55; padding: 4px 0 0; } #askStudy { max-width: 180px; } #askMs { max-width: 200px; }
+  #askLast { font-size: 11px; color: var(--text-3); padding-top: 3px; }
+  /* 답 속의 논지 번호를 누르면 — 논지·장의 문장·근거 원문을 이 창에 (2026-10-29: 공부 창은 홈이 연 창이라 앞으로 못 가져와 '눌러도 아무것도 안 뜬다') */
+  .stcpop { position: absolute; z-index: 6; width: min(500px, calc(100% - 16px)); max-height: 62vh; overflow: auto; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 6px 24px #0003; padding: var(--s2) var(--s3) var(--s3); font-size: 12.5px; line-height: 1.6; word-break: keep-all; }
+  .stcpop .sph { display: flex; gap: var(--s2); align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-bottom: 6px; } .stcpop .sph .sp { flex: 1; } .stcpop .sph .act { font-size: 11px; white-space: nowrap; }
+  .stcpop .spc { margin: 6px 0; } .stcpop .k { display: inline-block; font-size: 11px; font-weight: 700; color: var(--text-2); margin-right: 6px; }
+  .stcpop .src { border-top: 1px solid var(--line); padding: 5px 0; } .stcpop .src .en { font-size: 12px; } .stcpop .src .ko { font-size: 12px; color: var(--text-2); margin-top: 2px; } .stcpop .src .act { font-size: 11px; padding: 0; }
   .waitbox { padding: var(--s3) 0; }
   .waitbox .hint { margin-top: 4px; }
   .warnbox { background: var(--amber-bg); color: var(--amber); border-radius: var(--r); padding: var(--s2) var(--s3); margin: var(--s3) 0; line-height: 1.55; }
@@ -162,7 +168,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const fmtDate = t => new Date(t * 1000).toLocaleString("ko", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분" + (Math.round(s % 60) ? " " + Math.round(s % 60) + "초" : "");
 const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n || 0);
-const EFFORT = { xhigh: "Opus · 엑스트라", max: "Opus · 최대", high: "Opus · 보통", fast: "Sonnet · 빠름" };
+const EFFORT = { xhigh: "Opus · 엑스트라 (2~4분)", max: "Opus · 최대 (10분 넘게)", high: "Opus · 보통 (1~2분)", fast: "Sonnet · 빠름 (30초)" };
 let META = { status: ["idea", "review", "adopt", "hold"], status_ko: { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" }, kind_ko: { topic: "연구 주제", ask: "물음" }, card_keys: [], card_ko: {}, plan_ko: {}, reviewer_ko: {} };
 const FROM_KO = { study: "공부 장", explore: "논문 탐색", ms: "원고", paper: "논문" };   /* 출발점이 어디서 왔나 */
 let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null, wanted = [];
@@ -373,15 +379,16 @@ function msgHtml(m) {
   const titles = {}; (m.studies || []).forEach(x => { titles[x.id] = x.title || ""; });
   const anc = m.anchors || {};
   const link = html => !Object.keys(anc).length ? html : html.replace(/⟦\s*([A-D]\d{1,2}\.\d{1,2}(?:\s*[,·]\s*[A-D]\d{1,2}\.\d{1,2})*)\s*⟧/g, (all, ids) =>   /* 공부 장의 논지 번호 → 공부 창의 그 문장 (2026-10-29) */
-    ids.split(/\s*[,·]\s*/).map(id => { const a = anc[id]; return a ? "<a class='stc' data-st='" + esc(a.sid) + "' data-si='" + a.si + "' data-u='" + esc(a.key) + "' title='" + esc(("공부 「" + (titles[a.sid] || "") + "」 — " + (a.claim || a.t || "")).slice(0, 220)) + " · 누르면 공부 창의 그 문장'>" + esc(id) + "</a>" : esc(id); }).join(" "));
+    ids.split(/\s*[,·]\s*/).map(id => { const a = anc[id]; return a ? "<a class='stc' data-st='" + esc(a.sid) + "' data-si='" + a.si + "' data-u='" + esc(a.key) + "' data-cid='" + esc(id) + "'" + (a.fb ? " data-fb='1'" : "") + " title='" + esc(("공부 「" + (titles[a.sid] || "") + "」 — " + (a.claim || a.t || "")).slice(0, 220)) + " · 누르면 그 논지와 근거 원문'>" + esc(id) + "</a>" : esc(id); }).join(" "));
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
     (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") +
-    ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc((x.title || "").slice(0, 26)) + "」").join(" ") + " 을 봄" : "") + "</div>" + link(claudeHtml(m.text)) + "</div>";
+    ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc((x.title || "").slice(0, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc((m.ms.title || "").slice(0, 26)) + "」 을 봄" : "") + "</div>" + link(claudeHtml(m.text)) + "</div>";
 }
 function renderThread() {
   const el = $("thread"); if (!el || !cur) return;
+  stcClose();
   let h = (cur.thread || []).map(msgHtml).join("");
-  if (!(cur.thread || []).length) h += "<div class='hint' style='padding:var(--s4) 0;line-height:1.7'>아래에 첫 물음을 적으세요 — '이 주제가 설 만한가', '서재에 이미 한 연구가 있나', '어떤 실험으로 보일 수 있나' 같은 것. Claude 는 약점과 반론을 먼저 말하도록 되어 있습니다.</div>";
+  if (!(cur.thread || []).length) h += "<div class='hint' style='padding:var(--s4) 0;line-height:1.7'>아래에 첫 물음을 적으세요 — '이 주제가 설 만한가', '서재에 이미 한 연구가 있나', '어떤 실험으로 보일 수 있나' 같은 것. 답의 길이는 물음의 길이를 따릅니다 — 길게 받으려면 '자세히' 라고 적으세요.</div>";
   if (cur.pending) h += "<div class='waitbox'><div class='prog'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 주제에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div></div>";
   if (cur.error) h += "<div class='warnbox'>" + esc(cur.error) + " — 아래에서 다시 물으세요.</div>";
   el.innerHTML = h;
@@ -394,7 +401,7 @@ function renderThread() {
   };
   el.querySelectorAll(".go[data-q]").forEach(a => a.onclick = () => openBig("/explore?q=" + encodeURIComponent(a.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
   el.querySelectorAll(".go[data-study]").forEach(a => a.onclick = () => openBig("/study?topic=" + encodeURIComponent(a.dataset.study), "athenaeum_study", "width=1440,height=920"));
-  el.querySelectorAll("a.stc").forEach(a => a.onclick = () => openBig("/study?id=" + encodeURIComponent(a.dataset.st) + "&view=sec&si=" + encodeURIComponent(a.dataset.si) + "&u=" + encodeURIComponent(a.dataset.u), "athenaeum_study", "width=1440,height=920"));   /* 공부 창의 그 문장으로 */
+  el.querySelectorAll("a.stc").forEach(a => a.onclick = e => { e.preventDefault(); stcPop(a); });   /* 논지·장의 문장·근거 원문을 이 창에, 거기서 공부 창으로 (2026-10-29) */
   clearInterval(tick);
   if (cur.pending) {
     const eff = (cur.opts || {}).effort || "xhigh", T = expect(eff);
@@ -415,6 +422,10 @@ function renderAsk() {
   const studies = META.studies || [], studyOk = study === "auto" || study === "none" || studies.some(x => x.id === study), sv = studyOk ? study : "auto";
   const studyOpts = "<option value='auto'" + (sv === "auto" ? " selected" : "") + ">공부 장: 알아서</option><option value='none'" + (sv === "none" ? " selected" : "") + ">공부 장 안 봄</option>" +
     studies.map(x => "<option value='" + esc(x.id) + "'" + (sv === x.id ? " selected" : "") + ">공부: " + esc((x.title || "").slice(0, 34)) + "</option>").join("");
+  const mss = META.manuscripts || [], msWant = (cur.opts || {}).ms || ((cur.ms || {}).id) || "none", msv = mss.some(x => x.id === msWant) ? msWant : "none";   /* 원고 — 주제마다 기억(opts.ms), 노트가 세운 원고가 있으면 그것 (2026-10-29) */
+  const msOpts = "<option value='none'" + (msv === "none" ? " selected" : "") + ">원고 안 봄</option>" + mss.map(x => "<option value='" + esc(x.id) + "'" + (msv === x.id ? " selected" : "") + ">원고: " + esc((x.title || "").slice(0, 34)) + "</option>").join("");
+  const lastA = (cur.thread || []).filter(m => m.role === "claude" && m.sec).slice(-1)[0];
+  const lastLine = lastA ? "지난 답: " + fmtDur(lastA.sec) + (lastA.tok ? " · 읽은 토큰 " + fmtTok(lastA.tok.in) : "") + (EFFORT[(cur.opts || {}).effort] ? " · " + EFFORT[(cur.opts || {}).effort] : "") + (lastA.lib && lastA.turns > 1 ? " · 서재를 찾아봄" : "") + ((lastA.studies || []).length ? " · 공부 " + lastA.studies.length + "장" : "") + (lastA.ms ? " · 원고" : "") + " — 답의 길이는 물음의 길이를 따릅니다(길게 받으려면 '자세히')" : "";
   const askHelp = lsGet("notes_askhelp", "1") === "1";
   const val = cur.error ? ((cur.thread || []).slice(-1)[0] || {}).text || draft : draft;
   const ph = !first ? "이어서 묻기 (Ctrl+Enter)" : cur.kind === "ask" ? "읽고 나서 궁금한 것을 물어 보세요 (Ctrl+Enter) — 예: 이 분야의 큰 흐름은? 이 논문은 그 안에서 어디에 서나? 우리 서재의 논문들은 무엇을 말하나?" :
@@ -422,10 +433,11 @@ function renderAsk() {
   box.innerHTML = "<div class='in'><textarea id='askIn' placeholder='" + ph + "'>" + esc(val) + "</textarea>" +
     "<div class='row'><select id='askEff' title='답하는 모델'>" + Object.keys(EFFORT).map(k => "<option value='" + k + "'" + (eff === k ? " selected" : "") + ">" + EFFORT[k] + "</option>").join("") + "</select>" +
     "<label title='끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 1~3분에 답합니다 — 연구 물음은 대개 충분. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만 — 특정 논문의 수치·조건·방법을 물을 때만'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
-    "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 공부 창의 그 문장이 열립니다'>" + studyOpts + "</select>" +
+    "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 그 논지와 근거 원문이 뜹니다'>" + studyOpts + "</select>" +
+    "<select id='askMs' title='고른 원고의 글(제목·초록·절·그림 캡션)을 물음에 붙입니다 — 우리 실험의 장비·조건·측정값·결과를 알고 답하게(모르면 가정하지 않고 되묻습니다). 토큰 1만~2만이 더 듭니다'>" + msOpts + "</select>" +
     "<button class='act' id='askHelpTg' title='묻기의 선택지 설명'>?</button>" +
     "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
-    "<button class='primary' id='askGo'>묻기</button></div><div class='hint' id='askMsg'></div>" + (askHelp ? "<div class='askhelp'>" + esc(ASK_HELP) + " <button class='act' id='askHelpOff'>접기</button></div>" : "") + "</div>";
+    "<button class='primary' id='askGo'>묻기</button></div>" + (lastLine ? "<div id='askLast'>" + esc(lastLine) + "</div>" : "") + "<div class='hint' id='askMsg'></div>" + (askHelp ? "<div class='askhelp'>" + esc(ASK_HELP) + " <button class='act' id='askHelpOff'>접기</button></div>" : "") + "</div>";
   const hb = $("askHelpTg"); if (hb) hb.onclick = () => { lsSet("notes_askhelp", lsGet("notes_askhelp", "1") === "1" ? "0" : "1"); renderAsk(); };
   const ho = $("askHelpOff"); if (ho) ho.onclick = () => { lsSet("notes_askhelp", "0"); renderAsk(); };
   const t = $("askIn"); t.oninput = () => { draft = t.value; }; t.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); send(); } });
@@ -436,10 +448,10 @@ function renderAsk() {
 function applyFont() { $("thwrap").style.fontSize = (+lsGet("ui_chat_font", "13") || 13) + "px"; }
 async function send() {
   const t = $("askIn"), q = (t ? t.value : "").trim(); if (!q) { if (t) t.focus(); return; }
-  const eff = $("askEff").value, lib = $("askLib").checked, study = ($("askStudy") || {}).value || "auto";
+  const eff = $("askEff").value, lib = $("askLib").checked, study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none";
   lsSet("notes_effort", eff); lsSet("notes_lib", lib ? "1" : "0"); lsSet("notes_study", study);
   $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
-  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv }); } catch (e) { r = { error: "서버 연결 실패" }; }
   if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; return; }
   draft = ""; cur = r.note; renderThread(); renderAsk(); renderListSoon(); schedulePoll();
   const w = $("thwrap"); w.scrollTop = w.scrollHeight;
@@ -772,8 +784,8 @@ const TAB_HELP = {   /* 갈래마다 '어떻게 쓰나' (2026-10-29) — 단추�
   check: "가설×관찰×예측 표(식별력 — 못 가르는 가설 쌍을 프로그램이 찾음, Opus 4~5분) · 약속↔답 지도(서론의 약속이 예상 결과·주장으로 답해지는가) · 공백 검증(서론의 공백을 세상의 문헌으로 — 이미 한 사람이 있나). 경고 수가 단추에 보입니다.",
   next: "설계서로 원고 초안(제목·초록·절 차례)을 새 원고 파일로 세우고(Opus 3~4분), 이 주제로 논문 탐색·공부 창을 엽니다.",
   lab: "우리 연구실의 장비·역량·못 하는 것과 분야 지형(핵심 저자·그룹·저널 등급·우리 자리)을 적어 두면 모든 답이 그것에 비추어 실험을 가르고 주장의 무게를 가립니다. 「Claude 가 아는 것」 은 배경의 크기입니다." };
-const ASK_HELP = "모델은 Opus 엑스트라가 기본(1~3분) — 최대는 2~4배 느립니다. 「서재 찾아보기」 를 끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 답합니다 — 연구 물음은 대개 이것으로 충분합니다. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만: 특정 논문의 수치·조건·방법을 물을 때만. " +
-  "「공부 장」 은 주제와 맞는 다 쓴 장의 논지·엇갈림·식을 물음에 붙입니다(알아서 = 맞는 장 둘까지) — 답 속의 C1.2 같은 번호를 누르면 공부 창의 그 문장이 열립니다. 답 끝의 '탐색:'·'공부:' 줄은 눌러서 돌립니다.";
+const ASK_HELP = "답의 길이는 물음의 길이를 따릅니다 — 한 줄로 물으면 한두 문단, '자세히·검토해 줘·다 따져 줘' 라고 적으면 길게. 모델은 Opus 엑스트라가 기본(2~4분) — 최대는 10분을 넘기기 쉽고 글이 더 낫다는 증거는 없습니다. 「서재 찾아보기」 를 끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 답합니다 — 연구 물음은 대개 이것으로 충분합니다. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만: 특정 논문의 수치·조건·방법을 물을 때만. " +
+  "「공부 장」 은 주제와 맞는 다 쓴 장의 논지·엇갈림·식을 물음에 붙입니다(알아서 = 맞는 장 둘까지) — 답 속의 C1.2 같은 번호를 누르면 그 논지·장의 문장·근거 원문이 여기 뜨고, 거기서 공부 창으로 갈 수 있습니다. 「원고」 를 고르면 그 원고의 글을 붙여 우리 실험(장비·조건·측정값)을 알고 답합니다 — 모르면 가정하지 않고 되묻습니다. 답 끝의 '탐색:'·'공부:' 줄은 눌러서 돌립니다.";
 function helpHtml() {
   const on = lsGet("notes_help", "1") === "1", t = TAB_HELP[cardTab] || "";
   return "<div class='tabhelp'><button class='act' id='helpTg' title='이 갈래를 어떻게 쓰는지'>" + (on ? "도움말 접기" : "? 이 갈래는") + "</button>" + (on && t ? "<div>" + esc(t) + "</div>" : "") + "</div>";
@@ -972,13 +984,66 @@ function bgHtml() {
 function bindBg() { const b = $("bgLoad"); if (b) b.onclick = async () => { b.disabled = true; b.textContent = "세는 중…"; try { bgStats = await api("/api/notes/bg"); } catch (e) { bgStats = null; } renderCard(); }; }
 
 // ---------- 창 ----------
-function openBig(path, name, feat) {
+/* 답 속의 논지 번호(C6.2)를 누르면 — 그 논지·장의 문장·근거 원문을 이 창에 띄운다 (2026-10-29, 사용자: 'C몇점몇 눌러도 아무것도 안 뜨고'). 장 파일은 창마다 한 번만 받아 둔다(1 MB 안팎, 로컬) */
+const STUDY_CACHE = {};
+const REL_KO = { agree: "일치", cond: "조건부", conflict: "엇갈림", extend: "확장", single: "한 연구" };
+async function studyGet(sid) {
+  if (STUDY_CACHE[sid]) return STUDY_CACHE[sid];
+  const r = await api("/api/study/get?id=" + encodeURIComponent(sid));
+  const st = r && r.chapter ? r : null;
+  if (st) STUDY_CACHE[sid] = st;
+  return st;
+}
+function stcEsc(e) { if (e.key === "Escape") stcClose(); }
+function stcClose() { const p = $("stcPop"); if (p) p.remove(); document.removeEventListener("keydown", stcEsc); }
+async function stcPop(a) {
+  stcClose();
+  const sid = a.dataset.st, key = a.dataset.u || "", cid = a.dataset.cid || "", fb = a.dataset.fb === "1";
+  const wrap = $("thwrap"); if (!wrap || !sid) return;
+  const pop = document.createElement("div"); pop.id = "stcPop"; pop.className = "stcpop";
+  pop.innerHTML = "<div class='sph'><b>" + esc(cid) + "</b> <span class='hint'>공부 장을 읽는 중…</span></div>";
+  wrap.appendChild(pop);
+  const r = a.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+  pop.style.top = Math.round(r.bottom - w.top + wrap.scrollTop + 6) + "px";
+  pop.style.left = Math.max(8, Math.min(Math.round(r.left - w.left), wrap.clientWidth - 516)) + "px";
+  document.addEventListener("keydown", stcEsc);
+  setTimeout(() => { const off = e => { if (!pop.contains(e.target) && e.target !== a) { stcClose(); document.removeEventListener("mousedown", off); } }; document.addEventListener("mousedown", off); }, 0);
+  let st = null; try { st = await studyGet(sid); } catch (e) { st = null; }
+  if (!$("stcPop")) return;
+  pop.innerHTML = stcHtml(st, key, cid, fb);
+  const go = pop.querySelector("[data-go]"); if (go) go.onclick = () => openBig("/study?id=" + encodeURIComponent(sid) + "&view=sec&si=" + encodeURIComponent(a.dataset.si) + "&u=" + encodeURIComponent(key), "athenaeum_study", "width=1440,height=920");
+  const cl = pop.querySelector("[data-close]"); if (cl) cl.onclick = stcClose;
+  pop.querySelectorAll("[data-ko]").forEach(b => b.onclick = () => { const k = b.parentNode.querySelector(".ko"); if (k) { k.hidden = !k.hidden; b.textContent = k.hidden ? "번역" : "번역 접기"; } });
+}
+function stcHtml(st, key, cid, fb) {
+  const title = st ? ((st.chapter || {}).title || st.topic || "") : "";
+  const head = "<div class='sph'><b>" + esc(cid) + "</b> <span class='hint'>공부 「" + esc(title.slice(0, 44)) + "」</span><span class='sp'></span><button class='act' data-go title='공부 창을 열어 그 문장을 강조합니다 (이 창이 연 공부 창에서)'>공부 창에서 보기 ↗</button><button class='act' data-close>닫기</button></div>";
+  if (!st) return head + "<div class='hint'>장을 읽지 못했습니다.</div>";
+  const [si, bi, ui] = key.split(".").map(Number);
+  const sec = ((st.chapter || {}).sections || [])[si] || {};
+  const unit = (((sec.blocks || [])[bi] || {}).units || [])[ui] || null;
+  let claim = null;
+  const m = /^[A-D](\d+)\.(\d+)$/.exec(cid);
+  if (m) { const os = ((st.outline || {}).sections || [])[+m[1] - 1] || {}; claim = (os.claims || [])[+m[2] - 1] || null; }
+  let h = head;
+  if (claim) h += "<div class='spc'><span class='k'>논지</span>" + esc(claim.t || "") + (claim.rel && REL_KO[claim.rel] ? " <span class='hint'>(" + REL_KO[claim.rel] + ")</span>" : "") + (claim.how && (claim.rel === "conflict" || claim.rel === "cond") ? "<div class='hint'>" + esc(claim.how) + "</div>" : "") + "</div>";
+  h += "<div class='spc'><span class='k'>" + (fb ? "절의 첫 문장" : "장의 문장") + "</span>" + (unit ? esc(unit.t || "") : "(문장을 찾지 못했습니다)") +
+    (fb ? "<div class='hint'>이 논지를 받치는 문장의 자리를 정확히 찾지 못해 절 「" + esc(sec.title || "") + "」 의 첫 문장을 보입니다.</div>" : "<div class='hint'>" + esc((si + 1) + ". " + (sec.title || "")) + "</div>") + "</div>";
+  const srcs = unit ? (unit.src || []) : [];
+  if (srcs.length) {
+    h += "<div class='spc'><span class='k'>근거 원문 " + srcs.length + "</span>" + srcs.map(k => {
+      const sr = (st.src || {})[k]; if (!sr) return "";
+      const pi = +k.split(":")[0], p = (st.papers || [])[pi] || {};
+      return "<div class='src'><div class='hint'>" + esc((p.short || "") + (p.n ? " [" + p.n + "]" : "") + (p.journal ? " · " + p.journal : "") + (sr.page ? " · p." + sr.page : "") + (sr.sec ? " · " + sr.sec : "") + (sr.own === false ? " · 다른 연구를 전한 문장" : "")) + "</div><div class='en'>" + esc(sr.en || "") + "</div>" +
+        (sr.ko ? "<button class='act' data-ko>번역</button><div class='ko' hidden>" + esc(sr.ko) + "</div>" : "") + "</div>";
+    }).join("") + "</div>";
+  }
+  return h;
+}
+function openBig(path, name, feat) {   /* 이 창이 연 창만 앞으로 가져올 수 있다 — Chromium 은 다른 창(홈)이 연 창의 focus() 를 무시해 공부 창이 뒤에서 바뀌기만 했다(2026-10-29) → 이름에 _nt 를 붙여 이 창의 창으로 열고 늘 그 주소로 간다 */
   let w = null;
-  try { w = window.open("", name, feat); } catch (e) {}
-  if (!w) { window.open(path, name, feat); return; }
-  let fresh = true;
-  try { fresh = !w.location || w.location.href === "about:blank" || w.location.pathname.indexOf(path.split("?")[0]) !== 0 || path.indexOf("?") > 0; } catch (e) {}
-  if (fresh) w.location.href = path;
+  try { w = window.open(path, name + "_nt", feat); } catch (e) {}
+  if (!w) { try { window.open(path, "_blank", feat); } catch (e) {} return; }
   try { w.focus(); } catch (e) {}
 }
 (function cardResize() {
