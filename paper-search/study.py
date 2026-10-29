@@ -43,6 +43,12 @@ import figcrop
 cfg = {}
 _LOCK = threading.RLock()
 _JOBS = {}          # 공부 id → {"stop": bool, "t0": 시작 시각}
+_MAX_PAR = max(1, min(12, int(os.environ.get("ATHENAEUM_STUDY_PAR") or 8)))   # 절·논문마다의 호출을 동시에 몇 개까지 (2026-10-29, 사용자: '절 개수만큼 동시 호출해도 괜찮겠네')
+
+
+def _nwork(n):
+    """독립된 호출 n개(절·논문·경계)를 몇 개씩 동시에 — 전에는 3·4 고정이라 절 8개가 세 바퀴를 돌았다. 상한은 _MAX_PAR(환경변수 ATHENAEUM_STUDY_PAR)"""
+    return max(1, min(int(n or 1), _MAX_PAR))
 _SENT_CACHE = {}    # 파일 → ((정렬표 mtime, 번역 mtime), 문장들)
 _LIST_CACHE = {}    # 공부 파일 이름 → (mtime, 목록에 보일 것)
 _CAP_CACHE = {}     # 파일 → 그림·표 캡션 목록 [{kind, n, page, text, ko}]
@@ -450,6 +456,8 @@ def _windows(sents, idx, pad=4, cap=_HIT_CHARS):
 # ---------- Claude ----------
 def _ask(st, prompt, model, effort=None, timeout=1500):
     run = cfg.get("claude_run")
+    if effort == "max":        # 최대는 같은 호출이 2~4배 오래 걸린다 — 절 쓰기(상한 1800초)가 두 번 다 끊겼다(2026-10-29 슬립선장 장: 00:28·00:58 시작, 둘 다 30분에 kill). 짜기도 25분이라 턱밑이었다
+        timeout = int(timeout * 2.5)
     res = run(prompt, timeout=timeout, model=model, effort=effort, tools="") if run else None
     with _LOCK:
         st["calls"] = st.get("calls", 0) + 1
@@ -501,10 +509,27 @@ def _check_stop(st):
         raise _Stop()
 
 
-def _stage(st, name, **prog):
+def _stage_close(st, now=None):
+    """지금 열려 있는 단계 기록을 닫는다(걸린 시간·호출 수·읽은 토큰) — _LOCK 안에서 부른다. 2026-10-29: 최대·엑스트라의 단계별 시간을 「이 장의 기록」 에서 바로 견주려고"""
+    sg = st.get("stages") or []
+    if sg and "t1" not in sg[-1]:
+        now = now or time.time()
+        last = sg[-1]
+        last["t1"] = now
+        last["sec"] = round(now - last["t0"])
+        last["calls"] = (st.get("calls") or 0) - last.pop("calls0", 0)
+        last["tok"] = int((st.get("tok") or {}).get("in") or 0) - last.pop("tok0", 0)
+
+
+def _stage(st, name, rec=None, **prog):
+    """단계를 바꾼다. rec = 기록에 적을 이름(화면의 단계 이름과 다를 때 — 논지는 화면에서는 짜기 단계의 일부다)"""
     with _LOCK:
+        now = time.time()
+        _stage_close(st, now)
+        st.setdefault("stages", []).append({"name": rec or name, "t0": now, "calls0": st.get("calls") or 0, "tok0": int((st.get("tok") or {}).get("in") or 0)})
+        st["stages"] = st["stages"][-40:]
         st["stage"] = name
-        st["stage_t"] = time.time()
+        st["stage_t"] = now
         st["prog"] = dict(prog)
     _save(st)
 
@@ -794,7 +819,7 @@ def _read_all(st, model):
     if not todo:
         return
     failed = 0
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
         futs = {ex.submit(_read_paper, st, i, model, None): i for i in todo}
         for f in as_completed(futs):
             i = futs[f]
@@ -1004,10 +1029,10 @@ def _claims(st, k, model, effort):
 def _claims_all(st, model, effort):
     todo = [k for k, s in enumerate(st["outline"]["sections"]) if not s.get("claimed") and s.get("kind") != "summary"]
     nsec = len(st["outline"]["sections"])
-    _stage(st, "outline", done=nsec - len(todo), total=nsec)
+    _stage(st, "outline", rec="claims", done=nsec - len(todo), total=nsec)
     if not todo:
         return
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
         futs = {ex.submit(_claims, st, k, model, effort): k for k in todo}
         for f in as_completed(futs):
             try:
@@ -1085,24 +1110,44 @@ def _fi():
     return figindex
 
 
-def _fig_index_all(st):
-    """읽은 논문마다 그림 색인(없는 것만, Sonnet 4편 동시) — 쓰기가 도식을 고르고 풀어 쓰는 재료. 결과는 st.figidx 통계."""
+def _fig_index_bg(st):
+    """그림 색인을 배경 스레드로 — 번역·읽기와 무관한 일이라 읽는 동안 같이 돈다(전에는 읽기 뒤에 따로 6분, 2026-10-29). 색인이 이미 있으면 None.
+    번역(재료 준비)이 끝난 뒤에 띄울 것 — 색인 v2 는 정렬표에서 그림을 말한 본문 문장을 찾아 쓴다"""
+    if st.get("figidx"):
+        return None
+
+    def work():
+        try:
+            _fig_index_all(st, quiet=True)
+        except Exception as e:
+            with _LOCK:
+                st["figidx"] = {"err": str(e)[:200]}
+    th = threading.Thread(target=work, name="study-figs", daemon=True)
+    th.start()
+    return th
+
+
+def _fig_index_all(st, quiet=False):
+    """논문마다 그림 색인(없는 것만, Sonnet 여러 편 동시) — 쓰기가 도식을 고르고 풀어 쓰는 재료. 결과는 st.figidx 통계.
+    quiet 면 배경 스레드에서 도는 것(읽기와 나란히) — 고른 논문 전부를 대상으로 하고 st.prog 는 건드리지 않는다(읽기의 진행이 보여야 한다)"""
     fi = _fi()
-    items = [(p["file"], p.get("title") or "") for p in st["papers"] if p.get("read")]
+    items = [(p["file"], p.get("title") or "") for p in st["papers"] if quiet or p.get("read")]
     t0, done = time.time(), {"n": 0}
-    with _LOCK:
-        st["prog"] = {"done": 0, "total": len(items)}
+    if not quiet:
+        with _LOCK:
+            st["prog"] = {"done": 0, "total": len(items)}
 
     def tick(f, d):
         done["n"] += 1
         with _LOCK:
-            st["prog"] = {"done": done["n"], "total": len(items)}
+            if not quiet:
+                st["prog"] = {"done": done["n"], "total": len(items)}
             tok = (d or {}).get("tok") or {}
             if tok and isinstance(st.get("tok"), dict):
                 st["tok"]["in"] = st["tok"].get("in", 0) + int(tok.get("in") or 0)
                 st["tok"]["cached"] = st["tok"].get("cached", 0) + int(tok.get("cached") or 0)
                 st["calls"] = (st.get("calls") or 0) + 1
-    res = fi.ensure(items, model="sonnet", workers=4, on_done=tick)
+    res = fi.ensure(items, model="sonnet", workers=_nwork(len(items)), on_done=tick)
     nfig = nsch = 0
     for d in res.values():
         a, b = fi.summary(d)
@@ -2021,7 +2066,7 @@ def _join_all(st, model):
     _stage(st, "join", done=0, total=len(pairs))
     done = total_n = 0
     if pairs:
-        with ThreadPoolExecutor(max_workers=3) as ex:
+        with ThreadPoolExecutor(max_workers=_nwork(len(pairs))) as ex:
             futs = {ex.submit(_join_pair, st, a, b, model): (a, b) for a, b in pairs}
             for f in as_completed(futs):
                 try:
@@ -2095,7 +2140,7 @@ def _comment_all(st, model, eff, force=False, sid=None):
                 parts.append({"h": h, "t": t})
         return parts
     done = 0
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
         futs = {ex.submit(one, k): k for k in todo}
         for f in as_completed(futs):
             k = futs[f]
@@ -2342,11 +2387,11 @@ def _quiz_prompt(st, k):
             "- 답은 keys 의 문장이 말하는 데까지만. 수치는 그 문장에 적힌 그대로. 빈말·인사말 금지.\n\n[장] %s\n[절] %d. %s\n\n%s") % (ch.get("title") or "", k + 1, sec["title"], _section_text_ids(st, k))
 
 
-def _quiz_all(st, model, eff, force=False, sid=None):
-    """절마다 확인 물음. sid 가 없으면(쓰는 흐름 안) st 에 끼우고 저장, 있으면 결과만"""
+def _quiz_all(st, model, eff, force=False, sid=None, stage=True):
+    """절마다 확인 물음. sid 가 없으면(쓰는 흐름 안) st 에 끼우고 저장, 있으면 결과만. stage=False 는 해설과 나란히 도는 것 — 단계·진행 표시는 해설 쪽이 맡는다 (2026-10-29)"""
     secs = (st.get("chapter") or {}).get("sections") or []
     todo = [k for k, s in enumerate(secs) if s.get("kind") != "summary" and s.get("blocks") and (force or not s.get("quiz"))]
-    if sid is None:
+    if sid is None and stage:
         _stage(st, "quiz", done=0, total=len(todo))
     results = {}
     if not todo:
@@ -2367,7 +2412,7 @@ def _quiz_all(st, model, eff, force=False, sid=None):
                 items.append({"q": qq[:300], "a": aa[:800], "keys": keys})
         return items
     done = 0
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
         futs = {ex.submit(one, k): k for k in todo}
         for f in as_completed(futs):
             k = futs[f]
@@ -2384,7 +2429,8 @@ def _quiz_all(st, model, eff, force=False, sid=None):
                 with _LOCK:
                     if items:
                         secs[k]["quiz"] = results[k]
-                    st["prog"] = {"done": done, "total": len(todo)}
+                    if stage:
+                        st["prog"] = {"done": done, "total": len(todo)}
                 _save(st)
     if sid is None:
         with _LOCK:
@@ -2480,7 +2526,7 @@ def _editor_pass(st, model, eff):
         nu = sum(len(b.get("units") or []) for b in blocks)
         return blocks if nu >= max(2, int(before * 0.5)) else None     # 반 넘게 사라졌으면 다듬은 글을 쓰지 않는다
     done = 0
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
         futs = {ex.submit(one, k): k for k in todo}
         for f in as_completed(futs):
             k = futs[f]
@@ -2732,15 +2778,12 @@ def _run(st):
         _prep_all(st)
         _save(st)
     _check_stop(st)
+    fig_th = _fig_index_bg(st)     # 그림 색인(Sonnet 이 그림을 보고 종류·설명 — 쓰기의 재료)은 읽기와 나란히 배경에서 (2026-10-29). 못 만들어도 장은 쓴다
     _read_all(st, model)
-    if not st.get("figidx"):       # 읽은 논문의 그림 색인(Sonnet 이 그림을 보고 종류·설명) — 쓰기가 도식을 고르고 풀어 쓰는 재료. 못 만들어도 장은 쓴다
-        _stage(st, "figs")
-        try:
-            _fig_index_all(st)
-        except _Stop:
-            raise
-        except Exception as e:
-            st["figidx"] = {"err": str(e)[:200]}
+    if fig_th is not None:         # 읽기가 먼저 끝났으면 색인이 끝날 때까지 기다린다(멈추기를 눌렀어도 여기서 기다린 뒤 멈춘다 — 색인이 겹쳐 돌지 않게)
+        if fig_th.is_alive():
+            _stage(st, "figs")
+            fig_th.join()
         _save(st)
     _check_stop(st)
     notes = _all_notes(st)
@@ -2766,7 +2809,7 @@ def _run(st):
     todo = [k for k, s in enumerate(st["sections"]) if s.get("blocks") is None]
     _stage(st, "write", done=nsec - len(todo), total=nsec)
     if todo:
-        with ThreadPoolExecutor(max_workers=3) as ex:
+        with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
             futs = {ex.submit(_write_section, st, k, model, eff): k for k in todo}
             for f in as_completed(futs):
                 k = futs[f]
@@ -2792,7 +2835,7 @@ def _run(st):
     _stage(st, "verify", done=nsec - len(todo), total=nsec)
     if todo:
         err = []
-        with ThreadPoolExecutor(max_workers=3) as ex:
+        with ThreadPoolExecutor(max_workers=_nwork(len(todo))) as ex:
             futs = {ex.submit(_verify_section, st, k, "opus" if model == "sonnet" else model): k for k in todo}   # 대조는 빠른 모델로 하지 않는다
             for f in as_completed(futs):
                 k = futs[f]
@@ -2813,17 +2856,24 @@ def _run(st):
             raise RuntimeError(err[0] + " — 「이어서」 로 남은 절부터 다시 대조합니다")
     _stage(st, "wrap")
     _wrap(st)
-    try:        # Claude 의 생각(해설 층) — 못 달아도 장은 완성이다
+    try:        # Claude 의 생각(해설 층)과 확인 물음 — 서로 무관해 나란히 돈다 (2026-10-29). 못 달아도 장은 완성이다
         try:
             _stage(st, "terms")
             _termfix(st)
         except Exception:
             pass
-        _comment_all(st, model, eff)
+
+        def quiz():
+            try:
+                _quiz_all(st, model, eff, stage=False)
+            except Exception:
+                pass
+        qth = threading.Thread(target=quiz, name="study-quiz", daemon=True)
+        qth.start()
         try:
-            _quiz_all(st, model, eff)
-        except Exception:
-            pass
+            _comment_all(st, model, eff)
+        finally:
+            qth.join()
     except Exception:
         pass
 
@@ -2847,6 +2897,8 @@ def _job(sid):
     finally:
         st["sec"] = round(st.get("sec", 0) + time.time() - t0)
         st["version"] = VERSION
+        with _LOCK:
+            _stage_close(st)
         _JOBS.pop(sid, None)
         _save(st)
 
@@ -3202,6 +3254,7 @@ def get(sid):
     st["status"] = _status(st)
     st["live"] = _live(sid)
     st["now"] = time.time()
+    st["par"] = _MAX_PAR
     if st["status"] == "done":      # 화면에 필요 없는 중간 재료는 보내지 않는다
         st.pop("sections", None)
         for p in st.get("papers") or []:

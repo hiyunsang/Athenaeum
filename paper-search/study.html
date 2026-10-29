@@ -214,6 +214,8 @@
   .srci .cited { color: var(--text-3); font-size: 11.5px; line-height: 1.5; margin-top: 5px; }
   .srci .act { padding: 4px 0; display: inline-block; margin-top: 2px; }
   .kv { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; } .kv span:first-child { color: var(--text-3); min-width: 6.5em; }
+  .stgtab { border-collapse: collapse; font-size: 12px; margin: 2px 0 var(--s2); } .stgtab th { text-align: left; color: var(--text-3); font-weight: 500; padding: 2px 10px 2px 0; }
+  .stgtab td { padding: 2px 10px 2px 0; border-top: 1px solid var(--line); white-space: nowrap; } .stgtab td:nth-child(2), .stgtab td:nth-child(3), .stgtab td:nth-child(4) { text-align: right; }
   .rm { padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .rm .w { color: var(--amber); margin-top: 2px; } .rm .s { color: var(--text-3); }
   /* 드래그 → Claude 에게 */
   #selBar { position: fixed; z-index: 31; display: none; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 4px 14px #0003; padding: 2px; white-space: nowrap; }
@@ -285,6 +287,7 @@ const fmtTok = n => n >= 10000 ? (Math.round(n / 1000) / 10) + "만" : String(n 
 
 const STAGES = [["plan", "주제를 풀어 찾을 낱말 정하기"], ["scan", "서재의 모든 문장 훑기"], ["select", "읽을 논문 고르기"], ["prep", "번역이 없는 핵심 논문 먼저 번역하기"], ["read", "논문을 읽고 메모 뽑기"],
   ["figs", "논문의 그림 읽기"], ["outline", "장의 짜임 정하기"], ["write", "절 쓰기"], ["join", "절 사이 잇기"], ["edit", "편집자 다듬기"], ["verify", "문장마다 원문과 대조"], ["wrap", "참고문헌 정리"], ["terms", "용어 통일"], ["comment", "절마다 Claude 의 생각 달기"], ["quiz", "절마다 확인 물음 달기"]];
+const STAGE_KO = Object.assign(Object.fromEntries(STAGES), { claims: "절마다 논지 세우기", figs_bg: "논문의 그림 읽기 (읽는 동안 배경에서)" });   /* 기록 표의 단계 이름 (2026-10-29) */
 const EFFORT = { xhigh: "Opus · 엑스트라", high: "Opus · 보통", max: "Opus · 최대", fable: "Fable · 엑스트라", fast: "Sonnet · 빠름 (대조는 Opus)" };
 const VERDICT = { over: "근거보다 나아감", none: "근거가 그 말을 하지 않음", attr: "누가 한 말인지 다름", num: "수치가 근거와 다름", fact: "근거 없는 사실", dup: "같은 절의 다른 문장과 같은 말", rep: "같은 절의 다른 문장과 같은 말 (말만 바꿈)" };
 let items = [], cur = null, curId = lsGet("study_last", ""), selKey = "", pollT = null, tickT = null, got = 0, panel = "info", paperSel = null;
@@ -517,9 +520,27 @@ function emptyHtml() {
 
 // ---- 쓰는 중 / 멈춤
 const fastRun = () => ((cur.opts || {}).effort) === "fast";
+const EFF_SLOW = { max: 3.5, xhigh: 1, high: 0.8, fable: 1, fast: 0.3 };   /* 생각이 긴 단계(짜기·논지·쓰기·해설)가 엑스트라에 견줘 얼마나 — 최대는 짜기 25분·논지 29분이었다(엑스트라 7·5분, 2026-10-29) */
 function expectSec(stage) {
-  const pr = cur.prog || {}, n = pr.total || 1, f = fastRun();
-  return ({ plan: 30, scan: 12, select: 45, read: Math.ceil(n / 4) * (f ? 70 : 150), outline: f ? 70 : 260, write: Math.ceil(n / 3) * (f ? 70 : 260), verify: Math.ceil(n / 3) * (f ? 60 : 170), wrap: 30 })[stage] || 60;
+  const pr = cur.prog || {}, n = pr.total || 1, par = cur.par || 8, rounds = Math.ceil(n / par), f = EFF_SLOW[(cur.opts || {}).effort] || 1;
+  const rec = (cur.stages || []).slice(-1)[0] || {};
+  if (stage === "outline" && rec.name === "claims") return 150 * rounds * f;
+  return ({ plan: 30, scan: 12, select: 45, prep: 420 * Math.ceil(n / 3), read: 80 * rounds, figs: 50 * rounds, outline: 480 * f, write: 420 * rounds * f, join: 60, edit: 300 * rounds, verify: 240 * rounds, wrap: 60, terms: 30, comment: 120 * rounds * f, quiz: 100 * rounds * f })[stage] || 60;
+}
+function stageDur(name) {   /* 끝난 단계의 걸린 시간 — 서버가 st.stages 에 적은 기록에서 (짜기는 논지까지 합쳐서) */
+  const sg = cur.stages || [], names = name === "outline" ? ["outline", "claims"] : [name];
+  let t = 0, any = false;
+  sg.forEach(x => { if (names.includes(x.name) && x.t1) { t += x.sec || 0; any = true; } });
+  if (!any && name === "figs" && (cur.figidx || {}).sec) { t = cur.figidx.sec; any = true; }
+  return any ? fmtDur(t) : "";
+}
+function stagesHtml() {   /* 단계마다 걸린 시간·호출·토큰 표 (2026-10-29, 사용자: '최대가 얼마나 길게 걸리는지 잘 기록을 해 두지') */
+  const sg = (cur.stages || []).slice(), fi = cur.figidx || {};
+  if (!sg.length && !fi.sec) return "";
+  const now = cur.now || Date.now() / 1000;
+  const rows = sg.map(x => "<tr><td>" + esc(STAGE_KO[x.name] || x.name) + (x.t1 ? "" : " <span class='run'>지금</span>") + "</td><td>" + fmtDur(x.t1 ? (x.sec || 0) : Math.max(0, now - x.t0)) + "</td><td>" + (x.calls != null ? x.calls + "번" : "") + "</td><td>" + (x.tok ? fmtTok(x.tok) : "") + "</td></tr>");
+  if (fi.sec && !sg.some(x => x.name === "figs")) rows.splice(Math.max(0, sg.findIndex(x => x.name === "read") + 1), 0, "<tr><td>" + STAGE_KO.figs_bg + "</td><td>" + fmtDur(fi.sec) + "</td><td></td><td></td></tr>");
+  return "<div class='sec'>단계마다 걸린 시간</div><table class='stgtab'><tr><th>단계</th><th>시간</th><th>호출</th><th>읽은 토큰</th></tr>" + rows.join("") + "</table>";
 }
 function stageFrac() {
   const pr = cur.prog || {}, el = (cur.now - (cur.stage_t || cur.now)) + (Date.now() - got) / 1000, T = expectSec(cur.stage);
@@ -531,7 +552,7 @@ function runHtml() {
   const k = STAGES.findIndex(a => a[0] === cur.stage), running = cur.status === "running", pr = cur.prog || {};
   const rows = STAGES.map((a, i) => {
     const cls = i < k ? "done" : i === k ? (running ? "now" : "") : "";
-    const cnt = i === k && pr.total ? pr.done + " / " + pr.total : "";
+    const cnt = i === k && pr.total ? pr.done + " / " + pr.total : i < k ? stageDur(a[0]) : "";
     return "<div class='stg " + cls + "'><span class='k'>" + (i < k ? "✓" : i === k && running ? "▸" : "·") + "</span><span>" + a[1] + "</span><span class='cnt' " + (i === k ? "id='stgCnt'" : "") + ">" + cnt + "</span></div>" +
       (i === k && running ? "<div class='stgbar'><span class='pbar wide live'><i id='stgBar' style='width:" + Math.round(stageFrac() * 100) + "%'></i></span></div>" : "");
   }).join("");
@@ -1260,6 +1281,7 @@ function infoPanel() {
     kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + (s.joined ? " · 절 사이 잇는 문장 손질 " + s.joined : "") + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
     kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
     kv("읽은 토큰", fmtTok(tok.in || 0) + (tok.cached ? " (그중 캐시 " + fmtTok(tok.cached) + ")" : "") + " · 호출 " + (cur.calls || 0) + "번");
+  h += stagesHtml();
   if (panel === "removed" && rm.length) h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
     rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
