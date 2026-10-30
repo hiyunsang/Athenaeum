@@ -3348,6 +3348,18 @@ vocab.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, loa
 
 # ---------- 공부 (내 서재의 논문만으로 쓰는 교과서 한 장 — 문장마다 논문의 원문 문장에 묶는다) ----------
 import study
+
+_EQ_BUILDING, _EQ_LOCK = {}, threading.Lock()   # 읽기 창이 띄운 수식 색인 만들기 (논문 이름 → 시작 시각)
+
+
+def _eq_build_job(name):
+    try:
+        study._ei().build(name, title=os.path.splitext(name)[0][:120], model="sonnet")
+    except Exception as e:
+        logging.warning("수식 색인 실패 %s: %s", name, e)
+    finally:
+        with _EQ_LOCK:
+            _EQ_BUILDING.pop(name, None)
 def gen_ensure(name, kind):
     """공부가 읽기 전에 번역·요약을 만들어 달라고 할 때(2026-10-19) — 있으면 done, 돌고 있으면 running, 아니면 시작해서 started. /api/generate 와 같은 길."""
     name = os.path.basename(str(name or ""))
@@ -3519,6 +3531,16 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, get_captions(name))
                 except Exception as e:
                     self._send(200, {"captions": [], "error": str(e)[:200]})
+        elif url.path == "/api/eqindex":
+            # 수식 색인(eqindex) — 읽기 창이 번역문의 [[EQ]] 그림을 전사로 그린다 (2026-10-30). {eqs, building}
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            try:
+                ei = study._ei()
+                d = ei.load(name) or {}
+                eqs = [{k: e.get(k) for k in ("img", "n", "latex", "what", "vars", "partial", "key", "mml_ok", "page")} for e in (d.get("eqs") or []) if isinstance(e, dict)]
+                self._send(200, {"eqs": eqs, "ok": bool(d.get("ok")), "building": name in _EQ_BUILDING})
+            except Exception as e:
+                self._send(200, {"eqs": [], "building": name in _EQ_BUILDING, "error": str(e)[:200]})
         elif url.path == "/eq":
             # 수식 그림: ?file=<논문>&name=<pN_K.png>
             q = parse_qs(url.query)
@@ -4000,6 +4022,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
             res = locate_in_pdf(name, passage)
             self._send(200, res or {"error": "원문 위치를 찾지 못했습니다"})
+        elif self.path == "/api/eqindex":         # 수식 색인 만들기(Sonnet, 배경) — 읽기 창의 「전사 만들기」 (2026-10-30)
+            name = os.path.basename(str(body.get("file") or ""))
+            if not name:
+                self._send(400, {"error": "file"})
+                return
+            with _EQ_LOCK:
+                if name not in _EQ_BUILDING:
+                    _EQ_BUILDING[name] = time.time()
+                    threading.Thread(target=_eq_build_job, args=(name,), name="eqindex-build", daemon=True).start()
+            self._send(200, {"ok": True, "building": True})
         elif self.path == "/api/claude_cancel":   # 대화의 「취소」 — 돌고 있는 claude 호출을 이름으로 끊는다 (원고·탐색은 화면이 물음마다 이름을 붙여 보낸다)
             self._send(200, {"ok": claude_cancel(str(body.get("job") or ""))})
         elif self.path == "/api/explore_chat":
