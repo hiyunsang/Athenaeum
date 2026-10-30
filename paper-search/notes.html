@@ -72,6 +72,7 @@
   .msg .go::before { content: "↗ "; color: var(--text-3); }
   .stc { color: var(--accent); cursor: pointer; font-size: 10.5px; font-weight: 600; border: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; margin-left: 2px; text-decoration: none; white-space: nowrap; } .stc:hover { background: var(--accent-bg); }   /* 답 속의 공부 장 논지 번호 — 누르면 공부 창의 그 문장 (2026-10-29) */
   .tabhelp { font-size: 11.5px; color: var(--text-2); line-height: 1.55; padding: 2px 0 6px; border-bottom: 1px solid var(--line-2); margin-bottom: 6px; } .tabhelp .act { font-size: 11px; } .tabhelp div { margin-top: 3px; }
+  .opts { display: contents; } .opts[hidden] { display: none; }
   .askhelp { font-size: 11px; color: var(--text-2); line-height: 1.55; padding: 4px 0 0; } #askStudy { max-width: 180px; } #askMs { max-width: 200px; }
   #askLast { font-size: 11px; color: var(--text-3); padding-top: 3px; }
   /* 답 속의 논지 번호를 누르면 — 논지·장의 문장·근거 원문을 이 창에 (2026-10-29: 공부 창은 홈이 연 창이라 앞으로 못 가져와 '눌러도 아무것도 안 뜬다') */
@@ -379,7 +380,7 @@ function bindFields(el, sel, onInput) {
   });
 }
 function msgHtml(m, i) {
-  if (m.role === "user") return "<div class='msg me'><div class='who'>나 · " + fmtDate(m.t) + (i !== undefined ? "<button class='act dec' data-i='" + i + "' title='이 말을 「연구자가 정한 것」 으로 적어 둡니다 — 다음 물음부터 늘 함께 보내져, 방향을 바꾸거나 틀린 것을 바로잡은 말이 잊히지 않습니다'>결정으로</button>" : "") + "</div><div class='body'>" + esc(m.text) + "</div></div>";
+  if (m.role === "user") return "<div class='msg me'><div class='who'>나 · " + fmtDate(m.t) + "" + "</div><div class='body'>" + esc(m.text) + "</div></div>";
   const titles = {}; (m.studies || []).forEach(x => { titles[x.id] = x.title || ""; });
   const anc = m.anchors || {};
   const link = html => !Object.keys(anc).length ? html : html.replace(/⟦\s*([A-D]\d{1,2}\.\d{1,2}(?:\s*[,·]\s*[A-D]\d{1,2}\.\d{1,2})*)\s*⟧/g, (all, ids) =>   /* 공부 장의 논지 번호 → 공부 창의 그 문장 (2026-10-29) */
@@ -397,7 +398,7 @@ function decListHtml(editable) {
   return h;
 }
 function decSecHtml() {
-  return "<div class='sec secline'>연구자가 정한 것</div><div class='hint' style='line-height:1.6;margin-bottom:4px'>토의하면서 정한 방향이나 Claude 의 말을 바로잡은 문장을 모아 둡니다. 다음 물음부터 늘 함께 보내집니다. 내 말풍선의 「결정으로」 로도 적을 수 있습니다.</div>" + decListHtml(true);
+  return "<div class='sec secline'>정한 것</div><div class='hint' style='line-height:1.6;margin-bottom:4px'>토의 중에 정한 방향이나 바로잡은 말을 한 줄씩 적어 두면 다음 물음부터 같이 보내집니다.</div>" + decListHtml(true);
 }
 function decBoxHtml() {
   const ds = cur.decisions || []; if (!ds.length) return "";
@@ -418,7 +419,7 @@ function bindDec(root) {
 function renderThread() {
   const el = $("thread"); if (!el || !cur) return;
   stcClose();
-  let h = decBoxHtml() + (cur.thread || []).map((m, i) => msgHtml(m, i)).join("");
+  let h = (cur.thread || []).map((m, i) => msgHtml(m, i)).join("");
   if (!(cur.thread || []).length) h += "<div class='hint' style='padding:var(--s4) 0;line-height:1.7'>아래에 첫 물음을 적으세요 — '이 주제가 설 만한가', '서재에 이미 한 연구가 있나', '어떤 실험으로 보일 수 있나' 같은 것. 답의 길이는 물음의 길이를 따릅니다 — 길게 받으려면 '자세히' 라고 적으세요.</div>";
   if (cur.pending) h += "<div class='waitbox'><div class='prog'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 주제에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div></div>";
   if (cur.error) h += "<div class='warnbox'>" + esc(cur.error) + " — 아래에서 다시 물으세요.</div>";
@@ -458,20 +459,18 @@ function renderAsk() {
   const msOpts = "<option value='none'" + (msv === "none" ? " selected" : "") + ">원고 안 봄</option>" + mss.map(x => "<option value='" + esc(x.id) + "'" + (msv === x.id ? " selected" : "") + ">원고: " + esc((x.title || "").slice(0, 34)) + "</option>").join("");
   const lastA = (cur.thread || []).filter(m => m.role === "claude" && m.sec).slice(-1)[0];
   const lastLine = lastA ? "지난 답: " + fmtDur(lastA.sec) + (lastA.tok ? " · 읽은 토큰 " + fmtTok(lastA.tok.in) : "") + (EFFORT[(cur.opts || {}).effort] ? " · " + EFFORT[(cur.opts || {}).effort] : "") + (lastA.lib && lastA.turns > 1 ? " · 서재를 찾아봄" : "") + ((lastA.studies || []).length ? " · 공부 " + lastA.studies.length + "장" : "") + (lastA.ms ? " · 원고" : "") + " — 답의 길이는 물음의 길이를 따릅니다(길게 받으려면 '자세히')" : "";
-  const askHelp = lsGet("notes_askhelp", "1") === "1";
+  const opts = lsGet("notes_askopts", "0") === "1";   /* 선택지는 「옵션」 뒤로 (2026-10-30: 단추가 너무 많다) */
   const val = cur.error ? ((cur.thread || []).slice(-1)[0] || {}).text || draft : draft;
   const ph = !first ? "이어서 묻기 (Ctrl+Enter)" : cur.kind === "ask" ? "읽고 나서 궁금한 것을 물어 보세요 (Ctrl+Enter) — 예: 이 분야의 큰 흐름은? 이 논문은 그 안에서 어디에 서나? 우리 서재의 논문들은 무엇을 말하나?" :
     (cur.seed && cur.seed.text ? "출발점을 놓고 물어 보세요 — 예: 이걸 연구 주제로 세울 수 있을까? (Ctrl+Enter)" : "첫 물음 (Ctrl+Enter) — 예: 이 주제, 서재에 이미 한 연구가 있나? 새로움이 어디에 있을까?");
   box.innerHTML = "<div class='in'><textarea id='askIn' placeholder='" + ph + "'>" + esc(val) + "</textarea>" +
-    "<div class='row'><select id='askEff' title='답하는 모델'>" + Object.keys(EFFORT).map(k => "<option value='" + k + "'" + (eff === k ? " selected" : "") + ">" + EFFORT[k] + "</option>").join("") + "</select>" +
+    "<div class='row'><button class='primary' id='askGo'>묻기</button><button class='act' id='askOptTg' title='모델 · 서재 찾아보기 · 공부 장 · 원고 · 글씨 크기'>" + (opts ? "옵션 접기" : "옵션") + "</button><span class='opts'" + (opts ? "" : " hidden") + "><select id='askEff' title='답하는 모델'>" + Object.keys(EFFORT).map(k => "<option value='" + k + "'" + (eff === k ? " selected" : "") + ">" + EFFORT[k] + "</option>").join("") + "</select>" +
     "<label title='끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 1~3분에 답합니다 — 연구 물음은 대개 충분. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만 — 특정 논문의 수치·조건·방법을 물을 때만. 이번 물음에만 켜집니다'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
     "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 그 논지와 근거 원문이 뜹니다'>" + studyOpts + "</select>" +
     "<select id='askMs' title='고른 원고의 글(제목·초록·절·그림 캡션)을 물음에 붙입니다 — 우리 실험의 장비·조건·측정값·결과를 알고 답하게(모르면 가정하지 않고 되묻습니다). 토큰 1만~2만이 더 듭니다'>" + msOpts + "</select>" +
-    "<button class='act' id='askHelpTg' title='묻기의 선택지 설명'>?</button>" +
     "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
-    "<button class='primary' id='askGo'>묻기</button></div>" + (lastLine ? "<div id='askLast'>" + esc(lastLine) + "</div>" : "") + "<div class='hint' id='askMsg'></div>" + (askHelp ? "<div class='askhelp'>" + esc(ASK_HELP) + " <button class='act' id='askHelpOff'>접기</button></div>" : "") + "</div>";
-  const hb = $("askHelpTg"); if (hb) hb.onclick = () => { lsSet("notes_askhelp", lsGet("notes_askhelp", "1") === "1" ? "0" : "1"); renderAsk(); };
-  const ho = $("askHelpOff"); if (ho) ho.onclick = () => { lsSet("notes_askhelp", "0"); renderAsk(); };
+    "</span></div><div class='hint' id='askMsg'></div></div>";
+  const ot = $("askOptTg"); if (ot) ot.onclick = () => { lsSet("notes_askopts", lsGet("notes_askopts", "0") === "1" ? "0" : "1"); renderAsk(); };
   const t = $("askIn"); t.oninput = () => { draft = t.value; }; t.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); send(); } });
   $("askGo").onclick = send;
   box.querySelectorAll(".fsz button").forEach(b => b.onclick = () => { const v = Math.min(20, Math.max(11, (+lsGet("ui_chat_font", "13") || 13) + (+b.dataset.f))); lsSet("ui_chat_font", String(v)); applyFont(); });
@@ -578,7 +577,7 @@ function renderCard() {
   else if (cardTab === "next") h = nextHtml();
   else h = labHtml() + bgHtml();
   el.innerHTML = helpHtml() + h;
-  const ht = $("helpTg"); if (ht) ht.onclick = () => { lsSet("notes_help", lsGet("notes_help", "1") === "1" ? "0" : "1"); renderCard(); };   /* 갈래마다 도움말 (사용자 2026-10-29: '기능이 너무 많아서 뭐 어떻게 해야 하는지 헷갈린다') */
+  const ht = $("helpTg"); if (ht) ht.onclick = () => { lsSet("notes_help", lsGet("notes_help", "0") === "1" ? "0" : "1"); renderCard(); };   /* 갈래마다 도움말 (사용자 2026-10-29: '기능이 너무 많아서 뭐 어떻게 해야 하는지 헷갈린다') */
   el.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => setTab(b.dataset.tab));
   el.querySelectorAll(".go[data-q]").forEach(a => a.onclick = () => openBig("/explore?q=" + encodeURIComponent(a.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
   el.querySelectorAll(".go[data-study]").forEach(a => a.onclick = () => openBig("/study?topic=" + encodeURIComponent(a.dataset.study), "athenaeum_study", "width=1440,height=920"));
@@ -809,7 +808,7 @@ function gapcheckHtml() {   /* 공백 검증 — 서론 구조의 공백 문장�
 const FR_KIND = { mechanism: "기전", method: "측정·관찰법", material: "재료·공정", model: "모델 검증", scale: "척도 효과", application: "적용 지침" }, FR_FIT = { high: "잘 맞음", mid: "보통", low: "버거움" };
 const FT_KIND = { extend: "변수·조건 확장", method: "새 측정·기법", resolve: "엇갈린 결과 가르기", model: "모델 검증", transfer: "다른 재료·공정에서 옮김" };
 const TAB_HELP = {   /* 갈래마다 '어떻게 쓰나' (2026-10-29) — 단추의 툴팁은 작고 늦게 떠서 따로 */
-  card: "「연구자가 정한 것」 은 토의하면서 방향을 정했거나 Claude 의 말을 바로잡은 문장을 모아 두는 곳입니다. 내 말풍선의 「결정으로」 를 누르거나 여기서 적으면 다음 물음부터 늘 함께 보내져, 같은 실수를 되풀이하지 않습니다. 토의가 한 번 오간 뒤 「대화에서 정리」 를 누르면 토의에서 정해진 것이 아홉 칸으로 정리됩니다(Opus 1분). 칸은 눌러 고치고 바로 저장됩니다. 쓰는 차례: 카드 → 틀(큰 물음·작은 물음 → 연구의 틀) → 설계서 → 반론 → 점검 → 서론 → 이어서(원고).",
+  card: "「정한 것」 에 토의 중에 정한 방향이나 바로잡은 말을 한 줄씩 적어 두면 다음 물음부터 같이 보내집니다. 토의가 한 번 오간 뒤 「대화에서 정리」 를 누르면 토의에서 정해진 것이 아홉 칸으로 정리됩니다(Opus 1분). 칸은 눌러 고치고 바로 저장됩니다. 쓰는 차례: 카드 → 틀(큰 물음·작은 물음 → 연구의 틀) → 설계서 → 반론 → 점검 → 서론 → 이어서(원고).",
   framing: "연구 주제는 여기서만 뽑습니다(토의 답에서는 내지 않습니다). ① 큰 물음(숲) 찾기 — 여러 논문에 걸친 현상·분야가 공유하는 전제·다른 분야의 연구 짜임에서 출발하는 물음, Opus 5~8분 ② 작은 물음(나무) 찾기 — 한 편의 논문으로 끝나는 연구(변수 확장·새 측정·엇갈린 결과 가르기·모델 검증), 2~4분 ③ 마음에 드는 것을 골라 두면 틀·설계서·서론·토의가 그 아래에서 섭니다 — 둘 다 골라도 됩니다(큰 물음은 방향, 작은 물음은 첫 논문) ④ 틀 후보 뽑기 — 같은 실험을 기전·측정법·재료 지침·모델 검증 가운데 무엇으로 세울지.",
   plan: "「설계서 만들기」 가 토의·카드·고른 물음과 틀·답한 반론·유사 연구의 설계(서재 주석)를 모아 열 칸을 채웁니다(Opus 3~8분). 정해지지 않은 칸은 '제안:' 으로 옵니다. 칸은 눌러 고치면 바로 저장되고 다음에 다시 만들 때 바탕이 됩니다. 「유사 연구의 설계」 는 토큰 없이 서재 주석에서 바로 가져옵니다.",
   review: "심사위원 셋(실험·이론·저널)이 설계서(없으면 토의)를 공격합니다(Opus 3~5분). 반론마다 「대화로 답하기」 로 답하거나 「답함」·「보류」 로 접습니다. 답한 반론은 다음 설계서·서론 구조에 들어갑니다.",
@@ -820,7 +819,7 @@ const TAB_HELP = {   /* 갈래마다 '어떻게 쓰나' (2026-10-29) — 단추�
 const ASK_HELP = "답의 길이는 물음의 길이를 따릅니다 — 한 줄로 물으면 한두 문단, '자세히·검토해 줘·다 따져 줘' 라고 적으면 길게. 모델은 Opus 엑스트라가 기본(2~4분)입니다. 최대는 10분을 넘기기 쉽고 글이 더 낫다는 증거가 없어서, 골라도 그 물음에만 쓰이고 다음 물음은 엑스트라로 돌아옵니다. 「서재 찾아보기」 를 끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 답합니다 — 연구 물음은 대개 이것으로 충분합니다. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만: 특정 논문의 수치·조건·방법을 물을 때만, 그 물음에만 켜집니다. " +
   "「공부 장」 은 주제와 맞는 다 쓴 장의 논지·엇갈림·식을 물음에 붙입니다(알아서 = 맞는 장 둘까지) — 답 속의 C1.2 같은 번호를 누르면 그 논지·장의 문장·근거 원문이 여기 뜨고, 거기서 공부 창으로 갈 수 있습니다. 「원고」 를 고르면 그 원고의 글을 붙여 우리 실험(장비·조건·측정값)을 알고 답합니다 — 모르면 가정하지 않고 되묻습니다. 답 끝의 '탐색:'·'공부:' 줄은 눌러서 돌립니다.";
 function helpHtml() {
-  const on = lsGet("notes_help", "1") === "1", t = TAB_HELP[cardTab] || "";
+  const on = lsGet("notes_help", "0") === "1", t = TAB_HELP[cardTab] || "";
   return "<div class='tabhelp'><button class='act' id='helpTg' title='이 갈래를 어떻게 쓰는지'>" + (on ? "도움말 접기" : "? 이 갈래는") + "</button>" + (on && t ? "<div>" + esc(t) + "</div>" : "") + "</div>";
 }
 function treesHtml() {   /* 작은 물음 — 나무: 한 편의 논문으로 끝나는 연구, 큰 물음 아래 · 틀 앞에서 고른다 (2026-10-29, 사용자: '틀 부분에 큰 물음 숲과 작은 물음 나무 이렇게 나눠 놔 — 연구 주제는 그걸로만 뽑게') */
