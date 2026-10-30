@@ -3340,6 +3340,30 @@ function chatUndo(m, i) {   // 대안으로 바꾼 것을 고치기 전의 글�
   m.thread.push({ role: "user", text: "(고치기 전으로 되돌림)", quiet: true });   // Claude 가 이어지는 대화에서 알게 기록은 남기되, 화면에는 바꿈 줄의 '되돌렸음' 만 보인다
   m.quote = sw.before; m.start = a; save(true); memoUi(m.id);
 }
+// 글을 고칠 때 대화·메모가 달린 구절의 자리를 따라간다 (2026-10-30, 사용자: '내가 바꾸면 드래그되어 있던 게 사라지네 — 유지됐으면'):
+// 고치기 전 글(ta._prev)과 지금 글의 같은 앞·뒤를 떼어 고친 구간을 잡고, 구절이 그 앞이면 자리만 밀고, 구절 안을 고쳤으면 구절을 늘리거나 줄인다. 통째로 지워진 구절은 전처럼 놓친다.
+function trackMarks(ta) {
+  const tg = taTarget(ta), old = ta._prev, now = ta.value;
+  if (!tg || !doc || old == null || old === now) { ta._prev = now; return; }
+  const minL = Math.min(old.length, now.length);
+  let p = 0; while (p < minL && old.charCodeAt(p) === now.charCodeAt(p)) p++;
+  let sfx = 0; while (sfx < minL - p && old.charCodeAt(old.length - 1 - sfx) === now.charCodeAt(now.length - 1 - sfx)) sfx++;
+  const oe = old.length - sfx, ne = now.length - sfx, delta = now.length - old.length;
+  if (old.length > 200 && oe - p > old.length * 0.4 && ne - p > now.length * 0.4) { ta._prev = now; return; }   // 통째로 바뀐 글(되돌리기·다시 쓰기) — 따라가지 않는다
+  const items = (doc.memos || []).filter(m => !m.done && m.node === tg.nid && m.key === tg.key && !scopeWide(m.scope) && m.quote);
+  if (chatNew && chatNew.nid === tg.nid && chatNew.key === tg.key && !scopeWide(chatNew.scope) && chatNew.quote) items.push(chatNew);
+  items.forEach(m => {
+    const q = m.quote, a = (m.start != null && old.slice(m.start, m.start + q.length) === q) ? m.start : old.indexOf(q);
+    if (a < 0) return;
+    const b = a + q.length;
+    if (p >= b) return;                                   // 고친 곳이 구절 뒤
+    if (oe <= a) { m.start = a + delta; return; }         // 고친 곳이 구절 앞 — 자리만 민다
+    const a2 = Math.min(a, p), b2 = b > oe ? b + delta : (a < p ? ne : -1);   // 구절 안·끝을 고침 → 늘리거나 줄인다; 구절이 통째로 덮였으면 그대로
+    if (b2 <= a2) return;
+    m.quote = now.slice(a2, b2); m.start = a2;
+  });
+  ta._prev = now;
+}
 // 본문 밑줄: 글 칸(textarea) 뒤에 같은 글을 투명하게 깔고, 대화·메모가 달린 구절에만 밑줄·바탕을 준다
 function attachMarks(ta) {
   if (!ta || !taTarget(ta)) return;
@@ -3348,7 +3372,8 @@ function attachMarks(ta) {
     ta.parentNode.insertBefore(wrap, ta);
     const back = document.createElement("div"); back.className = "taback"; back.setAttribute("aria-hidden", "true");
     wrap.appendChild(back); wrap.appendChild(ta); ta._marks = back;
-    ta.addEventListener("input", () => drawMarks(ta));
+    ta._prev = ta.value;
+    ta.addEventListener("input", () => { trackMarks(ta); drawMarks(ta); });
   }
   drawMarks(ta);
 }
@@ -3357,7 +3382,7 @@ function drawMarks(ta) {
   const tg = taTarget(ta), text = ta.value;
   const ms = tg ? (doc.memos || []).filter(m => !m.done && m.node === tg.nid && m.key === tg.key && !scopeWide(m.scope)) : [];   // 절·원고 전체를 놓고 묻는 대화는 밑줄이 없다
   const nw = tg && chatNew && chatNew.nid === tg.nid && chatNew.key === tg.key && !scopeWide(chatNew.scope) && chatNew.quote ? chatNew : null;   // 방금 고른 글 — 물을 말을 적는 동안에도 어디를 골랐는지 보이게
-  ta._ranges = [];
+  ta._ranges = []; ta._prev = text;   // 다시 그릴 때마다 '고치기 전 글' 을 맞춰 둔다 (프로그램이 글을 바꾼 뒤에도)
   if (!ms.length && !nw) { if (back.firstChild) back.textContent = ""; return; }
   const cs = getComputedStyle(ta);
   ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "wordSpacing", "textAlign", "tabSize", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
