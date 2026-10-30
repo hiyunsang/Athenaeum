@@ -21,7 +21,7 @@ GREEK = {
     "Psi": "Ψ", "Omega": "Ω",
 }
 OPS = {
-    "times": "×", "cdot": "⋅", "div": "÷", "pm": "±", "mp": "∓", "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥", "neq": "≠", "ne": "≠",
+    "times": "×", "cdot": "⋅", "div": "÷", "pm": "±", "mp": "∓", "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥", "leqslant": "⩽", "geqslant": "⩾", "neq": "≠", "ne": "≠",
     "approx": "≈", "sim": "∼", "simeq": "≃", "cong": "≅", "equiv": "≡", "propto": "∝", "ll": "≪", "gg": "≫",
     "to": "→", "rightarrow": "→", "leftarrow": "←", "gets": "←", "leftrightarrow": "↔", "Rightarrow": "⇒", "Leftarrow": "⇐",
     "Leftrightarrow": "⇔", "uparrow": "↑", "downarrow": "↓", "mapsto": "↦",
@@ -76,12 +76,31 @@ class _Parser:
         return tok
 
     def parse(self):
-        items = []
+        """맨 바깥(환경 밖)의 \\ 는 줄바꿈, & 는 칸 나누기로 본다 — 줄이 하나면 전처럼 row, 둘 이상이면 gathered 처럼 줄마다 한 행
+        (& 가 있으면 aligned 처럼 칸을 맞춘다). 전에는 \\ 를 그냥 건너뛰어 수식 색인의 두 줄짜리 전사가 한 줄로 붙어 그려졌다 (2026-10-30)."""
+        rows, row, items, has_amp = [], [], [], False
         while self.peek() is not None:
             items.extend(self.row()[1])
-            if self.peek() is not None:   # 짝 없는 } & \\ \right \end — 건너뛴다
+            tok = self.peek()
+            if tok == "\\\\":
                 self.next()
-        return ("row", items)
+                row.append(("row", items))
+                rows.append(row)
+                row, items = [], []
+            elif tok == "&":
+                self.next()
+                row.append(("row", items))
+                items, has_amp = [], True
+            elif tok is not None:   # 짝 없는 } \right \end — 건너뛴다
+                self.next()
+        if not rows and not row:
+            return ("row", items)
+        row.append(("row", items))
+        if any(c[1] for c in row):
+            rows.append(row)
+        elif not rows:   # 칸만 있고 전부 비었다
+            return ("row", [])
+        return ("m", "aligned" if has_amp else "lines", rows)
 
     def row(self, stop=()):
         items = []
@@ -512,7 +531,7 @@ def _om(n, st=None):
         return '<m:d><m:dPr><m:begChr m:val="%s"/><m:endChr m:val="%s"/></m:dPr><m:e>%s</m:e></m:d>' % (_esc(n[1]), _esc(n[2]), _om(n[3], st))
     if k == "m":
         env, rows = n[1], n[2]
-        if env in _ALIGN or env == "cases":
+        if env in _ALIGN or env in ("cases", "lines"):   # lines = 환경 밖 \\ 로 나뉜 줄 (parse)
             arr = "<m:eqArr>%s</m:eqArr>" % "".join(
                 "<m:e>%s</m:e>" % "".join((_r("\u2003&" if env == "cases" else "&") if j else "") + _om(c, st) for j, c in enumerate(r)) for r in rows)
             if env == "cases":
