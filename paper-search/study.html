@@ -793,7 +793,7 @@ function chatsListHtml(list, q) {
   if (!hit.length) return "<div class='hint'>맞는 대화가 없습니다.</div>";
   return hit.map(c => {
     const qs = (c.thread || []).filter(m => m.role === "user"), a = (c.thread || []).filter(m => m.role === "claude").slice(-1)[0];
-    return "<div class='cv'><div class='cvq'>「" + esc(c.quote.slice(0, 160)) + (c.quote.length > 160 ? "…" : "") + "」<span class='hint'> · " + esc(c.sec || "") + " · " + fmtDate(c.t) + (qs.length > 1 ? " · 물음 " + qs.length + "개" : "") + "</span></div>" +
+    return "<div class='cv'><div class='cvq'>" + (c.quote ? "「" + esc(c.quote.slice(0, 160)) + (c.quote.length > 160 ? "…" : "") + "」" : "이 장 전체") + "<span class='hint'> · " + esc(c.sec || "") + " · " + fmtDate(c.t) + (qs.length > 1 ? " · 물음 " + qs.length + "개" : "") + "</span></div>" +
       qs.map(m => "<div class='cvu'><b>물음</b>" + esc(m.text || "") + "</div>").join("") + (a ? "<div class='cva'><b>답</b>" + esc(a.text.slice(0, 700)) + (a.text.length > 700 ? " …" : "") + "</div>" : c.pending ? "<div class='hint'>Claude 생각 중</div>" : "") +
       "<div class='noprint' style='margin-top:4px'><button class='act' onclick=\"openChat('" + esc(c.id) + "')\">대화 열기 · 이어 묻기</button>" + ((c.keys || []).length ? "<button class='act' onclick=\"gotoUnit('" + esc(c.keys[0]) + "')\">본문으로</button>" : "") + "</div></div>"; }).join("");
 }
@@ -1100,7 +1100,11 @@ function msgHtml(m) {
 }
 function askListPanel() {   /* 묻기 갈래에 고른 대목이 없을 때 — 이 장에서 물은 것 (2026-10-27) */
   const chats = (cur.chats || []).slice().reverse();
-  return "<div class='sec'>Claude 에게 물은 것" + (chats.length ? " " + chats.length + "개" : "") + "</div><div class='hint' style='line-height:1.6'>본문의 글을 드래그하면 그 대목을 놓고 Claude 에게 물을 수 있습니다. 답은 창을 닫아도 그 대화에 남습니다.</div>" +
+  const eff = lsGet("study_ask_effort", "xhigh"), lib = lsGet("study_ask_lib", "0") === "1";   /* 드래그하지 않아도 장 전체를 놓고 묻는다 (2026-10-30) */
+  const box = "<div class='askwrap' style='font-size:" + (+lsGet("ui_chat_font", "13") || 13) + "px'><div class='ask'><textarea id='askIn' placeholder='이 장을 놓고 묻기 (Ctrl+Enter) — 본문을 드래그하면 그 대목만 놓고 물을 수도 있습니다'>" + esc(askDraft) + "</textarea>" +
+    "<div class='row'><button class='primary' id='askGo'>묻기</button><select id='askEff' title='답하는 모델 — Opus 엑스트라 이상'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
+    "<label title='장과 근거만으로 답할 수 없을 때 서재의 요약·번역을 찾아봅니다 (읽은 토큰이 크게 늘 수 있습니다)'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label></div><div class='hint' id='askMsg'></div></div></div>";
+  return "<div class='sec'>Claude 에게 묻기</div>" + box + "<div class='sec' style='margin-top:var(--s3)'>이 장에서 물은 것" + (chats.length ? " " + chats.length + "개" : "") + "</div>" +
     (chats.length ? chatListHtml(chats) : "<div class='hint' style='padding-top:var(--s2)'>아직 이 장에서 물은 것이 없습니다.</div>");
 }
 function askPanel() {
@@ -1115,14 +1119,15 @@ function askPanel() {
   const qOf = c => ((c.thread || []).find(m => m.role === "user") || {}).text || "";
   const prevHtml = others.length ? "<details class='evd'" + (chat ? "" : " open") + "><summary>이 장에서 물은 것 " + others.length + "개" + (near.length ? " — 같은 대목 " + near.length : "") + "</summary>" +
     list.map(c => "<div class='ixc' data-chat='" + esc(c.id) + "' title='" + esc((c.quote || "").slice(0, 200)) + "'><div class='ixq'>" + esc(qOf(c).slice(0, 110)) + "</div><div class='hint'>" + esc(c.sec || "") + " · " + fmtDate(c.t || ((c.thread || [])[0] || {}).t) + " · 답 " + (c.thread || []).filter(m => m.role === "claude").length + "</div></div>").join("") + "</details>" : "";
-  let h = prevHtml + "<div class='sec'>Claude 에게 — 고른 대목" + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span></div><div class='spq'>" + esc(ctx.quote) + "</div>" +
-    "<details class='evd'" + (chat ? "" : " open") + "><summary>이 대목의 근거 원문 " + src.length + "개 — Claude 에게 같이 갑니다</summary>" + (src.length ? srcItemsHtml(src) : "<div class='hint'>근거 표시가 없는 이음 문장입니다.</div>") + "</details>";
+  const whole = !ctx.quote && !keys.length;   /* 드래그 없이 장 전체를 놓고 묻는 대화 (2026-10-30) */
+  let h = prevHtml + "<div class='sec'>Claude 에게 — " + (whole ? "이 장 전체" : "고른 대목") + (ctx.sec ? " <span style='font-weight:400;text-transform:none'>· " + esc(ctx.sec) + "</span>" : "") + "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span></div>" +
+    (whole ? "" : "<div class='spq'>" + esc(ctx.quote) + "</div><details class='evd'" + (chat ? "" : " open") + "><summary>이 대목의 근거 원문 " + src.length + "개 — Claude 에게 같이 갑니다</summary>" + (src.length ? srcItemsHtml(src) : "<div class='hint'>근거 표시가 없는 이음 문장입니다.</div>") + "</details>");
   if (chat) h += (chat.thread || []).map(msgHtml).join("");
   if (chat && chat.pending) h += "<div class='prog' style='padding:var(--s3) 0'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 대화에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div>";
   if (chat && chat.error) h += "<div class='warnbox'>" + esc(chat.error) + " — 아래에서 다시 물으세요.</div>";
   if (!(chat && chat.pending)) {
     const eff = lsGet("study_ask_effort", "xhigh"), lib = lsGet("study_ask_lib", "0") === "1";
-    h += "<div class='ask'><textarea id='askIn' placeholder='" + (chat ? "이어서 묻기 (Ctrl+Enter)" : "이 대목을 놓고 묻기 — 뜻, 근거가 맞는지, 다른 조건에서는 어떤지 … (Ctrl+Enter)") + "'>" + esc(chat && chat.error ? (chat.thread.slice(-1)[0] || {}).text || askDraft : askDraft) + "</textarea>" +
+    h += "<div class='ask'><textarea id='askIn' placeholder='" + (chat ? "이어서 묻기 (Ctrl+Enter)" : whole ? "이 장을 놓고 묻기 (Ctrl+Enter)" : "이 대목을 놓고 묻기 — 뜻, 근거가 맞는지, 다른 조건에서는 어떤지 … (Ctrl+Enter)") + "'>" + esc(chat && chat.error ? (chat.thread.slice(-1)[0] || {}).text || askDraft : askDraft) + "</textarea>" +
       "<div class='row'><select id='askEff' title='답하는 모델 — Opus 엑스트라 이상'><option value='xhigh'" + (eff !== "max" ? " selected" : "") + ">Opus · 엑스트라</option><option value='max'" + (eff === "max" ? " selected" : "") + ">Opus · 최대</option></select>" +
       "<label title='장과 근거만으로 답할 수 없을 때 서재의 요약·번역을 찾아봅니다 (읽은 토큰이 크게 늘 수 있습니다)'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
       "<button class='primary' id='askGo'>묻기</button></div><div class='hint' id='askMsg'></div></div>";
@@ -1285,7 +1290,7 @@ function paperPanel() {
   return h;
 }
 function chatListHtml(list) {
-  return list.map(c => "<div class='chl' data-chat='" + esc(c.id) + "'>" + esc(((c.thread || [])[0] || {}).text || "").slice(0, 90) + "<div class='m'>" + fmtDate(c.t) + " · 「" + esc(c.quote.slice(0, 40)) + (c.quote.length > 40 ? "…" : "") + "」" + (c.pending ? " · <span style='color:var(--accent)'>Claude 생각 중</span>" : " · 답 " + (c.thread || []).filter(m => m.role === "claude").length) + "</div></div>").join("");
+  return list.map(c => "<div class='chl' data-chat='" + esc(c.id) + "'>" + esc(((c.thread || [])[0] || {}).text || "").slice(0, 90) + "<div class='m'>" + fmtDate(c.t) + " · " + (c.quote ? "「" + esc(c.quote.slice(0, 40)) + (c.quote.length > 40 ? "…" : "") + "」" : "이 장 전체") + (c.pending ? " · <span style='color:var(--accent)'>Claude 생각 중</span>" : " · 답 " + (c.thread || []).filter(m => m.role === "claude").length) + "</div></div>").join("");
 }
 function unitPanel(u, key) {
   const src = (u.src || []).map(k => [k, cur.src[k]]).filter(x => x[1]);

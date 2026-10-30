@@ -3636,8 +3636,11 @@ def _chat_prompt(st, chat, question, lib):
     ev = _chat_evidence(st, chat.get("keys") or [])
     th = [m for m in chat.get("thread") or [] if m.get("text")]
     past = "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", m["text"][:3000]) for m in th[-8:-1]) if len(th) > 1 else ""
-    out = ("연구자가 장에서 고른 대목을 놓고 묻는다.\n\n[고른 대목]%s\n%s\n\n[고른 대목의 근거 원문]\n%s\n\n" % (
-        (" (절: %s)" % sec["title"]) if sec else "", chat.get("quote", "")[:3000], ev or "(근거 표시 없는 이음 문장)"))
+    if not (chat.get("quote") or chat.get("keys")):   # 드래그하지 않고 장 전체를 놓고 묻는 물음 (2026-10-30)
+        out = "연구자가 이 장 전체를 놓고 묻는다(고른 대목은 없다). 근거는 장의 글과 참고문헌의 요약·메모다.\n\n"
+    else:
+        out = ("연구자가 장에서 고른 대목을 놓고 묻는다.\n\n[고른 대목]%s\n%s\n\n[고른 대목의 근거 원문]\n%s\n\n" % (
+            (" (절: %s)" % sec["title"]) if sec else "", chat.get("quote", "")[:3000], ev or "(근거 표시 없는 이음 문장)"))
     if past:
         out += "[지난 대화]\n" + past + "\n\n"
     out += "[물음]\n" + question + "\n\n" + _CHAT_RULE
