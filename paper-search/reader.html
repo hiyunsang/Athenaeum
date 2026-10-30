@@ -267,6 +267,8 @@ async function showKind(k) {
 /* 수식을 전사로 (2026-10-30, 사용자: '전문 번역도 수식 이쁘게 띄우게끔'): 번역의 [[EQ]] 그림마다 수식 색인(eqindex — 공부가 쓰는 것과 같은 파일)의 LaTeX 전사가 있으면
    원고의 수식 엔진(/api/ms/math)으로 그리고 식 번호를 옆에 둔다. 그림이 진본이라 식을 누르면 원문 그림이 열린다. 색인이 없으면 맨 위에 '전사 만들기' 한 줄(Sonnet, 1~3분). */
 let eqIdx = null, eqPollT = null;
+const eqCutRx = /잘려|잘린|잘라|일부만|부분만|한 줄만|좌변만|우변만|앞부분|뒷부분|윗부분|아랫부분|이어지는|나머지|보이지 않|안 보이/;
+const eqUsable = e => !!(e && e.latex && e.mml_ok && !(e.partial && eqCutRx.test(e.what || "")));   // 전사가 있고 엔진이 그리며, '그림이 잘렸다' 고 적힌 것은 아닌 식
 async function eqLoadIndex() { try { eqIdx = await (await fetch("/api/eqindex?file=" + encodeURIComponent(file))).json(); } catch (e) { eqIdx = { eqs: [] }; } return eqIdx; }
 async function eqRender() {
   const imgs = [...read.querySelectorAll("img.eq[data-name]")];
@@ -276,16 +278,16 @@ async function eqRender() {
   const by = {}; (idx.eqs || []).forEach(e => { if (e && e.img) by[e.img] = e; });
   const items = [];
   imgs.forEach(img => {
-    const e = by[img.dataset.name]; if (!e || !e.latex || !e.mml_ok || e.partial) return;
+    const e = by[img.dataset.name]; if (!eqUsable(e)) return;   // partial 표시는 거칠다(Arrazola (17) 처럼 멀쩡한 cases 식도 partial) — 식 읽기에 '잘렸다' 는 말이 있을 때만 그림으로 둔다
     const fig = document.createElement("figure"); fig.className = "eqf";
-    fig.innerHTML = "<div class='eqrow'><div class='mml' title='논문의 수식 그림을 읽은 Claude 의 전사 — 누르면 원문 그림'>" + esc(e.latex) + "</div>" + (e.n ? "<span class='eqno'>(" + esc(String(e.n)) + ")</span>" : "") + "</div>";
+    fig.innerHTML = "<div class='eqrow'><div class='mml' title='" + (e.partial ? "논문의 수식 그림을 읽은 Claude 의 전사 (그림이 잘렸을 수 있어 전사가 불완전할 수 있습니다) — 누르면 원문 그림" : "논문의 수식 그림을 읽은 Claude 의 전사 — 누르면 원문 그림") + "'>" + esc(e.latex) + "</div>" + (e.n ? "<span class='eqno'>(" + esc(String(e.n)) + ")</span>" : "") + "</div>";
     const orig = img.cloneNode(true); orig.className = "orig"; orig.hidden = true; fig.appendChild(orig);
     img.replaceWith(fig); items.push({ fig, el: fig.querySelector(".mml"), tex: e.latex });
   });
   if (items.length) {
     let mml = [];
     try { const r = await fetch("/api/ms/math", { method: "POST", body: JSON.stringify({ items: items.map(x => ({ tex: x.tex, display: true })) }) }); mml = (await r.json()).mml || []; } catch (e) { mml = []; }
-    items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelector("img.orig").hidden = false; } });
+    items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelector("img.orig").hidden = false; } });   // 엔진이 못 읽은 조각(mErr)이 있으면 그림으로
   }
   if (!(idx.eqs || []).length) {   // 색인이 없다 — 만들 수 있다고 한 줄
     const n = imgs.length, bar = document.createElement("div"); bar.id = "eqTop";
