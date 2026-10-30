@@ -2992,7 +2992,7 @@ function chatCardHtml(m) {
     "<div class='acts'><button class='btn pri' data-ask='1'" + (st === "wait" ? " disabled" : "") + ">Claude 에게</button>" + chatLibHtml() + "<button class='btn' data-memo='1' title='적은 글을 이 부분의 메모로 남깁니다'>메모로</button><span class='brk'></span>" +
     "<button class='btn' data-dec='decision' title='이 대화에서 정해진 것을 작업 자료의 결정 파일에 한 줄로 남깁니다 (거절한 제안 · 할 일도 고를 수 있습니다)'>결정으로 기록</button>" +
     "<button class='btn' data-dec='todo' title='이 대화에서 하기로 한 일을 결정 파일의 「할 일」 에 한 줄로 — 답의 글을 드래그하면 그 대목만 보냅니다'>할 일로</button><span style='margin-left:auto'></span>" +
-    "<button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
+    "<button class='btn' data-fold='1' title='이 대화를 접습니다 — 머리줄을 누르면 다시 펼칩니다'>접기</button><button class='btn' data-mgo='1' title='원고에서 이 글이 있는 자리로'>그 자리로</button><label class='hint' style='cursor:pointer;display:inline'><input type='checkbox' class='memoDone'" + (m.done ? " checked" : "") + "> 끝</label><button class='btn warn' data-mdel='1'>지우기</button></div>";
   return h + "</div>";
 }
 function chatGroups(done) {   // 원고에 나오는 순서로: 절마다 묶고, 절 안에서는 글에 나오는 자리 순
@@ -3072,6 +3072,10 @@ function chatBind(card) {
   const id = card.id === "chNew" ? "new" : card.dataset.mid, m = id === "new" ? null : memoById(id), cq = sel => card.querySelector(sel), all = sel => card.querySelectorAll(sel);
   const read = () => { if (m && m.unread) { m.unread = false; card.classList.remove("unread"); save(); memoUi(null, true); } };   // 손댄 대화는 읽은 것 (카드를 다시 그리지 않는다 — 누르던 단추가 사라지면 안 된다)
   card.addEventListener("mousedown", read);
+  all("[data-fold]").forEach(x => x.onclick = () => {   /* 긴 대화의 맨 아래에서도 접는다 — 머리줄까지 올라가지 않게 (사용자 2026-10-30) */
+    chatOpen.delete(id); chatActive = id; memoUi(chatSide() ? null : id);
+    if (!chatSide()) { const c2 = chatCard(id); if (c2) c2.scrollIntoView({ block: "start" }); }
+  });
   all("[data-toggle]").forEach(x => x.onclick = () => {
     const was = chatOpen.has(id), side = chatSide();
     if (side) chatOpen.clear();   // 글 옆 보기: 하나를 펼치면 다른 것은 접는다
