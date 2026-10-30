@@ -42,8 +42,43 @@ def list_ms():
     return out
 
 
+_TEMPLATE_KIND = {"서론": ("intro",), "실험 방법": ("methods",), "결과 및 고찰": ("results",), "결론": ("conclusion",)}   # 새 원고 틀의 절 → 같은 구실(_MINE_RX 의 열쇠)
+
+
+def _drop_template_leftovers(doc):
+    """새 원고 틀의 빈 절(서론·실험 방법·결과 및 고찰·결론)이 워드를 가져온 뒤 꼬리로 남은 것을 뗀다 — 같은 구실을 하는 번호 붙은(또는 글이 있는) 절이 따로 있을 때만.
+    옛 가져오기(필터가 생기기 전)로 남은 꼬리가 '5. Conclusion' 옆에 '결론' 으로 따로 놀았다 (2026-10-30). 틀만 있는 새 원고는 건드리지 않는다."""
+    ol = (doc or {}).get("outline") or []
+    if len(ol) <= 4:
+        return []
+    kinds = set()
+    for n in ol:
+        h = (n.get("heading") or "").strip()
+        if h in _TEMPLATE_KIND:
+            continue
+        if re.match(r"^\s*\d+", h) or n.get("draft") or n.get("draft_en"):
+            kinds |= {k for k, rx in _MINE_RX.items() if re.search(rx, h.lower())}
+    keep, dropped = [], []
+    for n in ol:
+        h = (n.get("heading") or "").strip()
+        empty = not (n.get("draft") or n.get("draft_en") or n.get("claim") or n.get("cards"))
+        if h in _TEMPLATE_KIND and empty and n.get("status") in (None, "", "todo") and any(k in kinds for k in _TEMPLATE_KIND[h]):
+            dropped.append(h)
+            continue
+        keep.append(n)
+    if dropped:
+        doc["outline"] = keep
+    return dropped
+
+
 def load_ms(mid):
-    return cfg["load_json"](_path(mid), None)
+    d = cfg["load_json"](_path(mid), None)
+    if isinstance(d, dict) and d.get("outline"):
+        try:
+            _drop_template_leftovers(d)   # 화면이 다음 저장 때 꼬리 없는 개요를 쓴다
+        except Exception:
+            pass
+    return d
 
 
 def save_ms(doc):
@@ -356,6 +391,7 @@ def merge_docx(doc, path):
             stat["same"] += 1
     doc["outline"] = [n for i, n in enumerate(doc["outline"]) if i in used or n.get("heading") not in ("서론", "실험 방법", "결과 및 고찰", "결론")
                       or (n.get("draft") or n.get("draft_en") or n.get("claim") or n.get("cards"))]
+    _drop_template_leftovers(doc)   # 같은 구실의 절이 들어왔으면 빈 틀 절은 뗀다 (2026-10-30)
     f, tf = doc.setdefault("front", {}), tmp.get("front") or {}
     for k in ("title", "authors", "abstract", "keywords", "highlights"):
         if tf.get(k):
