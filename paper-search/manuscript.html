@@ -261,6 +261,7 @@
   #tab-chat .chtop select { font-size: 12px; border-color: transparent; background: transparent; color: var(--text-2); }
   .card.memo .ch { cursor: pointer; } .card.memo .ch .q1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-family: var(--font-serif); font-size: 12.5px; }
   .card.memo.open { border-left-width: 3px; padding-bottom: 8px; }
+  .card.memo .mdel-h { margin-left: 6px; opacity: .45; font-size: 11px; } .card.memo:hover .mdel-h { opacity: 1; }
   .card.memo .cq { max-height: 96px; overflow-y: auto; margin: 6px 0 4px; font-size: calc(12.5px * var(--ms-scale, 1)); }
   .card.memo .prev { color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .card.memo .chIn { font-size: 13px; line-height: 1.6; min-height: 0; margin-top: 6px; resize: none; overflow: hidden; }
@@ -2978,7 +2979,7 @@ function chatCardHtml(m) {
   const chip = st === "wait" ? "<span style='color:var(--amber)'>생각하는 중…</span>" : st === "new" ? "<b style='color:var(--accent)'>새 답</b>" : st === "err" || st === "lost" ? "<span style='color:var(--amber)'>답을 못 받음</span>" : "";
   let h = "<div class='card memo" + (m.done ? " done" : "") + (st === "new" ? " unread" : "") + (open ? " open" : "") + (m.id === chatActive ? " chnow" : "") + "' data-mid='" + m.id + "' data-node='" + esc(m.node) + "'>" +
     "<div class='m ch' data-toggle='1' title='" + (open ? "접기" : "펼치기") + "'>" + chip + "<span class='q1'>" + (scopeWide(m.scope) ? esc(scopeLabel(m)) : (m.scope === "para" ? "문단 · " : "") + "“" + esc(normWs(m.quote).slice(0, 90)) + "”") + "</span>" +
-    "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + "</span></div>";
+    "<span style='white-space:nowrap'>" + (th.filter(x => x.role === "claude").length ? "답 " + th.filter(x => x.role === "claude").length : m.note ? "메모" : "") + (open ? "" : "<button class='act mdel-h' data-mdel='1' title='이 대화를 지웁니다'>지우기</button>") + "</span></div>";   /* 접힌 카드에서도 지운다 (사용자 2026-10-30) */
   if (!open) {
     const last = th.filter(x => x.role === "claude").pop(), lastQ = th.filter(x => x.role === "user" && x.text !== "(대안으로 바꿈)" && x.text !== "(고치기 전으로 되돌림)").pop();
     const pv = st === "wait" && lastQ ? "나: " + lastQ.text : last ? last.text : m.note || (lastQ ? "나: " + lastQ.text : "");
@@ -3108,7 +3109,7 @@ function chatBind(card) {
   if (cq("[data-cancel]")) cq("[data-cancel]").onclick = e => { e.preventDefault(); e.target.textContent = "끊는 중…"; chatCancel(id); };
   all("[data-dec]").forEach(b => b.onclick = () => openDecision({ kind: b.dataset.dec, thread: m.thread || [], quote: m.quote, where: selHeading(m.node), note: [m.note, (chatDraft[id] || "").trim()].filter(Boolean).join("\n") }));
   if (cq("[data-mgo]")) cq("[data-mgo]").onclick = () => selGoto(m);
-  if (cq("[data-mdel]")) cq("[data-mdel]").onclick = () => { if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
+  if (cq("[data-mdel]")) cq("[data-mdel]").onclick = e => { e.stopPropagation(); if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
   if (cq(".memoDone")) cq(".memoDone").onchange = e => { m.done = e.target.checked; if (m.done) chatOpen.delete(id); save(); memoUi(); };
   all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k], m.thread[i].cites); });
   all("[data-undo]").forEach(a => a.onclick = e => { e.preventDefault(); chatUndo(m, +a.dataset.undo); });
