@@ -143,6 +143,8 @@
   .rvdiff del { color: var(--red); text-decoration: line-through; }
   .rvdiff ins { color: var(--green); text-decoration: none; background: var(--sel-bg); }
   .rvdiff.clean ins { color: inherit; background: var(--accent-bg); border-radius: 2px; }   /* 새 글만 보기: 바뀐 곳은 옅은 바탕뿐 */
+  .rvdiff.hunks .hunk { padding: 3px 0; } .rvdiff.hunks .hunk + .hunk { border-top: 1px dotted var(--line); }   /* 바뀐 곳만: 자리마다 한 줄 */
+  .rvdiff.hunks .ell { color: var(--text-3); }
   .rvch { margin-top: 8px; } .rvc { font-size: 12px; color: var(--text-2); padding: 1px 0; }
   .exkinds { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 2px 0 8px; }
   .exkinds .act { padding: 2px 6px; font-size: 12.5px; }
@@ -783,6 +785,46 @@ function wordDiff(a, b) {   // 낱말 단위 비교: 지운 것 <del>, 넣은 �
   while (i < n) put("del", A[i++]); while (j < m) put("ins", B[j++]);
   flush(); return out;
 }
+/* 긴 문단의 고침은 바뀐 곳만 — 앞뒤 몇 낱말을 붙여 '어디가 어떻게' 바뀌는지 보인다 (2026-11-01). 지운 말 <del> · 넣은 말 <ins>, 자리마다 한 줄(.hunk), 사이는 '…'.
+   → {html, n: 바뀐 자리 수, share: 바뀐 낱말의 몫} · 바뀐 것이 없으면 null. 거의 다 바뀐 글(share > 0.6)은 조각으로 보여도 뜻이 없어 null — 부르는 쪽이 전체를 보인다 */
+function hunkDiff(a, b, ctx) {
+  ctx = ctx || 7;
+  const A = a.split(/(\s+)/), B = b.split(/(\s+)/), n = A.length, m = B.length;
+  if (n * m > 4e6) return null;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const ops = []; let i = 0, j = 0;   /* [종류, 글] 의 차례 — 같은 종류는 한 덩이로 */
+  const put = (k, t) => { const last = ops[ops.length - 1]; if (last && last[0] === k) last[1] += t; else ops.push([k, t]); };
+  while (i < n && j < m) { if (A[i] === B[j]) { put("", A[i]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) { put("del", A[i]); i++; } else { put("ins", B[j]); j++; } }
+  while (i < n) put("del", A[i++]); while (j < m) put("ins", B[j++]);
+  for (let k = ops.length - 2; k > 0; k--) if (!ops[k][0] && !/\S/.test(ops[k][1]) && ops[k - 1][0] && ops[k + 1][0]) { ops[k + 1][1] = ops[k][1] + ops[k + 1][1]; ops.splice(k, 1); }   /* 바뀐 말 사이의 빈칸은 뒤쪽 바뀐 말에 */
+  for (let k = ops.length - 2; k >= 0; k--) if (ops[k][0] === ops[k + 1][0]) { ops[k][1] += ops[k + 1][1]; ops.splice(k + 1, 1); }
+  const isW = t => /\S/.test(t), wc = t => (t.match(/\S+/g) || []).length;
+  let wa = 0, wb = 0, ins = 0, del = 0; ops.forEach(o => { const w = wc(o[1]); if (o[0] !== "del") wb += w; if (o[0] !== "ins") wa += w; if (o[0] === "ins") ins += w; if (o[0] === "del") del += w; });
+  const changed = Math.max(ins, del), words = Math.max(wa, wb);   /* 바뀐 몫 = 넣은 말과 지운 말 가운데 많은 쪽 / 긴 쪽의 낱말 수 (한 낱말을 한 낱말로 바꾼 것은 둘이 아니라 하나) */
+  if (!(ins + del) || changed > words * 0.6) return null;
+  /* 같은 글의 덩이를 앞·뒤 문맥으로 자른다 — 바뀐 자리 사이의 같은 글이 짧으면(문맥 두 몫 안) 한 자리로 잇는다 */
+  const tailWords = (t, k) => { const parts = t.split(/(\s+)/); let cnt = 0, q = parts.length; while (q > 0 && cnt < k) { q--; if (isW(parts[q])) cnt++; } return [parts.slice(0, q).join(""), parts.slice(q).join("")]; };
+  const headWords = (t, k) => { const parts = t.split(/(\s+)/); let cnt = 0, q = 0; while (q < parts.length && cnt < k) { if (isW(parts[q])) cnt++; q++; } return [parts.slice(0, q).join(""), parts.slice(q).join("")]; };
+  const hunks = []; let cur = null;
+  ops.forEach((o, idx) => {
+    if (o[0]) { if (!cur) cur = { html: "", prev: idx > 0 ? ops[idx - 1][1] : "" }; cur.html += "<" + o[0] + ">" + esc(o[1]) + "</" + o[0] + ">"; return; }
+    if (!cur) return;   /* 첫 바뀐 자리 앞의 같은 글은 그 자리에서 뒤 문맥으로 붙는다 */
+    if (idx === ops.length - 1 || wc(o[1]) <= ctx * 2) {   /* 끝이거나 짧은 사이 — 자르지 않고 잇는다 */
+      if (idx === ops.length - 1 && wc(o[1]) > ctx) { const [h] = headWords(o[1], ctx); cur.html += esc(h); cur.close = true; } else cur.html += esc(o[1]);
+      if (idx === ops.length - 1) { hunks.push(cur); cur = null; }
+      return;
+    }
+    const [h] = headWords(o[1], ctx); cur.html += esc(h); cur.close = true; hunks.push(cur); cur = null;
+  });
+  if (cur) hunks.push(cur);
+  const out = hunks.map(hk => {   /* 앞 문맥 = 그 자리 바로 앞 같은 글의 꼬리 몇 낱말, 더 있으면 '…' */
+    const [, tail] = tailWords(hk.prev, ctx), more = wc(hk.prev) > ctx;
+    return "<div class='hunk'>" + (more ? "<span class='ell'>… </span>" : "") + esc(tail) + hk.html + (hk.close ? "<span class='ell'> …</span>" : "") + "</div>";
+  }).join("");
+  return { html: out, n: hunks.length, share: changed / Math.max(1, words) };
+}
+const editsFull = new Set();   /* 조각마다 반영에서 '전체 문단 보기' 로 펼쳐 둔 고침 (m.id:i:k) */
 const altView = () => localStorage.getItem("ms_alt_view") || "clean";   // 고친 글을 보이는 방식: clean = 새 글만(바뀐 곳은 옅은 바탕) · diff = 지운 말과 넣은 말을 같이
 function cleanDiff(a, b) {   // 새 글(b)만 보인다 — a 와 달라진 곳은 옅은 바탕. 낱말마다 끊기지 않게 사이의 한두 낱말은 같이 묶고, 거의 다 바뀌었으면 표시하지 않는다
   const A = a.split(/(\s+)/), B = b.split(/(\s+)/), n = A.length, m = B.length;
@@ -2796,13 +2838,23 @@ function chatEditsHtml(m, x, i) {
     const where = esc(e.heading) + " · " + (e.type === "insert" ? (e.para ? "문단 " + e.para + " 뒤에 새 문단" : "맨 앞에 새 문단") : "문단 " + e.para + (e.type === "delete" ? " 삭제" : ""));
     const st = e.done ? " <b style='color:var(--green)'>바꿈</b>" : e.skip ? " <span style='color:var(--text-3)'>건너뜀</span>" : "";
     const ref = i + ":" + k, goq = esc(e.done && e.type !== "delete" ? e.after : e.before || e.after);
-    const body = e.done || e.skip ? "" : "<div class='rvdiff" + (cl && e.type === "edit" ? " clean" : "") + "'>" + (e.type === "insert" ? "<ins>" + esc(e.after) + "</ins>" : e.type === "delete" ? "<del>" + esc(e.before) + "</del>" : cl ? cleanDiff(e.before, e.after) : wordDiff(e.before, e.after)) + "</div>";
+    /* 긴 문단(300자 넘음)의 고침은 바뀐 곳만 앞뒤 몇 낱말과 함께(hunkDiff) — 전체는 「전체 문단 보기」 로 (2026-11-01, 사용자: '너무 긴데 어디가 어떻게 바뀌는지 표시') */
+    const fullKey = m.id + ":" + i + ":" + k, hk = e.type === "edit" && (e.before || "").length > 300 ? hunkDiff(e.before, e.after) : null;
+    let body = "", tog = "";
+    if (!(e.done || e.skip)) {
+      if (hk && !editsFull.has(fullKey)) { body = "<div class='rvdiff hunks'>" + hk.html + "</div>"; tog = "<span class='hint'>바뀐 곳 " + hk.n + " · <a href='#' class='act' data-efull='" + fullKey + "'>전체 문단 보기</a></span>"; }
+      else {
+        body = "<div class='rvdiff" + (cl && e.type === "edit" ? " clean" : "") + "'>" + (e.type === "insert" ? "<ins>" + esc(e.after) + "</ins>" : e.type === "delete" ? "<del>" + esc(e.before) + "</del>" : cl ? cleanDiff(e.before, e.after) : wordDiff(e.before, e.after)) + "</div>";
+        if (hk) tog = "<span class='hint'><a href='#' class='act' data-efull='" + fullKey + "'>바뀐 곳만 보기</a></span>";
+        else if (e.type === "edit" && (e.before || "").length > 300) tog = "<span class='hint'>문단을 거의 다시 썼습니다 — 바뀐 곳만 따로 보이지 않습니다</span>";
+      }
+    }
     const acts = e.done ? "<div class='acts'><a href='#' class='act' data-eundo='" + ref + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도)'>되돌리기</a><a href='#' class='act' data-ego='" + e.node + "' data-goq='" + goq + "'>그 자리로</a></div>"
       : e.skip ? "<div class='acts'><a href='#' class='act' data-eunskip='" + ref + "'>다시 보기</a></div>"
       : "<div class='acts'><button class='btn pri' data-eapply='" + ref + "' title='이 한 곳을 원고에 바꿔 넣습니다 (글 칸에서 Ctrl+Z 로 되돌릴 수 있습니다)'>바꾸기</button><button class='btn' data-eskip='" + ref + "'>건너뛰기</button>" +
         "<button class='btn' data-efix='" + ref + "' title='이 한 곳을 어떻게 고칠지 말하면 Claude 가 이 곳만 다시 냅니다 (약 1분)'>이렇게 고쳐…</button><a href='#' class='act' data-ego='" + e.node + "' data-goq='" + goq + "' style='margin-left:auto'>그 자리로</a></div>" +
         "<div class='fbq' data-efixrow='" + ref + "' style='display:none'><input class='eIn' placeholder='이 곳을 어떻게 — 예: 수치는 빼고 경향만 · 두 문장으로 · 1 m/min 에 한정해' value='" + esc(e.note || "") + "'><button class='btn' data-efixgo='" + ref + "'>다시 내기</button></div>";
-    return "<div class='rvedit'><div class='hint'>" + where + st + (e.point ? " · <span title='제안의 어느 항목'>" + esc(e.point) + "</span>" : "") + "</div>" + (e.why && !e.done && !e.skip ? "<div class='hint'>" + esc(e.why) + "</div>" : "") + body + acts + "</div>";
+    return "<div class='rvedit'><div class='hint'>" + where + st + (e.point ? " · <span title='제안의 어느 항목'>" + esc(e.point) + "</span>" : "") + (tog ? " · " + tog : "") + "</div>" + (e.why && !e.done && !e.skip ? "<div class='hint'>" + esc(e.why) + "</div>" : "") + body + acts + "</div>";
   }).join("");
   if ((ed.skipped || []).length) h += "<div class='rvedit'><div class='hint'>원고를 바꾸지 않는 항목 · 먼저 확인할 것</div>" + ed.skipped.map(t => "<div class='hint'>· " + esc(t) + "</div>").join("") + "</div>";
   h += "<div class='acts'>" + (left.length > 1 ? "<button class='btn' data-eall='" + i + "' title='건너뛰지 않은 곳을 차례로 모두 바꿔 넣습니다'>남은 " + left.length + "곳 모두 바꾸기</button>" : "") +
@@ -3124,6 +3176,7 @@ function chatBind(card) {
   all("[data-eall]").forEach(b => b.onclick = () => chatEditAll(m, +b.dataset.eall));
   all("[data-eskip]").forEach(b => b.onclick = () => { const [i, k] = ik(b.dataset.eskip); m.thread[i].edits.items[k].skip = true; save(true); chatRefresh(m.id); });
   all("[data-eunskip]").forEach(a => a.onclick = e => { e.preventDefault(); const [i, k] = ik(a.dataset.eunskip); delete m.thread[i].edits.items[k].skip; save(true); chatRefresh(m.id); });
+  all("[data-efull]").forEach(a => a.onclick = e => { e.preventDefault(); const key = a.dataset.efull; if (editsFull.has(key)) editsFull.delete(key); else editsFull.add(key); chatRefresh(m.id); });
   all("[data-eundo]").forEach(a => a.onclick = e => { e.preventDefault(); const [i, k] = ik(a.dataset.eundo); chatEditUndo(m, i, k); });
   all("[data-ego]").forEach(a => a.onclick = e => { e.preventDefault(); selGoto({ node: a.dataset.ego, key: a.dataset.ego === "front" ? "abstract" : m.key, quote: a.dataset.goq || "" }); });
   all("[data-efix]").forEach(b => b.onclick = () => { const row = cq("[data-efixrow='" + b.dataset.efix + "']"); if (!row) return; row.style.display = row.style.display === "none" ? "" : "none"; if (row.style.display !== "none") row.querySelector("input").focus(); });
