@@ -41,7 +41,7 @@ function animateBars(root) {
 // ---------- 환경설정 (모든 화면 공통, localStorage 에 기억) ----------
 // 항목: 테마(시스템/밝게/어둡게) · 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 · 원고 자동 검토
 const UI_DEFAULTS = { ui_theme: "system", ui_scale_read: 1, ui_scale_ms: 1, ui_width: 760, ui_lh: 1.8, ms_autorev: "0", fig_model: "opus", ui_font_ms: "", ui_font_read: "", ui_pdf_zoom: 1,
-  ms_sel_effort: "xhigh", ms_sel_whole: "1", ms_sel_lib: "1", ms_chat_view: "side", ms_alt_view: "clean" };   // 원고에서 Claude 에게 물을 때: 모델 · 원고 전체를 같이 · 서재 찾아보기 · 대화를 글 옆에/목록으로
+  ms_sel_effort: "xhigh", ms_sel_whole: "1", ms_sel_lib: "1", ms_chat_view: "side", ms_alt_view: "clean", ui_update_check: "1" };   // 원고에서 Claude 에게 물을 때: 모델 · 원고 전체를 같이 · 서재 찾아보기 · 대화를 글 옆에/목록으로
 // 글꼴: 기본 목록(이 PC 에 깔린 것만 보임) + 사용자가 추가한 것(글꼴 폴더에 넣은 파일, 직접 적은 설치 글꼴 이름)
 const UI_FONTS = [["Malgun Gothic", "맑은 고딕"], ["Batang", "바탕"], ["Gulim", "굴림"], ["Dotum", "돋움"], ["NanumGothic", "나눔고딕"], ["NanumMyeongjo", "나눔명조"],
   ["NanumSquare", "나눔스퀘어"], ["Noto Sans KR", "Noto Sans KR"], ["Noto Serif KR", "Noto Serif KR"], ["HCR Batang", "함초롬바탕"], ["HCR Dotum", "함초롬돋움"], ["KoPubWorldBatang", "KoPub 바탕"], ["KoPubWorldDotum", "KoPub 돋움"],
@@ -124,7 +124,9 @@ function openSettings(cat) {
     { id: "general", name: "일반", groups: [
       { rows: [row("테마", sel("ui_theme", [["system", "시스템 설정 따르기"], ["light", "밝게"], ["dark", "어둡게"]]))] },
       { rows: [row("기본값으로 되돌리기", "<button class='ureset' onclick='resetSettings()'>되돌리기</button>", "화면·읽기·원고·Claude 설정을 처음 값으로. 추가한 글꼴과 연결(키)은 그대로 둡니다"),
-               row("판", "<span class='uout' id='uiVer' style='min-width:0'></span>", "지금 돌고 있는 Athenaeum")] }] },
+               row("판", "<span class='uout' id='uiVer' style='min-width:0'></span>", "지금 돌고 있는 Athenaeum"),
+               row("새 판 알림", sw("ui_update_check") + "<span class='uout' id='uiUpd' style='min-width:0'></span>", "하루 한 번 GitHub Releases 에 새 판이 나왔는지 봅니다. 보내는 것은 없습니다"),
+               row("처음 설정", "<a class='act ready' href='/start'>열기</a>", "Claude Code · 수집 폴더 · 라벨 체계 · 학습 같은 처음 할 일을 한눈에")] }] },
     { id: "read", name: "읽기", groups: [
       { title: "글", rows: [row("글꼴 크기", range("ui_scale_read", 0.8, 1.8, 0.05), "요약·번역 본문. 누워서 볼 때 크게"),
                row("글꼴 모양", "<select data-k='ui_font_read' class='ufont'>" + uiFontOptions(uiGet("ui_font_read")) + "</select>", "요약·번역 본문"),
@@ -187,6 +189,10 @@ function openSettings(cat) {
   find.oninput = show;
   show();
   fetch("/api/version").then(r => r.json()).then(v => { const h = document.getElementById("uiVer"); if (h && v.version) h.textContent = v.version; }).catch(() => {});   // 어느 판이 도는지
+  if (uiGet("ui_update_check") !== "0") uiUpdateInfo().then(u => {   // 새 판이 있나 (서버가 하루 캐시)
+    const h = document.getElementById("uiUpd"); if (!h || !u) return;
+    if (!u.ok) h.textContent = "확인하지 못함"; else if (u.newer) h.innerHTML = "새 판 " + uiEsc(u.latest) + " — <a class='act ready' href='" + uiEsc(u.url) + "' target='_blank'>내려받기 ↗</a>"; else h.textContent = "최신입니다";
+  });
   box.addEventListener("mousedown", e => { if (e.target === box) closeSettings(); });
   box.querySelectorAll("[data-k]").forEach(el => {
     el.addEventListener("input", () => uiSet(el.dataset.k, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));
@@ -290,4 +296,24 @@ function mountUiControls(sel) {
   window.addEventListener("focus", check);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
   setInterval(check, 180000);
+})();
+
+// ---------- 새 판 알림 ----------
+// 홈을 열 때 GitHub Releases 의 최신 판을 묻는다(서버가 하루 캐시 — /api/update_check). 새 판이 있으면 왼쪽 아래에 한 줄, 「나중에」 는 그 판에 대해 다시 보이지 않는다. ⚙ 일반의 「새 판 알림」 으로 끈다.
+function uiEsc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function uiUpdateInfo() { return fetch("/api/update_check").then(r => r.json()).catch(() => null); }
+(function () {
+  if (location.pathname !== "/" && location.pathname !== "/index.html") return;
+  if (uiGet("ui_update_check") === "0") return;
+  let seen = ""; try { seen = localStorage.getItem("ui_upd_seen") || ""; } catch (e) {}
+  uiUpdateInfo().then(u => {
+    if (!u || !u.ok || !u.newer || seen === u.latest || document.getElementById("uiUpdate")) return;
+    const add = () => {
+      const d = document.createElement("div"); d.id = "uiUpdate";
+      d.innerHTML = "<span>새 판 " + uiEsc(u.latest) + " 이 나왔습니다 (지금 " + uiEsc(u.current) + ").</span><a class='act ready' href='" + uiEsc(u.url) + "' target='_blank'>내려받기 ↗</a><button class='act' id='uiUpdNo'>나중에</button>";
+      document.body.appendChild(d);
+      document.getElementById("uiUpdNo").onclick = () => { try { localStorage.setItem("ui_upd_seen", u.latest); } catch (e) {} d.remove(); };
+    };
+    if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
+  });
 })();

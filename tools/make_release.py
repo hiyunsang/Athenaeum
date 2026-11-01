@@ -104,16 +104,17 @@ def main():
     # 삭제 도우미: 뒤에서 도는 서버를 끄고 시작프로그램·바탕화면 바로가기를 지운다 (데이터는 안 지움). 폴더를 그냥 지우려면 서버가 파일을 잡고 있어 안 지워진다는 사용자 보고(2026-09-15)
     with open(os.path.join(OUT, "Athenaeum 삭제.bat"), "wb") as f:
         f.write(b'@echo off\r\nrem Athenaeum uninstall helper (portable). Stops the server and removes shortcuts; your data stays. Calls paper-search\\uninstall.bat.\r\ncall "%~dp0paper-search\\uninstall.bat" %*\r\n')
-    # 설치 도우미: 기능 안내 → Claude Code 설치·로그인 확인(없으면 설치 창) → 바탕화면 바로가기(아이콘) → 자동 시작(선택) → 실행
+    # 설치 도우미(브라우저 창, 2026-11-01): 안내 → 점검(기존 설치 업데이트) → Claude Code 설치·로그인 확인(없으면 설치 창) → 바탕화면 바로가기(아이콘)·자동 시작(선택) → 설치 → 실행. --console 이면 글자 창
     with open(os.path.join(OUT, "Athenaeum 설치.bat"), "wb") as f:
         f.write(b'@echo off\r\nrem Athenaeum setup helper (portable): desktop shortcut, Claude Code check, optional autostart. Calls paper-search\\setup.bat.\r\ncall "%~dp0paper-search\\setup.bat" %*\r\n')
     io.open(os.path.join(OUT, "처음 읽어 주세요.txt"), "w", encoding="utf-8-sig").write(
         "Athenaeum 포터블판\n\n"
-        "1. 'Athenaeum 설치.bat' 을 더블클릭하세요. 창이 하나 뜨고 차례로 물어봅니다:\n"
-        "   기능 안내 → Claude Code 가 설치·로그인돼 있는지 확인(없으면 설치 창을 열어 줌) → 바탕화면에 'Athenaeum' 아이콘 → 부팅 때 자동 시작(선택) → 바로 실행.\n"
-        "   파이썬은 이 폴더 안에 들어 있어 따로 설치할 것이 없습니다.\n"
+        "1. 'Athenaeum 설치.bat' 을 더블클릭하세요. 브라우저에 설치 창이 뜨고 차례로 안내합니다:\n"
+        "   안내 → 점검(기존 설치가 있으면 업데이트) → Claude Code 설치·로그인(없으면 설치 창을 열어 주고, 끝나면 저절로 알아챔) → 바탕화면 아이콘·자동 시작(선택) → 설치 → 바로 열기.\n"
+        "   파이썬은 이 폴더 안에 들어 있어 따로 설치할 것이 없습니다. (브라우저 창 대신 글자 창으로 하려면: Athenaeum 설치.bat --console)\n"
         "2. 그다음부터는 바탕화면의 Athenaeum 아이콘(또는 'Athenaeum 실행.bat')을 더블클릭하면 됩니다. 브라우저에 앱 창이 뜹니다.\n"
-        "   처음 열면 그림으로 된 사용법(논문 · 탐색 · 공부 · 원고)이 먼저 뜹니다. 다 보고 '시작하기' 를 누르면 홈으로 갑니다. 나중에는 홈 위쪽 '도움말'.\n"
+        "   처음 열면 그림으로 된 사용법(논문 · 탐색 · 공부 · 원고)이 먼저 뜨고, '시작하기' 를 누르면 '처음 설정'(Claude Code · 수집 폴더 · 라벨 체계 · 학습) 을 한 번 보인 뒤 홈으로 갑니다.\n"
+        "   나중에는 홈 위쪽 '도움말', 홈 설정(톱니바퀴) → 일반 → 처음 설정. 새 판이 나오면 홈 왼쪽 아래에 알려 줍니다(설정 → 일반에서 끌 수 있음).\n"
         "3. 홈 위쪽 '수집' 패널에서 감시 폴더(기본: 내 다운로드 폴더)를 확인하고, '라벨 체계 설정 ↗' 에서 내 분야 체계를 Claude 에게 제안받아 적용하세요.\n"
         "4. 논문 PDF 는 이 폴더 안 '논문모음' 에 모이고, 요약·번역·메모·원고도 이 폴더 안에 저장됩니다. 폴더를 통째로 옮겨도 됩니다.\n\n"
         "Claude Code 는 요약·번역·검토에 꼭 필요합니다 (내 Claude 구독 사용량을 씀, API 키 없음). https://claude.com/claude-code\n"

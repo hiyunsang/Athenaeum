@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Athenaeum 설치</title>
+<link rel="icon" href="/logo/athenaeum.ico">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  /* 설치 도우미의 브라우저 창 (setup.py 가 127.0.0.1 의 빈 포트에서 띄운다). 디자인 토큰·글꼴은 Athenaeum 의 ui.css 그대로 */
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13.5px/1.6 var(--font); }
+  #wrap { max-width: 920px; margin: 0 auto; padding: var(--s6) var(--s4) var(--s8); }
+  header { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s4); }
+  header img { width: 26px; height: 26px; }
+  header h1 { margin: 0; font: 600 17px var(--font); letter-spacing: .6px; }
+  header .ver { margin-left: auto; color: var(--text-3); font-size: 12px; }
+  .box { display: flex; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); min-height: 560px; box-shadow: 0 10px 30px #0000000d; }
+  .steps { width: 176px; flex: none; background: var(--panel); border-right: 1px solid var(--line); padding: var(--s3) var(--s2); border-radius: var(--r) 0 0 var(--r); }
+  .steps div { display: flex; align-items: center; gap: var(--s2); padding: 7px 10px; border-radius: var(--r); color: var(--text-3); }
+  .steps div.done { color: var(--text-2); }
+  .steps div.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .steps .n { width: 18px; height: 18px; border-radius: 50%; border: 1px solid currentColor; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex: none; font-weight: 500; }
+  .steps div.done .n { background: var(--text-3); border-color: var(--text-3); color: var(--surface); }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .body { flex: 1; padding: var(--s4) var(--s6); overflow: auto; }
+  .foot { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s6); border-top: 1px solid var(--line); }
+  .foot .sp { flex: 1; color: var(--text-3); font-size: 12px; }
+  h2 { margin: 0 0 var(--s3); font: 600 16px var(--font); }
+  p { margin: 0 0 var(--s3); }
+  .feat { display: grid; grid-template-columns: 84px 1fr; gap: 5px var(--s3); margin: var(--s3) 0 var(--s4); }
+  .feat b { font-weight: 600; color: var(--text-2); }
+  .row { display: flex; align-items: flex-start; gap: var(--s3); padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .k { width: 150px; flex: none; font-weight: 600; padding-top: 1px; }
+  .row .v { flex: 1; min-width: 0; }
+  .ok { color: var(--green); } .no { color: var(--amber); } .bad { color: var(--red); }
+  .hint { display: block; margin-top: 3px; line-height: 1.5; }
+  label.opt { display: block; padding: 5px 0; cursor: pointer; }
+  label.opt input { margin-right: 6px; }
+  .btns { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s2); flex-wrap: wrap; }
+  .log { font: 12px/1.5 Consolas, "D2Coding", monospace; white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s2) var(--s3); max-height: 300px; overflow: auto; margin-top: var(--s3); color: var(--text-2); }
+  .pbar.wide { margin: var(--s4) 0 var(--s2); }
+  .pbar > i { transition: width .7s linear; }
+  code { font: 12px Consolas, monospace; background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+  .path { color: var(--text-2); word-break: break-all; }
+  .primary:disabled, .ghostbtn:disabled { opacity: .45; cursor: default; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header><img src="/logo/mark.svg" alt=""><h1>ATHENAEUM 설치</h1><span class="ver" id="ver"></span></header>
+  <div class="box">
+    <nav class="steps" id="steps"></nav>
+    <div class="main"><div class="body" id="body"></div><div class="foot" id="foot"></div></div>
+  </div>
+</div>
+<script>
+const STEPS = ["안내", "점검", "Claude Code", "바로가기", "설치", "끝"];
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let st = null, step = 0, choice = {}, autostart = true, started = false, ticks = 0;
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  return r.json();
+}
+async function refresh() {
+  try { st = await api("/api/state"); } catch (e) { return; }
+  render();
+}
+// 설치 폴더: 기존 설치를 업데이트하기로 했으면 그 폴더, 아니면 새로 푼 이 폴더
+function targetRoot() { const up = (st.existing || []).find(x => (choice[x.root] || 1) === 1); return up ? up.root : st.root; }
+
+const FEATURES = [
+  ["수집", "다운로드 폴더를 지켜보다 새 논문 PDF 를 '연도_저널_저자_제목.pdf' 로 정리해 보관"],
+  ["검색", "라벨(재료·공정·현상·방법…) 교집합 검색, 본문 검색, 라벨 자동 부여"],
+  ["탐색", "OpenAlex 로 세상의 논문 찾기, 관련 논문 맵, 결과를 놓고 Claude 와 대화"],
+  ["읽기", "요약 · 문장 단위로 원문과 맞춘 전문 번역 · 드래그하면 PDF 원문 표시 · 메모·질문 · 단어장"],
+  ["공부", "주제를 적으면 내 서재의 논문만으로 교과서 한 장 — 문장마다 원문 근거, 그림·수식, 마인드맵, 발표 자료(.pptx)"],
+  ["원고", "근거 카드 → 개요 → 초안 → 검토 → 영문 → Word 파일. 심사 의견 처리, 글쓰기 지능 Stylus, 논증 모형·절 계획"],
+  ["연구 노트", "연구 주제를 놓고 Claude 와 토의 — 서재 전체를 알고 공저자처럼. 설계서·반론·서론 구조·큰 물음"],
+  ["학습", "서재의 논문을 읽어 '이 저널의 이 절은 이렇게 쓴다' 바탕을 세움 (토큰을 꾸준히 쓰므로 기본은 꺼짐)"]];
+
+function introHtml() {
+  return "<h2>Athenaeum 설치 도우미</h2>" +
+    "<p>연구실용 논문 작업대입니다. 이 컴퓨터 안에서만 돌고, 논문·요약·번역·원고는 전부 아래 폴더 안에 저장됩니다.</p>" +
+    "<p class='path'>" + esc(st.root) + "</p>" +
+    "<div class='feat'>" + FEATURES.map(f => "<b>" + f[0] + "</b><span>" + f[1] + "</span>").join("") + "</div>" +
+    "<p class='hint'>요약·번역·공부·원고의 Claude 호출은 Claude Code 로 합니다 (내 Claude 구독 사용량을 씀, API 키 없음). 라벨 체계는 비어 있는 채로 시작하고, 논문이 10편쯤 모이면 홈이 Claude 에게 체계를 맡기라고 권합니다.<br>" +
+    "이 도우미는 파일을 지우지 않습니다. 지울 때는 'Athenaeum 삭제.bat' 을 쓰세요.</p>";
+}
+
+function checkHtml() {
+  const py = st.python || {};
+  let h = "<h2>점검</h2>";
+  h += "<div class='row'><div class='k'>파이썬</div><div class='v'>" +
+    (py.ok ? "<span class='ok'>패키지 모두 있음</span>" : "<span class='bad'>빠진 패키지: " + esc((py.missing || []).join(", ")) + "</span><span class='hint'>pip install -r paper-search\\requirements.txt 로 설치하세요 (포터블판이면 python 폴더가 손상된 것)</span>") +
+    "<span class='hint'>" + esc(py.ver) + " · " + esc(py.exe) + "</span></div></div>";
+  if (st.existing === null) {
+    h += "<div class='row'><div class='k'>기존 설치</div><div class='v'>찾는 중… (바탕화면·시작프로그램의 바로가기, 돌고 있는 서버, 설치 기록)</div></div>";
+  } else if (!st.existing.length) {
+    h += "<div class='row'><div class='k'>기존 설치</div><div class='v'>다른 설치 없음 — 이 폴더에 새로 설치합니다<span class='hint path'>" + esc(st.root) + "</span></div></div>";
+  } else {
+    st.existing.forEach((x, i) => {
+      const c = choice[x.root] || 1;
+      h += "<div class='row'><div class='k'>기존 설치</div><div class='v'><b class='path'>" + esc(x.root) + "</b> <span class='hint'>판 " + esc(x.version) + " · 논문 " + x.papers + "편</span>" +
+        [[1, "업데이트 — 기존 폴더의 프로그램만 새것으로 바꾸고 논문·번역·원고·라벨은 그대로 (권장)"],
+         [2, "정리 — 기존 서버를 끄고 그쪽 바로가기를 지움. 폴더와 데이터는 남기니 직접 지우세요. 여기에 새로 설치"],
+         [3, "그대로 두고 여기에 따로 설치 (바탕화면 바로가기는 이쪽으로 바뀜)"]]
+          .map(o => "<label class='opt'><input type='radio' name='ex" + i + "' value='" + o[0] + "'" + (c === o[0] ? " checked" : "") + " data-root='" + esc(x.root) + "'>" + o[1] + "</label>").join("") +
+        "</div></div>";
+    });
+  }
+  return h;
+}
+
+function claudeHtml() {
+  const c = st.claude || {};
+  let h = "<h2>Claude Code</h2><p>요약·번역·라벨 분류·공부·원고가 Claude Code 로 Claude 를 부릅니다 (내 Claude 구독 사용량, API 키 없음). 나중에 해도 됩니다 — 홈 화면에 안내가 뜨고, 설치가 끝나면 저절로 사라집니다.</p>";
+  if (!c.found) {
+    h += "<div class='row'><div class='k'>설치</div><div class='v'><span class='no'>설치되어 있지 않습니다</span>" +
+      "<div class='btns'>" + (st.test ? "<span class='hint'>(시험 모드라 설치 창은 열지 않음)</span>" : "<button class='primary' id='cInstall'>설치 창 열기</button>") +
+      "<a class='act' href='https://claude.com/claude-code' target='_blank'>안내 페이지 ↗</a></div>" +
+      "<span class='hint'>PowerShell 창이 뜨고 <code>irm https://claude.ai/install.ps1 | iex</code> 를 실행합니다. 그 창이 끝나면 이 줄이 저절로 '찾음' 으로 바뀝니다 (3초마다 확인).</span></div></div>";
+  } else {
+    h += "<div class='row'><div class='k'>설치</div><div class='v'><span class='ok'>찾음</span><span class='hint'>" + esc(c.path) + (c.version ? " · " + esc(c.version) : "") + "</span></div></div>";
+    h += "<div class='row'><div class='k'>로그인</div><div class='v'>" +
+      (c.logged_in ? "<span class='ok'>로그인 흔적 있음</span><span class='hint'>~\\.claude\\.credentials.json</span>" :
+        "<span class='no'>로그인 흔적이 없습니다</span><div class='btns'>" + (st.test ? "<span class='hint'>(시험 모드)</span>" : "<button class='primary' id='cLogin'>로그인 창 열기</button>") + "</div>" +
+        "<span class='hint'>열린 창에서 <code>/login</code> 을 입력하고 브라우저에서 승인한 뒤 <code>/exit</code>. 끝나면 이 줄이 저절로 바뀝니다. 요약을 처음 만들 때 해도 됩니다.</span>") +
+      "</div></div>";
+  }
+  return h;
+}
+
+function optsHtml() {
+  const tr = targetRoot();
+  return "<h2>바로가기</h2>" +
+    "<div class='row'><div class='k'>바탕화면</div><div class='v'>Athenaeum 아이콘을 만듭니다 — 더블클릭하면 서버가 켜지고 앱 창이 뜹니다. 이미 켜져 있으면 창만 엽니다." +
+    (st.test ? "<span class='hint'>(시험 모드: " + esc(st.test_dir) + " 에 만듦)</span>" : "") + "</div></div>" +
+    "<div class='row'><div class='k'>부팅 때 자동 시작</div><div class='v'><label class='opt'><input type='checkbox' id='auto'" + (autostart ? " checked" : "") + "> 컴퓨터를 켤 때 서버를 조용히 미리 켜 둡니다 — 수집이 바로 돌고, 바로가기를 누르면 즉시 뜹니다</label>" +
+    "<span class='hint'>나중에 이 도우미를 다시 실행하면 바꿀 수 있습니다.</span></div></div>" +
+    "<div class='row'><div class='k'>설치 폴더</div><div class='v'><span class='path'>" + esc(tr) + "</span>" +
+    (tr !== st.root ? "<span class='hint'>업데이트 — 새로 푼 폴더(" + esc(st.root) + ")는 끝난 뒤 지워도 됩니다</span>" : "") + "</div></div>";
+}
+
+function installHtml() {
+  const p = st.progress || {};
+  return "<h2>설치</h2>" +
+    "<div class='pbar wide'><i style='width:" + (p.pct || 0) + "%'></i></div>" +
+    "<div>" + (p.done ? (p.ok ? "<span class='ok'>끝났습니다</span>" : "<span class='bad'>문제: " + esc(p.error) + "</span>") : "<span>진행 중… " + (p.pct || 0) + "%</span>") + "</div>" +
+    "<div class='log' id='log'>" + esc((st.log || []).join("\n")) + "</div>";
+}
+
+function doneHtml() {
+  const p = st.progress || {}, c = st.claude || {};
+  return "<h2>" + (p.ok ? "설치가 끝났습니다" : "설치를 끝내지 못했습니다") + "</h2>" +
+    (p.ok ? "" : "<p class='bad'>" + esc(p.error) + "</p>") +
+    "<div class='row'><div class='k'>설치 폴더</div><div class='v path'>" + esc(p.target || targetRoot()) + "</div></div>" +
+    "<div class='row'><div class='k'>Claude Code</div><div class='v'>" + (c.found && c.logged_in ? "<span class='ok'>설치·로그인</span>" : "<span class='no'>설치 또는 로그인 필요 — 홈 화면 안내를 따르세요</span>") + "</div></div>" +
+    "<div class='row'><div class='k'>바로가기</div><div class='v'>바탕화면 Athenaeum" + (autostart ? " · 부팅 때 자동 시작" : "") + "</div></div>" +
+    "<div class='row'><div class='k'>지우기</div><div class='v'>'Athenaeum 삭제.bat' 실행 후 폴더 삭제 (논문·번역·원고는 그대로 남음)</div></div>" +
+    "<p class='hint' style='margin-top:var(--s4)'>처음 열면 그림으로 된 사용법이 먼저 뜨고, 「시작하기」 를 누르면 「처음 설정」(Claude Code · 수집 폴더 · 라벨 체계 · 학습) 을 거쳐 홈으로 갑니다.</p>";
+}
+
+function render() {
+  if (!st) return;
+  $("ver").textContent = "이 판 " + st.version;
+  $("steps").innerHTML = STEPS.map((s, i) => "<div class='" + (i === step ? "on" : i < step ? "done" : "") + "'><span class='n'>" + (i + 1) + "</span>" + s + "</div>").join("");
+  const body = $("body"), top = body.scrollTop;
+  const logEl = $("log"), logBottom = logEl && logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 4;
+  body.innerHTML = [introHtml, checkHtml, claudeHtml, optsHtml, installHtml, doneHtml][step]();
+  body.scrollTop = top;
+  const nl = $("log"); if (nl && (logBottom || !logEl)) nl.scrollTop = nl.scrollHeight;
+  document.querySelectorAll("input[type=radio][data-root]").forEach(r => r.onchange = () => { choice[r.dataset.root] = +r.value; });
+  const a = $("auto"); if (a) a.onchange = () => { autostart = a.checked; };
+  const ci = $("cInstall"); if (ci) ci.onclick = () => { ci.disabled = true; api("/api/claude_install", {}).then(() => setTimeout(refresh, 1500)); };
+  const cl = $("cLogin"); if (cl) cl.onclick = () => { cl.disabled = true; api("/api/claude_login", {}).then(() => setTimeout(refresh, 1500)); };
+  renderFoot();
+}
+
+function renderFoot() {
+  const p = st.progress || {}, f = $("foot");
+  if (step === STEPS.length - 1) {
+    f.innerHTML = "<span class='sp'></span>" + (st.test ? "" : "<button class='primary' id='launch'>Athenaeum 열기</button>") + "<button class='ghostbtn' id='quit'>닫기</button>";
+    const l = $("launch"); if (l) l.onclick = () => { l.disabled = true; api("/api/launch", {}).then(() => setTimeout(quit, 1200)); };
+    $("quit").onclick = quit;
+    return;
+  }
+  const busy = step === 4 && !p.done, waitEx = step === 1 && st.existing === null;
+  const hint = step === 2 && !(st.claude || {}).found ? "나중에 설치해도 됩니다 — 「다음」 으로 넘어가세요" : (busy ? "끝나면 「다음」 이 켜집니다" : (waitEx ? "기존 설치를 찾는 중" : ""));
+  f.innerHTML = "<button class='ghostbtn' id='prev'" + (step === 0 || step === 4 ? " disabled" : "") + ">이전</button><span class='sp'>" + hint + "</span>" +
+    "<button class='primary' id='next'" + (busy || waitEx ? " disabled" : "") + ">" + (step === 3 ? "설치" : "다음") + "</button>";
+  $("prev").onclick = () => go(step - 1);
+  $("next").onclick = () => go(step + 1);
+}
+
+function go(n) {
+  step = Math.max(0, Math.min(STEPS.length - 1, n));
+  if (step === 4 && !started) { started = true; api("/api/install", { existing: choice, autostart }).then(refresh); }
+  render();
+}
+function quit() { api("/api/quit", {}).catch(() => {}); $("body").innerHTML = "<h2>도우미를 닫았습니다</h2><p class='hint'>이 창은 닫아도 됩니다.</p>"; $("foot").innerHTML = ""; setTimeout(() => { try { window.close(); } catch (e) {} }, 400); }
+
+// 살아 있다는 신호 겸 상태 갱신: Claude 단계는 3초(설치·로그인을 알아채게), 설치 중은 1초, 그 밖은 10초. 창을 닫으면 /api/bye 로 도우미가 끝난다
+setInterval(() => { ticks++; if (step === 4 ? true : step === 2 ? ticks % 3 === 0 : ticks % 10 === 0) refresh(); }, 1000);
+window.addEventListener("beforeunload", () => { try { navigator.sendBeacon("/api/bye", ""); } catch (e) {} });
+refresh();
+</script>
+</body>
+</html>

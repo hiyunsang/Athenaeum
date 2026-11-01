@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Athenaeum — 처음 설정</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  /* 처음 설정 — 처음 할 일(Claude Code · 수집 폴더 · 라벨 체계 · 학습 …)을 한눈에. 값을 바꾸는 길은 전부 있던 API·환경설정이고 이 화면은 상태를 보여 주고 그쪽으로 잇기만 한다 */
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13.5px/1.6 var(--font); }
+  header { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font: 600 15px var(--font); letter-spacing: .6px; }
+  header h1 a { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  header .brand-mark { width: 22px; height: 22px; }
+  header .ttl { color: var(--text-2); }
+  header .right { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  #wrap { max-width: 860px; margin: 0 auto; padding: var(--s6) var(--s4) var(--s8); }
+  .lead { color: var(--text-2); margin: 0 0 var(--s4); }
+  .row { display: flex; align-items: flex-start; gap: var(--s3); padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row .k { width: 150px; flex: none; font-weight: 600; padding-top: 1px; }
+  .row .v { flex: 1; min-width: 0; }
+  .row .a { flex: none; display: flex; align-items: center; gap: var(--s1); padding-top: 1px; }
+  .ok { color: var(--green); } .no { color: var(--amber); } .bad { color: var(--red); }
+  .hint { display: block; margin-top: 3px; line-height: 1.5; }
+  .path { color: var(--text-2); word-break: break-all; }
+  code { font: 12px Consolas, monospace; background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+  .edit { display: flex; gap: var(--s2); margin-top: var(--s2); }
+  .edit input { flex: 1; padding: 4px 8px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); font: inherit; }
+  .sw { position: relative; display: inline-block; width: 34px; height: 20px; cursor: pointer; vertical-align: middle; }
+  .sw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .sw i { position: absolute; inset: 0; background: var(--line-2); border-radius: 10px; transition: background .15s; }
+  .sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); transition: left .15s; }
+  .sw input:checked + i { background: var(--accent); }
+  .sw input:checked + i::after { left: 16px; }
+  .foot { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s6); }
+  .foot .primary { font-size: 14px; padding: 8px 20px; }
+  .primary:disabled, .ghostbtn:disabled { opacity: .45; cursor: default; }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <h1><a href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
+  <span class="ttl">처음 설정</span>
+  <span class="right"><a class="act" href="/tutorial" target="athenaeum_tutorial">사용법 ↗</a><span id="uiCtlHost"></span></span>
+</header>
+<div id="wrap">
+  <p class="lead" id="lead">Athenaeum 을 쓰기 전에 한 번 보아 둘 것들입니다. 전부 나중에 바꿀 수 있고, 다시 보려면 ⚙ 설정 → 일반 → 처음 설정.</p>
+  <div id="rows">불러오는 중…</div>
+  <div class="foot" id="foot"></div>
+</div>
+<script>
+const FIRST = new URLSearchParams(location.search).get("first") === "1";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let d = null, editWatch = false;
+if (typeof mountUiControls === "function") mountUiControls("#uiCtlHost");
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  return r.json();
+}
+async function load() { try { d = await api("/api/start"); } catch (e) { $("rows").textContent = "서버에서 상태를 받지 못했습니다."; return; } render(); }
+
+const row = (k, v, a) => "<div class='row'><div class='k'>" + k + "</div><div class='v'>" + v + "</div><div class='a'>" + (a || "") + "</div></div>";
+
+function claudeRow() {
+  const c = d.claude;
+  let v, a = "";
+  if (!c.found) {
+    v = "<span class='no'>설치되어 있지 않습니다</span><span class='hint'>요약·번역·라벨 분류·공부·원고가 Claude Code 로 Claude 를 부릅니다 (내 Claude 구독 사용량, API 키 없음). 「설치 창 열기」 가 PowerShell 창에 <code>irm https://claude.ai/install.ps1 | iex</code> 를 띄웁니다. 끝나면 이 줄이 저절로 바뀝니다.</span>";
+    a = "<button class='primary' id='cInstall'>설치 창 열기</button><a class='act' href='https://claude.com/claude-code' target='_blank'>안내 ↗</a>";
+  } else if (!c.logged_in && !(c.own && c.own_logged_in)) {
+    v = "<span class='ok'>설치됨</span> · <span class='no'>로그인 흔적이 없습니다</span><span class='hint'>「로그인 창 열기」 로 뜬 창에서 <code>/login</code> → 브라우저에서 승인 → <code>/exit</code>. 요약을 처음 만들 때 해도 됩니다.<br><span class='path'>" + esc(c.path) + "</span></span>";
+    a = "<button class='primary' id='cLogin'>로그인 창 열기</button>";
+  } else {
+    v = "<span class='ok'>설치됨 · 로그인됨</span><span class='hint path'>" + esc(c.path) + "</span>";
+  }
+  if (c.problem) v += "<span class='hint bad'>최근 호출 문제: " + esc(c.problem) + "</span>";
+  if (c.own) v += "<span class='hint'>Athenaeum 전용 Claude 계정: " + (c.own_logged_in ? "<span class='ok'>로그인됨</span>" : "<span class='no'>로그인되어 있지 않음</span> — ⚙ 설정 → Claude 「로그인 창 열기」") + " <span class='path'>(" + esc(c.own_dir) + ")</span></span>";
+  return row("Claude Code", v, a);
+}
+
+function intakeRow() {
+  const it = d.intake;
+  let v = (it.watch ? "감시 폴더 <span class='path'>" + esc(it.watch) + "</span>" : "<span class='no'>감시 폴더가 정해지지 않았습니다</span>") +
+    "<span class='hint'>이 폴더에 논문 PDF 가 들어오면 DOI 로 알아보고 '연도_저널_저자_제목.pdf' 로 이름을 바꿔 서재(" + esc(it.target || "논문모음") + ")에 넣습니다. 논문이 아닌 PDF 는 건드리지 않습니다." + (it.enabled === false ? " <span class='no'>지금은 일시 중지 상태</span>" : "") + "</span>";
+  if (editWatch) v += "<div class='edit'><input id='watchIn' value='" + esc(it.watch) + "' placeholder='예: C:\\Users\\이름\\Downloads'><button class='primary' id='watchSave'>저장</button><button class='ghostbtn' id='watchNo'>취소</button></div>";
+  return row("논문 수집", v, editWatch ? "" : "<button class='ghostbtn' id='watchEdit'>폴더 바꾸기</button>");
+}
+
+function labelsRow() {
+  const v = d.labels_initial
+    ? "<span class='no'>비어 있음</span><span class='hint'>라벨 체계(재료·공정·현상·방법 …)는 내 분야에 맞게 세웁니다. 논문이 10편쯤 모이면 홈이 Claude 에게 제안받으라고 알려 주고, 그 뒤로 새 논문이 자동 분류됩니다. 지금 세워도 됩니다.</span>"
+    : "<span class='ok'>라벨 " + d.labels_n + "개</span><span class='hint'>새 논문은 들어올 때 자동 분류되고, 논문이 많이 늘면 홈이 다시 분류하라고 알려 줍니다.</span>";
+  return row("라벨 체계", v, "<a class='act ready' href='/labels' target='athenaeum_labels'>라벨 체계 설정 ↗</a>");
+}
+
+function journalsRow() {
+  const v = "<span>" + esc((d.journals || []).join(" · ")) + "</span>" + (d.journals_custom ? "" : " <span class='hint' style='display:inline'>(기본)</span>") +
+    "<span class='hint'>탐색에서 이 저널의 논문을 앞세우고, 공부·원고·연구 노트가 주장의 무게를 가를 때 '★ 우선 저널' 로 봅니다.</span>";
+  return row("우선 저널", v, "<button class='ghostbtn' id='jEdit'>바꾸기</button>");
+}
+
+function learnRow() {
+  const v = "<label class='sw'><input type='checkbox' id='learnOn'" + (d.learn ? " checked" : "") + "><i></i></label> <span id='learnTxt'>" + (d.learn ? "켜짐" : "꺼짐") + "</span>" +
+    "<span class='hint'>밤에 배경으로 서재의 논문을 읽어 '이 저널의 이 절은 이렇게 쓴다' 바탕을 세우고, 원고·연구 노트가 글을 쓸 때 그 바탕과 같은 자리의 실제 문단을 씁니다. 토큰을 꾸준히 쓰므로 기본은 꺼짐 (우선 저널은 Opus 편당 3만~4만 토큰). 시간대·하루 상한은 학습 화면에서.</span>";
+  return row("학습", v, "<a class='act' href='/learn' target='athenaeum_learn'>학습 화면 ↗</a>");
+}
+
+function libraryRow() {
+  const v = d.papers ? "논문 " + d.papers + "편 · 요약 " + d.summaries + " · 번역 " + d.translations +
+    "<span class='hint'>요약·번역은 읽기 화면의 ↻ 나 홈 목록에서 만듭니다 (편마다 Claude 호출, 번역은 5만~15만 토큰).</span>"
+    : "<span class='no'>아직 논문이 없습니다</span><span class='hint'>다운로드 폴더에 논문 PDF 를 받으면 수집이 서재에 넣습니다. 이미 모아 둔 PDF 가 있으면 감시 폴더에 옮겨 넣어도 됩니다.</span>";
+  return row("서재", v, "");
+}
+
+function keysRow() {
+  const v = "OpenAlex 키 " + (d.openalex_key ? "<span class='ok'>있음</span>" : "없음") + " · Elsevier 키 " + (d.elsevier_key ? "<span class='ok'>있음</span>" : "없음") +
+    "<span class='hint'>둘 다 무료이고 없어도 됩니다 — OpenAlex 키는 탐색의 하루 한도를 넉넉하게, Elsevier 키는 Scopus 로 초록·검색을 보완합니다.</span>";
+  return row("연결 (선택)", v, "<button class='ghostbtn' id='kEdit'>설정</button>");
+}
+
+function render() {
+  $("rows").innerHTML = claudeRow() + intakeRow() + labelsRow() + journalsRow() + learnRow() + libraryRow() + keysRow();
+  $("foot").innerHTML = FIRST ? "<a class='primary' href='/' style='text-decoration:none'>시작하기</a><span class='hint' style='display:inline'>홈으로 갑니다 — 여기 것은 전부 나중에 바꿀 수 있습니다</span>" : "<a class='ghostbtn' href='/' style='text-decoration:none'>홈으로</a>";
+  const ci = $("cInstall"); if (ci) ci.onclick = () => { ci.disabled = true; api("/api/claude_install", {}).then(r => { if (r && r.error) alert(r.error); setTimeout(load, 2000); }); };
+  const cl = $("cLogin"); if (cl) cl.onclick = () => { cl.disabled = true; api("/api/claude_login", { default: true }).then(r => { if (r && r.error) alert(r.error); setTimeout(load, 2000); }); };
+  const we = $("watchEdit"); if (we) we.onclick = () => { editWatch = true; render(); $("watchIn").focus(); };
+  const wn = $("watchNo"); if (wn) wn.onclick = () => { editWatch = false; render(); };
+  const ws = $("watchSave"); if (ws) ws.onclick = async () => {
+    const v = $("watchIn").value.trim(); if (!v) return;
+    const r = await api("/api/intake", { op: "config", config: { "감시폴더": v } });
+    if (r && r.errors && r.errors.length) { alert(r.errors.join("\n")); return; }
+    editWatch = false; load();
+  };
+  const lo = $("learnOn"); if (lo) lo.onchange = async () => { lo.disabled = true; const r = await api("/api/learn", { op: "settings", on: lo.checked }); d.learn = !!(r && r.settings && r.settings.on); $("learnTxt").textContent = d.learn ? "켜짐" : "꺼짐"; lo.checked = d.learn; lo.disabled = false; };
+  const je = $("jEdit"); if (je) je.onclick = () => openSettings("keys");
+  const ke = $("kEdit"); if (ke) ke.onclick = () => openSettings("keys");
+}
+window.onUiClose = load;   // ⚙ 설정을 닫으면 우선 저널·키·전용 계정을 다시 읽는다
+load();
+setInterval(() => { if (d && d.claude && !(d.claude.found && (d.claude.logged_in || d.claude.own_logged_in))) load(); }, 5000);   // Claude Code 를 설치·로그인하는 중이면 저절로 바뀌게
+</script>
+</body>
+</html>

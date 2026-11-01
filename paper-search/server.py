@@ -3422,6 +3422,69 @@ def settings_view():
             "claude_own_account": bool(cd), "claude_config_dir": cd, "claude_logged_in": claude_logged_in(cd)}
 
 
+def start_view():
+    """「처음 설정」(/start) 화면의 재료 — Claude Code 설치·로그인, 수집 폴더, 라벨 체계, 우선 저널, 학습, 서재 편수.
+    보여 주기만 한다: 값을 바꾸는 길은 전부 있던 API(/api/settings · /api/intake · /api/learn · /labels · ⚙ 환경설정)다. 2026-11-01"""
+    import corpus
+    pdfs = archive_pdfs()
+    groups = load_json(LABELS_PATH, {})
+    meta = label_meta(groups)
+    nlab = sum(len(v) for g, v in label_groups(groups).items() if g not in meta["고정"])
+    sv = settings_view()
+    exe = find_claude()
+    try:
+        iv = intake.view()
+    except Exception:
+        iv = {}
+    try:
+        learn_on = bool(corpus.settings().get("on"))
+    except Exception:
+        learn_on = False
+    return {"version": app_version(), "papers": len(pdfs),
+            "translations": sum(1 for f in pdfs if os.path.exists(gen_path(f, "translation"))),
+            "summaries": sum(1 for f in pdfs if os.path.exists(gen_path(f, "summary"))),
+            "labels_initial": catalog_is_initial(groups), "labels_n": nlab,
+            "claude": {"found": bool(exe), "path": exe or "", "problem": claude_error(),
+                       "logged_in": os.path.isfile(os.path.join(os.path.expanduser("~"), ".claude", ".credentials.json")),   # 이 PC 의 기본 로그인 흔적 (내용은 읽지 않는다)
+                       "own": sv["claude_own_account"], "own_dir": sv["claude_config_dir"], "own_logged_in": sv["claude_logged_in"]},
+            "intake": {"watch": iv.get("watch") or "", "target": iv.get("target") or "", "enabled": iv.get("enabled")},
+            "journals": sv["preferred_journals"], "journals_custom": sv["preferred_journals_custom"],
+            "openalex_key": sv["openalex_api_key_set"], "elsevier_key": sv["elsevier_api_key_set"],
+            "learn": learn_on}
+
+
+_UPDATE = {"t": 0.0, "data": None}
+UPDATE_API = "https://api.github.com/repos/hiyunsang/Athenaeum/releases/latest"
+RELEASES_URL = "https://github.com/hiyunsang/Athenaeum/releases"
+
+
+def _ver_key(s):
+    return tuple(int(x) for x in re.findall(r"\d+", str(s or ""))[:4]) or (0,)
+
+
+def update_check(force=False):
+    """GitHub Releases 의 최신 판 — ui.js 가 홈을 열 때 묻고(⚙ 일반 「새 판 알림」 으로 끌 수 있다) ⚙ 의 판 줄에도 보인다. 보내는 것은 요청 하나뿐.
+    결과는 하루, 실패는 한 시간 메모리에 둔다(GitHub 의 익명 한도 시간당 60번). 인터넷이 없으면 ok=False 로 조용히. 2026-11-01"""
+    now = time.time()
+    d = _UPDATE["data"]
+    if d is not None and not force and now - _UPDATE["t"] < (86400 if d.get("ok") else 3600):
+        return d
+    out = {"ok": False, "current": APP_VERSION, "url": RELEASES_URL}
+    try:
+        import urllib.request
+        req = urllib.request.Request(UPDATE_API, headers={"User-Agent": "Athenaeum", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            j = json.loads(r.read().decode("utf-8", "replace"))
+        tag = str(j.get("tag_name") or "").strip().lstrip("vV")
+        zips = [a.get("browser_download_url") for a in (j.get("assets") or []) if str(a.get("name") or "").lower().endswith(".zip")]
+        out.update(ok=True, latest=tag, newer=_ver_key(tag) > _ver_key(APP_VERSION), url=j.get("html_url") or RELEASES_URL,
+                   name=str(j.get("name") or "")[:120], published=str(j.get("published_at") or "")[:10], zip=zips[0] if zips else "")
+    except Exception as e:
+        out["error"] = str(e)[:160]
+    _UPDATE.update(t=now, data=out)
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -3687,6 +3750,13 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/explore":
             with open(os.path.join(BASE, "explore.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/start":   # 처음 설정 — Claude Code · 수집 폴더 · 라벨 체계 · 학습 같은 처음 할 일을 한눈에 (paper-search\start.html). 사용법의 「시작하기」 가 처음 한 번 보내고, ⚙ 일반에서 다시 연다
+            with open(os.path.join(BASE, "start.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/api/start":
+            self._send(200, start_view())
+        elif url.path == "/api/update_check":   # GitHub Releases 의 새 판 (하루 캐시, 실패는 조용히)
+            self._send(200, update_check("force" in parse_qs(url.query)))
         elif url.path == "/tutorial":   # 사용법 — 화면마다 그림에 말풍선으로 (paper-search\tutorial.html, 그림은 tutorial\)
             with open(os.path.join(BASE, "tutorial.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -4079,20 +4149,31 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(FONT_DIR, name), "wb") as f:
                 f.write(raw)
             self._send(200, {"ok": True, "fonts": user_fonts(), "added": os.path.splitext(name)[0]})
-        elif self.path == "/api/claude_login":   # 전용 계정 폴더로 claude 를 보이는 콘솔 창에 연다 — 사용자가 그 창에서 /login (한 번)
-            d = claude_config_dir()
+        elif self.path == "/api/claude_install":   # 「처음 설정」 에서: Claude Code 설치 명령을 PowerShell 창에 연다 (설치 도우미와 같은 한 줄)
+            try:
+                subprocess.Popen(["powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"], creationflags=0x10 | 0x200)
+            except Exception as e:
+                return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
+            self._send(200, {"ok": True})
+        elif self.path == "/api/claude_login":   # 전용 계정 폴더로 claude 를 보이는 콘솔 창에 연다 — 사용자가 그 창에서 /login (한 번). {default: true} 면 이 PC 의 기본 로그인(「처음 설정」 이 쓴다)
+            use_default = bool(body.get("default"))
+            d = "" if use_default else claude_config_dir()
             exe = find_claude()
-            if not d:
+            if not d and not use_default:
                 return self._send(200, {"error": "먼저 「Athenaeum 전용 Claude 계정」 을 켜세요"})
             if not exe:
                 return self._send(200, {"error": CLAUDE_MISSING_MSG})
             try:
-                os.makedirs(d, exist_ok=True)
                 env = dict(os.environ)
-                env["CLAUDE_CONFIG_DIR"] = d
                 # 내용은 ASCII 로 (cmd 창은 시스템 코드페이지). 전용 폴더는 비어 있어 claude 가 첫 설정(테마 → 로그인)부터 묻는다
-                line = ("title Athenaeum Claude login && echo [Athenaeum] This window uses the Athenaeum-only Claude account folder: && echo    %s && "
-                        "echo Sign in here with the OTHER account (type /login if it does not ask). When done, type /exit and close this window. && echo. && \"%s\"") % (d, exe)
+                if d:
+                    os.makedirs(d, exist_ok=True)
+                    env["CLAUDE_CONFIG_DIR"] = d
+                    line = ("title Athenaeum Claude login && echo [Athenaeum] This window uses the Athenaeum-only Claude account folder: && echo    %s && "
+                            "echo Sign in here with the OTHER account (type /login if it does not ask). When done, type /exit and close this window. && echo. && \"%s\"") % (d, exe)
+                else:
+                    line = ("title Athenaeum Claude login && echo [Athenaeum] Sign in to Claude Code here: type /login if it does not ask, approve in the browser. "
+                            "When done, type /exit and close this window. && echo. && \"%s\"") % exe
                 subprocess.Popen("cmd /k " + line, env=env, cwd=claude_cwd(), creationflags=0x10 | 0x200)   # CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP — 서버가 꺼져도 창은 남는다
             except Exception as e:
                 return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})

@@ -190,7 +190,7 @@ screensEl.innerHTML = CHAPTERS.map(c => "<div class='chap' id='" + c.id + "'><h2
 // 처음 켠 사람에게 먼저 뜨는 길: 홈이 ?first=1 로 보낸다 → 「시작하기」 를 누르면 본 것으로 적고 홈으로 (사용자 2026-10-06: '처음 깔고 시작하면 누구에게나 다 뜨게')
 const FIRST = new URLSearchParams(location.search).get("first") === "1";
 if (FIRST) { document.getElementById("first").classList.add("on"); document.getElementById("startBar").classList.add("on"); }
-const start = () => { try { localStorage.setItem("tutorial_seen", String(Date.now())); } catch (e) {} location.href = "/"; };
+const start = () => { try { localStorage.setItem("tutorial_seen", String(Date.now())); } catch (e) {} location.href = FIRST ? "/start?first=1" : "/"; };   // 처음 켠 사람은 「처음 설정」 을 한 번 거쳐 홈으로 (2026-11-01)
 document.getElementById("startTop").onclick = start; document.getElementById("startBottom").onclick = start;
 // 화살표: 상자 가장자리에서 가리킬 자리의 가장자리까지 (그림 좌표). 상자 높이는 그려진 뒤에 잰다
 function clipTo(cx, cy, tx, ty, r) {   // (cx,cy)→(tx,ty) 선이 사각형 r=[x,y,w,h] 의 테두리와 만나는 점 (안에서 밖으로)
