@@ -1,5 +1,6 @@
 # Athenaeum - Python 3.8+ (Windows)
-pymupdf>=1.24      # PDF 구조 추출(번역·캡션·수식 그림), SVG→PNG
+pymupdf>=1.24,<1.25   # PDF 구조 추출(번역·캡션·수식 그림), SVG→PNG. 개발 PC 와 같은 1.24 로 고정(2026-11-01): 1.28 은 같은 글에서 span 을 5~10배 잘게 내고 블록 수가 달라
+                      # 문단 나누기·Symbol 글꼴 처리가 어긋날 수 있고, 2.0 은 onnxruntime·networkx 까지 끌어와 배포판이 70 MB 커진다 (논문 16편으로 대 본 결과)
 pypdf>=3.0         # PDF 텍스트 (라벨링·수집 DOI 추출)
 requests>=2.28     # Crossref·OpenAlex
 pywin32>=306       # 바로가기(.lnk)·PPT 그림 추출 (Windows 전용)

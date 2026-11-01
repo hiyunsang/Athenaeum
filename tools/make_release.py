@@ -2,7 +2,7 @@
 """
 Athenaeum 포터블 배포판 만들기 (파이썬이 없는 컴퓨터용)
 
-python tools\\make_release.py            → dist\\Athenaeum-portable-YYYYMMDD.zip
+python tools\\make_release.py            → dist\\Athenaeum-portable-YYYYMMDD-vX.Y.Z.zip (판은 paper-search\\VERSION)
   1) python.org 의 embeddable 파이썬(설치 불필요)을 받아 dist\\Athenaeum\\python\\ 에 풀고
   2) get-pip 으로 pip 을 넣은 뒤 paper-search\\requirements.txt 를 그 파이썬에 설치
   3) 프로그램 파일(paper-search, README, 사용법)을 복사 — 개인 데이터(tags.json 라벨 데이터·본문 색인)는 비움
@@ -20,7 +20,8 @@ SRC = os.path.join(ROOT, "paper-search")
 DIST = os.path.join(ROOT, "dist"); CACHE = os.path.join(ROOT, "tools", "_cache")
 OUT = os.path.join(DIST, "Athenaeum")
 EXCLUDE_DIRS = {"__pycache__", "_cache"}
-EXCLUDE_FILES = {"text_index.json", "맵생성기록.txt", "설정.json", "proto_turning_zones.svg", "proto_turning_zones.png"}   # 설정.json = 개인 OpenAlex 키
+EXCLUDE_FILES = {"text_index.json", "맵생성기록.txt", "설정.json", "proto_turning_zones.svg", "proto_turning_zones.png",
+                 "claude_mascot.png"}   # 설정.json = 개인 OpenAlex 키 · claude_mascot.png = 사용자가 준 그림(git 제외) — 화면은 없으면 글자만 보인다(img onerror)
 
 
 def log(m):
@@ -124,7 +125,8 @@ def main():
 
     # 5) ZIP
     os.makedirs(DIST, exist_ok=True)
-    zpath = os.path.join(DIST, "Athenaeum-portable-%s.zip" % time.strftime("%Y%m%d"))
+    ver = (io.open(os.path.join(SRC, "VERSION"), encoding="utf-8").read().strip() or "0")
+    zpath = os.path.join(DIST, "Athenaeum-portable-%s-v%s.zip" % (time.strftime("%Y%m%d"), ver))   # 판을 이름에 (2026-11-01 — 전에는 손으로 붙였다)
     if os.path.exists(zpath):
         os.remove(zpath)
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:

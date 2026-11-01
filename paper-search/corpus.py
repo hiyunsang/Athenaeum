@@ -42,7 +42,8 @@ _STATE = {"running": False, "current": "", "stage": "", "stop": False, "manual":
           "last": None, "err": "", "started": 0, "synth": "", "active": [], "batch_on": False, "batch": None}
 # 모델(사용자 2026-10-25: 'Sonnet 보다 Opus 5.5 가 낫지 않을까') — 바탕(규칙을 적는 쪽)은 Opus, 주석은 우선 저널(★ — 글의 잣대가 되는 논문)만 Opus 로, 그 밖 저널은 Sonnet 으로.
 # 토큰 수는 같아도 Opus 는 한도를 Sonnet 의 다섯 배쯤 깎고 2~3배 느리다 — 335편 전부 Opus 면 Sonnet 기준 6천만 토큰 어치, 우선 저널 133편만 Opus 면 3천만 어치.
-_DEFAULT = {"on": True, "hours": [22, 8], "per_day": 30, "model": "opus", "model_rest": "sonnet", "synth_model": "opus", "workers": 6, "sent_kinds": ["intro", "discussion", "rd", "conclusion"]}   # workers: 동시에 읽는 편수(사용자 2026-10-25 '오늘 많이 읽혀')
+# 배경 학습의 기본은 꺼짐 — 토큰을 꾸준히 쓰는 기능이라 /learn 에서 켠다 (2026-11-01 배포판부터; 개발 PC 는 설정.json 에 on 이 저장돼 있어 그대로 돈다)
+_DEFAULT = {"on": False, "hours": [22, 8], "per_day": 30, "model": "opus", "model_rest": "sonnet", "synth_model": "opus", "workers": 6, "sent_kinds": ["intro", "discussion", "rd", "conclusion"]}   # workers: 동시에 읽는 편수(사용자 2026-10-25 '오늘 많이 읽혀')
 KINDS = ["intro", "methods", "results", "rd", "discussion", "conclusion"]
 KIND_KO = {"intro": "서론", "methods": "방법", "results": "결과", "rd": "결과·논의", "discussion": "논의", "conclusion": "결론", "abstract": "초록", "other": "그 밖"}
 _ROLES = {"intro": ["배경", "선행연구", "공백", "목적·접근", "기여·구성"],
