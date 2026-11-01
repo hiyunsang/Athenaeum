@@ -4,7 +4,8 @@ Athenaeum 포터블 배포판 만들기 (파이썬이 없는 컴퓨터용)
 
 python tools\\make_release.py            → dist\\Athenaeum-portable-YYYYMMDD-vX.Y.Z.zip (판은 paper-search\\VERSION)
   1) python.org 의 embeddable 파이썬(설치 불필요)을 받아 dist\\Athenaeum\\python\\ 에 풀고
-  2) get-pip 으로 pip 을 넣은 뒤 paper-search\\requirements.txt 를 그 파이썬에 설치
+  2) get-pip 으로 pip 을 넣은 뒤 paper-search\\requirements.txt 를 그 파이썬에 설치하고, 쓰지 않는 것을 뺀다(prune_python — 파일 수를 줄여
+     탐색기의 압축 풀기를 빠르게; 뺀 뒤 check_bundle 이 실제 호출로 확인)
   3) 프로그램 파일(paper-search, README, 사용법)을 복사 — 개인 데이터(tags.json 라벨 데이터·본문 색인)는 비움
   4) 맨 위에 'Athenaeum 실행.bat' 을 두고 ZIP 으로 묶는다
 받는 사람: Claude Code 설치·로그인 → ZIP 풀기 → 'Athenaeum 실행.bat' 더블클릭. 파이썬·pip·PATH 필요 없음.
@@ -47,6 +48,48 @@ def run(cmd, **kw):
     return r
 
 
+# 쓰지 않는 것을 빼 파일 수를 줄인다(2026-11-01, 사용자: '압축 푸는 거 구경하는 게 너무 느리던데').
+# 탐색기의 압축 풀기는 크기가 아니라 파일 수에 비례한다 — 1.1.0 의 첫 ZIP 은 6,189개(python/Lib 가 6,048)라 몇 분이 걸렸다.
+# 무엇을 쓰는지는 실제 호출(Voronoi·k0e·pymupdf·pypdf·requests·WScript.Shell) 뒤 sys.modules 로 재서 정했고, 뺀 뒤 CHECK 가 같은 호출로 지킨다.
+# fontTools 는 pypdf 가 글꼴(CFF·TrueType)을 읽을 때 쓰므로 둔다. numpy.f2py 는 numpy 가 속성으로 늦게 불러오므로 둔다.
+PRUNE_TOP = {"pip", "setuptools", "wheel", "pkg_resources", "_distutils_hack", "distutils-precedence.pth",   # 설치 도구 — 포터블판은 패키지를 더 깔지 않는다
+             "pythonwin", "adodbapi", "win32comext"}                                                         # pywin32 의 IDE·DB·확장 — 프로그램이 쓰는 것은 win32com.client 뿐
+PRUNE_DIST = ("pip-", "setuptools-", "wheel-")                                                                 # 그 dist-info
+PRUNE_SUB = {("win32", "Demos"), ("win32", "test"), ("win32", "scripts"), ("win32com", "test"), ("win32com", "demos"), ("win32com", "HTML"), ("win32com", "makegw"),
+             ("numpy", "distutils"), ("numpy", "_pyinstaller"),
+             # scipy: 프로그램이 쓰는 것은 spatial(Voronoi)·special(k0e) 과 그것들이 끌어오는 _lib·linalg·sparse·constants 뿐
+             ("scipy", "optimize"), ("scipy", "stats"), ("scipy", "signal"), ("scipy", "interpolate"), ("scipy", "io"), ("scipy", "integrate"),
+             ("scipy", "ndimage"), ("scipy", "fft"), ("scipy", "fftpack"), ("scipy", "cluster"), ("scipy", "odr"), ("scipy", "datasets"),
+             ("scipy", "misc"), ("scipy", "differentiate")}
+PRUNE_ANY = {"tests", "test", "Demos", "demos", "__pycache__"}   # 어느 패키지 안이든 이 이름의 폴더. __pycache__ 는 받는 쪽에서 첫 실행 때 다시 생긴다(몇 초)
+CHECK = ("import numpy as np, scipy; from scipy.spatial import Voronoi; from scipy.special import k0e; "
+         "Voronoi(np.random.rand(30, 2)); assert abs(k0e(1.0) - 1.1444630798) < 1e-6; "
+         "import pymupdf, pypdf, requests, fontTools.ttLib, win32com.client; win32com.client.Dispatch('WScript.Shell'); "
+         "print(pymupdf.__doc__.split()[1], pypdf.__version__, np.__version__, scipy.__version__)")
+
+
+def count_files(d):
+    return sum(len(fs) for _, _, fs in os.walk(d))
+
+
+def prune_python(pydir):
+    sp = os.path.join(pydir, "Lib", "site-packages")
+    shutil.rmtree(os.path.join(pydir, "Scripts"), ignore_errors=True)          # pip.exe 등
+    for name in os.listdir(sp):
+        p = os.path.join(sp, name)
+        if name in PRUNE_TOP or (name.endswith(".dist-info") and name.startswith(PRUNE_DIST)):
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                os.remove(p)
+    for pkg, sub in PRUNE_SUB:
+        shutil.rmtree(os.path.join(sp, pkg, sub), ignore_errors=True)
+    for dirpath, dirs, files in os.walk(os.path.join(pydir, "Lib")):
+        for d in list(dirs):
+            if d in PRUNE_ANY:
+                shutil.rmtree(os.path.join(dirpath, d), ignore_errors=True); dirs.remove(d)
+
+
 def main():
     if os.path.isdir(OUT):
         shutil.rmtree(OUT)
@@ -68,14 +111,10 @@ def main():
     getpip = fetch(GETPIP_URL, os.path.join(CACHE, "get-pip.py"))
     run([pyexe, getpip, "--no-warn-script-location", "-q"])
     run([pyexe, "-m", "pip", "install", "-q", "--no-warn-script-location", "-r", os.path.join(SRC, "requirements.txt")])
-    # 덩치 줄이기: numpy·scipy 의 tests 폴더 (동작에 필요 없음)
-    sp = os.path.join(pydir, "Lib", "site-packages")
-    for pkg in ("numpy", "scipy"):
-        for dirpath, dirs, files in os.walk(os.path.join(sp, pkg)):
-            for d in list(dirs):
-                if d == "tests":
-                    shutil.rmtree(os.path.join(dirpath, d), ignore_errors=True); dirs.remove(d)
-    r = run([pyexe, "-c", "import pymupdf, pypdf, requests, win32com.client, numpy, scipy, fontTools; print(pymupdf.__doc__.split()[1], pypdf.__version__, numpy.__version__, scipy.__version__)"])
+    # 덩치 줄이기 — 쓰지 않는 것을 빼고(prune_python) 실제 호출(CHECK)로 확인한다. -B 로 돌려 뺀 __pycache__ 가 다시 생기지 않게
+    n0 = count_files(pydir); prune_python(pydir); n1 = count_files(pydir)
+    log("python files %d -> %d" % (n0, n1))
+    r = run([pyexe, "-B", "-I", "-c", CHECK])
     log("packages ok: " + r.stdout.strip())
 
     # 3) 프로그램 파일
@@ -136,7 +175,7 @@ def main():
                 full = os.path.join(dirpath, f)
                 z.write(full, os.path.relpath(full, DIST))
     total = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(OUT) for f in fs)
-    log("done: %s  (folder %.0f MB, zip %.0f MB)" % (zpath, total / 1e6, os.path.getsize(zpath) / 1e6))
+    log("done: %s  (files %d, folder %.0f MB, zip %.0f MB)" % (zpath, count_files(OUT), total / 1e6, os.path.getsize(zpath) / 1e6))
 
 
 if __name__ == "__main__":
