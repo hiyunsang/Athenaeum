@@ -55,10 +55,10 @@
   </div>
 </div>
 <script>
-const STEPS = ["안내", "점검", "Claude Code", "바로가기", "설치", "끝"];
+const STEPS = ["안내", "점검", "AI 고르기", "바로가기", "설치", "끝"];
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-let st = null, step = 0, choice = {}, autostart = true, started = false, ticks = 0;
+let st = null, step = 0, choice = {}, autostart = true, started = false, ticks = 0, engineChosen = "";
 
 async function api(path, body) {
   const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -86,7 +86,7 @@ function introHtml() {
     "<p>연구실용 논문 작업대입니다. 이 컴퓨터 안에서만 돌고, 논문·요약·번역·원고는 전부 아래 폴더 안에 저장됩니다.</p>" +
     "<p class='path'>" + esc(st.root) + "</p>" +
     "<div class='feat'>" + FEATURES.map(f => "<b>" + f[0] + "</b><span>" + f[1] + "</span>").join("") + "</div>" +
-    "<p class='hint'>요약·번역·공부·원고의 Claude 호출은 Claude Code 로 합니다 (내 Claude 구독 사용량을 씀, API 키 없음). 라벨 체계는 비어 있는 채로 시작하고, 논문이 10편쯤 모이면 홈이 Claude 에게 체계를 맡기라고 권합니다.<br>" +
+    "<p class='hint'>요약·번역·공부·원고의 AI 호출은 Claude Code(Claude 구독) 나 Codex CLI(ChatGPT 구독) 로 합니다 — 내 구독 사용량을 쓰고 API 키는 없습니다. 라벨 체계는 비어 있는 채로 시작하고, 논문이 10편쯤 모이면 홈이 Claude 에게 체계를 맡기라고 권합니다.<br>" +
     "이 도우미는 파일을 지우지 않습니다. 지울 때는 'Athenaeum 삭제.bat' 을 쓰세요.</p>";
 }
 
@@ -111,6 +111,45 @@ function checkHtml() {
         "</div></div>";
     });
   }
+  return h;
+}
+
+function aiFound() { const e = engine(); const c = (e === "codex" ? st.codex : st.claude) || {}; return !!c.found; }
+function engine() { return engineChosen || ((st.claude || {}).found || !(st.codex || {}).found ? "claude" : "codex"); }
+
+function aiHtml() {
+  const c = st.claude || {}, x = st.codex || {}, e = engine();
+  let h = "<h2>AI 고르기</h2><p>요약·번역·라벨 분류·공부·원고가 AI 를 부릅니다. <b>Claude Code</b>(Claude 구독) 와 <b>Codex CLI</b>(ChatGPT 구독) 가운데 하나를 고르세요 — 둘 다 그 회사의 공식 명령줄 도구로 내 계정에 로그인해 쓰고 API 키는 없습니다. 나중에 홈 ⚙ 환경설정 → AI 에서 바꿀 수 있습니다.</p>";
+  const pick = k => "<label class='opt' style='margin:0 0 var(--s2)'><input type='radio' name='engine' value='" + k + "'" + (e === k ? " checked" : "") + "> <b>이것을 씁니다</b></label>";
+  h += "<h3 style='margin:var(--s4) 0 var(--s2)'>Claude Code <span class='hint' style='display:inline;font-weight:400'>— Claude 구독(Pro·Max)</span></h3>" + pick("claude");
+  if (!c.found) {
+    h += "<div class='row'><div class='k'>설치</div><div class='v'><span class='no'>설치되어 있지 않습니다</span>" +
+      "<div class='btns'>" + (st.test ? "<span class='hint'>(시험 모드라 설치 창은 열지 않음)</span>" : "<button class='primary' id='cInstall'>설치 창 열기</button>") +
+      "<a class='act' href='https://claude.com/claude-code' target='_blank'>안내 페이지 ↗</a></div>" +
+      "<span class='hint'>PowerShell 창이 뜨고 <code>irm https://claude.ai/install.ps1 | iex</code> 를 실행합니다. 그 창이 끝나면 이 줄이 저절로 '찾음' 으로 바뀝니다 (3초마다 확인).</span></div></div>";
+  } else {
+    h += "<div class='row'><div class='k'>설치</div><div class='v'><span class='ok'>찾음</span><span class='hint'>" + esc(c.path) + (c.version ? " · " + esc(c.version) : "") + "</span></div></div>";
+    h += "<div class='row'><div class='k'>로그인</div><div class='v'>" +
+      (c.logged_in ? "<span class='ok'>로그인 흔적 있음</span><span class='hint'>~\\.claude\\.credentials.json</span>" :
+        "<span class='no'>로그인 흔적이 없습니다</span><div class='btns'>" + (st.test ? "<span class='hint'>(시험 모드)</span>" : "<button class='primary' id='cLogin'>로그인 창 열기</button>") + "</div>" +
+        "<span class='hint'>열린 창에서 <code>/login</code> 을 입력하고 브라우저에서 승인한 뒤 <code>/exit</code>. 끝나면 이 줄이 저절로 바뀝니다. 요약을 처음 만들 때 해도 됩니다.</span>") +
+      "</div></div>";
+  }
+  h += "<h3 style='margin:var(--s5) 0 var(--s2)'>Codex CLI <span class='hint' style='display:inline;font-weight:400'>— ChatGPT 구독(Plus·Pro)</span></h3>" + pick("codex");
+  if (!x.found) {
+    h += "<div class='row'><div class='k'>설치</div><div class='v'><span class='no'>설치되어 있지 않습니다</span>" +
+      "<div class='btns'>" + (st.test ? "<span class='hint'>(시험 모드라 설치 창은 열지 않음)</span>" : "<button class='primary' id='xInstall'>설치 창 열기</button>") +
+      "<a class='act' href='https://developers.openai.com/codex/cli' target='_blank'>안내 페이지 ↗</a></div>" +
+      "<span class='hint'>PowerShell 창이 뜨고 <code>" + esc(x.install_cmd || "winget install OpenAI.Codex") + "</code> 를 실행합니다. 끝나면 이 줄이 저절로 '찾음' 으로 바뀝니다.</span></div></div>";
+  } else {
+    h += "<div class='row'><div class='k'>설치</div><div class='v'><span class='ok'>찾음</span><span class='hint'>" + esc(x.path) + (x.version ? " · " + esc(x.version) : "") + "</span></div></div>";
+    h += "<div class='row'><div class='k'>로그인</div><div class='v'>" +
+      (x.logged_in ? "<span class='ok'>로그인됨</span>" :
+        "<span class='no'>로그인되어 있지 않습니다</span><div class='btns'>" + (st.test ? "<span class='hint'>(시험 모드)</span>" : "<button class='primary' id='xLogin'>로그인 창 열기</button>") + "</div>" +
+        "<span class='hint'>열린 창이 브라우저를 띄우면 ChatGPT 계정으로 로그인합니다. 끝나면 이 줄이 저절로 바뀝니다.</span>") +
+      "</div></div>";
+  }
+  h += "<p class='hint' style='margin-top:var(--s4)'>공부·학습처럼 토큰을 많이 쓰는 일은 한도가 큰 요금제(Claude Max, ChatGPT Pro)가 편합니다. 둘 다 없어도 설치는 됩니다 — 홈 화면이 안내합니다.</p>";
   return h;
 }
 
@@ -153,11 +192,11 @@ function installHtml() {
 }
 
 function doneHtml() {
-  const p = st.progress || {}, c = st.claude || {};
+  const p = st.progress || {}, e = engine(), c = (e === "codex" ? st.codex : st.claude) || {};
   return "<h2>" + (p.ok ? "설치가 끝났습니다" : "설치를 끝내지 못했습니다") + "</h2>" +
     (p.ok ? "" : "<p class='bad'>" + esc(p.error) + "</p>") +
     "<div class='row'><div class='k'>설치 폴더</div><div class='v path'>" + esc(p.target || targetRoot()) + "</div></div>" +
-    "<div class='row'><div class='k'>Claude Code</div><div class='v'>" + (c.found && c.logged_in ? "<span class='ok'>설치·로그인</span>" : "<span class='no'>설치 또는 로그인 필요 — 홈 화면 안내를 따르세요</span>") + "</div></div>" +
+    "<div class='row'><div class='k'>" + (e === "codex" ? "Codex CLI (ChatGPT)" : "Claude Code") + "</div><div class='v'>" + (c.found && c.logged_in ? "<span class='ok'>설치·로그인</span>" : "<span class='no'>설치 또는 로그인 필요 — 홈 화면 안내를 따르세요</span>") + "</div></div>" +
     "<div class='row'><div class='k'>바로가기</div><div class='v'>바탕화면 Athenaeum" + (autostart ? " · 부팅 때 자동 시작" : "") + "</div></div>" +
     "<div class='row'><div class='k'>지우기</div><div class='v'>'Athenaeum 삭제.bat' 실행 후 폴더 삭제 (논문·번역·원고는 그대로 남음)</div></div>" +
     "<p class='hint' style='margin-top:var(--s4)'>처음 열면 그림으로 된 사용법이 먼저 뜨고, 「시작하기」 를 누르면 「처음 설정」(Claude Code · 수집 폴더 · 라벨 체계 · 학습) 을 거쳐 홈으로 갑니다.</p>";
@@ -169,13 +208,16 @@ function render() {
   $("steps").innerHTML = STEPS.map((s, i) => "<div class='" + (i === step ? "on" : i < step ? "done" : "") + "'><span class='n'>" + (i + 1) + "</span>" + s + "</div>").join("");
   const body = $("body"), top = body.scrollTop;
   const logEl = $("log"), logBottom = logEl && logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 4;
-  body.innerHTML = [introHtml, checkHtml, claudeHtml, optsHtml, installHtml, doneHtml][step]();
+  body.innerHTML = [introHtml, checkHtml, aiHtml, optsHtml, installHtml, doneHtml][step]();
   body.scrollTop = top;
   const nl = $("log"); if (nl && (logBottom || !logEl)) nl.scrollTop = nl.scrollHeight;
   document.querySelectorAll("input[type=radio][data-root]").forEach(r => r.onchange = () => { choice[r.dataset.root] = +r.value; });
   const a = $("auto"); if (a) a.onchange = () => { autostart = a.checked; };
   const ci = $("cInstall"); if (ci) ci.onclick = () => { ci.disabled = true; api("/api/claude_install", {}).then(() => setTimeout(refresh, 1500)); };
   const cl = $("cLogin"); if (cl) cl.onclick = () => { cl.disabled = true; api("/api/claude_login", {}).then(() => setTimeout(refresh, 1500)); };
+  const xi = $("xInstall"); if (xi) xi.onclick = () => { xi.disabled = true; api("/api/codex_install", {}).then(() => setTimeout(refresh, 1500)); };
+  const xl = $("xLogin"); if (xl) xl.onclick = () => { xl.disabled = true; api("/api/codex_login", {}).then(() => setTimeout(refresh, 1500)); };
+  document.querySelectorAll("input[name=engine]").forEach(r => r.onchange = () => { engineChosen = r.value; render(); });
   renderFoot();
 }
 
@@ -188,7 +230,7 @@ function renderFoot() {
     return;
   }
   const busy = step === 4 && !p.done, waitEx = step === 1 && st.existing === null;
-  const hint = step === 2 && !(st.claude || {}).found ? "나중에 설치해도 됩니다 — 「다음」 으로 넘어가세요" : (busy ? "끝나면 「다음」 이 켜집니다" : (waitEx ? "기존 설치를 찾는 중" : ""));
+  const hint = step === 2 && !aiFound() ? "나중에 설치해도 됩니다 — 「다음」 으로 넘어가세요" : (busy ? "끝나면 「다음」 이 켜집니다" : (waitEx ? "기존 설치를 찾는 중" : ""));
   f.innerHTML = "<button class='ghostbtn' id='prev'" + (step === 0 || step === 4 ? " disabled" : "") + ">이전</button><span class='sp'>" + hint + "</span>" +
     "<button class='primary' id='next'" + (busy || waitEx ? " disabled" : "") + ">" + (step === 3 ? "설치" : "다음") + "</button>";
   $("prev").onclick = () => go(step - 1);
@@ -197,7 +239,7 @@ function renderFoot() {
 
 function go(n) {
   step = Math.max(0, Math.min(STEPS.length - 1, n));
-  if (step === 4 && !started) { started = true; api("/api/install", { existing: choice, autostart }).then(refresh); }
+  if (step === 4 && !started) { started = true; api("/api/install", { existing: choice, autostart, engine: engine(), engine_force: !!engineChosen }).then(refresh); }
   render();
 }
 function quit() { api("/api/quit", {}).catch(() => {}); $("body").innerHTML = "<h2>도우미를 닫았습니다</h2><p class='hint'>이 창은 닫아도 됩니다.</p>"; $("foot").innerHTML = ""; setTimeout(() => { try { window.close(); } catch (e) {} }, 400); }

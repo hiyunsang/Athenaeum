@@ -74,6 +74,19 @@ def build_prompt(spec, ref_images=(), prev_script=None, feedback=None, error=Non
 
 
 def _claude(prompt, ref_dirs=(), timeout=600, model="opus"):
+    eng = cfg.get("engine")
+    if eng and cfg.get("ai_run") and eng() != "claude":   # Codex 등 다른 엔진: 서버의 공통 호출로 — 참고 그림(아이패드 스케치·PPT)은 첨부로 넘긴다 (2026-11-02)
+        dirs = sorted(set(ref_dirs or ()))
+        imgs = []
+        for d in dirs:
+            try:
+                imgs += sorted(os.path.join(d, n) for n in os.listdir(d) if n.lower().endswith((".png", ".jpg", ".jpeg", ".webp")))
+            except OSError:
+                pass
+        res = cfg["ai_run"](prompt, timeout=timeout, model=model if model in ("opus", "sonnet") else "opus", tools="Read", add_dirs=dirs, images=imgs[:10])
+        if not res or not res.get("text"):
+            raise RuntimeError("AI 실패: 응답 없음")
+        return res["text"]
     exe = cfg.get("claude_exe")
     if not exe:
         raise RuntimeError("claude 명령을 찾을 수 없습니다")

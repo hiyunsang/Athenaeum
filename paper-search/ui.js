@@ -138,7 +138,16 @@ function openSettings(cat) {
                row("글꼴 모양", "<select data-k='ui_font_ms' class='ufont'>" + uiFontOptions(uiGet("ui_font_ms")) + "</select>", "초안·초록 글 칸")] },
       { title: "대화", rows: [row("대화를 놓는 자리", sel("ms_chat_view", [["side", "글 옆에 (워드의 메모처럼)"], ["list", "목록으로"]]), "글 옆에 = 그 글의 높이에 놓이고 글을 따라 움직입니다"),
                row("고친 글을 보이는 방식", sel("ms_alt_view", [["clean", "새 글만 (바뀐 곳은 옅은 바탕)"], ["diff", "지운 말과 넣은 말을 같이"]]), "Claude 가 낸 대안과 다시 쓴 글")] }] },
-    { id: "claude", name: "Claude", groups: [
+    { id: "claude", name: "AI", groups: [
+      { title: "엔진", rows: [
+        row("쓰는 AI", "<select id='aiEngine'><option value='claude'>Claude Code (Claude 구독)</option><option value='codex'>Codex CLI (ChatGPT 구독)</option></select><span class='uout' id='aiEngineState'></span>",
+            "요약·번역·공부·원고가 어느 AI 를 부르는지. 둘 다 그 회사의 공식 명령줄 도구를 통해 내 구독 사용량을 씁니다(API 키 없음). 바꾸면 그다음 호출부터", true),
+        row("Codex CLI", "<span class='uout' id='codexState'>확인 중…</span><div><button class='ureset' id='codexInstallBtn'>설치 창 열기</button> <button class='ureset' id='codexLoginBtn'>로그인 창 열기</button> <button class='ureset' id='codexCheck'>다시 확인</button></div>",
+            "설치 창은 PowerShell 에 winget install OpenAI.Codex 를, 로그인 창은 codex login 을 띄워 브라우저에서 ChatGPT 계정(Plus 이상)으로 로그인합니다. 한도(5시간·주)에 걸리면 홈에 안내가 뜹니다", true),
+        row("GPT 모델 이름", "<input type='text' id='codexModel' placeholder='gpt-6.1-sol' style='width:150px'> <input type='text' id='codexModelFast' placeholder='gpt-6-luna' style='width:130px'><span class='uout' id='codexModelState'></span>",
+            "앞은 큰 모델(글쓰기·공부·대화), 뒤는 가벼운 호출(라벨·개념 뽑기). Codex 가 받는 이름이 바뀌면 여기서 고칩니다. 비우면 기본값", true),
+        row("Athenaeum 전용 ChatGPT 계정", "<label class='usw'><input type='checkbox' id='codexOwn'><i></i></label><span class='uout' id='codexOwnState'></span>",
+            "켜면 Athenaeum 만 다른 ChatGPT 계정으로 돕니다(로그인 폴더를 따로 둠). 켠 뒤 위의 「로그인 창 열기」 에서 그 계정으로 한 번 로그인", true)] },
       { title: "원고에서 물을 때", rows: [
         row("모델", sel("ms_sel_effort", [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]]), "대화와 서재에서 뽑기에 같이 쓰입니다. 최대·Fable 은 더 오래 걸리고 사용량이 많습니다"),
         row("원고 전체를 같이 보내기", sw("ms_sel_whole"), "고른 문단만이 아니라 논문 전체를 읽고 답합니다"),
@@ -262,6 +271,37 @@ function openSettings(cat) {
     };
     document.getElementById("claudeOwnCheck").onclick = loadC;
   }
+  // AI 엔진(서버 설정 engine)과 Codex CLI 의 상태 — 2026-11-02 사용자: '지피티 구독만 있는 사람들도 쓸 수 있게'. 값은 서버(설정.json)에 있다
+  const ae = document.getElementById("aiEngine");
+  if (ae) {
+    const aes = document.getElementById("aiEngineState"), cs = document.getElementById("codexState"), cm = document.getElementById("codexModel"), cmf = document.getElementById("codexModelFast"),
+          cms = document.getElementById("codexModelState"), cxo = document.getElementById("codexOwn"), cxos = document.getElementById("codexOwnState");
+    const showE = s => {
+      ae.value = s.engine || "claude";
+      aes.textContent = s.engine === "codex" ? (s.codex_found ? (s.codex_logged_in ? "GPT 로 돕니다" : "Codex 는 있지만 로그인이 안 됐습니다") : "Codex CLI 가 없습니다 — 아래에서 설치") : (s.claude_found ? "Claude 로 돕니다" : "Claude Code 가 없습니다");
+      cs.textContent = s.codex_found ? ((s.codex_logged_in ? "설치됨 · 로그인됨" : "설치됨 · 로그인 안 됨") + (s.codex_version ? " · " + s.codex_version : "") + " — " + s.codex_path) : "설치되어 있지 않습니다";
+      const def = s.codex_defaults || [];
+      if (document.activeElement !== cm) cm.value = s.codex_model === def[0] ? "" : (s.codex_model || "");
+      if (document.activeElement !== cmf) cmf.value = s.codex_model_fast === def[1] ? "" : (s.codex_model_fast || "");
+      cms.textContent = "지금 " + (s.codex_model || "") + " · " + (s.codex_model_fast || "");
+      cxo.checked = !!s.codex_own_account;
+      cxos.textContent = s.codex_own_account ? ("켜짐 — " + s.codex_home + (s.codex_logged_in ? " · 로그인됨" : " · 아직 로그인 안 됨")) : "꺼짐 — 이 PC 의 기본 codex 로그인을 씁니다";
+      window.UI_ENGINE = s.engine || "claude";
+    };
+    const post = body => fetch("/api/settings", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(showE).catch(() => { aes.textContent = "저장 실패"; });
+    fetch("/api/settings").then(r => r.json()).then(showE).catch(() => {});
+    ae.addEventListener("change", () => { aes.textContent = "저장 중…"; post({ engine: ae.value }); });
+    cm.addEventListener("change", () => post({ codex_model: cm.value.trim() }));
+    cmf.addEventListener("change", () => post({ codex_model_fast: cmf.value.trim() }));
+    cxo.addEventListener("change", () => { cxos.textContent = "저장 중…"; post({ codex_own_account: cxo.checked }); });
+    document.getElementById("codexInstallBtn").onclick = async () => {
+      try { const r = await (await fetch("/api/claude_install", { method: "POST", body: JSON.stringify({ engine: "codex" }) })).json(); cs.textContent = r.error ? "⚠ " + r.error : "PowerShell 창이 열렸습니다 — 끝나면 「다시 확인」"; } catch (e) { cs.textContent = "창을 열지 못했습니다"; }
+    };
+    document.getElementById("codexLoginBtn").onclick = async () => {
+      try { const r = await (await fetch("/api/claude_login", { method: "POST", body: JSON.stringify({ engine: "codex", default: !cxo.checked }) })).json(); cs.textContent = r.error ? "⚠ " + r.error : "검은 창이 열렸습니다 — 브라우저에서 로그인한 뒤 「다시 확인」"; } catch (e) { cs.textContent = "창을 열지 못했습니다"; }
+    };
+    document.getElementById("codexCheck").onclick = () => { cs.textContent = "확인 중…"; post({ codex_recheck: true }); };
+  }
   document.addEventListener("keydown", escClose);
 }
 function escClose(e) { if (e.key === "Escape") closeSettings(); }
@@ -316,4 +356,26 @@ function uiUpdateInfo() { return fetch("/api/update_check").then(r => r.json()).
     };
     if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
   });
+})();
+
+// 엔진이 Codex(GPT) 면 화면의 모델 이름표를 바꿔 보인다 — 화면들은 'Opus · 엑스트라' 같은 Claude 이름으로 고르기를 그리고, 서버가 그 노력 단계를 GPT 모델·추론 노력으로 옮긴다(2026-11-02).
+// 고르기의 값(xhigh·max·high·fast)은 그대로라 저장된 설정도 그대로 쓰인다. Fable 은 GPT 에 짝이 없어 숨긴다.
+(function () {
+  const MAP = [["Opus · 최대", "GPT · 최대"], ["Opus · 엑스트라", "GPT · 높음"], ["Opus · 보통", "GPT · 보통"], ["Sonnet · 빠름", "GPT 가벼운 모델 · 빠름"],
+               ["Opus (꼼꼼함, 5~7분)", "GPT (꼼꼼함)"], ["Sonnet (빠름, 약 2분)", "GPT 가벼운 모델 (빠름)"], ["(대조는 Opus)", "(대조는 큰 모델)"]];
+  function fix(root) {
+    const opts = root.querySelectorAll ? root.querySelectorAll("option") : [];
+    opts.forEach(o => {
+      let t = o.textContent;
+      if (/Fable/.test(t)) { o.hidden = true; o.disabled = true; return; }
+      for (const [a, b] of MAP) if (t.includes(a)) t = t.replace(a, b);
+      if (t !== o.textContent) o.textContent = t;
+    });
+  }
+  function start() {
+    fix(document);
+    new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) fix(n); }))).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  const go = () => fetch("/api/version").then(r => r.json()).then(v => { window.UI_ENGINE = v.engine || "claude"; if (v.engine === "codex") start(); }).catch(() => {});
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
 })();

@@ -162,7 +162,12 @@ def build(f, title="", model="sonnet", force=False):
     res = None
     try:
         run = cfg.get("claude_run")
-        res = run(_PROMPT % (img_dir(f), title or _stem(f)[:120], listing), timeout=900, model=model, tools="Read", add_dirs=[img_dir(f)]) if run else None
+        kw = dict(timeout=900, model=model, tools="Read", add_dirs=[img_dir(f)])
+        imgs = [os.path.join(img_dir(f), x["img"]) for x in figs]
+        try:
+            res = run(_PROMPT % (img_dir(f), title or _stem(f)[:120], listing), images=imgs, **kw) if run else None   # 엔진이 Codex 면 그림을 첨부로, Claude 는 Read 로 읽는다
+        except TypeError:   # 시험 틀의 claude_run 은 images 를 모른다
+            res = run(_PROMPT % (img_dir(f), title or _stem(f)[:120], listing), **kw) if run else None
     except Exception:
         res = None
     d = _json_of(res.get("text")) if res else None

@@ -454,6 +454,102 @@ def open_claude_login(exe):
                      creationflags=NEW_CONSOLE)
 
 
+# ---------- 4-2) Codex CLI (ChatGPT 구독) — 2026-11-02 사용자: '지피티 구독만 있는 사람들도 쓸 수 있게' ----------
+CODEX_INSTALL_CMD = "winget install --id OpenAI.Codex -e --accept-source-agreements --accept-package-agreements"
+_CODEX = {"ver": {}, "login": {}}   # 실행 파일 → 판 · 로그인 확인(시각, 결과) — 설치 창이 3초마다 묻는다
+
+
+def find_codex():
+    names = ("codex", "codex.exe", "codex.cmd")
+    for c in names:
+        p = shutil.which(c)
+        if p:
+            return p
+    known = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),   # winget
+             os.path.join(os.environ.get("APPDATA", ""), "npm")]                                 # npm -g
+    path = os.pathsep.join(d for d in known if d and os.path.isdir(d))
+    try:
+        import winreg
+        for root, key in ((winreg.HKEY_CURRENT_USER, r"Environment"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    path += os.pathsep + os.path.expandvars(winreg.QueryValueEx(k, "Path")[0])
+            except OSError:
+                pass
+    except Exception:
+        pass
+    for c in names:
+        p = shutil.which(c, path=path)
+        if p:
+            return p
+    return None
+
+
+def codex_version(exe):
+    if exe not in _CODEX["ver"]:
+        try:
+            r = subprocess.run([exe, "--version"], capture_output=True, timeout=30, creationflags=NO_WINDOW)
+            _CODEX["ver"][exe] = ((r.stdout or r.stderr).decode("utf-8", "replace").strip().splitlines() or [""])[0][:60]
+        except Exception:
+            _CODEX["ver"][exe] = ""
+    return _CODEX["ver"][exe]
+
+
+def codex_logged_in(exe):
+    """`codex login status` 의 종료 코드 0 = 로그인됨. 프로세스를 띄우므로 20초 동안 기억한다."""
+    t, ok = _CODEX["login"].get(exe, (0, None))
+    if ok is not None and time.time() - t < 20:
+        return ok
+    try:
+        r = subprocess.run([exe, "login", "status"], capture_output=True, timeout=40, creationflags=NO_WINDOW)
+        ok = r.returncode == 0
+    except Exception:
+        ok = False
+    _CODEX["login"][exe] = (time.time(), ok)
+    return ok
+
+
+def open_codex_install():
+    """Codex CLI 설치(winget)를 PowerShell 창에 연다."""
+    subprocess.Popen(["powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command",
+                      CODEX_INSTALL_CMD + "; Write-Host ''; Write-Host 'Codex CLI installed. Close this window and use the Login button.'"], creationflags=NEW_CONSOLE)
+
+
+def open_codex_login(exe):
+    """codex login 을 보이는 창에 연다 — 브라우저가 열리고 ChatGPT 계정으로 로그인한다."""
+    subprocess.Popen(["cmd", "/k", "echo A browser opens - sign in with your ChatGPT account. When this window says logged in, close it. && \"%s\" login" % exe],
+                     creationflags=NEW_CONSOLE)
+
+
+def write_engine(root, eng, force=False):
+    """설치 폴더의 paper-search\\설정.json 에 쓰는 AI(engine: claude|codex)를 적는다. 이미 적혀 있으면 force 가 아닐 때 그대로 둔다(업데이트가 사용자의 선택을 덮지 않게)."""
+    if TEST_DIR:
+        say("      (시험 모드) 쓰는 AI %s — 설정.json 에는 적지 않음" % eng)
+        return
+    try:
+        p = os.path.join(root, "paper-search", "설정.json")
+        d = {}
+        if os.path.exists(p):
+            try:
+                d = json.load(io.open(p, encoding="utf-8")) or {}
+            except Exception:
+                d = {}
+        if "engine" in d and not force:
+            return
+        before = json.dumps(d, sort_keys=True)
+        if eng == "codex":
+            d["engine"] = "codex"
+        else:
+            d.pop("engine", None)
+        if json.dumps(d, sort_keys=True) == before:
+            return   # 바뀌는 것이 없으면 사용자의 설정 파일을 다시 쓰지 않는다
+        io.open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2))
+        say("      쓰는 AI: %s" % ("Codex CLI (ChatGPT)" if eng == "codex" else "Claude Code"))
+    except Exception as e:
+        say("      설정.json 에 엔진을 적지 못했습니다: %s" % e)
+
+
 def check_claude():
     say("[3/6] Claude Code")
     exe = find_claude()
@@ -570,6 +666,14 @@ def main():
     ok_py = check_python()
     handle_existing()
     ok_claude = check_claude()
+    if not ok_claude:
+        cx = find_codex()
+        if cx:
+            say("      Codex CLI(ChatGPT 구독)도 쓸 수 있습니다: %s %s" % (cx, "로그인됨" if codex_logged_in(cx) else "— 로그인은 codex login"))
+            if not TEST_DIR and ask("      Claude 대신 Codex CLI(ChatGPT 구독)를 쓰도록 할까요?"):
+                write_engine(target["root"], "codex", force=True)
+        else:
+            say("      ChatGPT 구독만 있다면 Codex CLI 로도 됩니다 — 설치 뒤 홈 ⚙ 환경설정 → AI 에서 고릅니다:  " + CODEX_INSTALL_CMD)
     desktop_shortcut()
     autostart_shortcut()
     write_marker()
@@ -614,6 +718,7 @@ def web_scan_existing():
 
 def web_state():
     exe = find_claude()
+    cx = find_codex()
     if exe and exe not in _CLAUDE_VER:
         _CLAUDE_VER[exe] = claude_version(exe)
     missing = python_missing()
@@ -621,6 +726,7 @@ def web_state():
             "python": {"ok": not missing, "missing": missing, "exe": sys.executable, "ver": "파이썬 %s.%s" % (sys.version_info[0], sys.version_info[1])},
             "existing": WEB["existing"],
             "claude": {"found": bool(exe), "path": exe or "", "version": _CLAUDE_VER.get(exe, "") if exe else "", "logged_in": logged_in()},
+            "codex": {"found": bool(cx), "path": cx or "", "version": codex_version(cx) if cx else "", "logged_in": codex_logged_in(cx) if cx else False, "install_cmd": CODEX_INSTALL_CMD},
             "progress": WEB["prog"], "log": WEB_LOG[-300:]}
 
 
@@ -647,6 +753,7 @@ def web_install(opts):
         desktop_shortcut()
         say("[5/6] 부팅 때 자동 시작")
         autostart_set(bool(opts.get("autostart", True)))
+        write_engine(target["root"], opts.get("engine") or "claude", force=bool(opts.get("engine_force")))   # 「AI 고르기」 에서 고른 것 (업데이트면 이미 적힌 선택은 그대로)
         write_marker()
         prog(99)
         p["ok"] = True
@@ -761,6 +868,18 @@ def web_main(port=0, open_browser=True):
                 if TEST_DIR or not exe:
                     return self._send(200, {"ok": False, "test": bool(TEST_DIR)})
                 open_claude_login(exe)
+                return self._send(200, {"ok": True})
+            if p == "/api/codex_install":
+                if TEST_DIR:
+                    return self._send(200, {"ok": False, "test": True})
+                open_codex_install()
+                return self._send(200, {"ok": True})
+            if p == "/api/codex_login":
+                exe = find_codex()
+                if TEST_DIR or not exe:
+                    return self._send(200, {"ok": False, "test": bool(TEST_DIR)})
+                open_codex_login(exe)
+                _CODEX["login"].pop(exe, None)
                 return self._send(200, {"ok": True})
             if p == "/api/install":
                 if WEB["prog"]["running"]:

@@ -3169,6 +3169,8 @@ def _gen():
     gen.cfg["claude_cwd"] = cfg.get("claude_cwd")
     gen.cfg["claude_env"] = cfg.get("claude_env")   # 전용 Claude 계정 폴더(CLAUDE_CONFIG_DIR)가 있으면 그 환경으로
     gen.cfg["claude_exe"] = cfg.get("claude_exe") or shutil.which("claude") or shutil.which("claude.cmd") or shutil.which("claude.exe")
+    gen.cfg["engine"] = cfg.get("engine")        # 엔진 이름을 주는 함수(server.engine) — Codex 면 아래 ai_run 으로 (2026-11-02)
+    gen.cfg["ai_run"] = cfg.get("claude_run")    # 서버의 공통 호출(엔진을 가른다)
     return gen
 
 

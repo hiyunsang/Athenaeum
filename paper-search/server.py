@@ -576,6 +576,224 @@ def _claude_kw():
     return kw
 
 
+# ---------- AI 엔진: Claude Code(기본) 또는 Codex CLI(ChatGPT 구독) ----------
+# 2026-11-02 사용자: '지피티 구독만 있는 사람들도 쓸 수 있게 바꿔줘'. Claude 를 부르는 길(claude_run·claude_text·ask_claude_json·_claude·classify)이
+# 여기서 갈린다 — 모듈들은 그 함수를 주입받아 쓰므로 모듈 코드는 그대로다. Codex CLI 는 OpenAI 의 공식 명령줄 도구(codex exec = 비대화형, ChatGPT 로그인 = 구독 사용량).
+# 설정.json: engine(claude|codex) · codex_path · codex_model · codex_model_fast · codex_home(전용 ChatGPT 계정 폴더 = CODEX_HOME).
+ENGINES = {"claude": "Claude Code (Claude 구독)", "codex": "Codex CLI (ChatGPT 구독)"}
+CODEX_OWN_DIR = os.path.join(os.path.expanduser("~"), ".codex-athenaeum")
+CODEX_DEFAULT_MODEL = "gpt-6.1-sol"     # 긴 글·반복 작업용 (2026-11 의 이름 — 바뀌면 ⚙ 환경설정 → AI 에서 적는다)
+CODEX_DEFAULT_FAST = "gpt-6-luna"       # 가벼운 호출(라벨·개념 뽑기·대목 이름표·되풀이 판정)
+CODEX_INSTALL_CMD = "winget install --id OpenAI.Codex -e --accept-source-agreements --accept-package-agreements"
+CODEX_MISSING_MSG = ("Codex CLI 가 설치되어 있지 않거나 codex 명령을 찾을 수 없습니다. PowerShell 에서 " + CODEX_INSTALL_CMD +
+                     " 로 설치하고 codex login 으로 ChatGPT 계정에 로그인하세요 (⚙ 환경설정 → AI 의 단추로도 됩니다). 설치 후 재시작은 필요 없습니다")
+
+
+def engine():
+    """지금 쓰는 엔진 이름: 'claude' | 'codex' (설정.json 의 engine, 없거나 모르는 값이면 claude)."""
+    import mapper
+    e = str(mapper.settings().get("engine") or "claude").strip().lower()
+    return e if e in ENGINES else "claude"
+
+
+def engine_label():
+    return "GPT" if engine() == "codex" else "Claude"
+
+
+def find_codex():
+    """codex 실행 파일 경로: 설정의 codex_path → PATH → winget 링크 폴더·npm 전역·paper-search\\tools\\codex → 레지스트리의 최신 PATH. 매번 다시 찾는다(설치 직후에도 재시작 없이)."""
+    import mapper
+    p = str(mapper.settings().get("codex_path") or "").strip()
+    if p and os.path.isfile(p):
+        return p
+    names = ("codex", "codex.exe", "codex.cmd")
+    for c in names:
+        p = shutil.which(c)
+        if p:
+            return p
+    if os.name == "nt":
+        known = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),   # winget install OpenAI.Codex
+                 os.path.join(os.environ.get("APPDATA", ""), "npm"),                                 # npm install -g @openai/codex
+                 os.path.join(BASE, "tools", "codex")]                                              # 폴더에 둔 실행 파일
+        extra = os.pathsep.join(d for d in known if d and os.path.isdir(d))
+        for path in (extra, _registry_path()):
+            if not path:
+                continue
+            for c in names:
+                p = shutil.which(c, path=path)
+                if p:
+                    return p
+    return None
+
+
+def engine_exe():
+    return find_codex() if engine() == "codex" else find_claude()
+
+
+def engine_missing_msg():
+    return CODEX_MISSING_MSG if engine() == "codex" else CLAUDE_MISSING_MSG
+
+
+def codex_home():
+    """Athenaeum 전용 ChatGPT 계정 폴더(설정.json 의 codex_home = CODEX_HOME). 비어 있으면 이 PC 의 기본 로그인(~\\.codex)."""
+    import mapper
+    return str(mapper.settings().get("codex_home") or "").strip()
+
+
+def codex_env():
+    env = dict(os.environ)
+    d = codex_home()
+    if d:
+        env["CODEX_HOME"] = d
+    return env
+
+
+_CODEX_LOGIN = {"t": 0.0, "ok": None, "home": None}
+_CODEX_VER = {}
+
+
+def codex_logged_in(force=False):
+    """`codex login status` 의 종료 코드(0 = 로그인됨). 프로세스를 띄우므로 60초 동안 기억한다. 못 돌리면 auth.json 흔적으로 본다(내용은 읽지 않는다)."""
+    exe = find_codex()
+    if not exe:
+        return False
+    home = codex_home()
+    if not force and _CODEX_LOGIN["ok"] is not None and _CODEX_LOGIN["home"] == home and time.time() - _CODEX_LOGIN["t"] < 60:
+        return _CODEX_LOGIN["ok"]
+    try:
+        r = subprocess.run([exe, "login", "status"], capture_output=True, timeout=40, env=codex_env(), cwd=claude_cwd(), **_no_window())
+        ok = r.returncode == 0
+    except Exception:
+        ok = os.path.isfile(os.path.join(home or os.path.join(os.path.expanduser("~"), ".codex"), "auth.json"))
+    _CODEX_LOGIN.update(t=time.time(), ok=ok, home=home)
+    return ok
+
+
+def codex_version(exe=None):
+    exe = exe or find_codex()
+    if not exe:
+        return ""
+    if exe not in _CODEX_VER:
+        try:
+            r = subprocess.run([exe, "--version"], capture_output=True, timeout=30, env=codex_env(), cwd=claude_cwd(), **_no_window())
+            _CODEX_VER[exe] = ((r.stdout or r.stderr).decode("utf-8", "replace").strip().splitlines() or [""])[0][:60]
+        except Exception:
+            _CODEX_VER[exe] = ""
+    return _CODEX_VER[exe]
+
+
+def codex_models():
+    import mapper
+    s = mapper.settings()
+    return (str(s.get("codex_model") or CODEX_DEFAULT_MODEL).strip() or CODEX_DEFAULT_MODEL,
+            str(s.get("codex_model_fast") or CODEX_DEFAULT_FAST).strip() or CODEX_DEFAULT_FAST)
+
+
+_CODEX_EFFORT_CAP = {}   # 모델 → CLI 가 받지 않은 노력 대신 쓸 것 (한 번 거절되면 그 뒤로는 바로 그것으로)
+
+
+def _codex_model(model, effort):
+    """Claude 의 별칭(opus·sonnet·fable)과 노력(None·high·xhigh·max)을 Codex 의 모델·추론 노력으로.
+    sonnet(빠름) → 가벼운 모델·medium, 그 밖 → 큰 모델에 보통 medium · 엑스트라 high · 최대 xhigh."""
+    main, fast = codex_models()
+    if model in ("sonnet", "haiku"):
+        return fast, _CODEX_EFFORT_CAP.get(fast) or "medium"
+    eff = {"max": "xhigh", "xhigh": "high", "high": "medium", "medium": "medium", "low": "low"}.get(effort or "", "medium")
+    return main, _CODEX_EFFORT_CAP.get(main) or eff
+
+
+def _codex_prompt(prompt, system, tools, add_dirs, images):
+    """Codex 에 보낼 글: 배경(시스템 프롬프트 대신 맨 앞 — 같은 배경은 OpenAI 쪽 접두 캐시에 걸린다) + 실행 조건 + 물음."""
+    head = []
+    if system:
+        head.append(system.rstrip() + "\n\n")
+    note = []
+    if tools == "":
+        note.append("명령이나 도구를 실행하지 말고 글로만 답한다.")
+    elif tools and add_dirs:
+        note.append("파일은 다음 폴더 안에서만 읽는다: " + " / ".join(add_dirs) + ". 파일을 고치거나 만들지 않는다.")
+    if images:
+        note.append("그림 %d장이 이 메시지에 첨부되어 있다 — 아래 목록의 차례와 같다(첫 그림 = 목록의 첫 줄). 'Read 도구로 열어 본다' 는 말은 첨부된 그림을 보는 것으로 읽는다." % len(images))
+    if note:
+        head.append("[실행 조건] " + " ".join(note) + "\n\n")
+    return "".join(head) + prompt
+
+
+def _codex_parse(out):
+    """codex exec --json 의 JSON Lines → 마지막 agent_message 글 · 오류 · 토큰(turn.completed 의 usage) · 도구 호출 수."""
+    text, err, usage, turns, model = "", "", None, 1, ""
+    for line in out.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        t = str(ev.get("type") or "")
+        if t == "item.completed":
+            it = ev.get("item") or {}
+            if it.get("type") == "agent_message" and (it.get("text") or "").strip():
+                text = str(it["text"]).strip()
+            elif it.get("type") in ("command_execution", "mcp_tool_call", "web_search", "file_change"):
+                turns += 1
+        elif t == "turn.completed":
+            usage = ev.get("usage") or usage
+        elif t in ("turn.failed", "error"):
+            e = ev.get("error") or ev.get("message") or ""
+            err = (e.get("message") if isinstance(e, dict) else str(e)) or err
+        elif t == "thread.started":
+            model = str(ev.get("model") or model)
+    if not text and out.strip() and not out.strip().startswith("{"):
+        text = out.strip()   # 옛 CLI 가 JSON 없이 글만 찍었을 때
+    tok = None
+    if isinstance(usage, dict):
+        cached = int(usage.get("cached_input_tokens") or 0)
+        tin = int(usage.get("input_tokens") or 0)
+        total = tin if tin >= cached else tin + cached   # input_tokens 가 캐시를 포함하는지 문서에 없다 — 캐시가 더 크면 더한다
+        if total:
+            tok = {"in": total, "cached": cached, "out": int(usage.get("output_tokens") or 0)}
+    return {"text": text, "error": err, "tok": tok, "turns": turns, "model": model}
+
+
+def codex_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=(), system=None, job=None, images=()):
+    """codex exec 로 물어 claude_run 과 같은 꼴 {text, model, turns, tok} 를 돌려준다(실패하면 None, 이유는 claude_error()).
+    - 읽기 전용 샌드박스(-s read-only), 빈 작업 폴더(-C), 깃 저장소 검사 생략, 세션 파일 남기지 않음(--ephemeral), 웹 검색 끔.
+    - tools="" 면 '명령을 실행하지 말라' 고 글에 적고(Codex 는 도구를 끄는 옵션이 없다), add_dirs 는 읽을 폴더로 적어 준다(샌드박스는 디스크 전체 읽기 허용).
+    - images 는 -i 로 첨부한다(그림 색인·수식 색인·도식의 참고 그림) — Claude 의 Read 도구 자리.
+    - 노력(model_reasoning_effort)을 CLI 가 받지 않으면 medium 으로 한 번 다시 하고 그 모델은 그 뒤로 medium 으로 둔다."""
+    exe = find_codex()
+    if not exe:
+        return None
+    m, eff = _codex_model(model, effort)
+    text = _codex_prompt(prompt, system, tools, add_dirs, images)
+    workdir = cwd or claude_cwd()
+
+    def args_for(e):
+        a = [exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--color", "never", "-s", "read-only", "-C", workdir, "-m", m,
+             "-c", 'model_reasoning_effort="%s"' % e, "-c", 'web_search="disabled"', "-c", "hide_agent_reasoning=true"]
+        for im in images or ():
+            a += ["-i", im]
+        return a + ["-"]
+    kw = dict(_no_window(), cwd=workdir, env=codex_env())
+    try:
+        rc, out, err = _claude_proc(args_for(eff), text.encode("utf-8"), timeout, kw, job)
+        if job and claude_cancelled(job):
+            return {"cancelled": True, "text": ""}
+        if rc != 0 and eff != "medium" and re.search(r"reasoning|effort", (err + out).lower()):
+            _CODEX_EFFORT_CAP[m] = "medium"
+            rc, out, err = _claude_proc(args_for("medium"), text.encode("utf-8"), timeout, kw, job)
+            if job and claude_cancelled(job):
+                return {"cancelled": True, "text": ""}
+        res = _codex_parse(out)
+        _note_claude(rc if not res["error"] else 1, res["text"] or out, (res["error"] + " " + err).strip())
+        if not res["text"] or (rc != 0 and not res["text"]):
+            return None
+        return {"text": res["text"], "model": res["model"] or m, "turns": res["turns"], "tok": res["tok"]}
+    except Exception:
+        return None
+
+
 # 오해하기 쉬운 라벨의 정의·금지 조건 (분류 정확도의 핵심)
 LABEL_NOTES = {
     "Review": "기존 연구를 종합·정리하는 리뷰/총설 논문일 때만. 일반 연구 논문에는 절대 붙이지 않음",
@@ -597,13 +815,25 @@ CLAUDE_STATE = {"err": "", "t": 0}   # 마지막 Claude 호출 실패 이유 (�
 
 
 def _note_claude(rc, out, err=""):
-    """claude -p 결과를 보고 문제를 기억한다. 조용히 None 을 돌려주던 호출들이 '왜 안 됐는지' 알릴 수 있게."""
+    """AI 호출(claude -p · codex exec) 결과를 보고 문제를 기억한다. 조용히 None 을 돌려주던 호출들이 '왜 안 됐는지' 알릴 수 있게. 엔진에 맞는 안내문."""
     low = ((out or "") + " " + (err or "")).lower()
     if rc == 0 and (out or "").strip() and "failed to authenticate" not in low:
         CLAUDE_STATE.update(err="", t=time.time())
         return
+    if engine() == "codex":
+        if "not logged in" in low or "login" in low or "unauthorized" in low or "401" in low or "authenticat" in low:
+            msg = ("Athenaeum 전용 ChatGPT 계정 폴더에 로그인되어 있지 않거나 만료됐습니다 — ⚙ 환경설정 → AI 「로그인 창 열기」 (codex login)" if codex_home()
+                   else "Codex 에 로그인되어 있지 않거나 만료됐습니다 — ⚙ 환경설정 → AI 「로그인 창 열기」 또는 PowerShell 에서 codex login")
+        elif "usage limit" in low or "rate limit" in low or "limit reached" in low or "too many requests" in low or "429" in low or "quota" in low:
+            msg = "ChatGPT 구독의 Codex 사용량 한도에 걸렸습니다 — 한도는 5시간·주 단위로 풀립니다. 잠시 뒤 다시 시도하세요"
+        elif "model" in low and ("not found" in low or "unsupported" in low or "not available" in low or "does not exist" in low or "invalid" in low or "unknown" in low):
+            msg = "모델 이름을 Codex 가 받지 않았습니다(지금 %s · %s) — ⚙ 환경설정 → AI 의 GPT 모델 이름을 확인하세요" % codex_models()
+        else:
+            msg = "GPT(Codex) 호출 실패: " + ((err or out or "응답 없음").strip()[:160])
+        CLAUDE_STATE.update(err=msg, t=time.time())
+        return
     if "authenticate" in low or "oauth" in low or "/login" in low or "not logged in" in low:
-        msg = ("Athenaeum 전용 Claude 계정 폴더에 로그인되어 있지 않거나 만료됐습니다 — ⚙ 환경설정 → Claude 「로그인 창 열기」 에서 /login" if claude_config_dir()
+        msg = ("Athenaeum 전용 Claude 계정 폴더에 로그인되어 있지 않거나 만료됐습니다 — ⚙ 환경설정 → AI 「로그인 창 열기」 에서 /login" if claude_config_dir()
                else "Claude Code 로그인이 만료됐습니다 — 터미널에서 claude 를 실행하고 /login 으로 다시 로그인하세요")
     elif "usage limit" in low or "rate limit" in low or "limit reached" in low:
         msg = "Claude 구독 사용량 한도에 걸렸습니다 — 잠시 뒤 다시 시도하세요"
@@ -619,7 +849,14 @@ def claude_error():
 
 def ask_claude_json(prompt, timeout=240, model="opus", effort=None):
     """claude -p 로 질문하고 JSON 객체 하나를 파싱해 돌려준다. 실패하면 None (이유는 claude_error()).
-    effort = low·medium·high·xhigh·max (CLI 의 --effort; 없으면 기본)."""
+    effort = low·medium·high·xhigh·max (CLI 의 --effort; 없으면 기본). 엔진이 Codex 면 codex_run 으로."""
+    if engine() == "codex":
+        r = codex_run(prompt, timeout=timeout, model=model, effort=effort, tools="")
+        m = re.search(r"\{.*\}", (r or {}).get("text") or "", re.S)
+        try:
+            return json.loads(m.group(0)) if m else None
+        except ValueError:
+            return None
     exe = find_claude()
     if not exe:
         return None
@@ -1575,6 +1812,10 @@ def app_version():
 
 
 def claude_text(prompt, timeout=240, model="opus", effort=None):
+    """글 하나를 묻고 글로 받는다(실패하면 None). 엔진이 Codex 면 codex_run 으로 — 모듈들은 이 함수를 주입받아 쓴다."""
+    if engine() == "codex":
+        r = codex_run(prompt, timeout=timeout, model=model, effort=effort, tools="")
+        return (r.get("text") or None) if r else None
     exe = find_claude()
     if not exe:
         return None
@@ -1653,14 +1894,17 @@ def claude_cancelled(job):
         return _CLAUDE_CANCELLED.pop(job, None) is not None
 
 
-def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=(), system=None, job=None):
+def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=None, add_dirs=(), system=None, job=None, images=()):
     """claude -p 를 JSON 출력으로 불러 {text, model, turns, tok} 를 돌려준다 (실패하면 None, 이유는 claude_error()).
     tools: None = CLI 기본, "" = 도구 없이 글만, "Read,Grep,Glob" = 읽기만(작업 폴더 cwd 와 add_dirs 안에서만 — 미리 허락을 주지 않으므로 그 밖은 거절된다).
     system: 시스템 프롬프트로 줄 글(Claude Code 의 기본 시스템 프롬프트를 대신한다). 글자 하나까지 같은 시스템 프롬프트는 마지막으로 쓴 뒤 1시간 동안
       캐시에서 읽혀 그 부분의 값이 1/10 이 된다 — 물음마다 같은 긴 배경(원고·자료)은 여기에, 달라지는 물음은 prompt 에.
       (prompt 앞에 붙이면 캐시에 쓰기만 하고 다시 읽히지 않는다: 쓰는 값은 2배다. 재어 봄 2026-10-01)
     model 은 CLI 가 실제로 쓴 모델 이름 — 별칭 'opus' 가 어느 판을 가리키는지는 CLI 판에 달렸다. tok = {in: 읽은 토큰, cached: 그중 캐시에서 읽은 것}
-    job: 이름을 주면 도는 동안 claude_cancel(job) 으로 끊을 수 있고, 끊기면 {cancelled: True, text: ""} 를 돌려준다(오류로 적지 않는다)."""
+    job: 이름을 주면 도는 동안 claude_cancel(job) 으로 끊을 수 있고, 끊기면 {cancelled: True, text: ""} 를 돌려준다(오류로 적지 않는다).
+    images: 그림 파일 경로들 — Claude 는 Read 도구로 읽으므로 여기서는 쓰지 않고, 엔진이 Codex 면 -i 로 첨부한다(그림 색인·수식 색인·도식)."""
+    if engine() == "codex":
+        return codex_run(prompt, timeout=timeout, model=model, effort=effort, tools=tools, cwd=cwd, add_dirs=add_dirs, system=system, job=job, images=images)
     exe = find_claude()
     if not exe:
         return None
@@ -2411,9 +2655,8 @@ def _run_smart_safe(q, year, key, plan=None):
 
 
 def classify_with_claude(title, kw, front, groups):
-    """Claude에게 논문의 '실제 연구 주제' 라벨만 고르게 한다. 실패하면 None."""
-    exe = find_claude()
-    if not exe:
+    """Claude에게 논문의 '실제 연구 주제' 라벨만 고르게 한다. 실패하면 None. (엔진이 Codex 면 GPT 가 — claude_text 가 가른다)"""
+    if not engine_exe():
         return None
     real = label_groups(groups); meta = label_meta(dict(groups))
     lines = []
@@ -2442,10 +2685,8 @@ def classify_with_claude(title, kw, front, groups):
         "[본문 앞부분]\n" + front
     )
     try:
-        r = subprocess.run([exe, "-p", "--model", "opus", "--output-format", "text"],
-                           input=prompt.encode("utf-8"),
-                           capture_output=True, timeout=240, **_claude_kw())
-        m = re.search(r"\{.*\}", r.stdout.decode("utf-8", "replace"), re.S)
+        out = claude_text(prompt, timeout=240, model="opus") or ""
+        m = re.search(r"\{.*\}", out, re.S)
         data = json.loads(m.group(0))
         items = data.get("labels", [])
         valid = set(sum(real.values(), []))
@@ -2546,8 +2787,8 @@ def _run_generation(name, kind):
         text = re.sub(r"\[\[EQ:[^\]]+\]\]\n*", "", text)   # 요약에는 수식 그림 자리를 넣지 않는다
     if len(text.strip()) < 500:
         raise RuntimeError("이 PDF는 글자를 추출할 수 없습니다 (스캔본인 듯)")
-    if not find_claude():
-        raise RuntimeError(CLAUDE_MISSING_MSG)
+    if not engine_exe():
+        raise RuntimeError(engine_missing_msg())
     out = generate_document(name, kind, text)
     os.makedirs(GEN_DIR, exist_ok=True)
     with open(gen_path(name, kind), "w", encoding="utf-8") as f:
@@ -2555,7 +2796,14 @@ def _run_generation(name, kind):
 
 
 def _claude(prompt, timeout=900):
-    """claude -p 실행. 실패 시 원인이 담긴 RuntimeError."""
+    """claude -p 실행(엔진이 Codex 면 codex exec). 실패 시 원인이 담긴 RuntimeError."""
+    if engine() == "codex":
+        if not find_codex():
+            raise RuntimeError(CODEX_MISSING_MSG)
+        r = codex_run(prompt, timeout=timeout, model="opus", tools="")
+        if not r or not r.get("text"):
+            raise RuntimeError(claude_error() or "GPT(Codex) 응답 없음")
+        return r["text"]
     exe = find_claude()
     if not exe:
         raise RuntimeError(CLAUDE_MISSING_MSG)
@@ -3339,7 +3587,7 @@ import manuscript as ms
 ms.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json,
         claude=_claude, claude_json=ask_claude_json, no_window=_no_window, openalex_search=openalex_search,
         claude_text=claude_text, claude_run=claude_run, extract_abstract=extract_abstract_from_pdf, elsevier_key=_elsevier_key,   # 원고 '본보기'(잘 쓴 논문의 구조)용
-        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error, claude_cwd=claude_cwd(), claude_env=claude_env)
+        paper_body=lambda name: pdf_body_and_asides(name)[0], claude_error=claude_error, claude_cwd=claude_cwd(), claude_env=claude_env, engine=engine)   # engine: 도식의 Claude 호출이 엔진을 가르게
 
 # ---------- 단어장 (담기는 여기, 외우기는 Anki) ----------
 import vocab
@@ -3419,7 +3667,11 @@ def settings_view():
             "elsevier_api_key_set": bool(ek), "elsevier_api_key_tail": ek[-4:] if ek else "",
             "preferred_journals": preferred_journals(), "preferred_journals_default": _PREF_DEFAULT,
             "preferred_journals_custom": isinstance(s.get("preferred_journals"), list),
-            "claude_own_account": bool(cd), "claude_config_dir": cd, "claude_logged_in": claude_logged_in(cd)}
+            "claude_own_account": bool(cd), "claude_config_dir": cd, "claude_logged_in": claude_logged_in(cd),
+            "engine": engine(), "engines": ENGINES, "claude_found": bool(find_claude()),
+            "codex_found": bool(find_codex()), "codex_path": find_codex() or "", "codex_version": codex_version(), "codex_logged_in": codex_logged_in(),
+            "codex_own_account": bool(codex_home()), "codex_home": codex_home(), "codex_model": codex_models()[0], "codex_model_fast": codex_models()[1],
+            "codex_defaults": [CODEX_DEFAULT_MODEL, CODEX_DEFAULT_FAST], "codex_install_cmd": CODEX_INSTALL_CMD}
 
 
 def start_view():
@@ -3444,9 +3696,12 @@ def start_view():
             "translations": sum(1 for f in pdfs if os.path.exists(gen_path(f, "translation"))),
             "summaries": sum(1 for f in pdfs if os.path.exists(gen_path(f, "summary"))),
             "labels_initial": catalog_is_initial(groups), "labels_n": nlab,
-            "claude": {"found": bool(exe), "path": exe or "", "problem": claude_error(),
+            "claude": {"found": bool(exe), "path": exe or "", "problem": claude_error() if engine() == "claude" else "",
                        "logged_in": os.path.isfile(os.path.join(os.path.expanduser("~"), ".claude", ".credentials.json")),   # 이 PC 의 기본 로그인 흔적 (내용은 읽지 않는다)
                        "own": sv["claude_own_account"], "own_dir": sv["claude_config_dir"], "own_logged_in": sv["claude_logged_in"]},
+            "engine": engine(), "engines": ENGINES,
+            "codex": {"found": sv["codex_found"], "path": sv["codex_path"], "version": sv["codex_version"], "logged_in": sv["codex_logged_in"],
+                      "own": sv["codex_own_account"], "own_dir": sv["codex_home"], "problem": claude_error() if engine() == "codex" else "", "install_cmd": CODEX_INSTALL_CMD},
             "intake": {"watch": iv.get("watch") or "", "target": iv.get("target") or "", "enabled": iv.get("enabled")},
             "journals": sv["preferred_journals"], "journals_custom": sv["preferred_journals_custom"],
             "openalex_key": sv["openalex_api_key_set"], "elsevier_key": sv["elsevier_api_key_set"],
@@ -3574,11 +3829,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"papers": papers, "groups": groups_now, "classifying": classifying, "classifying_n": classifying_n,
                              "version": app_version(),
                              "claude_problem": claude_error(),   # 로그인 만료·한도 등 최근 Claude 호출 문제 → 홈 안내
-                             "claude": bool(find_claude()),                       # 홈 화면이 Claude Code 미설치 안내를 띄우는 데 씀
+                             "claude": bool(engine_exe()), "engine": engine(), "ai_missing": engine_missing_msg(),   # 홈 화면이 엔진(Claude Code·Codex) 미설치 안내를 띄우는 데 씀
                              "catalog_nudge": catalog_nudge(groups_now, len(papers))})   # 체계 만들기 / 다시 분류 권유
         elif url.path == "/api/claude":
-            p = find_claude()
-            self._send(200, {"found": bool(p), "path": p or "", "message": "" if p else CLAUDE_MISSING_MSG, "problem": claude_error()})
+            p = engine_exe()
+            self._send(200, {"found": bool(p), "path": p or "", "message": "" if p else engine_missing_msg(), "problem": claude_error(), "engine": engine()})
         elif url.path == "/view":
             with open(os.path.join(BASE, "reader.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -3814,7 +4069,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(404, {"error": "no font"})
         elif url.path == "/api/version":   # 실행 bat(launch_check)·설치 도우미·환경설정이 어느 판이 도는지 확인
-            self._send(200, {"version": app_version(), "ui": ui_stamp()})   # ui = 화면 파일이 마지막으로 바뀐 때 — 열어 둔 창이 옛 화면인지 ui.js 가 견준다
+            self._send(200, {"version": app_version(), "ui": ui_stamp(), "engine": engine()})   # ui = 화면 파일이 마지막으로 바뀐 때 · engine = 화면이 모델 이름표를 맞추는 데 — 열어 둔 창이 옛 화면인지 ui.js 가 견준다
         elif url.path == "/ui.js":
             with open(os.path.join(BASE, "ui.js"), "rb") as f:
                 self._send(200, f.read(), "application/javascript; charset=utf-8")
@@ -4149,12 +4404,35 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(FONT_DIR, name), "wb") as f:
                 f.write(raw)
             self._send(200, {"ok": True, "fonts": user_fonts(), "added": os.path.splitext(name)[0]})
-        elif self.path == "/api/claude_install":   # 「처음 설정」 에서: Claude Code 설치 명령을 PowerShell 창에 연다 (설치 도우미와 같은 한 줄)
+        elif self.path == "/api/claude_install":   # 「처음 설정」·⚙ 에서: 설치 명령을 PowerShell 창에 연다 (설치 도우미와 같은 한 줄). {engine: codex} 면 Codex CLI(winget)
+            eng = body.get("engine") or engine()
+            cmd = (CODEX_INSTALL_CMD + "; Write-Host ''; Write-Host 'Codex CLI installed. Close this window, then use the Login button (codex login).'") if eng == "codex" else "irm https://claude.ai/install.ps1 | iex"
             try:
-                subprocess.Popen(["powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex"], creationflags=0x10 | 0x200)
+                subprocess.Popen(["powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", cmd], creationflags=0x10 | 0x200)
             except Exception as e:
                 return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
             self._send(200, {"ok": True})
+        elif self.path == "/api/claude_login" and (body.get("engine") or engine()) == "codex":   # Codex: 보이는 콘솔 창에 codex login — 브라우저가 열려 ChatGPT 계정으로 로그인. 전용 폴더가 있으면 CODEX_HOME
+            use_default = bool(body.get("default"))
+            d = "" if use_default else codex_home()
+            exe = find_codex()
+            if not exe:
+                return self._send(200, {"error": CODEX_MISSING_MSG})
+            try:
+                env = dict(os.environ)
+                if d:
+                    os.makedirs(d, exist_ok=True)
+                    env["CODEX_HOME"] = d
+                    line = ("title Athenaeum Codex login && echo [Athenaeum] This window uses the Athenaeum-only ChatGPT account folder: && echo    %s && "
+                            "echo A browser opens - sign in with the OTHER ChatGPT account. When it says logged in, close this window. && echo. && \"%s\" login") % (d, exe)
+                else:
+                    line = ("title Athenaeum Codex login && echo [Athenaeum] Signing in to Codex with your ChatGPT account: a browser opens, approve there. "
+                            "When this window says logged in, close it. && echo. && \"%s\" login") % exe
+                subprocess.Popen("cmd /k " + line, env=env, cwd=claude_cwd(), creationflags=0x10 | 0x200)
+                _CODEX_LOGIN.update(ok=None)   # 다음 확인은 새로
+            except Exception as e:
+                return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
+            self._send(200, {"ok": True, "dir": d})
         elif self.path == "/api/claude_login":   # 전용 계정 폴더로 claude 를 보이는 콘솔 창에 연다 — 사용자가 그 창에서 /login (한 번). {default: true} 면 이 PC 의 기본 로그인(「처음 설정」 이 쓴다)
             use_default = bool(body.get("default"))
             d = "" if use_default else claude_config_dir()
@@ -4209,6 +4487,39 @@ class Handler(BaseHTTPRequestHandler):
                     d.pop("claude_config_dir", None)
                 mapper.save_settings(d)
                 CLAUDE_STATE.update(err="", t=0)   # 계정을 바꿨으니 옛 로그인 오류 알림은 지운다
+            if "engine" in body:   # 쓰는 AI: claude | codex (2026-11-02). 바꾸면 옛 오류 알림과 로그인 확인 캐시를 지운다
+                e = str(body.get("engine") or "claude").strip().lower()
+                if e in ENGINES:
+                    if e == "claude":
+                        d.pop("engine", None)
+                    else:
+                        d["engine"] = e
+                    mapper.save_settings(d)
+                    CLAUDE_STATE.update(err="", t=0)
+                    _CODEX_LOGIN.update(ok=None)
+            for k in ("codex_model", "codex_model_fast", "codex_path"):   # GPT 모델 이름 둘(큰 모델·가벼운 모델) · codex 실행 파일 경로(비우면 알아서 찾음)
+                if k in body:
+                    v = str(body.get(k) or "").strip()
+                    if v:
+                        d[k] = v
+                    else:
+                        d.pop(k, None)
+                    mapper.save_settings(d)
+                    _CODEX_EFFORT_CAP.clear()
+            if "codex_own_account" in body:   # Athenaeum 만 따로 다른 ChatGPT 계정으로(CODEX_HOME). 켜면 ~/.codex-athenaeum, 끄면 기본 로그인
+                if body.get("codex_own_account"):
+                    d["codex_home"] = str(body.get("codex_home") or d.get("codex_home") or CODEX_OWN_DIR).strip()
+                    try:
+                        os.makedirs(d["codex_home"], exist_ok=True)
+                    except OSError:
+                        pass
+                else:
+                    d.pop("codex_home", None)
+                mapper.save_settings(d)
+                CLAUDE_STATE.update(err="", t=0)
+                _CODEX_LOGIN.update(ok=None)
+            if body.get("codex_recheck"):   # 「다시 확인」 — 로그인 상태를 새로 묻는다
+                _CODEX_LOGIN.update(ok=None)
             if "preferred_journals" in body:   # 탐색의 우선 저널 — 줄·쉼표로 나눈 이름들. 비우면 기본 다섯으로
                 names = [x.strip() for x in re.split(r"[\n,;]+", str(body.get("preferred_journals") or "")) if x.strip()]
                 if names:
@@ -4241,8 +4552,8 @@ class Handler(BaseHTTPRequestHandler):
             if cache.get(key):
                 self._send(200, {"brief": cache[key], "cached": True, "abstract": abstract})
                 return
-            if not find_claude():
-                self._send(503, {"error": CLAUDE_MISSING_MSG})
+            if not engine_exe():
+                self._send(503, {"error": engine_missing_msg()})
                 return
             if kind == "translate":
                 if not abstract:

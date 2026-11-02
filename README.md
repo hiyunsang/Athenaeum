@@ -27,13 +27,13 @@
 
 - Windows 10/11, Python 3.8 이상
 - Python 패키지: `pymupdf`, `pypdf`, `requests`, `pywin32`, `numpy`, `scipy` — `pip install -r paper-search\requirements.txt`
-- [Claude Code CLI](https://claude.com/claude-code) 설치 후 `claude` 로그인 (요약·번역·검토·도식은 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
+- AI 하나: [Claude Code CLI](https://claude.com/claude-code)(Claude 구독) **또는** [Codex CLI](https://developers.openai.com/codex/cli)(ChatGPT 구독, `winget install OpenAI.Codex` 뒤 `codex login`). 요약·번역·검토·도식은 그 구독의 사용량을 쓰고 별도 API 키는 없습니다. 어느 쪽을 쓸지는 설치 도우미의 「AI 고르기」 나 홈 ⚙ 환경설정 → AI 에서
 - Microsoft Edge (도식 PNG 렌더링에 headless 로 사용)
 
 ## 가장 쉬운 설치: 포터블판 (파이썬 없이)
 
 [Releases](https://github.com/hiyunsang/Athenaeum/releases) 에서 `Athenaeum-portable-*.zip`(약 110MB) 을 받아 원하는 곳에 풀고 **`Athenaeum 설치.bat`** 을 더블클릭합니다. 브라우저에 설치 창이 뜨고 차례로 — 안내 → 점검(기존 설치가 있으면 업데이트) → [Claude Code](https://claude.com/claude-code) 설치·로그인 확인(없으면 설치 창을 열어 주고 끝나면 저절로 알아챕니다) → 바탕화면에 Athenaeum 아이콘 · 부팅 때 자동 시작(선택) → 설치 → 바로 열기 — 를 해 줍니다. 파이썬과 필요한 패키지는 `python\` 폴더에 들어 있어 따로 설치할 것이 없습니다. 그다음부터는 바탕화면 아이콘(또는 `Athenaeum 실행.bat`)으로 엽니다. 처음 열면 그림 사용법 → 「처음 설정」(Claude Code · 수집 폴더 · 라벨 체계 · 학습) → 홈 순서로 뜹니다. 글자 창으로 설치하려면 `Athenaeum 설치.bat --console`.
-요약·번역·검토에 쓰는 Claude Code 는 나중에 설치해도 됩니다 — 홈에 "Claude Code 가 설치되어 있지 않습니다" 안내가 뜨고, 설치·로그인이 끝나면 재시작 없이 사라집니다.
+요약·번역·검토에 쓰는 AI(Claude Code 또는 Codex CLI)는 나중에 설치해도 됩니다 — 홈에 "설치되어 있지 않습니다" 안내가 뜨고, 설치·로그인이 끝나면 재시작 없이 사라집니다.
 새 버전으로 올릴 때도 같은 `Athenaeum 설치.bat` 입니다 — 새 ZIP 을 풀고 실행하면 기존 설치를 찾아 **업데이트**(프로그램만 교체, 논문·번역·원고·라벨은 그대로)를 권합니다. 새 판이 나오면 홈 왼쪽 아래에 알려 줍니다(⚙ 설정 → 일반에서 끌 수 있음).
 라벨 체계는 비어 있는 채로 시작하고, 논문이 10편쯤 모이면 홈이 "Claude 에게 체계 설계 맡기기" 를 권합니다. 그 뒤 새 논문은 자동 분류되고 논문이 많이 늘면 다시 분류하라고 알려 줍니다.
 논문·요약·번역·원고는 모두 그 폴더 안(`논문모음`, `번역`, `원고` …)에 저장되므로 폴더를 통째로 옮기거나 백업하면 됩니다. 포터블판은 `python tools\make_release.py` 로 만듭니다.
@@ -46,7 +46,7 @@
    ```
    pip install -r paper-search\requirements.txt
    ```
-3. [Claude Code](https://claude.com/claude-code) 를 설치하고 터미널에서 `claude` → `/login` 으로 한 번 로그인합니다. (요약·번역·검토는 이 로그인의 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
+3. [Claude Code](https://claude.com/claude-code) 를 설치하고 터미널에서 `claude` → `/login` 으로 한 번 로그인합니다. ChatGPT 구독만 있으면 대신 Codex CLI(`winget install OpenAI.Codex` → `codex login`)를 설치하고 홈 ⚙ 환경설정 → AI 에서 Codex 를 고릅니다. (요약·번역·검토는 이 로그인의 Claude 구독 사용량을 씁니다. 별도 API 키 없음)
 4. `paper-search\Athenaeum_실행.bat` 을 더블클릭하면 브라우저에 화면이 뜹니다. 홈 위쪽 **수집** 패널에서 감시 폴더(기본: 내 다운로드 폴더)를 확인하고, **라벨 체계 설정 ↗** 에서 내 분야에 맞는 체계를 Claude 에게 제안받아 적용합니다.
 5. 다운로드 폴더에 논문 PDF 를 받으면 자동으로 이름이 정리되어 `논문모음` 으로 들어오고, 라벨이 자동으로 붙습니다.
 

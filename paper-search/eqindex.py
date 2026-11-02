@@ -165,7 +165,12 @@ def build(f, title="", model="sonnet", force=False):
         listing = "\n".join("%s (p.%s)\n    앞: \"%s\"\n    소개: \"%s\"\n    다음: \"%s\"\n    PDF 글자: \"%s\"" % (x["img"], x.get("page") or "?", x["prev"], x["ctx"], x["next"], x["raw"]) for x in part)
         res = None
         try:
-            res = run(_PROMPT % (img_dir(f), title or _stem(f)[:120], listing), timeout=900, model=model, tools="Read", add_dirs=[img_dir(f)]) if run else None
+            kw = dict(timeout=900, model=model, tools="Read", add_dirs=[img_dir(f)])
+            imgs = [os.path.join(img_dir(f), x["img"]) for x in part]
+            try:
+                res = run(_PROMPT % (img_dir(f), title or _stem(f)[:120], listing), images=imgs, **kw) if run else None   # 엔진이 Codex 면 그림을 첨부로
+            except TypeError:
+                res = run(_PROMPT % (img_dir(f), title or _stem(f)[:120], listing), **kw) if run else None
         except Exception:
             res = None
         calls += 1
