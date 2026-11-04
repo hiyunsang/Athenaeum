@@ -193,10 +193,10 @@ function renderWanted() {
   const el = $("wanted"); if (!el) return;
   if (!wanted.length) { el.innerHTML = ""; return; }
   const got = wanted.filter(x => x.got).length, isOpen = lsGet("notes_wanted_open", "1") === "1";
-  let h = "<details class='wbox'" + (isOpen ? " open" : "") + "><summary class='sideh' title='큰 물음이 적은 서재 밖 논문(원 논문·리뷰) — 받아서 다운로드 폴더에 두면 수집이 서재에 넣고, 다음 물음·설계서·갈래가 읽습니다'>받을 논문 <span class='n'>" + (wanted.length - got) + "</span>" + (got ? " <span class='hint' style='display:inline'>· 서재에 들어옴 " + got + "</span>" : "") + " <button class='act' id='wSync' style='margin-left:auto' title='서재에 들어왔는지 다시 봅니다 (제목 대조)'>서재 확인</button></summary>";
+  let h = "<details class='wbox'" + (isOpen ? " open" : "") + "><summary class='sideh' title='큰 물음이 적은 서재 밖 논문(원 논문·리뷰) — 받아서 다운로드 폴더에 두면 수집이 서재에 넣고, 다음 물음·설계서·갈래가 읽습니다'>받을 논문 <span class='n'>" + (wanted.length - got) + "</span>" + (got ? " <span class='hint' style='display:inline'>· 서재에 들어옴 " + got + "</span>" : "") + " <a class='act' id='wPage' style='margin-left:auto' title='받을 논문 페이지 — 열린 접근은 바로 받아 서재에 넣고, 그 밖은 출판사 링크로. 주제를 적어 서재에 없는 논문을 더 찾을 수도 있습니다'>받기 ↗</a><button class='act' id='wSync' title='서재에 들어왔는지 다시 봅니다 (제목 대조)'>서재 확인</button></summary>";
   wanted.slice().sort((a, b) => (a.got ? 1 : 0) - (b.got ? 1 : 0) || (b.t || 0) - (a.t || 0)).forEach(x => {
     h += "<div class='wi'><div class='t'>" + (x.doi ? "<a href='" + esc(x.doi) + "' target='_blank' title='DOI 로 열기'>" + esc(x.title) + "</a>" : esc(x.title)) + "</div><div class='m'>" + (x.authors ? esc(x.authors) + " · " : "") + (x.year || "?") + (x.venue ? " · " + esc(x.venue) : "") +
-      ((x.from || []).length ? " · " + x.from.map(f => "<a class='act' data-nid='" + esc(f.nid) + "' title='" + esc(f.why || "") + "'>" + esc(f.title) + " " + esc(f.qid) + "</a>").join(", ") : "") + "</div>" +
+      ((x.from || []).length ? " · " + x.from.map(f => f.nid ? "<a class='act' data-nid='" + esc(f.nid) + "' title='" + esc(f.why || "") + "'>" + esc(f.title) + " " + esc(f.qid) + "</a>" : esc(f.title || f.kind || "")).join(", ") : "") + "</div>" +
       (x.got ? "<div class='m own'>★ 서재에 있음 — " + esc(x.got) + "</div>" : "<div class='m'><button class='act' data-q=\"" + esc(x.title.slice(0, 200)) + "\" title='제목으로 논문 탐색'>탐색 ↗</button><button class='act' data-wdel='" + esc(x.key) + "'>지우기</button></div>") + "</div>";
   });
   el.innerHTML = h + "</details>";
@@ -205,6 +205,7 @@ function renderWanted() {
   el.querySelectorAll("[data-nid]").forEach(a => a.onclick = async () => { await open(a.dataset.nid); setTab("framing"); });
   el.querySelectorAll("[data-wdel]").forEach(b => b.onclick = async () => { const r = await api("/api/notes", { op: "wanted_del", key: b.dataset.wdel }); wanted = r.items || []; renderWanted(); });
   const sb = $("wSync"); if (sb) sb.onclick = e => { e.preventDefault(); e.stopPropagation(); sb.textContent = "확인 중…"; loadWanted(true); };
+  const wp = $("wPage"); if (wp) wp.onclick = e => { e.preventDefault(); e.stopPropagation(); openBig("/wanted", "athenaeum_wanted", "width=1100,height=860"); };
 }
 function renderList() {
   const el = $("list");

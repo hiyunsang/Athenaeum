@@ -27,7 +27,7 @@ HEADERS = {"User-Agent": "maeng-paper-map/1.0"}
 # OpenAlex polite pool: 연락용 이메일을 보내면 요청 우선순위가 높아짐 (사용자 허락받음, 2026-09-02)
 MAILTO = "maenglaboratory@gmail.com"
 SELECT = ("id,doi,display_name,publication_year,cited_by_count,"
-          "referenced_works,authorships,primary_location,keywords,type")
+          "referenced_works,authorships,primary_location,keywords,type,open_access,best_oa_location")   # 열린 접근 — 받을 논문 페이지가 PDF 를 바로 받는 데 쓴다 (2026-11-04)
 # 리뷰/총설 판정에 쓰는 제목 패턴 (서버의 요약 프롬프트·홈 목록·탐색 결과가 같이 씀)
 REVIEW_RE = re.compile(r"\breview\b|\bsurvey\b|state of the art|state-of-the-art|advances in|perspectives|\boverview\b", re.I)
 
@@ -145,6 +145,21 @@ def wid(url_id):
     return url_id.rsplit("/", 1)[-1] if url_id else ""
 
 
+def oa_of(it):
+    """OpenAlex 논문 기록의 열린 접근 정보(Unpaywall 자료) → {pdf, url, status, ver} 또는 None. pdf 가 비면 랜딩 페이지(url)만 있는 것"""
+    oa = it.get("open_access") or {}
+    best = it.get("best_oa_location") or {}
+    pdfs = [best.get("pdf_url") or ""]
+    for loc in it.get("locations") or []:   # 저장소 판(repository)도 — 출판사 주소가 스크립트를 막으면 그쪽에서 받는다
+        if (loc or {}).get("is_oa") and loc.get("pdf_url") and loc["pdf_url"] not in pdfs:
+            pdfs.append(loc["pdf_url"])
+    pdfs = [p for p in pdfs if p]
+    url = best.get("landing_page_url") or oa.get("oa_url") or ""
+    if not (oa.get("is_oa") or pdfs):
+        return None
+    return {"pdf": pdfs[0] if pdfs else "", "pdfs": pdfs[:4], "url": url, "status": oa.get("oa_status") or "", "ver": best.get("version") or ""}
+
+
 def find_seed(title, dois=None):
     want = norm_title(title)
     # 1순위: DOI 직접 조회 (검색보다 빠르고 속도 제한도 훨씬 널널함)
@@ -237,6 +252,7 @@ def _node(it, refs, inter, owned_file):
         "inter": inter,
         "owned": owned_file or "",
         "pi": pi[:60], "pi_id": pi_id, "inst": inst[:80],
+        "oa": oa_of(it),   # 열린 접근 PDF·랜딩 페이지 (받을 논문 페이지, 2026-11-04)
         "_refs": refs,
     }
 

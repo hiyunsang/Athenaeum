@@ -1514,6 +1514,134 @@ def owned_map(items):
     return out
 
 
+# ---------- 받을 논문 — 서재에 없는 논문을 찾아 받기 (2026-11-04, 사용자: '공부에서 원하는 논문 없으면 알아서 다운받게끔 페이지 정리해서 올려주거나 알아서 너가 다운받거나') ----------
+# 탐색의 결과에 OpenAlex 가 Unpaywall 에서 받은 열린 접근 정보(open_access·best_oa_location)가 실리므로, 열린 접근 PDF 는 서버가 받아 intake.ingest 로 보관소에 넣고
+# 그 밖은 출판사(DOI) 링크를 열어 사용자가 기관 접속으로 내려받으면 수집이 다운로드 폴더에서 옮긴다. 유료 논문을 우회해 받는 길은 두지 않는다.
+FETCH_DIR = os.path.join(os.path.dirname(ARCHIVE), "수집", "받기")
+_OA_CACHE = {}
+_FETCH_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Athenaeum/1.1 (academic PDF fetch; +https://github.com/hiyunsang/Athenaeum)",
+                  "Accept": "application/pdf,*/*;q=0.8"}
+
+
+def _doi_plain(d):
+    return re.sub(r"^https?://(?:dx\.)?doi\.org/", "", str(d or "").strip(), flags=re.I).strip().lower()
+
+
+def _oa_key(it):
+    i = str((it or {}).get("id") or "")
+    return i if re.match(r"^W\d+$", i) else _doi_plain((it or {}).get("doi"))
+
+
+def oa_lookup(items):
+    """[{id, doi}] → {열쇠: {pdf, url, status, ver} | None} — OpenAlex 의 open_access·best_oa_location·locations. 열쇠는 OpenAlex id(W…)나 DOI. 7일 캐시"""
+    import mapper
+    out, need = {}, {}
+    for it in items or []:
+        k = _oa_key(it)
+        if not k or k in out or k in need:
+            continue
+        c = _OA_CACHE.get(k)
+        if c and time.time() - c[0] < 7 * 86400:
+            out[k] = c[1]
+        else:
+            need[k] = it
+    sel = "id,doi,open_access,best_oa_location,locations"
+    wids = [k for k in need if k.startswith("W")]
+    dois = [k for k in need if not k.startswith("W") and "," not in k]
+    got = {}
+    for i in range(0, len(wids), 50):
+        chunk = wids[i:i + 50]
+        try:
+            d = mapper._get(mapper.API + "/works", {"filter": "openalex:" + "|".join(chunk), "per-page": str(len(chunk)), "select": sel})
+            for r in d.get("results", []):
+                got[mapper.wid(r.get("id") or "")] = mapper.oa_of(r)
+        except Exception:
+            pass
+    for i in range(0, len(dois), 40):
+        chunk = dois[i:i + 40]
+        try:
+            d = mapper._get(mapper.API + "/works", {"filter": "doi:" + "|".join(chunk), "per-page": str(len(chunk)), "select": sel})
+            for r in d.get("results", []):
+                got[_doi_plain(r.get("doi"))] = mapper.oa_of(r)
+        except Exception:
+            pass
+    for k in need:
+        out[k] = got.get(k)
+        _OA_CACHE[k] = (time.time(), out[k])
+    return out
+
+
+def fetch_pdf(url, dest, depth=0):
+    """열린 접근 주소에서 PDF 를 받아 dest 에 쓴다(바이트 수를 돌려줌). HTML(랜딩 페이지)이 오면 citation_pdf_url 메타를 한 번 따라간다. 120 MB 상한"""
+    import requests
+    from urllib.parse import urljoin
+    r = requests.get(url, headers=_FETCH_HEADERS, timeout=(20, 120), stream=True, allow_redirects=True)
+    try:
+        r.raise_for_status()
+        it = r.iter_content(65536)
+        first = next(it, b"")
+        if first.lstrip()[:5] != b"%PDF-":
+            body = first + b"".join(x for _, x in zip(range(24), it))
+            m = (re.search(rb'<meta[^>]+name=["\']citation_pdf_url["\'][^>]*content=["\']([^"\']+)', body, re.I) or
+                 re.search(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*name=["\']citation_pdf_url', body, re.I))
+            if m and depth < 1:
+                u2 = urljoin(r.url, html_mod.unescape(m.group(1).decode("utf-8", "replace")))
+                r.close()
+                return fetch_pdf(u2, dest, depth + 1)
+            raise RuntimeError("PDF 가 아닌 응답 (%s)" % (r.headers.get("Content-Type") or "?")[:40])
+        size = 0
+        with open(dest, "wb") as f:
+            f.write(first)
+            size += len(first)
+            for chunk in it:
+                f.write(chunk)
+                size += len(chunk)
+                if size > 120 * 1024 * 1024:
+                    raise RuntimeError("120 MB 를 넘는 파일")
+        return size
+    finally:
+        r.close()
+
+
+def wanted_fetch(body):
+    """받을 논문 페이지의 「받기」: 열린 접근 PDF 를 받아 보관소에 넣는다. {ok, file, dup} · {oa: False, url}(열린 접근 판이 없음 — 화면이 출판사 링크를 연다) · {error, url}"""
+    doi = _doi_plain(body.get("doi"))
+    wid_ = str(body.get("id") or "")
+    title = str(body.get("title") or "")[:300]
+    oa = body.get("oa") if isinstance(body.get("oa"), dict) else None
+    if not oa or not (oa.get("pdf") or oa.get("url")):
+        oa = (oa_lookup([{"id": wid_, "doi": doi}]) or {}).get(_oa_key({"id": wid_, "doi": doi}))
+    link = ("https://doi.org/" + doi) if doi else ((oa or {}).get("url") or "")
+    if not oa or not (oa.get("pdf") or oa.get("url")):
+        return {"oa": False, "url": link}
+    os.makedirs(FETCH_DIR, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9가-힣._ -]+", "_", (title or doi or wid_)[:80]).strip(" ._") or "paper"
+    dest = os.path.join(FETCH_DIR, safe + ".pdf")
+    tried, err, ok = [], "", False
+    for u in [x for x in ([oa.get("pdf")] + list(oa.get("pdfs") or []) + [oa.get("url")]) if x]:
+        if u in tried:
+            continue
+        tried.append(u)
+        try:
+            fetch_pdf(u, dest)
+            ok = True
+            break
+        except Exception as e:
+            err = str(e)[:160]
+            try:
+                if os.path.exists(dest):
+                    os.remove(dest)
+            except OSError:
+                pass
+    if not ok:
+        return {"error": "자동으로 받지 못했습니다 — " + (err or "열린 접근 주소가 없음"), "url": link, "oa": True}
+    r = intake.ingest(dest, doi=doi, title=title)
+    if r.get("file"):
+        threading.Thread(target=refresh_new_papers, daemon=True).start()   # 새 논문의 제목·라벨 붙이기
+        return {"ok": True, "file": r["file"], "dup": bool(r.get("dup")), "src": tried[-1]}
+    return {"error": r.get("error") or "보관소에 넣지 못했습니다", "url": link, "oa": True}
+
+
 def plan_search(q):
     """말로 적은 주제(한국어·영어)를 개념(필수/선택)·동의어 검색 계획으로."""
     r = ask_claude_json(
@@ -4005,6 +4133,11 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/explore":
             with open(os.path.join(BASE, "explore.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/wanted":   # 받을 논문 — 서재에 없는 논문을 찾아 받는 페이지 (paper-search\wanted.html, 2026-11-04)
+            with open(os.path.join(BASE, "wanted.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/api/wanted":   # 담아 둔 받을 논문 (연구노트\_받을논문.json — 연구 노트의 큰 물음과 같은 대기열); ?sync=1 은 서재에 들어왔는지 다시 봄
+            self._send(200, {"items": notes.wanted_list(sync=parse_qs(url.query).get("sync", [""])[0] == "1"), "fetch_dir": FETCH_DIR})
         elif url.path == "/start":   # 처음 설정 — Claude Code · 수집 폴더 · 라벨 체계 · 학습 같은 처음 할 일을 한눈에 (paper-search\start.html). 사용법의 「시작하기」 가 처음 한 번 보내고, ⚙ 일반에서 다시 연다
             with open(os.path.join(BASE, "start.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -4456,6 +4589,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
             self._send(200, {"ok": True, "dir": d})
+        elif self.path == "/api/wanted":   # 받을 논문: add(담기) · del · sync · oa(열린 접근 주소) · fetch(받아서 보관소에) (2026-11-04)
+            op = body.get("op")
+            if op == "add":
+                self._send(200, {"items": notes.wanted_put(body.get("items") or [], body.get("src") or {})})
+            elif op == "del":
+                self._send(200, notes.wanted_del(str(body.get("key") or "")))
+            elif op == "sync":
+                self._send(200, {"items": notes.wanted_list(sync=True)})
+            elif op == "oa":
+                self._send(200, {"oa": oa_lookup(body.get("items") or [])})
+            elif op == "fetch":
+                self._send(200, wanted_fetch(body))
+            else:
+                self._send(400, {"error": "bad op"})
         elif self.path == "/api/owned_check":   # 탐색 결과의 논문들이 지금 서재에 있나 → {id: 파일} (owned_map — 연구 노트의 공백 검증도 같은 함수를 쓴다, 2026-10-26)
             self._send(200, {"owned": owned_map(body.get("items") or [])})
         elif self.path == "/api/settings":

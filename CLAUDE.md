@@ -31,7 +31,7 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
     rules.py                   규칙 기반 라벨 분류 (Claude 실패 시 폴백)
     batch_generate.py          일괄 요약·번역 (대기열 JSON)
     schematic\                 도식 그리기 (lib.py 그리기 함수, generate.py 가 Claude 에게 스크립트를 쓰게 함)
-    index.html  reader.html  explore.html  mapview.html  manuscript.html  labels.html  vocab.html  study.html  notes.html  learn.html
+    index.html  reader.html  explore.html  mapview.html  manuscript.html  labels.html  vocab.html  study.html  notes.html  learn.html  wanted.html
     tutorial.html  tutorial\*.png   사용법(홈 「도움말」, /tutorial): 화면마다 그림 위에 번호 말풍선 + 빨간 화살표, 아래에 번호대로 설명
     ui.css  ui.js              공통 디자인 토큰·환경설정·진행 막대
     map.js                     논문 맵 그리기 (탐색 결과 맵·관련맵 공유)
@@ -70,8 +70,8 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
 | `읽기기록.json` | 읽은 시각·시간·위치 |
 
 ### 주요 라우트
-GET: `/` `/view`(읽기) `/explore` `/mapview` `/ms`(원고) `/study`(공부) `/notes`(연구 노트) `/learn`(서재 학습) `/tutorial`(사용법) `/labels`(라벨 체계) `/vocab`(단어장) `/pdf` `/eq` · `/api/data` `/api/jobs` `/api/genstatus` `/api/align` `/api/captions` `/api/intake` `/api/labels` `/api/explore` `/api/readlog` 등
-POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/labels`(체계 편집·제안·재분류) `/api/intake` `/api/smart` `/api/explore_chat` `/api/read_ping` · 접두사 `/api/ms*` `/api/vocab*` `/api/study*` `/api/notes*` `/api/learn*`
+GET: `/` `/view`(읽기) `/explore` `/mapview` `/ms`(원고) `/study`(공부) `/notes`(연구 노트) `/learn`(서재 학습) `/wanted`(받을 논문) `/tutorial`(사용법) `/labels`(라벨 체계) `/vocab`(단어장) `/pdf` `/eq` · `/api/data` `/api/jobs` `/api/genstatus` `/api/align` `/api/captions` `/api/intake` `/api/labels` `/api/explore` `/api/readlog` 등
+POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/labels`(체계 편집·제안·재분류) `/api/intake` `/api/smart` `/api/wanted`(받을 논문: add·del·sync·oa·fetch) `/api/explore_chat` `/api/read_ping` · 접두사 `/api/ms*` `/api/vocab*` `/api/study*` `/api/notes*` `/api/learn*`
 
 ---
 
@@ -152,6 +152,7 @@ PyMuPDF `get_text("dict")` 의 블록·줄·span 과 `get_drawings()` 로 그림
 - 판정 규칙을 고치면 **서버 재시작 전에** 건너뜀 목록의 파일 몇 개로 `intake.resolve_meta()` 를 오프라인 시험. 재시작하면 수집이 바로 다운로드 폴더를 다시 훑는다
 - **DOI 뒤에 쪽 번호가 붙어 꺼내지는 PDF(2026-10-10, CIRP Annals Dornfeld 2006: `10.1016/j.cirp.2006.10.006-745-components`)**: `DOI_RE` 가 하이픈·낱말을 DOI 의 일부로 삼키고 `doi_variants` 가 그 꼬리를 못 떼 모든 후보가 Crossref 404 → '논문으로 확인 안 됨' 으로 건너뛰었다. 이제 변형에 `-\d{1,5}(-낱말)?` 꼬리를 뗀 것을 더하고(후보 4개까지) 제목 대조가 그대로 지킨다. 건너뛴 파일은 `resolve_meta()` 를 오프라인으로 돌려 어느 단계에서 떨어지는지(후보 → fetch → is_article → title_matches) 볼 것
 - 파일을 지우는 코드는 없다. 이동·이름 변경만 하고 `수집\수집기록.txt` 에 남긴다. 재다운로드는 `논문모음\_중복사본\` 으로
+- **받을 논문 — 서재에 없는 논문을 찾아 받기(2026-11-04, 사용자: 공부의 좁히기 제안이 '3편 · 후보 밖의 논문이 필요' 라고 한 자리에서 '공부에서 원하는 논문 없으면 알아서 다운받게끔 페이지 정리해서 올려주거나 알아서 너가 다운받거나 할 수는 없나')**: 따로 창 `/wanted`(`wanted.html`, `athenaeum_wanted` 1100×860). 위 = **찾은 논문** — 탐색의 스마트 검색을 그대로 돌려(`POST /api/smart` → `/api/smart_status` 폴링, 새 검색 코드 없음) Claude 가 고른 논문 가운데 **서재에 없는 것만** 소주제별로(보유는 편수만), 아래 = **담아 둔 논문** — 연구 노트의 큰 물음이 적는 `연구노트\_받을논문.json` 과 같은 대기열(`notes.wanted_put` 로 여기서 「담기」 한 것도). 논문마다 ★ 저널 · 연도 · 저자 · 피인용 · 리뷰 · **열린 접근** 표시. **받는 길 둘**: ① 열린 접근(OpenAlex 가 Unpaywall 에서 받은 `open_access`·`best_oa_location`·`locations` — `mapper.SELECT` 에 두 필드를 더해 모든 노드에 `oa = {pdf, pdfs, url, status, ver}`(`mapper.oa_of`), 옛 결과·대기열 항목은 `op: oa` → `oa_lookup`(OpenAlex 50편씩, 7일 캐시))은 「받기」 → `wanted_fetch`: `fetch_pdf`(요청 UA·`%PDF-` 머리 확인·HTML 이 오면 `citation_pdf_url` 메타를 한 번 따라감·120 MB 상한, 저장소 판 주소 `pdfs` 도 차례로)로 `수집\받기\` 에 받아 **`intake.ingest(path, doi, title)`**(Crossref 조회 → 제목 대조는 PDF 앞쪽 글이나 받을 때 알던 제목 → 수집과 같은 이름 규칙으로 논문모음에, 이미 있으면 `_중복사본`, 확인 안 되면 지우지 않고 `_확인필요\`)로 보관소에 넣고 `refresh_new_papers` 가 라벨을 붙인다 ② 그 밖은 「출판사 ↗」(DOI) 를 사용자가 열어 기관 접속으로 내려받으면 **수집이 다운로드 폴더에서 옮긴다** — 화면은 10초마다 `/api/archive_stamp` 를 보고 바뀌면 `/api/owned_check` 로 제목을 대조해 ★ 서재에 들어옴. 「열린 접근 n편 모두 받기」(차례로) · 「출판사에서 열기 (남은 n편)」(누를 때마다 다음 — 팝업은 한 번에 하나) · 「모두 담기」 · DOI 도 열린 접근도 없는 기록(학회·저장소)은 「제목으로 찾기 ↗」(Google Scholar). **유료 논문을 우회해 받는 길은 두지 않는다**(출판사가 스크립트 내려받기를 막고 기관 계정이 차단될 수 있다). **들어가는 길**: 공부의 좁히기 제안 줄 「서재에 없는 논문 찾아 받기 ↗」(`#scopeFetch`, 위 칸의 주제로 `?q=&go=1&from=공부`)와 「답하지 못한 것」 의 「받기 ↗」(`fetchGap`), 탐색 머리줄 「받기」(`#getToggle` — `?key=<smartKey>` 로 지금 결과를 다시 검색하지 않고), 연구 노트 왼쪽 「받을 논문」 상자의 「받기 ↗」. 받은 논문은 공부의 「이 주제로 다시 훑기」 에 바로 든다(번역이 없으면 `_paper_sents` 가 PDF 본문으로, core 는 prep 이 번역). **시험**(스크래치 복사본 + 8797, `test_wanted.py` 20가지: oa_of·oa_lookup(실제 OpenAlex)·fetch_pdf(실제 PDF)·ingest·중복사본·PDF 아님 거절·HTML 거절·wanted_fetch·유료 → oa False·wanted_put·sync): 전부 통과. 실전(QSD 설계 주제, 2분): 후보 → 45편(보유 2 뺌)·소주제 6(폭발식·전단핀·비폭발식·일반 설계·마이크로/연삭·응용), **열린 접근 10편 가운데 자동으로 들어온 것 4편**(JJSPE 1971 · Mekatronika 2022 · AMT 2024 · BJD 2022 — 저장소·다이아몬드 저널), 못 받은 6편 = ScienceDirect 하이브리드 OA 둘(PDF 주소가 HTML 을 돌려줌 → 화면이 「PDF 주소 열기 ↗」 를 보임)·scientific.net 403·저장소 503·404·OSTI 기록은 받았지만 그 논문으로 확인되지 않아 `_확인필요` 로. **교훈: 열린 접근이라고 적혀 있어도 출판사 쪽 주소는 열에 여섯이 스크립트를 막는다 — 받기는 저장소·OA 저널에서 되고, 나머지는 사용자의 브라우저가 받아야 한다.** 아직 없는 것: 탐색 결과 줄마다의 「받기」(머리줄 「받기」 로 페이지에서), 대기열의 받은 것 지우기 정리, 받은 논문의 요약·번역 자동 생성(토큰 정책 — 공부의 prep 이 핵심 논문만 번역).
 
 ### 라벨
 새 논문은 들어올 때 `classify_with_claude` 가 분류하고, 카탈로그에 없는 핵심 재료·공정은 `apply_new_labels` 가 알맞은 묶음·하위 분류 아래 새 라벨로 추가한다(검사: 존재하는 묶음, 고정 묶음 제외, 영문 30자, 최대 2개). 체계 편집·Claude 체계 제안·전체 재분류는 `/labels` 창.

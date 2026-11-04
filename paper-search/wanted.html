@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>받을 논문 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg"><link rel="icon" type="image/png" sizes="192x192" href="/logo/icon-192.png">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  header { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--surface); border-bottom: 1px solid var(--line-2); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 14px; font-weight: 600; margin-right: var(--s1); }
+  header .brand-mark { height: 24px; width: auto; display: block; margin-right: 2px; }
+  header .ttl { font-size: 13px; color: var(--text-2); margin-right: var(--s2); }
+  #q { width: 440px; }
+  #info { margin-left: auto; font-size: 12px; color: var(--text-2); }
+  #main { max-width: 1000px; margin: 0 auto; padding: 0 0 var(--s8); background: var(--surface); min-height: calc(100vh - 44px); }
+  .bar { display: flex; align-items: center; gap: var(--s2); padding: var(--s4) 12px var(--s2); flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  .bar .h { font-size: 12px; font-weight: 700; }
+  .bar .hint { line-height: 1.5; }
+  .bar .right { margin-left: auto; display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+  .note { padding: var(--s2) 12px 0; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+  .grp { padding: var(--s3) 12px 2px; font-size: 12px; font-weight: 700; color: var(--text); }
+  .grp .why { font-weight: 400; color: var(--text-3); }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 8px 12px 9px; border-bottom: 1px solid var(--line); }
+  .row:hover { background: var(--hover); }
+  .row.got .t, .row.got .t a { color: var(--text-3); }
+  .t { font-family: var(--font-serif); font-size: 14.5px; line-height: 1.35; }
+  .t a { color: var(--text); } .t a:hover { color: var(--accent); }
+  .m { font-size: 12px; color: var(--text-2); line-height: 1.45; margin-top: 1px; }
+  .m .star { color: var(--accent); } .m .rv { color: var(--amber); } .m .fr { color: var(--text-3); }
+  .oa { display: inline-block; font-size: 11px; line-height: 1.4; padding: 0 5px; border: 1px solid var(--green); color: var(--green); border-radius: var(--r); vertical-align: 1px; }
+  .acts { display: flex; align-items: flex-start; white-space: nowrap; margin-right: -8px; }
+  .acts .act { font-size: 12px; }
+  .st { grid-column: 1 / -1; font-size: 12px; color: var(--text-3); line-height: 1.45; }
+  .st.ok { color: var(--green); } .st.err { color: var(--amber); }
+  .empty { padding: var(--s6) 12px; color: var(--text-3); font-size: 12px; line-height: 1.75; text-align: center; }
+  .empty b { color: var(--text-2); font-weight: 600; }
+  .prog { padding: var(--s4) 12px; font-size: 12px; color: var(--text-2); line-height: 1.6; border-bottom: 1px solid var(--line); }
+  .prog b { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1><a class="brand" href="/" title="Athenaeum 홈" target="athenaeum_home"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
+  <span class="ttl">받을 논문</span>
+  <input type="text" id="q" placeholder="주제를 말로 적으면 세상의 문헌에서 찾아 서재에 없는 것만 보입니다 (한국어 가능)">
+  <button class="primary" id="go">찾기</button>
+  <span id="info"></span>
+  <span id="uiCtlHost"></span>
+</header>
+<div id="main">
+  <div id="found"></div>
+  <div id="queue"></div>
+</div>
+<script src="/ui.js"></script>
+<script>
+/* 받을 논문 (2026-11-04, 사용자: '공부에서 원하는 논문 없으면 알아서 다운받게끔 페이지 정리해서 올려주거나 알아서 너가 다운받거나').
+   위 = 찾은 논문(탐색의 스마트 검색 그대로 — 서재에 없는 것만, 소주제별), 아래 = 담아 둔 논문(연구노트\_받을논문.json — 큰 물음이 적은 것과 여기서 담은 것).
+   열린 접근(OpenAlex 의 Unpaywall 자료)은 「받기」 로 서버가 받아 서재에 넣고, 그 밖은 「출판사 ↗」(DOI) 를 열어 사용자가 내려받으면 수집이 다운로드 폴더에서 옮긴다. 들어온 것은 10초마다 서재와 대조해 ★ 로. */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const api = (url, body) => fetch(url, body ? { method: "POST", body: JSON.stringify(body) } : undefined).then(r => r.json());
+const fmtDur = s => s < 60 ? s + "초" : Math.floor(s / 60) + "분 " + (s % 60) + "초";
+const doiPlain = d => String(d || "").replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
+const doiUrl = d => { d = doiPlain(d); return d ? "https://doi.org/" + d : ""; };
+const normT = t => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);
+const keyOf = it => /^W\d+$/.test(it.id || "") ? it.id : (doiPlain(it.doi).toLowerCase() || it.key || normT(it.title));   /* 서버 _oa_key 와 같은 규칙 */
+const FEAT = "width=1100,height=860";
+const fromKo = new URLSearchParams(location.search).get("from") || "";
+
+let found = null;          /* {q, key, intent, groups, ownedN} */
+let queue = [];            /* 담아 둔 논문 */
+const oaMap = {};          /* 열쇠 → oa | null (서버에 물어 받은 것) */
+const status = {};         /* 열쇠 → {cls, text} */
+const opened = {};         /* 출판사 페이지를 연 것 */
+let searching = null, pollT = null, archStamp = "", fetching = false;
+
+function oaOf(it) { if (it.oa !== undefined) return it.oa; const k = keyOf(it); return k in oaMap ? oaMap[k] : undefined; }
+function allItems() { const out = []; if (found) found.groups.forEach(g => g.items.forEach(it => out.push(it))); queue.forEach(it => out.push(it)); return out; }
+function itemOf(k) { return allItems().find(it => keyOf(it) === k); }
+function renderAll() { renderFound(); renderQueue(); }
+
+function rowHtml(it, inQueue) {
+  const k = keyOf(it), oa = oaOf(it), got = it.owned || it.got, st = status[k] || {};
+  const link = doiUrl(it.doi) || (oa && oa.url) || "";
+  const who = it.author || it.authors || "";
+  const meta = [(it.top ? "<span class='star' title='우선 저널'>★</span> " : "") + esc(it.abbr || it.venue || "저널 모름")];
+  if (it.year) meta.push(String(it.year));
+  if (who) meta.push(esc(who));
+  if (it.cit) meta.push("피인용 " + it.cit);
+  if (it.review) meta.push("<span class='rv'>리뷰</span>");
+  if (oa) meta.push("<span class='oa' title='열린 접근" + (oa.status ? " (" + esc(oa.status) + (oa.ver ? " · " + esc(oa.ver) : "") + ")" : "") + " — 「받기」 를 누르면 PDF 를 받아 서재에 넣습니다'>열린 접근" + (oa.pdf ? "" : " · PDF 주소 없음") + "</span>");
+  else if (oa === null) meta.push("<span class='fr'>열린 접근 판 없음</span>");
+  if (inQueue && (it.from || []).length) meta.push("<span class='fr'>" + it.from.map(f => esc(f.title || f.kind || "")).filter(Boolean).join(", ") + "</span>");
+  const acts = got ? "" :
+    (oa ? "<button class='act' data-fetch='" + esc(k) + "' title='열린 접근 PDF 를 받아 서재(논문모음)에 넣습니다 — 10초~1분'>받기</button>" : "") +
+    (link ? "<a class='act' href='" + esc(link) + "' target='_blank' rel='noopener' data-open='" + esc(k) + "' title='출판사 페이지 — 기관 접속으로 PDF 를 내려받으면 수집이 다운로드 폴더에서 서재로 옮깁니다'>출판사 ↗</a>" : "") +
+    (!link ? "<a class='act' href='https://scholar.google.com/scholar?q=" + encodeURIComponent(it.title || "") + "' target='_blank' rel='noopener' title='DOI 가 없는 기록 — 제목으로 Google Scholar 에서 찾습니다'>제목으로 찾기 ↗</a>" : "") +
+    (inQueue ? "<button class='act' data-del='" + esc(k) + "' title='목록에서 지웁니다'>지우기</button>" : "<button class='act' data-add='" + esc(k) + "' title='아래 「담아 둔 논문」 에 담아 둡니다 (나중에 받기)'>담기</button>");
+  const stl = got ? "<div class='st ok'>★ 서재에 있음 — " + esc(got) + "</div>" : (st.text ? "<div class='st " + (st.cls || "") + "'>" + st.text + "</div>" : "");
+  return "<div class='row" + (got ? " got" : "") + "' data-k='" + esc(k) + "'><div><div class='t'>" + (link ? "<a href='" + esc(link) + "' target='_blank' rel='noopener' data-open='" + esc(k) + "'>" + esc(it.title) + "</a>" : esc(it.title)) + "</div><div class='m'>" + meta.join(" · ") + "</div></div><div class='acts'>" + acts + "</div>" + stl + "</div>";
+}
+
+function renderFound() {
+  const el = $("found");
+  if (searching) {
+    el.innerHTML = "<div class='prog'><b>" + esc(searching.q || "") + "</b> — " + esc(searching.stage || "시작…") + " · <span id='sElapsed'>" + fmtDur(Math.round((Date.now() - searching.t0) / 1000)) + "</span>" +
+      "<div class='hint' style='margin-top:4px'>세상의 문헌(OpenAlex, Scopus 키가 있으면 Scopus 도)을 검색하고 Claude 가 주제에 맞는 것만 고릅니다 — 1~3분. 끝나면 서재에 없는 논문만 소주제별로 보입니다.</div></div>";
+    $("info").textContent = ""; return;
+  }
+  if (!found) {
+    el.innerHTML = "<div class='empty'>위 칸에 주제를 적고 「찾기」 — 세상의 문헌에서 찾아 Claude 가 고른 논문 가운데 <b>서재에 없는 것</b>만 보입니다.<br>열린 접근 논문은 「받기」 로 바로 서재에 들어오고, 그 밖은 「출판사 ↗」 에서 내려받으면 수집이 다운로드 폴더에서 서재로 옮깁니다.</div>";
+    $("info").textContent = ""; return;
+  }
+  const items = found.groups.flatMap(g => g.items), left = items.filter(x => !x.owned && !x.got);
+  const oaN = left.filter(x => oaOf(x)).length, pending = left.filter(x => oaOf(x) === undefined).length;
+  const rest = left.filter(x => !oaOf(x) && doiUrl(x.doi) && !opened[keyOf(x)]).length;
+  $("info").textContent = "서재에 없는 " + left.length + "편" + (pending ? "" : " · 열린 접근 " + oaN + "편");
+  let h = "<div class='bar'><span class='h'>찾은 논문</span><span class='hint'>" + esc(found.intent || found.q) + " — 서재에 없는 " + left.length + "편" + (found.ownedN ? " (이미 있는 " + found.ownedN + "편은 뺐습니다)" : "") + (pending ? " · 열린 접근을 확인하는 중…" : " · 열린 접근 " + oaN + "편") + "</span>" +
+    "<span class='right'>" + (oaN ? "<button class='primary' id='fetchAll' title='열린 접근 논문을 차례로 받아 서재에 넣습니다'>열린 접근 " + oaN + "편 모두 받기</button>" : "") +
+    (rest ? "<button class='act' id='openNext' title='열린 접근이 없는 논문의 출판사 페이지를 하나 엽니다 — 누를 때마다 다음 논문. 거기서 내려받으면 수집이 서재에 넣습니다'>출판사에서 열기 (남은 " + rest + "편)</button>" : "") +
+    (left.length ? "<button class='act' id='addAll' title='아래 「담아 둔 논문」 에 전부 담아 둡니다 — 나중에 받거나 연구 노트에서 봅니다'>모두 담기</button>" : "") +
+    "<a class='act' href='/explore?q=" + encodeURIComponent(found.q) + "&go=1' target='athenaeum_explore' title='같은 주제를 탐색 창에서 — 소주제·맵·연구 그룹·Claude 와 이야기'>탐색 창 ↗</a></span></div>";
+  if (fromKo) h += "<div class='note'>" + esc(fromKo) + " 에서 왔습니다 — 받은 논문은 서재(논문모음)에 들어가고, 공부 창의 「이 주제로 다시 훑기」 에 바로 듭니다 (번역이 없는 논문은 PDF 본문으로 훑고, 통째로 읽을 논문은 쓰기 전에 번역합니다).</div>";
+  for (const g of found.groups) {
+    const its = g.items.filter(x => !(x.owned || x.got) || status[keyOf(x)]);
+    if (!its.length) continue;
+    h += "<div class='grp'>" + esc(g.name) + (g.why ? " <span class='why'>— " + esc(g.why) + "</span>" : "") + "</div>" + its.map(x => rowHtml(x, false)).join("");
+  }
+  if (!items.length) h += "<div class='empty'>찾은 논문이 없습니다 — 주제를 다르게 적어 보세요.</div>";
+  else if (!left.length) h += "<div class='empty'>찾은 논문이 모두 서재에 있습니다.</div>";
+  el.innerHTML = h; bindRows(el);
+  const fa = $("fetchAll"); if (fa) fa.onclick = () => fetchMany(left.filter(x => oaOf(x)));
+  const on = $("openNext"); if (on) on.onclick = () => openNext(left);
+  const aa = $("addAll"); if (aa) aa.onclick = () => addToQueue(left);
+}
+
+function renderQueue() {
+  const el = $("queue");
+  if (!queue.length) { el.innerHTML = found || searching ? "" : "<div class='empty'>담아 둔 논문이 없습니다 — 연구 노트의 큰 물음이 적은 「받을 논문」 과 여기서 「담기」 한 논문이 모입니다.</div>"; return; }
+  const left = queue.filter(x => !x.got && !x.owned), got = queue.length - left.length, oaN = left.filter(x => oaOf(x)).length;
+  const rest = left.filter(x => !oaOf(x) && doiUrl(x.doi) && !opened[keyOf(x)]).length;
+  let h = "<div class='bar'><span class='h'>담아 둔 논문</span><span class='hint'>" + left.length + "편" + (got ? " · 서재에 들어옴 " + got : "") + (oaN ? " · 열린 접근 " + oaN + "편" : "") + "</span><span class='right'>" +
+    (oaN ? "<button class='primary' id='qFetchAll' title='열린 접근 논문을 차례로 받아 서재에 넣습니다'>열린 접근 " + oaN + "편 모두 받기</button>" : "") +
+    (rest ? "<button class='act' id='qOpenNext' title='출판사 페이지를 하나 엽니다 — 누를 때마다 다음 논문'>출판사에서 열기 (남은 " + rest + "편)</button>" : "") +
+    "<button class='act' id='qSync' title='서재에 들어왔는지 다시 봅니다 (제목 대조)'>서재 확인</button></span></div>";
+  h += queue.slice().sort((a, b) => ((a.got || a.owned) ? 1 : 0) - ((b.got || b.owned) ? 1 : 0) || (b.t || 0) - (a.t || 0)).map(x => rowHtml(x, true)).join("");
+  el.innerHTML = h; bindRows(el);
+  const fa = $("qFetchAll"); if (fa) fa.onclick = () => fetchMany(left.filter(x => oaOf(x)));
+  const on = $("qOpenNext"); if (on) on.onclick = () => openNext(left);
+  const sy = $("qSync"); if (sy) sy.onclick = async () => { sy.textContent = "확인 중…"; await loadQueue(true); };
+}
+
+function bindRows(el) {
+  el.querySelectorAll("[data-fetch]").forEach(b => b.onclick = () => fetchOne(b.dataset.fetch));
+  el.querySelectorAll("[data-open]").forEach(a => a.addEventListener("click", () => { const k = a.dataset.open; opened[k] = true; if (!(status[k] || {}).cls) status[k] = { text: "출판사 페이지를 열었습니다 — 거기서 내려받으면 수집이 다운로드 폴더에서 서재로 옮기고, 여기에 ★ 로 보입니다" }; setTimeout(renderAll, 80); }));
+  el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => { const it = itemOf(b.dataset.add); if (it) addToQueue([it]); });
+  el.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { let r; try { r = await api("/api/wanted", { op: "del", key: b.dataset.del }); } catch (e) { return; } queue = r.items || []; renderAll(); });
+}
+
+async function fetchOne(k, quiet) {
+  const it = itemOf(k); if (!it || it.owned || it.got) return;
+  status[k] = { text: "받는 중…" }; if (!quiet) renderAll();
+  let r; try { r = await api("/api/wanted", { op: "fetch", id: /^W\d+$/.test(it.id || "") ? it.id : "", doi: it.doi || "", title: it.title || "", oa: oaOf(it) || null }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  if (r.ok) { it.owned = r.file; it.got = r.file; status[k] = { cls: "ok", text: "서재에 들어옴 ✓ " + esc(r.file) + (r.dup ? " (이미 있던 논문 — 중복사본으로)" : "") }; }
+  else if (r.oa === false) { status[k] = { cls: "err", text: "열린 접근 판이 없습니다 — 「출판사 ↗」 에서 내려받으면 수집이 서재에 넣습니다" }; if (it.oa === undefined) oaMap[k] = null; else it.oa = null; }
+  else { const oa = oaOf(it) || {}; status[k] = { cls: "err", text: esc(r.error || "자동으로 받지 못했습니다") + " — " + (oa.pdf ? "<a href='" + esc(oa.pdf) + "' target='_blank' rel='noopener' data-open='" + esc(k) + "' title='열린 접근 PDF 주소 — 브라우저로 열면 받아지는 때가 많습니다. 내려받으면 수집이 서재에 넣습니다'>PDF 주소 열기 ↗</a> 나 " : "") + "「출판사 ↗」 로 받아 주세요" }; }
+  if (!quiet) renderAll();
+  return r;
+}
+async function fetchMany(items) {
+  if (fetching || !items.length) return; fetching = true;
+  let n = 0;
+  for (const it of items) { n++; const k = keyOf(it); if (it.owned || it.got) continue; status[k] = { text: "받는 중… (" + n + "/" + items.length + ")" }; renderAll(); await fetchOne(k, true); renderAll(); }
+  fetching = false; renderAll(); loadQueue(true);
+}
+function openNext(items) {
+  const it = items.find(x => !oaOf(x) && doiUrl(x.doi) && !opened[keyOf(x)] && !x.owned && !x.got); if (!it) return;
+  const k = keyOf(it); opened[k] = true; status[k] = { text: "출판사 페이지를 열었습니다 — 거기서 내려받으면 수집이 다운로드 폴더에서 서재로 옮기고, 여기에 ★ 로 보입니다" };
+  window.open(doiUrl(it.doi), "_blank"); renderAll();
+}
+async function addToQueue(items) {
+  const payload = items.filter(x => !x.owned && !x.got).map(x => ({ id: /^W\d+$/.test(x.id || "") ? x.id : "", doi: x.doi || "", title: x.title || "", author: x.author || x.authors || "", year: x.year || 0, venue: x.venue || x.abbr || "", oa: oaOf(x) || null }));
+  if (!payload.length) return;
+  let r; try { r = await api("/api/wanted", { op: "add", items: payload, src: { kind: fromKo ? "study" : "page", title: (found ? found.q : "").slice(0, 80) } }); } catch (e) { return; }
+  queue = r.items || []; renderAll();
+}
+
+async function ensureOa() {   /* oa 를 모르는 항목(옛 결과·연구 노트가 담은 것)만 서버에 묻는다 — OpenAlex 조회, 7일 캐시 */
+  const need = allItems().filter(x => oaOf(x) === undefined && !x.owned && !x.got);
+  if (!need.length) return;
+  const seen = new Set(), items = [];
+  need.forEach(x => { const k = keyOf(x); if (!seen.has(k)) { seen.add(k); items.push({ id: /^W\d+$/.test(x.id || "") ? x.id : "", doi: x.doi || "" }); } });
+  let r; try { r = await api("/api/wanted", { op: "oa", items }); } catch (e) { return; }
+  const got = r.oa || {};
+  need.forEach(x => { const k = keyOf(x); oaMap[k] = got[k] === undefined ? null : got[k]; });
+  renderAll();
+}
+
+async function search(q) {
+  q = (q || "").trim(); if (!q) { $("q").focus(); return; }
+  found = null; searching = { q, stage: "시작…", t0: Date.now() }; renderAll();
+  let start; try { start = await api("/api/smart", { q, year: "" }); } catch (e) { start = {}; }
+  if (!start.key) { searching = null; renderAll(); $("found").innerHTML = "<div class='empty'>⚠ 검색을 시작하지 못했습니다: " + esc(start.error || "서버 연결 실패") + "</div>"; return; }
+  try { localStorage.setItem("wanted_last", JSON.stringify({ q, key: start.key, t: Date.now() })); } catch (e) {}
+  poll(start.key, q, false);
+}
+function poll(key, q, quiet) {
+  if (pollT) clearInterval(pollT);
+  if (!searching) searching = { q, stage: "결과 불러오는 중…", t0: Date.now() };
+  renderAll();
+  const tick = setInterval(() => { if (!searching) { clearInterval(tick); return; } const el = $("sElapsed"); if (el) el.textContent = fmtDur(Math.round((Date.now() - searching.t0) / 1000)); }, 1000);
+  pollT = setInterval(async () => {
+    let s; try { s = await api("/api/smart_status?key=" + encodeURIComponent(key)); } catch (e) { return; }
+    if (s.status === "running") { searching.stage = s.stage || "진행 중…"; renderAll(); return; }
+    clearInterval(pollT); pollT = null; searching = null;
+    if (s.status !== "done") {
+      renderAll();
+      if (!quiet) $("found").innerHTML = "<div class='empty'>⚠ " + (s.status === "none" ? "검색 결과가 남아 있지 않습니다 (서버가 다시 켜졌나요?) — 다시 찾아 주세요" : "검색 실패: " + esc(s.error || "원인 불명")) + "</div>";
+      return;
+    }
+    takeResult(s.result, q, key);
+  }, 3000);
+}
+function takeResult(r, q, key) {
+  const groups = (r.groups || []).map(g => ({ name: g.name || "", why: g.why || "", items: (g.items || []).filter(x => x && x.title) }));
+  const all = groups.flatMap(g => g.items);
+  found = { q: q || r.intent || "", key, intent: r.intent || "", groups, ownedN: all.filter(x => x.owned).length };
+  if (q) $("q").value = q;
+  renderAll(); ensureOa(); ownedSync(true);
+}
+
+async function ownedSync(force) {   /* 서재가 바뀌었으면(수집이 넣었거나 여기서 받았거나) 제목으로 대조해 ★ */
+  let st; try { st = await api("/api/archive_stamp"); } catch (e) { return; }
+  const stamp = st.n + ":" + st.t, changed = !!archStamp && stamp !== archStamp; archStamp = stamp;
+  if (!force && !changed) return;
+  const items = [], seen = new Set();
+  allItems().forEach(it => { if (it.owned || it.got || !it.title) return; const k = keyOf(it); if (seen.has(k)) return; seen.add(k); items.push({ id: k, title: it.title }); });
+  if (!items.length) return;
+  let r; try { r = await api("/api/owned_check", { items }); } catch (e) { return; }
+  const got = r.owned || {}; let n = 0;
+  allItems().forEach(it => { const k = keyOf(it); if (got[k] && !it.owned && !it.got) { it.owned = got[k]; it.got = got[k]; if (!(status[k] || {}).cls) status[k] = { cls: "ok", text: "서재에 들어옴 ✓ " + esc(got[k]) }; n++; } });
+  if (n) { renderAll(); if (changed) loadQueue(true); }
+}
+async function loadQueue(sync) {
+  let r; try { r = await api("/api/wanted" + (sync ? "?sync=1" : "")); } catch (e) { return; }
+  queue = r.items || []; renderAll(); ensureOa();
+}
+
+(function init() {
+  if (typeof mountUiControls === "function") { try { mountUiControls("#uiCtlHost"); } catch (e) {} }
+  $("go").onclick = () => search($("q").value);
+  $("q").addEventListener("keydown", e => { if (e.key === "Enter") search($("q").value); });
+  setInterval(() => ownedSync(false), 10000);
+  const up = new URLSearchParams(location.search);
+  renderAll(); loadQueue(false);
+  if (up.get("key")) { $("q").value = up.get("q") || ""; poll(up.get("key"), up.get("q") || "", false); return; }   /* 탐색 창의 「받기」 — 같은 결과를 다시 검색하지 않고 */
+  if (up.get("q")) { $("q").value = up.get("q"); if (up.get("go")) search(up.get("q")); return; }
+  let last = null; try { last = JSON.parse(localStorage.getItem("wanted_last") || "null"); } catch (e) {}
+  if (last && last.key && Date.now() - (last.t || 0) < 12 * 3600 * 1000) { $("q").value = last.q || ""; poll(last.key, last.q || "", true); }   /* 마지막 결과가 서버에 남아 있으면 그대로 */
+})();
+</script>
+</body>
+</html>

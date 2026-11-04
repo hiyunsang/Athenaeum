@@ -142,6 +142,7 @@
   <a href="#" id="chatToggle" title="지금 보이는 검색 결과를 놓고 Claude(Opus)와 이야기"><img src="/logo/claude_mascot.png" alt="" onerror="this.remove()">Claude와 이야기</a>
   <a href="#" id="histToggle" class="hbtn" title="지난 탐색을 다시 열기 (다시 검색하지 않습니다)">기록</a>
   <a href="#" id="noteToggle" class="hbtn" title="지금 검색 결과(검색어·조사 의도·소주제·연구 그룹)를 놓고 연구 노트에서 Claude 와 주제 토의">연구 노트</a>
+  <a href="#" id="getToggle" class="hbtn" title="지금 결과에서 서재에 없는 논문을 받는 페이지 — 열린 접근은 바로 서재에, 그 밖은 출판사 링크로">받기</a>
   <div id="info"></div>
 </header>
 <div id="hist" hidden></div>
@@ -646,6 +647,11 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) owne
   document.getElementById("chatFp").onclick = e => { e.preventDefault(); step(1); };
   try { apply(); } catch (e) {}
 })();
+document.getElementById("getToggle").onclick = e => {   /* 받을 논문 페이지 — 지금 결과를 다시 검색하지 않고 그대로 (2026-11-04) */
+  e.preventDefault(); const s = loadState() || {}, q = document.getElementById("q").value.trim();
+  const u = (s.smartResult && s.smartKey) ? "/wanted?key=" + encodeURIComponent(s.smartKey) + "&q=" + encodeURIComponent(s.q || q) : (q ? "/wanted?q=" + encodeURIComponent(q) + "&go=1" : "/wanted");
+  window.open(u, "athenaeum_wanted", "width=1100,height=860");
+};
 document.getElementById("chatToggle").onclick = e => { e.preventDefault(); document.body.classList.toggle("chat"); saveState({ chat: document.body.classList.contains("chat") }); if (document.body.classList.contains("chat")) { chatCtx(); renderChat(); document.getElementById("chatq").focus(); } };
 document.getElementById("chatClose").onclick = e => { e.preventDefault(); document.body.classList.remove("chat"); saveState({ chat: false }); };
 document.getElementById("chatClear").onclick = e => { e.preventDefault(); if (confirm("이 주제의 대화를 지울까요?")) { chatSave({ q: (loadState() || {}).q || "", msgs: [] }); renderChat(); } };

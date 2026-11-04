@@ -572,6 +572,66 @@ def process_pdf(pdf_path, cfg):
     return canonical
 
 
+def _same_title(a, b):
+    ka = re.sub(r"[^a-z0-9]", "", str(a or "").lower())
+    kb = re.sub(r"[^a-z0-9]", "", str(b or "").lower())
+    return len(ka) >= 20 and len(kb) >= 20 and (ka[:40] == kb[:40] or ka in kb or kb in ka)
+
+
+def _park(pdf_path):
+    """논문으로 확인되지 않은 받은 파일은 지우지 않고 옆의 _확인필요 폴더에 둔다"""
+    try:
+        d = os.path.join(os.path.dirname(pdf_path), "_확인필요")
+        os.makedirs(d, exist_ok=True)
+        shutil.move(pdf_path, unique_path(d, os.path.basename(pdf_path)))
+    except Exception:
+        pass
+
+
+def ingest(pdf_path, doi="", title=""):
+    """프로그램이 받아 온 PDF(받을 논문 페이지, 2026-11-04)를 보관소에 넣는다. DOI 를 알고 있으므로 Crossref 조회 → 제목 대조(PDF 앞쪽 글, 또는 받을 때 알던 제목) →
+    수집과 같은 이름 규칙으로 옮긴다. 돌려주는 값 {"file": 이름, "dup": bool} 또는 {"error": 까닭} — 그때 파일은 _확인필요\ 로 옮겨 두고 지우지 않는다"""
+    cfg = _cfg or Config()
+    name = os.path.basename(pdf_path)
+    try:
+        _, page_text = extract_doi_candidates(pdf_path)
+    except Exception as e:
+        _park(pdf_path)
+        return {"error": "PDF 를 읽지 못했습니다 (%s)" % str(e)[:80]}
+    meta = None
+    if doi:
+        try:
+            m = fetch_metadata(doi)
+        except Exception:
+            m = None
+        if m and m.get("title") and is_article_record(m) and (title_matches(m["title"], page_text) or _same_title(m["title"], title)):
+            meta = m
+    if meta is None:
+        try:
+            meta = resolve_meta(pdf_path)
+        except Exception:
+            meta = None
+    if meta is None or not (title_matches(meta["title"], page_text) or _same_title(meta["title"], title)):
+        _park(pdf_path)
+        log("받기 — 논문으로 확인되지 않아 _확인필요 에 둠: {}".format(name))
+        return {"error": "받은 파일이 그 논문인지 확인되지 않아 보관소에 넣지 않았습니다 (수집\\받기\\_확인필요 에 두었습니다)"}
+    os.makedirs(cfg.target_dir, exist_ok=True)
+    canonical = os.path.join(cfg.target_dir, build_filename(meta, cfg))
+    if os.path.exists(canonical):
+        dup_dir = os.path.join(cfg.target_dir, "_중복사본")
+        os.makedirs(dup_dir, exist_ok=True)
+        shutil.move(pdf_path, unique_path(dup_dir, os.path.basename(canonical)))
+        log("받기 — 이미 보관 중 -> 중복사본: {}".format(os.path.basename(canonical)))
+        return {"file": os.path.basename(canonical), "dup": True}
+    shutil.move(pdf_path, canonical)
+    try:
+        _watch["hash_index"][sha1_of(canonical)] = canonical
+    except Exception:
+        pass
+    log("받기 완료: {}  ->  {}".format(name, os.path.basename(canonical)))
+    return {"file": os.path.basename(canonical), "dup": False}
+
+
 def sha1_of(path):
     h = hashlib.sha1()
     with open(path, "rb") as f:

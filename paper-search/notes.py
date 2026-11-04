@@ -1945,6 +1945,52 @@ def wanted_del(key):
         return {"items": items}
 
 
+def wanted_put(items, src=None):
+    """받을 논문 페이지(/wanted)·공부·탐색이 고른 논문을 대기열에 더한다 (2026-11-04) — 같은 제목은 한 줄, 어디서 왔나는 from 에 쌓는다. 돌려주는 값: 전체 목록"""
+    src = dict(src or {})
+    src["kind"] = str(src.get("kind") or "page")[:20]
+    src["title"] = str(src.get("title") or "")[:80]
+    with _LOCK:
+        d = cfg["load_json"](_wanted_path(), None) or {}
+        cur = [x for x in (d.get("items") or []) if isinstance(x, dict) and x.get("title")]
+        by = {}
+        for x in cur:
+            x["key"] = x.get("key") or _wkey(x["title"])
+            by[x["key"]] = x
+        ch = False
+        for g in items or []:
+            if not isinstance(g, dict):
+                continue
+            k = _wkey(g.get("title"))
+            if len(k) < 8:
+                continue
+            doi = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", str(g.get("doi") or "").strip(), flags=re.I)
+            x = by.get(k)
+            if not x:
+                x = {"key": k, "title": str(g.get("title") or "")[:300], "authors": str(g.get("authors") or g.get("author") or "")[:120], "year": g.get("year") or 0,
+                     "venue": str(g.get("venue") or "")[:80], "doi": doi, "id": str(g.get("id") or "")[:40], "from": [src], "t": time.time(), "got": g.get("owned") or ""}
+                if isinstance(g.get("oa"), dict):
+                    x["oa"] = {f: g["oa"].get(f) for f in ("pdf", "pdfs", "url", "status", "ver")}
+                cur.append(x)
+                by[k] = x
+                ch = True
+            else:
+                if not any(s.get("kind") == src.get("kind") and s.get("title") == src.get("title") and s.get("nid") == src.get("nid") for s in x.get("from") or []):
+                    x.setdefault("from", []).append(src)
+                    ch = True
+                for f in ("authors", "venue", "id"):
+                    if not x.get(f) and g.get(f):
+                        x[f] = str(g[f])[:120]
+                        ch = True
+                if not x.get("doi") and doi:
+                    x["doi"], ch = doi, True
+                if not x.get("oa") and isinstance(g.get("oa"), dict):
+                    x["oa"], ch = {f: g["oa"].get(f) for f in ("pdf", "pdfs", "url", "status", "ver")}, True
+        if ch:
+            cfg["save_json"](_wanted_path(), {"items": cur[-300:]})
+        return cur
+
+
 
 def _forest_prompt(nt):
     out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))

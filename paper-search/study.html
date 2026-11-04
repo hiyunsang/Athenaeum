@@ -412,6 +412,10 @@ function noteFromGap(i) {
   window.open("/notes?new=1&from=study&fid=" + encodeURIComponent(cur.id) + "&ftitle=" + encodeURIComponent(t) + "&title=" + encodeURIComponent(g.slice(0, 80)) +
     "&text=" + encodeURIComponent("공부 장 「" + t + "」 의 '이 서재로는 답하지 못한 것':\n" + g) + "&ask=1", "athenaeum_notes", "width=1280,height=900");
 }
+function fetchGap(i) {   /* 답하지 못한 것 → 서재에 없는 논문 찾아 받기 (2026-11-04) */
+  const g = ((cur.chapter || {}).gaps || [])[i]; if (!g) return;
+  window.open("/wanted?q=" + encodeURIComponent(g.slice(0, 220)) + "&go=1&from=" + encodeURIComponent("공부"), "athenaeum_wanted", "width=1100,height=860");
+}
 function renderMain() {
   setTimeout(renderPick, 0);   /* 머리줄의 「장 목록 n › 지금 장」 은 보기가 바뀔 때마다 */
   const m = $("main"); clearInterval(tickT); clearInterval(mapTick);
@@ -675,7 +679,7 @@ function viewHtml() {
   if (k === "all") return "<div class='page ch'>" + crumb("전체를 한 번에") + overviewBody(true) + "</div>";
   if (k === "sec") return "<div class='page ch'>" + sectionHtml(view.si) + "</div>";
   if (k === "summary") { const summ = ch.sections.find(x => x.kind === "summary"), si = ch.sections.indexOf(summ); return "<div class='page ch'>" + crumb("핵심 정리") + "<h2 class='first'>핵심 정리</h2>" + summaryHtml(summ, si) + "</div>"; }
-  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다. 「토의」 를 누르면 그 물음을 연구 노트의 새 주제로 열어 Claude 와 따집니다.</div><ul>" + ch.gaps.map((g, i) => "<li>" + esc(g) + " <button class='act noprint' onclick='noteFromGap(" + i + ")' title='이 물음을 연구 노트의 새 주제로 열어 Claude 와 토의합니다 (서재 전체를 알고 답합니다)'>토의 ↗</button> <button class='act noprint' onclick='exploreGap(" + i + ")' title='이 물음으로 논문 탐색 창을 엽니다 — 세상의 문헌에서 찾아 서재에 더하면 「다시 만들기」 로 이 장을 채울 수 있습니다'>탐색 ↗</button></li>").join("") + "</ul></div>";
+  if (k === "gaps") return "<div class='page ch'>" + crumb("이 서재로는 답하지 못한 것") + "<h2 class='first'>이 서재로는 답하지 못한 것</h2><div class='aim'>서재에 없거나, 한두 편에만 기대거나, 논문끼리 엇갈리는 것입니다. 「토의」 를 누르면 그 물음을 연구 노트의 새 주제로 열어 Claude 와 따집니다.</div><ul>" + ch.gaps.map((g, i) => "<li>" + esc(g) + " <button class='act noprint' onclick='noteFromGap(" + i + ")' title='이 물음을 연구 노트의 새 주제로 열어 Claude 와 토의합니다 (서재 전체를 알고 답합니다)'>토의 ↗</button> <button class='act noprint' onclick='exploreGap(" + i + ")' title='이 물음으로 논문 탐색 창을 엽니다 — 세상의 문헌에서 찾아 서재에 더하면 「다시 만들기」 로 이 장을 채울 수 있습니다'>탐색 ↗</button> <button class='act noprint' onclick='fetchGap(" + i + ")' title='이 물음으로 세상의 문헌을 찾아 서재에 없는 논문을 받는 페이지를 엽니다 — 열린 접근은 바로 서재에, 그 밖은 출판사 링크로. 받은 뒤 「다시 만들기」 로 이 장을 채웁니다'>받기 ↗</button></li>").join("") + "</ul></div>";
   if (k === "terms") return "<div class='page ch'>" + crumb("용어") + "<h2 class='first'>용어</h2><div class='terms'>" + ch.terms.map(t => "<div>" + esc(t.ko) + " <span>" + esc(t.en) + "</span></div>").join("") + "</div></div>";
   if (k === "chats") return "<div class='page ch'>" + crumb("Claude 에게 물은 것") + "<h2 class='first'>Claude 에게 물은 것</h2>" + chatsViewHtml() + "</div>";
   if (k === "refs") return "<div class='page ch'>" + crumb("참고문헌") + "<h2 class='first'>참고문헌</h2>" + refsHtml() + "</div>";
@@ -1352,7 +1356,7 @@ $("go").onclick = async () => {
   if (!sc.broad) return startStudy(topic);   /* 넓은데 제안이 없어도(좁히기 답을 못 받음) 시작하지 않고 '이대로 넓게' + 묻기 칸을 보인다 (2026-10-28) */
   sc.options = sc.options || [];
   /* 제안 하나는 라디오 한 줄 — Claude 가 답에서 낸 주제도 같은 꼴로 뒤에 붙는다 (2026-10-28) */
-  const optHtml = (o, i, mine) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='checkbox' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (mine ? " <span style='color:var(--accent);font-size:11px'>Claude 가 답에서 제안</span>" + (o.rescan ? " <span style='color:var(--amber);font-size:11px'>· 후보 밖의 논문이 필요 — 「다시 훑기」</span>" : "") : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>";
+  const optHtml = (o, i, mine) => "<label style='display:block;padding:4px 0;line-height:1.45'><input type='checkbox' name='scopeopt' value='" + i + "'" + (i === 0 ? " checked" : "") + "> <b>" + esc(o.topic) + "</b>" + (o.n ? " <span style='color:var(--text-3)'>" + o.n + "편</span>" : "") + (mine ? " <span style='color:var(--accent);font-size:11px'>Claude 가 답에서 제안</span>" + (o.rescan ? " <span style='color:var(--amber);font-size:11px'>· 후보 밖의 논문이 필요 — 「다시 훑기」 나 「찾아 받기」</span>" : "") : "") + (o.focus ? "<div style='color:var(--text-3);margin-left:20px'>" + esc(o.focus) + "</div>" : "") + "</label>";
   const bindOpts = () => {   /* 체크 상자 여러 개 — 둘 이상이면 합친 주제를 위 칸에 (2026-10-28, 사용자: '선택지 여러 개 눌러서 할 수 있게끔 — 첫째·셋째가 맘에 들 수도') */
     const inputs = [...$("newMsg").querySelectorAll("input[name=scopeopt]")];
     const sync = src => {
@@ -1370,10 +1374,11 @@ $("go").onclick = async () => {
   };
   $("newMsg").innerHTML = "<div style='color:var(--amber);margin-bottom:4px'>이 주제는 서재 " + sc.n + "편에 걸립니다 — " + esc(sc.why || "한 장에 담기엔 넓어 보입니다") + "</div><div id='scOpts'>" + sc.options.map((o, i) => optHtml(o, i, false)).join("") + "</div>" +
     "<label style='display:block;padding:4px 0'><input type='checkbox' name='scopeopt' value='all'" + (sc.options.length ? "" : " checked") + "> 이대로 넓게 (서재 " + sc.n + "편 가운데 " + sc.cap + "편까지 읽음)</label><div class='hint' id='scMulti' style='margin:0 0 4px'></div>" +
-    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button><button class='act' id='scopeRescan' title='위 칸의 주제로 서재를 다시 훑어 후보와 제안을 새로 받습니다 (Sonnet, 1분쯤)'>이 주제로 다시 훑기</button> <span class='hint'>체크한 주제가 위 칸에 채워지고, 둘 이상이면 합쳐집니다 — 고쳐도 되고, 주제를 바꿨으면 「다시 훑기」 로 후보부터 새로</span></div>" + scopeAskHtml(sc);
+    "<div style='margin-top:6px'><button class='primary' id='scopeGo'>이 주제로 쓰기</button><button class='act' id='scopeRescan' title='위 칸의 주제로 서재를 다시 훑어 후보와 제안을 새로 받습니다 (Sonnet, 1분쯤)'>이 주제로 다시 훑기</button><button class='act' id='scopeFetch' title='위 칸의 주제로 세상의 문헌을 찾아 서재에 없는 논문을 받는 페이지를 엽니다 — 열린 접근은 바로 서재에, 그 밖은 출판사 링크로. 받은 뒤 「이 주제로 다시 훑기」 를 누르면 그 논문이 후보에 듭니다'>서재에 없는 논문 찾아 받기 ↗</button> <span class='hint'>체크한 주제가 위 칸에 채워지고, 둘 이상이면 합쳐집니다 — 고쳐도 되고, 주제를 바꿨으면 「다시 훑기」 로 후보부터 새로</span></div>" + scopeAskHtml(sc);
   bindOpts();
   $("topic").value = sc.options.length ? sc.options[0].topic : topic;
   $("scopeGo").onclick = () => { const t = $("topic").value.trim(); if (!t) return; $("go").dataset.skip = t; startStudy(t); };
+  $("scopeFetch").onclick = () => { const t = $("topic").value.trim(); if (!t) { $("topic").focus(); return; } window.open("/wanted?q=" + encodeURIComponent(t) + "&go=1&from=" + encodeURIComponent("공부"), "athenaeum_wanted", "width=1100,height=860"); };   /* 서재에 없는 논문 찾아 받기 (2026-11-04, 사용자: '공부에서 원하는 논문 없으면 알아서 다운받게끔') */
   $("scopeRescan").onclick = () => { if (!$("topic").value.trim()) { $("topic").focus(); return; } $("go").dataset.skip = ""; $("go").click(); };   /* 바뀐 주제로 훑기부터 다시 (2026-10-28, 사용자: 제안 셋이 맘에 안 들어 묻는 칸에 다른 주제를 적음) */
   bindScopeAsk(sc, optHtml, bindOpts);
 };
