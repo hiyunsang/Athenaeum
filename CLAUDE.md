@@ -32,12 +32,14 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
     batch_generate.py          일괄 요약·번역 (대기열 JSON)
     schematic\                 도식 그리기 (lib.py 그리기 함수, generate.py 가 Claude 에게 스크립트를 쓰게 함)
     index.html  reader.html  explore.html  mapview.html  manuscript.html  labels.html  vocab.html  study.html  notes.html  learn.html  wanted.html
+    m.html  login.html         다른 기기에서 쓰기: 휴대폰 화면(/m) · 다른 기기의 로그인 화면
     tutorial.html  tutorial\*.png   사용법(홈 「도움말」, /tutorial): 화면마다 그림 위에 번호 말풍선 + 빨간 화살표, 아래에 번호대로 설명
     ui.css  ui.js              공통 디자인 토큰·환경설정·진행 막대
     map.js                     논문 맵 그리기 (탐색 결과 맵·관련맵 공유)
     labels.json                라벨 체계 (묶음·하위 분류 트리·자동 추가 기록 = 예약 키 "_체계")
     tags.json                  논문별 라벨 {labels, suggested, rejected, title}
     수집설정.json              수집 설정 (감시폴더·저널약어 등)
+    기기설정.json              다른 기기에서 열기·백업의 상태 (비밀번호 확인값·로그인된 기기·백업 폴더) — git·배포판·백업 제외
     logo\make_logo.py          로고·아이콘 생성
     Athenaeum_실행.bat         실행 (서버 + 앱 창)
     Athenaeum_시작.vbs         부팅 자동 시작
@@ -68,10 +70,11 @@ MAENG_paper\                  저장소 루트 (github.com/hiyunsang/Athenaeum, 
 | `번역\주석\_바탕\<묶음>_<절>.json` · `이력\` | 바탕 — '이 저널의 이 절은 이렇게 쓴다'(분포 + Claude 의 글 + 본보기 문장 번호), 판마다 이력 |
 | `원고\_교정기억.json` | 교정 기억: 저자가 Claude 의 글을 바꾼·버린 것, 심사위원의 지적 |
 | `읽기기록.json` | 읽은 시각·시간·위치 |
+| `paper-search\기기설정.json` | 다른 기기에서 열기(켬·비밀번호 확인값·로그인된 기기)와 백업(폴더·자동·마지막 기록) |
 
 ### 주요 라우트
-GET: `/` `/view`(읽기) `/explore` `/mapview` `/ms`(원고) `/study`(공부) `/notes`(연구 노트) `/learn`(서재 학습) `/wanted`(받을 논문) `/tutorial`(사용법) `/labels`(라벨 체계) `/vocab`(단어장) `/pdf` `/eq` · `/api/data` `/api/jobs` `/api/genstatus` `/api/align` `/api/captions` `/api/intake` `/api/labels` `/api/explore` `/api/readlog` 등
-POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/labels`(체계 편집·제안·재분류) `/api/intake` `/api/smart` `/api/wanted`(받을 논문: add·del·sync·oa·fetch) `/api/explore_chat` `/api/read_ping` · 접두사 `/api/ms*` `/api/vocab*` `/api/study*` `/api/notes*` `/api/learn*`
+GET: `/` `/view`(읽기) `/explore` `/mapview` `/ms`(원고) `/study`(공부) `/notes`(연구 노트) `/learn`(서재 학습) `/wanted`(받을 논문) `/tutorial`(사용법) `/labels`(라벨 체계) `/vocab`(단어장) `/m`(휴대폰 화면) `/login` `/pdf` `/eq` · `/api/remote` `/api/backup` `/api/data` `/api/jobs` `/api/genstatus` `/api/align` `/api/captions` `/api/intake` `/api/labels` `/api/explore` `/api/readlog` 등
+POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/labels`(체계 편집·제안·재분류) `/api/intake` `/api/smart` `/api/wanted`(받을 논문: add·del·sync·oa·fetch) `/api/explore_chat` `/api/read_ping` `/api/upload`(PDF 올리기) `/api/login` `/api/logout` `/api/remote` `/api/backup` · 접두사 `/api/ms*` `/api/vocab*` `/api/study*` `/api/notes*` `/api/learn*`
 
 ---
 
@@ -91,7 +94,7 @@ POST: `/api/generate`(요약·번역) `/api/ask`(질문) `/api/tags` `/api/label
 - 포터블판 만들기: `python tools\make_release.py` → `dist\Athenaeum-portable-YYYYMMDD.zip`
 
 ### 시험할 때 반드시
-- 읽기 화면을 시험으로 열 때 URL 에 **`&nolog=1`** — 안 붙이면 사용자 읽기 기록이 오염된다
+- 읽기 화면을 시험으로 열 때 URL 에 **`&nolog=1`** — 안 붙이면 사용자 읽기 기록이 오염된다 (휴대폰 화면은 `/m?nolog=1`)
 - **일괄 생성이 도는 중에는 서버를 재시작하지 않는다** (작업이 끊겨 처음부터 다시 만든다). `restart_server.py` 가 막아 준다
 - 브라우저로 페이지를 검증하는 도중에 서버를 재시작하지 않는다 (빈 화면을 검사하게 됨)
 - 파일명은 `ls` 로 확인한 뒤 URL 에 넣는다 (80자 잘림·비슷한 제목 착오)
@@ -394,6 +397,23 @@ t_test_designs.json` 은 사용자가 원본과 견줘 읽도록 남겨 두었�
 - **참고문헌 목록도 반영(2026-10-01)**: 가져오기가 참고문헌 문단의 자리(역할 `ref`)를 기억하고, `_sync_plan` 이 같은 자리의 줄이 달라졌으면 고치고 목록 끝에 늘어난 줄은 마지막 참고문헌 문단 뒤에(그 문단의 모양으로) 넣는다. 지우지는 않는다
 - **하지 않는 것**: 표·키워드 반영, 절 순서 바꾸기, 열려 있는 워드 창에 글자가 실시간으로 바뀌는 것(COM 으로 가능하지만 워드 창이 포커스를 뺏고 사용자의 열린 문서를 건드려 위험해 넣지 않았다).
 - **과거에 깨졌던 곳**: (1) 캡션 판정이 'Fig. 10과 Fig. 11은 …' 으로 시작하는 **본문 문장을 그림 캡션으로 삼켜** 본문에서 빠졌다 → `_CAP_RE`(번호 바로 뒤가 한글이거나, 구두점 없이 소문자 낱말이 오면 본문). 그때 가져온 원고는 반영 결과의 `swallowed` 로 알려 「본문에 되살리기」. 이 문단을 워드에서 지우면 안 된다(사용자가 지운 게 아니다). (2) 문단 하나에 고친 곳이 둘이면 그 사이가 통째로 다시 만들어져 파란색도 통째로 → 여러 구간 diff. (3) 새 제목이 굵지 않게 들어감 → `inherit`. (4) 다시 가져온 글의 수식 앞뒤 빈칸·표기 차이(`V_s` ↔ `V_{s}`)로 매번 '바뀜' → `_eqv` 로 견줌.
+
+### 다른 기기에서 쓰기 — 집 PC · 노트북 · 휴대폰 (`server.py` 의 '다른 기기에서 쓰기' 블록 · `m.html` · `login.html`, 2026-11-06)
+사용자: '아테네움 데이터베이스(논문 및 기타 등)를 클라우드로 옮기고, 그 클라우드 베이스로 집 컴퓨터나 노트북에서도 똑같이 쓰고 싶다 — 로그인하거나 클라우드 연동을 해서. 한 술 더 떠서 폰으로 웹앱으로 볼 수 있으면.' **고른 설계**(사용자가 다른 프로그램 Horarium 에서 이미 쓰는 길과 같다): 서버와 데이터는 연구실 PC 한 곳에만 두고, 다른 기기는 브라우저로 그 서버를 연다 — 사설망(Tailscale) + 비밀번호 로그인. 데이터를 클라우드 폴더에 두고 PC 마다 서버를 띄우는 길은 버렸다: 연구실 PC 의 서버가 늘 켜져 글을 쓰고(읽기 기록·수집·학습·공부), 저장이 JSON 을 통째로 덮어쓰는 꼴이라 두 서버가 같은 폴더를 쓰면 한쪽이 다른 쪽의 글을 지운다. Claude 호출도 그 PC 의 구독·로그인으로 돈다. 클라우드는 한쪽 방향 백업으로만 쓴다.
+- **요청 가르기 `is_local_request(h)`**: 서버는 127.0.0.1 에만 묶여 있으므로 밖의 요청은 이 PC 의 중계(tailscale serve)를 거쳐 온다. 상대 주소가 127.0.0.1 이어도 Host 가 localhost·127.0.0.1·[::1] 이 아니거나 넘겨 준 흔적(`_FWD_HEADERS`: X-Forwarded-*·Forwarded·X-Real-IP·Tailscale-User-*·CF-*)이 하나라도 있으면 밖의 요청으로 본다. 다른 이름을 달고 들어오는 요청(DNS 리바인딩)도 밖으로 간다.
+- **문 `Handler._gate(method)`**(do_GET·do_POST 의 첫 줄): ① POST 의 Origin 이 이 주소(Host·X-Forwarded-Host)가 아니면 403 — 다른 사이트의 화면이 이 서버로 보내는 요청은 이 PC 안에서도 받지 않는다(화면들은 모두 상대 주소로 부르고, Horarium 은 서버끼리 부르므로 걸리지 않는다) ② 이 PC 의 요청은 그대로 ③ 밖의 요청은 「다른 기기에서 열기」 가 켜져 있고 비밀번호가 있어야 한다(아니면 403) ④ 로그인 화면의 재료(`_REMOTE_OPEN`: /login·/api/login·/ui.css·/favicon.ico·/manifest.webmanifest, /logo/·/fonts/)만 로그인 없이 주고, 그 길로 온 POST 는 본문 4096 바이트까지만 읽는다(`_preauth`) ⑤ 그 밖은 세션 쿠키가 맞아야 한다 — 화면은 `/login?next=` 로 302, API·POST 는 401 `{login: true}`.
+- **로그인**: 비밀번호는 이 PC 의 ⚙ → 기기에서만 정한다(8자 이상, **사용자가 직접 친다 — Claude 가 정하지 않는다**). 저장하는 것은 PBKDF2-HMAC-SHA256(20만 번, 16바이트 salt)의 확인값뿐. `remote_login`: 맞으면 `secrets.token_urlsafe(32)` 를 쿠키 `ath_s`(HttpOnly · SameSite=Lax · 60일, X-Forwarded-Proto 가 https 면 Secure)로 주고 그 sha256 만 `sessions{}` 에 적는다(12대까지; ua·ip·t). 틀리면 0.6초 쉬고, 10분에 8번 틀리면 429. 비밀번호를 바꾸면 로그인된 기기가 모두 풀리고, 「모두 로그아웃」 이 따로 있다.
+- **밖에서는 안 되는 것**: POST `/api/remote`·`/api/backup`·`/api/settings`·`/api/open`·`/api/claude_install`·`/api/claude_login`·`/api/fonts`(`_REMOTE_BLOCK_POST`), `/api/intake` 의 open_log·open_watch·open_config·config, 그리고 `os.startfile` 전체 — 요청 스레드의 표시(`_TL.remote`)를 보는 `_guarded_startfile` 로 바꿔 끼워, 원고·수집의 '열기' 단추가 이 PC 의 창을 띄우지 않는다(그 PermissionError 는 원고 모듈이 500 `{error}` 로 싸서 주고, 싸지 않는 길은 `do_POST` 가 받아 403 으로 답한다 — 화면에는 '이 기능은 Athenaeum 이 깔린 PC 에서만 됩니다'). 화면은 `/api/version` 의 `remote` 로 `html[data-remote]` 를 달고 `[data-local]` 요소를 숨긴다(`ui.js` 끝 · `ui.css`).
+- **상태 파일 `paper-search\기기설정.json`**(`DEVICES_PATH`; git·배포판·백업 제외) = `{remote: {on, salt, hash, iter, sessions}, backup: {dir, auto, last}}`. **`설정.json`(API 키)에 넣지 않는다** — 처음에는 거기 넣었다가 뺐다: 로그인·백업 기록이 그 파일을 자주 쓰게 되고, `/api/settings` 의 읽기-고치기-쓰기와 겹치면 서로의 글을 지운다. 읽기는 `_dev_cfg()`(파일의 mtime·크기가 바뀔 때만 다시; 못 읽으면 지난 값을 쓰고 3초 뒤 다시 — 처음부터 못 읽으면 `{}` 라 닫힌 쪽), 쓰기는 `_settings_change(key, change)`(잠금 안에서 `_dev_read_strict(recover=True)` → 한 갈래만 고쳐 `save_json`; 글이 깨져 있으면 `기기설정.json.깨짐_<시각>` 으로 옆에 남기고 빈 상태에서 다시 — 그러면 원격은 꺼진다).
+- **Tailscale**: 설치와 계정 로그인은 사용자가 한다(내려받아 실행하는 것은 자동 모드가 막고, 계정 로그인은 Claude 가 하지 않는다). `tailscale_view()`(`status --json` · `serve status`, 20초 캐시)와 `tailscale_serve(on)` = `tailscale serve --bg --http=<PORT> http://127.0.0.1:<PORT>`(사설망 안에서만 — 인터넷 공개(Funnel)는 쓰지 않는다). 여는 주소는 `http://<기기 이름>:8770`. **이 PC 에 Tailscale 이 없어 실제 연결은 시험하지 못했다** — tailscale serve 가 Host 를 그대로 넘기고 X-Forwarded-*·Tailscale-User-Login 을 붙이는 것으로 알고 짰고, 시험은 그 꼴을 흉내 낸 요청으로 했다. 사용자가 깐 뒤 첫 연결에서 볼 것: 주소가 열리는가, 로그인 뒤 쿠키가 붙는가, `/api/version` 의 `remote` 가 true 인가(false 면 밖의 요청을 이 PC 의 것으로 보고 있다는 뜻 — 바로 끄고 `is_local_request` 를 볼 것).
+- **휴대폰 화면 `/m`**(`m.html`; 해시 길 `#/` · `#/p/<파일>/<탭>` · `#/study` · `#/s/<id>/<절>`): 서재(찾기·차례 고르기) · 논문(요약 | 번역 | 메모·질문, PDF 열기, 없는 요약·번역은 「만들기」) · 공부(장 목록 → 개요 → 절: 문단·인용 번호·그림·표·식(MathML `/api/ms/math`, 못 그리면 그림)·Claude 의 생각·확인 물음). 글씨 크기와 읽던 자리를 기억하고 30초마다 읽기 신호를 보낸다(`/m?nolog=1` 이면 안 보냄). 휴대폰 UA 로 `/` 를 열면 `/m` 으로 넘기고 `/?desktop=1` 은 PC 화면. `/manifest.webmanifest` 와 apple 메타로 홈 화면에 추가할 수 있다. 탐색·원고·연구 노트·학습은 폰 화면이 없다(PC 화면을 폰에서 열 수는 있다).
+- **PDF 올리기 `POST /api/upload?name=`**(본문 = PDF 바이트, 200 MB 까지, 첫 바이트 `%PDF-` 확인 → `수집\올리기\` → `intake.ingest` — 수집과 같은 판정, 확인 안 되면 지우지 않고 `_확인필요`): 홈 수집 패널의 「PDF 올리기」, 받을 논문의 「받은 PDF 올리기」. 집에서 출판사에서 받은 PDF 는 연구실 PC 의 다운로드 폴더에 떨어지지 않으므로 이 길로 넣는다.
+- **백업**(`backup_run`, ⚙ → 기기): 데이터 폴더(`BACKUP_DIRS`: 논문모음·번역·메모·원고·공부·연구노트·단어장·관련맵·수집·글꼴 — `_중복사본`·`수집\받기`·`수집\올리기` 는 뺌)와 tags·labels·수집설정·읽기기록을 고른 폴더(예: Google Drive 폴더)에 **한쪽 방향으로** 복사한다. 크기·수정 시각이 다른 파일만 `.athtmp` 로 복사한 뒤 바꿔치기하고, 서재에서 지운 파일은 백업에서 지우지 않는다. `설정.json`·`기기설정.json`·`인수인계.md`·`백업\` 은 넣지 않는다. Athenaeum 폴더의 안·위는 거절. 「매일 자동으로」 = `backup_loop`(마지막 백업에서 20시간 넘었고 새벽 3~7시이거나, 36시간 넘게 못 했으면 한 번). 되살리기 단추는 없다 — 백업 폴더의 내용을 Athenaeum 폴더에 그대로 복사하면 된다.
+- **같이 고친 것**: `mapper.save_settings` 를 임시 파일 뒤 바꿔치기로(잠금 + 스레드마다 다른 임시 이름), `mapper.settings()` 는 바꿔치기 순간의 PermissionError 를 잠깐 뒤 다시 읽는다. 접속 대기열 5 → 64(`_Server.request_queue_size`). `make_release.py` 는 `기기설정.json` 과 `.tmp` 를 ZIP 에 담지 않는다.
+- **겪은 것**: 임시 파일 이름을 `time.time_ns()` 로 지었더니 Windows 에서는 15 ms 눈금이라 두 스레드가 같은 이름을 받았고, 한쪽의 `os.replace` 가 FileNotFoundError 로 죽었다(겹친 저장 36개 시험에서 `/api/settings` 하나가 응답 없이 끊김; 따로 두드려 보니 960번 저장에 21번). 임시 이름은 pid + 스레드 id 로(`save_json` 과 같은 꼴). 그 예외가 로그에 안 보여 한참 접속 대기열 탓으로 봤다 — **파이썬 3.8 은 파일로 돌린 stderr 를 통째로 버퍼링해, 죽인 서버의 traceback 은 로그에 남지 않는다. 시험 서버는 `python -u` 로 띄울 것.**
+- **시험**: 스크래치 `remote_setup.py`(paper-search 사본 + 논문 3편·공부 장 하나, 감시 폴더는 스크래치) → 8797 에 띄우고 `test_remote.py`(107가지: 이 PC 안/밖 가르기 · 꺼짐이면 거절 · Host·X-Forwarded 흉내 · 로그인 전에 열린 길 · 쿠키 · 밖에서 막는 것 · 메모 · 올리기(중복·PDF 아님·논문 아님 → `_확인필요`) · 백업(첫 86개 → 0 → 1) · 다른 사이트의 POST · 큰 본문 413 · 설정.json 이 그대로인가 · 겹친 저장 36개 · 깨진 상태 파일 · 로그아웃·비밀번호 바꿈·잠금) 전부 통과. `hammer_settings.py`(스레드 24개가 설정을 읽고 고쳐 쓰기: 오류 0). 내장 브라우저로 /m(서재·요약·번역·공부 절) · 기기 갈래 · 로그인 화면 · 「PDF 올리기」. 개발 서버를 다시 켠 뒤 홈·읽기 창·/m·기기 갈래를 열어 보고, 밖의 요청을 흉내 내 403 을 확인했다.
+- **Horarium 과의 사이**: Horarium(사용자의 다른 로컬 프로그램)은 Athenaeum 을 서버끼리만 부르고(`/api/reading_stats` — Host 가 127.0.0.1 이고 Origin 이 없어 이 PC 의 요청으로 통과), 화면은 `/vocab/quiz` 를 새 창으로 열 뿐이다. 그쪽에서 8770 을 사설망에 넘기더라도 그 길로 들어온 요청은 여기의 「다른 기기에서 열기」 와 로그인을 거친다. 다른 프로그램의 화면이 Athenaeum 에 직접 POST 하는 기능을 새로 만들면 Origin 검사에 걸린다 — 서버끼리 부르게 할 것.
+- **한계 · 아직 없는 것**: 연구실 PC 가 켜져 있어야 한다(꺼지면 어디서도 못 연다 — 그때 쓸 수 있는 것은 백업 폴더의 파일뿐). http 라 Android 의 '앱으로 설치' 는 안 되고 홈 화면 바로가기까지(https 는 Tailscale 관리 화면에서 HTTPS 인증서를 켜야 한다). 폰 화면의 탐색·원고·연구 노트, 오프라인 읽기, 백업 되살리기 단추, 기기마다 다른 비밀번호, 다른 기기에서 내보낸 워드 파일 받기(내보내기·워드 반영의 파일은 연구실 PC 에 생긴다 — 백업 폴더가 클라우드면 `원고\` 아래에서 보인다), `/api/settings` 의 읽기-고치기-쓰기를 한 잠금으로 묶는 것(지금도 두 저장이 같은 순간에 겹치면 뒤의 것이 이긴다 — 사람이 누르는 설정이라 그대로 두었다).
 
 ### 외부 API
 - OpenAlex: 과거에 검색 수백 회를 몰아 보내 429 가 계속된 적이 있다. **일괄 작업은 search 대신 DOI/ID 조회로**, polite pool(mailto), 요청 간격, 연속 실패 시 회로 차단기가 들어 있다

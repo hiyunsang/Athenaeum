@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 
 import requests
@@ -47,17 +48,42 @@ KEY_HELP = "https://help.openalex.org/api/authentication/"
 
 
 def settings():
-    try:
-        with open(SETTINGS_PATH, encoding="utf-8") as f:
-            d = json.load(f)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
+    for i in range(4):
+        try:
+            with open(SETTINGS_PATH, encoding="utf-8") as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except PermissionError:      # 다른 요청이 막 바꿔치기하는 순간 (Windows) — 잠깐 뒤 다시
+            time.sleep(0.03 * (i + 1))
+        except Exception:
+            return {}
+    return {}
+
+
+_SETTINGS_LOCK = threading.Lock()
 
 
 def save_settings(d):
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(d, f, ensure_ascii=False, indent=1)
+    """임시 파일에 쓴 뒤 바꿔치기 — 읽는 쪽이 반쯤 쓴 파일(→ 빈 설정)을 보지 않게. 한 번에 하나씩, 임시 파일 이름은 스레드마다 다르게 (2026-11-06)"""
+    tmp = "%s.%d.%d.tmp" % (SETTINGS_PATH, os.getpid(), threading.get_ident())
+    with _SETTINGS_LOCK:
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            for i in range(8):
+                try:
+                    os.replace(tmp, SETTINGS_PATH)
+                    return
+                except PermissionError:      # 누가 읽는 순간이거나 백신·색인기가 잠깐 잡고 있을 때
+                    time.sleep(0.04 * (i + 1))
+            with open(SETTINGS_PATH, "w", encoding="utf-8") as f:   # 끝내 못 바꿨으면 예전처럼 바로 쓴다
+                json.dump(d, f, ensure_ascii=False, indent=1)
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
 
 
 def api_key():

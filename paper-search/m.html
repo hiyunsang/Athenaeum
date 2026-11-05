@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Athenaeum</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#202020" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Athenaeum"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="/logo/icon-180.png">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="192x192" href="/logo/icon-192.png">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  :root { --mfs: 16px; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: var(--surface); font-size: 15px; -webkit-tap-highlight-color: transparent; }
+  #top { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line-2); padding-top: env(safe-area-inset-top); }
+  #bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: 36px; }
+  #bar .back { font-size: 22px; line-height: 1; padding: 4px 10px 6px 0; color: var(--text-2); background: none; border: 0; }
+  #bar .ttl { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #bar img.mark { height: 24px; }
+  #bar input { flex: 1; min-width: 0; font-size: 16px; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg); color: var(--text); }
+  #bar a.lnk, #bar button.lnk { font-size: 13.5px; color: var(--accent); background: none; border: 0; padding: 6px 4px; text-decoration: none; white-space: nowrap; }
+  #tabs { display: flex; border-top: 1px solid var(--line); }
+  #tabs button { flex: 1; padding: 9px 4px 8px; background: none; border: 0; border-bottom: 2px solid transparent; font-size: 14px; color: var(--text-2); }
+  #tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  #app { padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
+  .sub { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
+  .sub select { font-size: 14px; padding: 3px 4px; background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); }
+  .sub .sp { flex: 1; }
+  .sub button.fs { font-size: 14px; padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text-2); }
+  .row { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .row:active { background: var(--hover); }
+  .row .t { font-family: var(--font-serif); font-size: 16px; line-height: 1.36; }
+  .row .m { font-size: 12.5px; color: var(--text-2); margin-top: 4px; line-height: 1.4; }
+  .row .m .has { color: var(--accent); } .row .m .rd { color: var(--text-3); }
+  .empty { padding: 44px 22px; text-align: center; color: var(--text-3); font-size: 13.5px; line-height: 1.75; }
+  .empty button { margin-top: 12px; }
+  .doc { padding: 16px 16px 40px; font-size: var(--mfs); line-height: 1.78; word-break: keep-all; overflow-wrap: anywhere; }
+  .doc h1 { font-family: var(--font-serif); font-size: 1.22em; line-height: 1.36; margin: 0 0 .7em; font-weight: 500; }
+  .doc h2 { font-size: 1.04em; margin: 1.7em 0 .55em; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
+  .doc h3 { font-size: 1em; margin: 1.4em 0 .45em; }
+  .doc h3.extra { color: var(--text-2); font-size: .9em; border-top: 1px solid var(--line); padding-top: .9em; }
+  .doc p { margin: 0 0 .95em; } .doc p.extra { font-size: .92em; color: var(--text-2); }
+  .doc ul, .doc ol { padding-left: 1.3em; margin: 0 0 .95em; } .doc li { margin-bottom: .35em; }
+  .doc table { border-collapse: collapse; font-size: .84em; line-height: 1.5; margin: 0 0 1.1em; display: block; overflow-x: auto; max-width: 100%; }
+  .doc th, .doc td { border: 1px solid var(--line-2); padding: 4px 7px; vertical-align: top; min-width: 3.5em; }
+  .doc th { background: var(--bg); font-weight: 600; }
+  .doc caption { caption-side: top; text-align: left; font-size: .95em; color: var(--text-2); padding-bottom: 4px; }
+  .doc img { max-width: 100%; height: auto; }
+  .doc img.eq { display: block; margin: .7em auto; max-height: 7em; background: #fff; border-radius: 2px; }
+  .doc blockquote { margin: 0 0 .95em; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--text-2); }
+  .doc hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+  .doc code { font-size: .9em; background: var(--bg); padding: 0 3px; border-radius: 2px; }
+  .doc figure { margin: 1.2em 0; }
+  .doc figure img { display: block; margin: 0 auto; background: #fff; border-radius: var(--r); }
+  .doc figcaption { font-size: .82em; color: var(--text-2); margin-top: .5em; line-height: 1.6; }
+  .doc figcaption .src { color: var(--text-3); }
+  .doc .aim { color: var(--text-2); font-size: .92em; margin: -.2em 0 1.1em; }
+  .doc .c { font-size: .72em; color: var(--text-3); vertical-align: 2px; margin-left: 1px; }
+  .doc .eqn { overflow-x: auto; text-align: center; padding: .5em 0 .1em; font-size: 1.05em; }
+  .doc .imath.fail, .doc .eqn.fail { font-family: Consolas, monospace; font-size: .85em; color: var(--text-2); }
+  .doc aside { border-left: 3px solid var(--amber); padding: 2px 0 2px 12px; margin: 1.6em 0; font-size: .92em; }
+  .doc aside .hd { color: var(--amber); font-weight: 700; font-size: .92em; }
+  .doc aside h4 { margin: .8em 0 .2em; font-size: 1em; }
+  .doc details { margin: .5em 0; } .doc details summary { color: var(--text-2); font-size: .92em; }
+  .doc .seclist a { display: block; padding: 11px 0; border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
+  .doc .seclist a span { color: var(--text-3); font-size: .85em; margin-right: 6px; }
+  .secnav { display: flex; justify-content: space-between; gap: 10px; padding: 0 16px 30px; }
+  .note { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.68; overflow-wrap: anywhere; }
+  .note .when { font-size: 12px; color: var(--text-3); margin-bottom: 3px; }
+  .note .q { font-weight: 600; margin-bottom: 6px; white-space: pre-wrap; }
+  .note .a, .note .tx { white-space: pre-wrap; }
+  .note .quote { color: var(--text-2); border-left: 3px solid var(--line-2); padding-left: 8px; margin-bottom: 6px; font-size: 13.5px; }
+  .compose { padding: 12px 14px; border-bottom: 1px solid var(--line-2); }
+  .compose textarea { width: 100%; box-sizing: border-box; min-height: 68px; font-size: 16px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); font-family: inherit; }
+  .compose .acts { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .compose .acts .hint { flex: 1; line-height: 1.4; }
+  button.big, a.big { display: inline-block; font-size: 14.5px; padding: 8px 14px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--surface); color: var(--text); text-decoration: none; }
+  button.big.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.big:disabled { opacity: .5; }
+  .sech { padding: 14px 14px 6px; font-size: 12px; font-weight: 700; }
+  .foot { padding: 22px 14px; text-align: center; font-size: 12.5px; color: var(--text-3); line-height: 2; }
+  .foot a, .foot button { color: var(--text-2); background: none; border: 0; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; padding: 0 6px; }
+</style>
+</head>
+<body>
+<header id="top"><div id="bar"></div><div id="tabs" hidden></div></header>
+<main id="app"></main>
+<script>
+/* 휴대폰용 Athenaeum (2026-11-06, 사용자: '아테네움 폰으로 웹앱으로 볼 수 있으면'). 서재에서 논문을 찾아 요약·번역을 읽고, 메모를 적고 Claude 에게 묻고, 공부로 쓴 장을 읽는다.
+   새 API 는 없다 — PC 화면이 쓰는 것(/api/data · /api/gentext · /api/notes · /api/ask · /api/study · /api/ms/math)을 그대로 부른다. 주소: #/ 서재 · #/p/<파일>/<탭> 논문 · #/study 공부 · #/s/<장>/<절> */
+const $ = id => document.getElementById(id), app = $("app"), bar = $("bar"), tabs = $("tabs");
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const enc = encodeURIComponent;
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+function toLogin() { location.href = "/login?next=" + enc(location.pathname + location.hash); }
+async function api(url, body) {
+  const r = await fetch(url, body ? { method: "POST", body: JSON.stringify(body) } : undefined);
+  if (r.status === 401) { toLogin(); throw new Error("login"); }
+  return r.json();
+}
+async function text(url) { const r = await fetch(url); if (r.status === 401) { toLogin(); throw new Error("login"); } return r.ok ? r.text() : null; }
+const fmtDay = t => { const d = new Date(t * 1000); return (d.getMonth() + 1) + "/" + d.getDate(); };
+const fmtDur = s => s < 60 ? s + "초" : Math.floor(s / 60) + "분 " + (s % 60) + "초";
+
+let papers = null, studies = null, q = lsGet("m_q", ""), sort = lsGet("m_sort", "added"), route = {}, view = 0, isRemote = false;
+const studyCache = {}, pos = (() => { try { return JSON.parse(lsGet("m_pos", "{}")) || {}; } catch (e) { return {}; } })();
+let curHash = location.hash, posT = null, pingT = null, lastTouch = Date.now();
+function applyFs() { document.documentElement.style.setProperty("--mfs", (+lsGet("m_fs", "16") || 16) + "px"); }
+function fsBtns() { return "<button class='fs' data-fs='-1' aria-label='글씨 작게'>가−</button><button class='fs' data-fs='1' aria-label='글씨 크게'>가+</button>"; }
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-fs]"); if (!b) return;
+  lsSet("m_fs", String(Math.min(24, Math.max(13, (+lsGet("m_fs", "16") || 16) + (+b.dataset.fs))))); applyFs();
+});
+window.addEventListener("scroll", () => {   /* 읽던 자리 기억 (화면마다) */
+  lastTouch = Date.now(); clearTimeout(posT);
+  posT = setTimeout(() => { pos[curHash] = Math.round(window.scrollY); const ks = Object.keys(pos); if (ks.length > 60) delete pos[ks[0]]; lsSet("m_pos", JSON.stringify(pos)); }, 400);
+}, { passive: true });
+document.addEventListener("touchstart", () => { lastTouch = Date.now(); }, { passive: true });
+function restorePos() { const y = pos[curHash] || 0; setTimeout(() => window.scrollTo(0, y), 30); }
+
+function setBar(html, tabList, cur, onTab) {
+  bar.innerHTML = html;
+  if (!tabList) { tabs.hidden = true; tabs.innerHTML = ""; return; }
+  tabs.hidden = false;
+  tabs.innerHTML = tabList.map(t => "<button data-t='" + t[0] + "'" + (t[0] === cur ? " class='on'" : "") + ">" + t[1] + "</button>").join("");
+  tabs.querySelectorAll("button").forEach(b => b.onclick = () => onTab(b.dataset.t));
+  const bk = bar.querySelector(".back"); if (bk) bk.onclick = () => { if (history.length > 1) history.back(); else location.hash = "#/"; };
+}
+const homeBar = cur => setBar("<img class='mark' src='/logo/mark.svg' alt=''>" + (cur === "lib" ? "<input type='search' id='q' placeholder='제목 · 저자 · 저널 · 연도 · 라벨' value='" + esc(q) + "'>" : "<span class='ttl'>공부</span>"),
+  [["lib", "서재"], ["study", "공부"]], cur, t => { location.hash = t === "lib" ? "#/" : "#/study"; });
+
+/* ---------- 서재 ---------- */
+function matchQ(p, words) {
+  const hay = (p.title + " " + (p.author || "") + " " + (p.journal || "") + " " + (p.year || "") + " " + (p.labels || []).join(" ")).toLowerCase();
+  return words.every(w => hay.indexOf(w) >= 0);
+}
+function drawLib() {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  let list = (papers || []).filter(p => !words.length || matchQ(p, words));
+  const key = { added: p => p.added || 0, read: p => (p.read && p.read.last) || 0, year: p => +p.year || 0 }[sort] || (p => p.added || 0);
+  list = list.slice().sort((a, b) => key(b) - key(a) || (b.added || 0) - (a.added || 0));
+  if (sort === "read") list = list.filter(p => p.read && p.read.last);
+  const shown = list.slice(0, 300);
+  let h = "<div class='sub'><span>" + list.length + "편</span><span class='sp'></span><select id='sort'><option value='added'>최근에 넣은 순</option><option value='read'>최근에 읽은 순</option><option value='year'>연도순</option></select></div>";
+  h += shown.map(p => "<div class='row' data-f='" + esc(p.file) + "'><div class='t'>" + esc(p.title) + "</div><div class='m'>" + esc([p.year, p.journal, p.author].filter(Boolean).join(" · ")) +
+    (p.review ? " · 리뷰" : "") + (p.has_summary ? " · <span class='has'>요약</span>" : "") + (p.has_translation ? " · <span class='has'>번역</span>" : "") +
+    (p.read && p.read.last ? " · <span class='rd'>읽음 " + fmtDay(p.read.last) + "</span>" : "") + (p.notes_n ? " · 메모 " + p.notes_n : "") + "</div></div>").join("");
+  if (!list.length) h += "<div class='empty'>" + (papers && papers.length ? "맞는 논문이 없습니다." : "서재에 논문이 없습니다.") + "</div>";
+  else if (list.length > shown.length) h += "<div class='empty'>앞의 " + shown.length + "편만 보였습니다 — 검색어로 좁혀 주세요.</div>";
+  h += "<div class='foot'><a href='/?desktop=1'>PC 화면으로 보기</a>" + (isRemote ? "<button id='out'>로그아웃</button>" : "") + "</div>";
+  app.innerHTML = h;
+  $("sort").value = sort; $("sort").onchange = e => { sort = e.target.value; lsSet("m_sort", sort); drawLib(); window.scrollTo(0, 0); };
+  app.querySelectorAll(".row").forEach(r => r.onclick = () => { location.hash = "#/p/" + enc(r.dataset.f); });
+  const ob = $("out"); if (ob) ob.onclick = async () => { try { await api("/api/logout", {}); } catch (e) {} location.href = "/login"; };
+}
+async function viewLib(my) {
+  homeBar("lib");
+  const qi = $("q"); let t = null;
+  qi.oninput = () => { clearTimeout(t); t = setTimeout(() => { q = qi.value.trim(); lsSet("m_q", q); if (papers) { drawLib(); window.scrollTo(0, 0); } }, 180); };
+  if (!papers) { app.innerHTML = "<div class='empty'>서재를 불러오는 중…</div>"; const d = await api("/api/data"); if (my !== view) return; papers = d.papers || []; }
+  else api("/api/data").then(d => { papers = d.papers || papers; if (my === view) { const y = window.scrollY; drawLib(); window.scrollTo(0, y); } }).catch(() => {});   /* 조용히 새로 받기 */
+  drawLib(); restorePos();
+}
+
+/* ---------- 글(요약·번역) 그리기 ---------- */
+function inline(s, file) {
+  s = esc(s).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");
+  s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' src='/eq?file=" + enc(file || "") + "&name=" + enc(n) + "'>");
+  s = s.replace(/\[s\d+\]\s*/g, "");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  return s;
+}
+function mdTable(rows, file) {
+  const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+  const isSep = r => /^[\s|:\-]+$/.test(r) && r.indexOf("-") >= 0;
+  const head = rows.length > 1 && isSep(rows[1]);
+  return "<table>" + rows.map((r, k) => isSep(r) ? "" : "<tr>" + cells(r).map(c => (head && k === 0 ? "<th>" : "<td>") + inline(c, file) + (head && k === 0 ? "</th>" : "</td>")).join("") + "</tr>").join("") + "</table>";
+}
+function md(src, file) {
+  const lines = String(src || "").replace(/\r/g, "").split("\n"), out = []; let i = 0, para = [];
+  const flush = () => { if (para.length) { out.push("<p>" + inline(para.join(" "), file) + "</p>"); para = []; } };
+  const isLi = s => /^\s*([-*•]|\d+[.)])\s+/.test(s), isTb = s => /^\s*\|.*\|\s*$/.test(s);
+  while (i < lines.length) {
+    const ln = lines[i]; let m;
+    if (!ln.trim()) { flush(); i++; continue; }
+    if ((m = /^(#{1,4})\s+(.*)$/.exec(ln))) { flush(); const lv = Math.min(3, m[1].length); out.push("<h" + lv + ">" + inline(m[2], file) + "</h" + lv + ">"); i++; continue; }
+    if (isTb(ln)) { flush(); const rows = []; while (i < lines.length && isTb(lines[i])) rows.push(lines[i++]); out.push(mdTable(rows, file)); continue; }
+    if (isLi(ln)) {
+      flush(); const ord = /^\s*\d+[.)]\s+/.test(ln), items = [];
+      while (i < lines.length && (isLi(lines[i]) || (items.length && /^\s{2,}\S/.test(lines[i])))) { if (isLi(lines[i])) items.push(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, "")); else items[items.length - 1] += " " + lines[i].trim(); i++; }
+      out.push((ord ? "<ol>" : "<ul>") + items.map(x => "<li>" + inline(x, file) + "</li>").join("") + (ord ? "</ol>" : "</ul>")); continue;
+    }
+    if (/^\s*>/.test(ln)) { flush(); const b = []; while (i < lines.length && /^\s*>/.test(lines[i])) b.push(lines[i++].replace(/^\s*>\s?/, "")); out.push("<blockquote>" + inline(b.join(" "), file) + "</blockquote>"); continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(ln)) { flush(); out.push("<hr>"); i++; continue; }
+    para.push(ln.trim()); i++;
+  }
+  flush(); return out.join("");
+}
+
+/* ---------- 논문 ---------- */
+const PTABS = [["summary", "요약"], ["translation", "번역"], ["notes", "메모 · 질문"]];
+function paperBar(file, title, tab) {
+  setBar("<button class='back' aria-label='뒤로'>‹</button><span class='ttl'>" + esc(title) + "</span><a class='lnk' href='/pdf?file=" + enc(file) + "' target='_blank' rel='noopener'>PDF</a>",
+    PTABS, tab, t => { location.replace("#/p/" + enc(file) + "/" + t); });
+}
+async function viewPaper(file, tab, my) {
+  tab = PTABS.some(t => t[0] === tab) ? tab : lsGet("m_tab", "summary");
+  if (tab !== "notes") lsSet("m_tab", tab);
+  let p = (papers || []).find(x => x.file === file);
+  paperBar(file, p ? p.title : file.replace(/\.pdf$/i, ""), tab);
+  if (!p) { try { p = await api("/api/paperinfo?file=" + enc(file)); } catch (e) { p = { title: file }; } if (my !== view) return; paperBar(file, p.title || file, tab); }
+  if (tab === "notes") return viewNotes(file, my);
+  app.innerHTML = "<div class='empty'>불러오는 중…</div>";
+  const src = await text("/api/gentext?file=" + enc(file) + "&kind=" + tab); if (my !== view) return;
+  if (src == null) return viewMissing(file, tab, my);
+  const meta = [p.year, p.journal, p.author].filter(Boolean).join(" · ");
+  app.innerHTML = "<div class='sub'><span>" + esc(meta) + "</span><span class='sp'></span>" + fsBtns() + "</div><div class='doc'>" + md(src, file) + "</div>";
+  restorePos(); startPing(file, tab);
+}
+async function viewMissing(file, kind, my) {
+  const ko = kind === "summary" ? "요약" : "번역";
+  const st = await api("/api/genstatus?file=" + enc(file) + "&kind=" + kind).catch(() => ({})); if (my !== view) return;
+  if (st.status === "running") return waitGen(file, kind, my);
+  app.innerHTML = "<div class='empty'>이 논문의 " + ko + "이 아직 없습니다." + (st.status === "error" && st.error ? "<br>지난번 오류: " + esc(st.error) : "") +
+    "<br><button class='big primary' id='gen'>" + ko + " 만들기</button><br><span class='hint'>" + (kind === "summary" ? "1~3분 걸립니다." : "논문 길이에 따라 5~20분 걸리고 토큰을 많이 씁니다.") + " 화면을 닫아도 PC 에서 계속 만듭니다.</span></div>";
+  $("gen").onclick = async () => { $("gen").disabled = true; try { await api("/api/generate", { file, kind }); } catch (e) {} if (my === view) waitGen(file, kind, my); };
+}
+async function waitGen(file, kind, my) {
+  const t0 = Date.now();
+  const tick = async () => {
+    if (my !== view) return;
+    let st; try { st = await api("/api/genstatus?file=" + enc(file) + "&kind=" + kind); } catch (e) { st = {}; }
+    if (my !== view) return;
+    if (st.status === "done") return viewPaper(file, kind, my);
+    if (st.status === "error" || st.status === "none") return viewMissing(file, kind, my);
+    app.innerHTML = "<div class='empty'>만드는 중… " + esc(st.stage || "") + "<br>" + fmtDur(st.elapsed || Math.round((Date.now() - t0) / 1000)) + "째<br><span class='hint'>화면을 닫아도 계속 만듭니다.</span></div>";
+    setTimeout(tick, 5000);
+  };
+  tick();
+}
+function startPing(file, kind) {   /* 읽기 기록 — PC 의 읽기 화면과 같은 신호(30초마다, 화면이 보이고 최근 2분 안에 만졌을 때만) */
+  clearInterval(pingT);
+  if (/[?&]nolog=1/.test(location.search)) return;   /* 시험으로 열 때 (/m?nolog=1) 는 읽기 기록을 남기지 않는다 — PC 읽기 화면의 &nolog=1 과 같다 */
+  pingT = setInterval(() => {
+    if (document.hidden || Date.now() - lastTouch > 120000) return;
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    fetch("/api/read_ping", { method: "POST", body: JSON.stringify({ file, kind, pos: h > 0 ? Math.min(1, window.scrollY / h) : 0, sec: 30 }) }).catch(() => {});
+  }, 30000);
+}
+async function viewNotes(file, my) {
+  app.innerHTML = "<div class='empty'>불러오는 중…</div>";
+  let d; try { d = await api("/api/notes?file=" + enc(file)); } catch (e) { d = {}; } if (my !== view) return;
+  const draw = () => {
+    const notes = d.notes || [], qa = d.qa || [];
+    let h = "<div class='compose'><textarea id='nt' placeholder='메모를 적거나, 이 논문에 관해 Claude 에게 물어보세요'></textarea><div class='acts'><span class='hint' id='nmsg'></span><button class='big' id='nsave'>메모로</button><button class='big primary' id='nask'>묻기</button></div></div>";
+    if (qa.length) h += "<div class='sech'>질문과 답 " + qa.length + "</div>" + qa.map(x => "<div class='note'><div class='when'>" + esc(x.t || "") + "</div>" + (x.quote ? "<div class='quote'>" + esc(String(x.quote).slice(0, 300)) + "</div>" : "") + "<div class='q'>" + esc(x.q || "") + "</div><div class='a'>" + esc(x.a || "") + "</div></div>").join("");
+    if (notes.length) h += "<div class='sech'>메모 " + notes.length + "</div>" + notes.map(x => "<div class='note'><div class='when'>" + esc(x.t || "") + "</div>" + (x.quote ? "<div class='quote'>" + esc(String(x.quote).slice(0, 300)) + "</div>" : "") + "<div class='tx'>" + esc(x.text || "") + "</div></div>").join("");
+    if (!qa.length && !notes.length) h += "<div class='empty'>아직 메모나 질문이 없습니다.</div>";
+    app.innerHTML = h;
+    const ta = $("nt"), msg = $("nmsg");
+    $("nsave").onclick = async () => {
+      const v = ta.value.trim(); if (!v) { ta.focus(); return; }
+      $("nsave").disabled = true;
+      try { await api("/api/notes", { file, op: "add_note", text: v, quote: "", kind: "mobile" }); d = await api("/api/notes?file=" + enc(file)); } catch (e) { msg.textContent = "저장하지 못했습니다"; $("nsave").disabled = false; return; }
+      if (my === view) draw();
+    };
+    $("nask").onclick = async () => {
+      const v = ta.value.trim(); if (!v) { ta.focus(); return; }
+      $("nask").disabled = $("nsave").disabled = true; const t0 = Date.now();
+      const tm = setInterval(() => { msg.textContent = "Claude 가 논문을 읽고 답하는 중 · " + fmtDur(Math.round((Date.now() - t0) / 1000)) + " (보통 30초~2분)"; }, 1000);
+      let r; try { r = await api("/api/ask", { file, question: v, quote: "", kind: "mobile" }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+      clearInterval(tm); if (my !== view) return;
+      if (r.error) { msg.textContent = "⚠ " + r.error; $("nask").disabled = $("nsave").disabled = false; return; }
+      d.qa = r.qa || d.qa; draw();
+    };
+  };
+  draw(); restorePos();
+}
+
+/* ---------- 공부 ---------- */
+async function viewStudies(my) {
+  homeBar("study");
+  if (!studies) { app.innerHTML = "<div class='empty'>불러오는 중…</div>"; const d = await api("/api/study"); if (my !== view) return; studies = d.items || []; }
+  const done = studies.filter(s => s.status === "done"), busy = studies.filter(s => s.status === "running");
+  let h = done.map(s => { const st = s.stats || {}; return "<div class='row' data-s='" + esc(s.id) + "'><div class='t'>" + esc(s.title || s.topic) + "</div><div class='m'>" + fmtDay(s.t) + " · 논문 " + (s.papers || 0) + "편" + (st.units ? " · 문장 " + st.units : "") + (st.figs ? " · 그림 " + st.figs : "") + (st.eqs ? " · 식 " + st.eqs : "") + "</div></div>"; }).join("");
+  if (busy.length) h += "<div class='sech'>쓰는 중</div>" + busy.map(s => "<div class='row'><div class='t'>" + esc(s.title || s.topic) + "</div><div class='m'>" + esc(s.stage || "") + "</div></div>").join("");
+  if (!done.length && !busy.length) h += "<div class='empty'>아직 다 쓴 장이 없습니다. 새 장은 PC 화면의 「공부」 에서 씁니다.</div>";
+  app.innerHTML = h;
+  app.querySelectorAll("[data-s]").forEach(r => r.onclick = () => { location.hash = "#/s/" + enc(r.dataset.s); });
+  restorePos();
+}
+const citeNums = (st, u) => [...new Set((u.src || []).map(s => (st.papers[+String(s).split(":")[0]] || {}).n).filter(Boolean))].sort((a, b) => a - b);
+function mtext(t) {   /* 본문의 $…$ 는 수식으로 (나중에 한꺼번에 그린다) */
+  return esc(t || "").replace(/\$([^$\n]{1,400})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
+}
+const unitsHtml = (st, b) => (b.units || []).map(u => { const ns = citeNums(st, u); return mtext(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : ""); }).join(" ");
+function secHtml(st, si) {
+  const sec = st.chapter.sections[si], fig = n => "/api/study/fig?id=" + enc(st.id) + "&name=" + enc(n);
+  let h = "<h1>" + (sec.kind === "summary" ? "" : (si + 1) + ". ") + esc(sec.title) + "</h1>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "");
+  (sec.blocks || []).forEach(b => {
+    if (b.h) { h += b.kind === "extra" ? "<h3 class='extra'>번외</h3>" : "<h3>" + esc(b.h) + "</h3>"; return; }
+    if (b.table) {
+      h += "<table><caption><b>표 " + (b.table.no || "") + ".</b> " + esc(b.table.cap || "") + "</caption>" + ((b.table.cols || []).length ? "<tr>" + b.table.cols.map(c => "<th>" + esc(c) + "</th>").join("") + "</tr>" : "") +
+        (b.units || []).map(u => "<tr>" + (u.cells || [u.t]).map(c => "<td>" + esc(c) + "</td>").join("") + "</tr>").join("") + "</table>"; return;
+    }
+    if (b.eq) {
+      const e = b.eq, p = st.papers[e.pi] || {};
+      h += "<figure><div class='eqn' data-display='1'" + (e.latex ? " data-tex=\"" + esc(e.latex) + "\"" : "") + (e.img ? " data-img='" + fig(e.img) + "'" : "") + ">" + (e.latex ? esc(e.latex) : (e.img ? "<img alt='수식' src='" + fig(e.img) + "'>" : "")) + "</div>" +
+        "<figcaption><b>식 " + (e.no || "") + ".</b> " + unitsHtml(st, b) + " <span class='src'>— " + esc(p.short || "") + (e.n ? ", 식 (" + esc(e.n) + ")" : "") + "</span></figcaption></figure>"; return;
+    }
+    if (b.fig) {
+      const f = b.fig, p = st.papers[f.pi] || {};
+      h += "<figure><img loading='lazy' alt='' src='" + fig(f.img) + "'" + (f.w && f.h ? " width='" + f.w + "' height='" + f.h + "'" : "") + "><figcaption><b>" + (f.kind === "fig" ? "그림 " : "표 ") + (f.no || "") + ".</b> " + unitsHtml(st, b) +
+        " <span class='src'>— " + esc(p.short || "") + ", " + (f.kind === "fig" ? "Fig. " : "Table ") + esc(f.n) + "</span></figcaption></figure>"; return;
+    }
+    h += "<p" + (b.kind === "extra" ? " class='extra'" : "") + ">" + unitsHtml(st, b) + "</p>";
+  });
+  const cm = sec.comment && sec.comment.parts;
+  if (cm && cm.length) h += "<aside><div class='hd'>Claude 의 생각 — 서재의 문장으로 확인한 것이 아니라 풀이입니다</div>" + cm.map(x => "<h4>" + esc(x.h || "") + "</h4><div>" + esc(x.t || "") + "</div>").join("") + "</aside>";
+  const qz = sec.quiz && sec.quiz.items;
+  if (qz && qz.length) h += "<h3>확인 물음</h3>" + qz.map(x => "<details><summary>" + esc(x.q || "") + "</summary><p>" + esc(x.a || "") + "</p></details>").join("");
+  return h;
+}
+async function renderMath(root) {
+  const els = [...root.querySelectorAll("[data-tex]:not([data-mml])")]; if (!els.length) return;
+  els.forEach(el => el.dataset.mml = "1");
+  let r = null; try { r = await api("/api/ms/math", { items: els.map(el => ({ tex: el.dataset.tex, display: el.dataset.display === "1" })) }); } catch (e) {}
+  const mml = (r && r.mml) || [];
+  els.forEach((el, i) => {
+    const m = mml[i];
+    if (m && m.indexOf("<math") === 0) { el.innerHTML = m; return; }
+    if (el.dataset.img) el.innerHTML = "<img alt='수식' src='" + el.dataset.img + "'>"; else el.classList.add("fail");   /* 엔진이 못 그리면 원문 그림으로 */
+  });
+}
+async function viewStudy(id, si, my) {
+  let st = studyCache[id];
+  setBar("<button class='back' aria-label='뒤로'>‹</button><span class='ttl'>" + esc(st ? st.chapter.title : "공부") + "</span>");
+  if (!st) {
+    app.innerHTML = "<div class='empty'>장을 불러오는 중…</div>";
+    try { st = await api("/api/study/get?id=" + enc(id)); } catch (e) { st = null; } if (my !== view) return;
+    if (!st || !st.chapter || !(st.chapter.sections || []).length) { app.innerHTML = "<div class='empty'>이 장을 열 수 없습니다 (아직 쓰는 중이거나 지워졌습니다).</div>"; return; }
+    studyCache[id] = st; bar.querySelector(".ttl").textContent = st.chapter.title || "";
+  }
+  const ch = st.chapter, secs = ch.sections, go = k => "#/s/" + enc(id) + "/" + k;
+  if (si == null || isNaN(si) || !secs[si]) {   /* 개요: 제목 · 범위 · 차례 · 답하지 못한 것 · 참고문헌 */
+    const refs = (st.papers || []).filter(p => p.n).sort((a, b) => a.n - b.n);
+    app.innerHTML = "<div class='doc'><h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<div class='aim'>" + esc(ch.scope) + "</div>" : "") +
+      "<div class='seclist'>" + secs.map((s, k) => "<a href='" + go(k) + "'>" + (s.kind === "summary" ? "" : "<span>" + (k + 1) + "</span>") + esc(s.title) + "</a>").join("") + "</div>" +
+      ((ch.gaps || []).length ? "<h2>이 서재로는 답하지 못한 것</h2><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul>" : "") +
+      (refs.length ? "<details><summary>참고문헌 " + refs.length + "편</summary><ol>" + refs.map(p => "<li value='" + p.n + "'>" + esc(p.ref || p.title || p.file) + "</li>").join("") + "</ol></details>" : "") + "</div>";
+    restorePos(); return;
+  }
+  app.innerHTML = "<div class='sub'><span>" + (si + 1) + " / " + secs.length + "</span><span class='sp'></span>" + fsBtns() + "</div><div class='doc' id='chdoc'>" + secHtml(st, si) + "</div>" +
+    "<div class='secnav'>" + (si > 0 ? "<a class='big' href='" + go(si - 1) + "'>‹ 앞 절</a>" : "<span></span>") + "<a class='big' href='#/s/" + enc(id) + "'>차례</a>" + (si < secs.length - 1 ? "<a class='big' href='" + go(si + 1) + "'>다음 절 ›</a>" : "<span></span>") + "</div>";
+  renderMath($("chdoc")); restorePos();
+}
+
+/* ---------- 길 ---------- */
+function onRoute() {
+  clearInterval(pingT); curHash = location.hash; const my = ++view;
+  const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  const done = p => p && p.catch && p.catch(e => { if (my === view && String(e && e.message) !== "login") app.innerHTML = "<div class='empty'>불러오지 못했습니다 — 연결을 확인하고 다시 열어 주세요.</div>"; });
+  if (parts[0] === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], my));
+  if (parts[0] === "study") return done(viewStudies(my));
+  if (parts[0] === "s" && parts[1]) return done(viewStudy(parts[1], parts[2] == null ? null : +parts[2], my));
+  return done(viewLib(my));
+}
+window.addEventListener("hashchange", onRoute);
+applyFs();
+(async () => { try { isRemote = !!(await api("/api/version")).remote; } catch (e) {} onRoute(); })();   /* 다른 기기에서 열었는가 — 「로그아웃」 을 보일지 */
+</script>
+</body>
+</html>

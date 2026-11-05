@@ -21,7 +21,7 @@ SRC = os.path.join(ROOT, "paper-search")
 DIST = os.path.join(ROOT, "dist"); CACHE = os.path.join(ROOT, "tools", "_cache")
 OUT = os.path.join(DIST, "Athenaeum")
 EXCLUDE_DIRS = {"__pycache__", "_cache"}
-EXCLUDE_FILES = {"text_index.json", "맵생성기록.txt", "설정.json", "proto_turning_zones.svg", "proto_turning_zones.png",
+EXCLUDE_FILES = {"text_index.json", "맵생성기록.txt", "설정.json", "기기설정.json", "proto_turning_zones.svg", "proto_turning_zones.png",
                  "claude_mascot.png"}   # 설정.json = 개인 OpenAlex 키 · claude_mascot.png = 사용자가 준 그림(git 제외) — 화면은 없으면 글자만 보인다(img onerror)
 
 
@@ -120,7 +120,8 @@ def main():
     # 3) 프로그램 파일
     dst_src = os.path.join(OUT, "paper-search")
     def ignore(d, names):
-        return [n for n in names if n in EXCLUDE_DIRS or n in EXCLUDE_FILES or n.endswith(".pyc")]
+        return [n for n in names if n in EXCLUDE_DIRS or n in EXCLUDE_FILES or n.endswith((".pyc", ".tmp"))
+                or n.startswith(("기기설정.json.", "설정.json."))]      # 기기설정.json = 비밀번호 확인값·로그인된 기기 (옆에 남긴 깨진 사본·임시 파일도)
     shutil.copytree(SRC, dst_src, ignore=ignore)
     io.open(os.path.join(dst_src, "tags.json"), "w", encoding="utf-8").write("{}\n")          # 라벨 데이터는 받는 사람의 것으로 새로
     # 라벨 체계는 빈 채로 나간다(고정 묶음 '유형' 만). 원작자의 기계가공 체계를 남에게 주지 않고, 논문이 10편쯤 모이면

@@ -3868,6 +3868,431 @@ def update_check(force=False):
     return out
 
 
+# ---------- 다른 기기에서 쓰기 — 로그인 · 원격 요청 가르기 · Tailscale · 올리기 · 백업 (2026-11-06) ----------
+# 사용자: '아테네움 데이터베이스를 클라우드로 옮기고 집 컴퓨터나 노트북에서도 똑같이 … 로그인하거나 … 폰으로 웹앱으로'.
+# 구조(Horarium DESIGN §27 과 같다): 서버와 데이터는 이 PC 한 곳에만 있고, 다른 기기는 Tailscale(내 기기끼리만 통하는 사설망)의 serve 가
+# 127.0.0.1:PORT 로 넘겨 주는 요청으로 들어온다 — 서버는 계속 127.0.0.1 에만 묶여 있다. 이 PC 안의 요청은 그대로 통과하고, 밖에서 온 요청은
+# 「다른 기기에서 열기」 가 켜져 있고 비밀번호로 로그인한 기기만 통과한다(꺼져 있으면 모두 거절). 데이터를 클라우드에 두 벌로 동기화하지 않는 까닭:
+# 이 PC 의 서버가 늘 켜져 글을 쓰므로(읽기 기록·학습·수집) 두 PC 가 같은 폴더에 쓰면 충돌이 난다 — 클라우드는 한쪽 방향 백업으로만 쓴다.
+import hmac
+import secrets
+
+SESSION_DAYS = 60
+UPLOAD_DIR = os.path.join(os.path.dirname(ARCHIVE), "수집", "올리기")
+_REMOTE_LOCK = threading.Lock()
+_REMOTE_CACHE = {"mt": -1, "cfg": {}, "bad_t": 0}
+_TL = threading.local()                 # 요청을 받는 스레드의 표시: remote = 이 PC 밖에서 온 요청
+_LOGIN_FAILS = []                        # 로그인 실패 시각 — 10분에 8번이면 잠시 막는다
+_SESS_SEEN = {}                          # 세션 → 마지막으로 쓴 시각 (메모리에만)
+_FWD_HEADERS = ("X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded", "X-Real-IP",
+                "Tailscale-User-Login", "Tailscale-User-Name", "CF-Connecting-IP", "CF-Ray")
+_REMOTE_OPEN = {"/login", "/api/login", "/ui.css", "/favicon.ico", "/manifest.webmanifest"}      # 로그인 전에도 주는 것 (로그인 화면의 재료)
+_REMOTE_BLOCK_POST = {"/api/remote", "/api/backup", "/api/settings", "/api/open", "/api/claude_install", "/api/claude_login", "/api/fonts"}
+_LOCAL_ONLY_MSG = "이 기능은 Athenaeum 이 깔린 PC 에서만 됩니다"
+MANIFEST = {"name": "Athenaeum", "short_name": "Athenaeum", "start_url": "/m", "scope": "/", "display": "standalone", "lang": "ko",
+            "background_color": "#ffffff", "theme_color": "#ffffff",
+            "icons": [{"src": "/logo/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                      {"src": "/logo/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
+
+_os_startfile = getattr(os, "startfile", None)
+
+
+def _guarded_startfile(*a, **k):
+    """다른 기기에서 온 요청으로는 이 PC 의 파일·폴더·프로그램을 열지 않는다 (원고·수집의 '열기' 단추가 os.startfile 을 부른다)"""
+    if getattr(_TL, "remote", False):
+        raise PermissionError(_LOCAL_ONLY_MSG)
+    return _os_startfile(*a, **k)
+
+
+if _os_startfile:
+    os.startfile = _guarded_startfile
+
+
+DEVICES_PATH = os.path.join(BASE, "기기설정.json")     # 다른 기기에서 열기·백업의 상태. 비공개(git·배포판·백업에서 뺀다). 설정.json(API 키)과 따로 둔다 — 로그인·백업 기록이 그 파일을 건드리지 않게
+
+
+def _dev_read_strict(recover=False):
+    """기기설정.json 을 엄격히 읽는다. 파일이 없으면 {}. 읽는 순간이 저장과 겹쳤으면 잠깐 뒤 다시 읽고, 끝내 못 읽으면 예외 —
+    못 읽은 것을 '비어 있다' 로 보고 그 위에 쓰면 비밀번호 확인값·로그인된 기기 목록이 지워진다.
+    recover: 글이 깨진 채 그대로면(손으로 고치다 깨뜨린 경우 — 저장은 늘 통째로 바꿔치기라 반쯤 쓴 파일은 생기지 않는다) 그 파일을 옆에 남기고 {} 에서 다시 시작한다."""
+    last = None
+    for i in range(8):
+        try:
+            if not os.path.isfile(DEVICES_PATH):
+                return {}
+            with open(DEVICES_PATH, encoding="utf-8") as f:
+                raw = f.read()
+            d = json.loads(raw) if raw.strip() else {}
+            return d if isinstance(d, dict) else {}
+        except (OSError, ValueError) as e:
+            last = e
+            time.sleep(0.05)
+    if recover and isinstance(last, ValueError):
+        try:
+            os.replace(DEVICES_PATH, "%s.깨짐_%s" % (DEVICES_PATH, time.strftime("%Y%m%d_%H%M%S")))
+            return {}
+        except OSError:
+            pass
+    raise RuntimeError("기기 설정 파일을 읽지 못했습니다 (%s)" % last)
+
+
+def _dev_cfg():
+    """기기설정.json 전체 (파일이 바뀌었을 때만 다시 읽는다). 못 읽으면 지난 값을 쓴다 — 처음부터 못 읽었으면 {} 라 다른 기기에서는 열리지 않는다(닫힌 쪽이 기본)."""
+    try:
+        st = os.stat(DEVICES_PATH)
+        mt = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        _REMOTE_CACHE.update(mt=None, cfg={})
+        return _REMOTE_CACHE["cfg"]
+    if _REMOTE_CACHE["mt"] != mt and time.time() - _REMOTE_CACHE["bad_t"] > 3:
+        try:
+            _REMOTE_CACHE.update(mt=mt, cfg=_dev_read_strict(), bad_t=0)
+        except Exception:
+            _REMOTE_CACHE["bad_t"] = time.time()      # 깨진 파일을 요청마다 다시 읽지 않게 — 3초 뒤에 다시 본다
+    return _REMOTE_CACHE["cfg"]
+
+
+def remote_cfg():
+    r = _dev_cfg().get("remote")
+    return r if isinstance(r, dict) else {}
+
+
+def _settings_change(key, change):
+    """기기설정.json 의 한 갈래(remote · backup)를 고친다 — 잠금 안에서 엄격히 다시 읽어 그 갈래만 바꾸고 통째로 바꿔치기(save_json). 못 읽으면 쓰지 않고 예외."""
+    with _REMOTE_LOCK:
+        d = _dev_read_strict(recover=True)
+        r = dict(d[key]) if isinstance(d.get(key), dict) else {}
+        change(r)
+        d[key] = r
+        save_json(DEVICES_PATH, d)
+        _REMOTE_CACHE.update(mt=-1, bad_t=0)
+        return r
+
+
+def _pw_hash(pw, salt, it=200000):
+    return hashlib.pbkdf2_hmac("sha256", str(pw).encode("utf-8"), bytes.fromhex(salt), int(it)).hex()
+
+
+def remote_set_password(pw):
+    pw = str(pw or "")
+    if len(pw) < 8:
+        return {"error": "비밀번호는 8자 이상이어야 합니다"}
+    salt = secrets.token_hex(16)
+    _settings_change("remote", lambda r: r.update(salt=salt, hash=_pw_hash(pw, salt), iter=200000, sessions={}))   # 비밀번호를 바꾸면 로그인된 기기는 모두 풀린다
+    _SESS_SEEN.clear()
+    return {"ok": True}
+
+
+def is_local_request(h):
+    """이 PC 안에서 온 요청인가. 서버는 127.0.0.1 에만 묶여 있으므로 밖의 요청은 이 PC 의 중계(tailscale serve 같은 것)를 거쳐 온다 —
+    그런 요청은 상대가 127.0.0.1 이어도 Host 가 localhost 가 아니거나 넘겨 준 흔적(X-Forwarded-* 등)이 있다. 하나라도 걸리면 밖의 요청으로 본다."""
+    peer = (getattr(h, "client_address", None) or ("",))[0]
+    if peer not in ("127.0.0.1", "::1"):
+        return False
+    host = (h.headers.get("Host") or "").strip().lower()
+    name = host[:host.find("]") + 1] if host.startswith("[") else host.split(":")[0]
+    if name not in ("localhost", "127.0.0.1", "[::1]", ""):
+        return False
+    for k in _FWD_HEADERS:
+        if h.headers.get(k):
+            return False
+    return True
+
+
+def _cookie_token(h):
+    m = re.search(r"(?:^|;\s*)ath_s=([A-Za-z0-9_\-]{20,200})", h.headers.get("Cookie") or "")
+    return m.group(1) if m else ""
+
+
+def _tok_key(tok):
+    return hashlib.sha256(str(tok).encode("ascii", "ignore")).hexdigest()
+
+
+def _session_ok(tok):
+    if not tok:
+        return False
+    k = _tok_key(tok)
+    s = (remote_cfg().get("sessions") or {}).get(k)
+    if not isinstance(s, dict) or time.time() - float(s.get("t") or 0) > SESSION_DAYS * 86400:
+        return False
+    _SESS_SEEN[k] = time.time()
+    return True
+
+
+def remote_login(h, body):
+    """(상태 코드, 답, Set-Cookie 값) — 비밀번호가 맞으면 이 기기의 세션을 만든다"""
+    rc = remote_cfg()
+    if not rc.get("on") or not rc.get("hash"):
+        return 403, {"error": "다른 기기에서 여는 것이 꺼져 있습니다"}, None
+    now = time.time()
+    _LOGIN_FAILS[:] = [t for t in _LOGIN_FAILS if now - t < 600]
+    if len(_LOGIN_FAILS) >= 8:
+        return 429, {"error": "로그인 시도가 너무 많습니다 — 10분 뒤에 다시 해 주세요"}, None
+    try:
+        good = hmac.compare_digest(_pw_hash(str(body.get("password") or ""), rc.get("salt") or "00", rc.get("iter") or 200000), str(rc.get("hash")))
+    except Exception:
+        good = False
+    if not good:
+        _LOGIN_FAILS.append(now)
+        time.sleep(0.6)
+        return 401, {"error": "비밀번호가 맞지 않습니다"}, None
+    tok = secrets.token_urlsafe(32)
+    k = _tok_key(tok)
+    ua = (h.headers.get("User-Agent") or "")[:120]
+    ip = (h.headers.get("X-Forwarded-For") or (h.client_address or ("",))[0] or "")[:60]
+
+    def ch(r):
+        ss = r.get("sessions") if isinstance(r.get("sessions"), dict) else {}
+        ss = {a: b for a, b in ss.items() if isinstance(b, dict) and now - float(b.get("t") or 0) < SESSION_DAYS * 86400}
+        ss[k] = {"t": now, "ua": ua, "ip": ip}
+        for old in sorted(ss, key=lambda a: ss[a].get("t", 0))[:max(0, len(ss) - 12)]:
+            ss.pop(old, None)
+        r["sessions"] = ss
+    _settings_change("remote", ch)
+    secure = "; Secure" if (h.headers.get("X-Forwarded-Proto") or "").lower() == "https" else ""
+    return 200, {"ok": True}, "ath_s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s" % (tok, SESSION_DAYS * 86400, secure)
+
+
+def remote_logout(h):
+    tok = _cookie_token(h)
+    if tok:
+        k = _tok_key(tok)
+        _settings_change("remote", lambda r: (r.get("sessions") or {}).pop(k, None))
+        _SESS_SEEN.pop(k, None)
+
+
+def _ua_short(ua):
+    ua = str(ua or "")
+    dev = "iPhone" if "iPhone" in ua else "iPad" if "iPad" in ua else "Android" if "Android" in ua else "Windows" if "Windows" in ua else "Mac" if "Mac OS" in ua else "기기"
+    br = "Edge" if "Edg/" in ua else "Chrome" if "Chrome/" in ua else "Safari" if "Safari/" in ua else "Firefox" if "Firefox/" in ua else ""
+    return (dev + (" · " + br if br else "")).strip()
+
+
+def remote_view(is_remote, fresh=False):
+    rc = remote_cfg()
+    out = {"on": bool(rc.get("on")), "has_password": bool(rc.get("hash")), "remote": bool(is_remote), "port": PORT, "session_days": SESSION_DAYS}
+    if not is_remote:      # 기기 목록·주소는 이 PC 에서만 보인다
+        ss = rc.get("sessions") if isinstance(rc.get("sessions"), dict) else {}
+        out["sessions"] = sorted(({"t": s.get("t"), "dev": _ua_short(s.get("ua")), "ip": s.get("ip", ""), "seen": _SESS_SEEN.get(k)} for k, s in ss.items() if isinstance(s, dict)),
+                                 key=lambda x: -(x.get("t") or 0))
+        out["tailscale"] = tailscale_view(fresh)
+    return out
+
+
+# ---- Tailscale: 설치·로그인은 사용자가 하고, 여기서는 상태를 보고 serve(사설망 → 127.0.0.1:PORT)만 건다. 인터넷 공개(Funnel)는 쓰지 않는다 ----
+_TS = {"t": 0, "v": None}
+
+
+def find_tailscale():
+    for p in (r"C:\Program Files\Tailscale\tailscale.exe", r"C:\Program Files (x86)\Tailscale\tailscale.exe"):
+        if os.path.isfile(p):
+            return p
+    return shutil.which("tailscale")
+
+
+def _ts_run(exe, *args, timeout=25):
+    try:
+        r = subprocess.run([exe] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, **_no_window())
+        return r.returncode, ((r.stdout or b"") + (r.stderr or b"")).decode("utf-8", "replace").strip()
+    except subprocess.TimeoutExpired:
+        return 124, "시간 초과"
+    except Exception as e:
+        return 1, "%s: %s" % (type(e).__name__, e)
+
+
+def tailscale_view(fresh=False):
+    now = time.time()
+    if not fresh and _TS["v"] is not None and now - _TS["t"] < 20:
+        return _TS["v"]
+    exe = find_tailscale()
+    v = {"found": bool(exe), "running": False, "state": "", "name": "", "dns": "", "ips": [], "serving": False, "urls": []}
+    if exe:
+        rc, out = _ts_run(exe, "status", "--json", timeout=10)
+        try:
+            st = json.loads(out)
+        except Exception:
+            st = None
+        if rc == 0 and isinstance(st, dict):
+            v["state"] = str(st.get("BackendState") or "")
+            v["running"] = v["state"] == "Running"
+            me = st.get("Self") or {}
+            v["ips"] = [ip for ip in (me.get("TailscaleIPs") or []) if "." in str(ip)]
+            v["dns"] = str(me.get("DNSName") or "").rstrip(".")
+            v["name"] = v["dns"].split(".")[0] if v["dns"] else str(me.get("HostName") or "")
+        if v["running"]:
+            rc, out = _ts_run(exe, "serve", "status", timeout=10)
+            v["serving"] = ("127.0.0.1:%d" % PORT) in out
+            host = v["name"] or (v["ips"][0] if v["ips"] else "")
+            if host:
+                v["urls"] = ["http://%s:%d" % (host, PORT)]
+                if v["ips"] and host != v["ips"][0]:
+                    v["urls"].append("http://%s:%d" % (v["ips"][0], PORT))
+    _TS.update(t=now, v=v)
+    return v
+
+
+def tailscale_serve(on=True):
+    exe = find_tailscale()
+    if not exe:
+        return {"error": "Tailscale 이 이 PC 에 설치되어 있지 않습니다 — tailscale.com/download 에서 받아 설치하고 로그인한 뒤 다시 눌러 주세요"}
+    if not tailscale_view(True).get("running"):
+        return {"error": "Tailscale 이 로그인(연결)되어 있지 않습니다 — 작업 표시줄의 Tailscale 아이콘에서 로그인한 뒤 다시 눌러 주세요"}
+    if on:
+        rc, out = _ts_run(exe, "serve", "--bg", "--http=%d" % PORT, "http://127.0.0.1:%d" % PORT, timeout=40)
+    else:
+        rc, out = _ts_run(exe, "serve", "--http=%d" % PORT, "off", timeout=40)
+    _TS["v"] = None
+    return {"ok": True, "out": out[:600]} if rc == 0 else {"error": "설정하지 못했습니다: " + out[:400]}
+
+
+# ---- 백업: 데이터를 고른 폴더(Google Drive 같은 클라우드 폴더)에 한쪽 방향으로 복사한다. 바뀐 파일만, 지운 파일은 백업에서 지우지 않는다 ----
+BACKUP_DIRS = ("논문모음", "번역", "메모", "원고", "공부", "연구노트", "단어장", "관련맵", "수집", "글꼴")
+BACKUP_FILES = (("paper-search", "tags.json"), ("paper-search", "labels.json"), ("paper-search", "수집설정.json"), ("", "읽기기록.json"))   # 설정.json(API 키)·기기설정.json(비밀번호 확인값·로그인된 기기)은 뺀다
+_BACKUP = {"running": False, "stop": False, "done": 0, "total": 0, "copied": 0, "bytes": 0, "err": "", "t0": 0, "cur": ""}
+_BACKUP_LOCK = threading.Lock()
+
+
+def backup_cfg():
+    b = _dev_cfg().get("backup")
+    return b if isinstance(b, dict) else {}
+
+
+def backup_view():
+    b = backup_cfg()
+    v = {"dir": b.get("dir") or "", "auto": bool(b.get("auto")), "last": b.get("last") or None}
+    v.update({k: _BACKUP[k] for k in ("running", "done", "total", "copied", "bytes", "err", "cur")})
+    return v
+
+
+def _backup_dir_error(dest):
+    if not dest or not os.path.isabs(dest):
+        return "폴더의 전체 경로를 적어 주세요 (예: 드라이브 글자부터)"
+    root = os.path.normcase(os.path.abspath(os.path.dirname(ARCHIVE)))
+    d = os.path.normcase(os.path.abspath(dest))
+    if d == root or d.startswith(root + os.sep) or root.startswith(d + os.sep):
+        return "백업 폴더는 Athenaeum 폴더의 안이나 위가 아닌 다른 곳이어야 합니다"
+    return ""
+
+
+def backup_set(body):
+    ch = {}
+    if "dir" in body:
+        dest = str(body.get("dir") or "").strip().strip('"')
+        if dest:
+            err = _backup_dir_error(dest)
+            if err:
+                return {"error": err}
+            try:
+                os.makedirs(dest, exist_ok=True)
+            except OSError as e:
+                return {"error": "그 폴더를 만들거나 열 수 없습니다: %s" % str(e)[:120]}
+        ch["dir"] = dest
+    if "auto" in body:
+        ch["auto"] = bool(body.get("auto"))
+    _settings_change("backup", lambda b: b.update(ch))
+    return {"ok": True}
+
+
+def _backup_items():
+    root = os.path.dirname(ARCHIVE)
+    items = []
+    for d in BACKUP_DIRS:
+        sd = os.path.join(root, d)
+        if not os.path.isdir(sd):
+            continue
+        for dp, dns, fns in os.walk(sd):
+            if dp == sd:
+                skip = {"논문모음": ("_중복사본",), "수집": ("받기", "올리기")}.get(d, ())
+                dns[:] = [x for x in dns if x not in skip]
+            dns[:] = [x for x in dns if x != "__pycache__"]
+            rel = os.path.relpath(dp, root)
+            for f in fns:
+                if f.endswith((".tmp", ".athtmp")) or f.startswith("~$"):
+                    continue
+                items.append((os.path.join(dp, f), os.path.join(rel, f)))
+    for sub, f in BACKUP_FILES:
+        p = os.path.join(root, sub, f) if sub else os.path.join(root, f)
+        if os.path.isfile(p):
+            items.append((p, os.path.join(sub, f) if sub else f))
+    return items
+
+
+def backup_run(dest=None):
+    """바뀐 파일만 백업 폴더에 복사한다. 돌려주는 값 = 기록 {t, files, copied, bytes, errors, sec, stopped} 또는 {error}"""
+    dest = dest or backup_cfg().get("dir")
+    err = _backup_dir_error(dest or "")
+    if err:
+        return {"error": "백업 폴더가 정해지지 않았습니다" if not dest else err}
+    if not os.path.isdir(dest):
+        return {"error": "백업 폴더를 찾을 수 없습니다 (드라이브가 연결돼 있는지 확인): " + dest}
+    if not _BACKUP_LOCK.acquire(False):
+        return {"error": "이미 백업하는 중입니다"}
+    try:
+        _BACKUP.update(running=True, stop=False, done=0, total=0, copied=0, bytes=0, err="", t0=time.time(), cur="")
+        items = _backup_items()
+        _BACKUP["total"] = len(items)
+        errs = 0
+        for src, rel in items:
+            if _BACKUP["stop"] or errs > 50:
+                break
+            _BACKUP["done"] += 1
+            dst = os.path.join(dest, rel)
+            try:
+                ss = os.stat(src)
+                try:
+                    ds = os.stat(dst)
+                except OSError:
+                    ds = None
+                if ds is not None and ds.st_size == ss.st_size and ds.st_mtime >= ss.st_mtime - 2:
+                    continue
+                _BACKUP["cur"] = rel
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                tmp = dst + ".athtmp"
+                shutil.copyfile(src, tmp)
+                os.replace(tmp, dst)
+                try:
+                    os.utime(dst, (ss.st_atime, ss.st_mtime))
+                except OSError:
+                    pass
+                _BACKUP["copied"] += 1
+                _BACKUP["bytes"] += ss.st_size
+            except Exception as e:
+                errs += 1
+                _BACKUP["err"] = "%s — %s" % (rel, str(e)[:120])
+        rec = {"t": time.time(), "files": len(items), "copied": _BACKUP["copied"], "bytes": _BACKUP["bytes"], "errors": errs,
+               "sec": int(time.time() - _BACKUP["t0"]), "stopped": bool(_BACKUP["stop"]), "host": socket.gethostname(), "dir": dest}
+        _settings_change("backup", lambda b: b.update(last=rec))
+        try:
+            with open(os.path.join(dest, "_Athenaeum_백업기록.json"), "w", encoding="utf-8") as f:
+                json.dump(rec, f, ensure_ascii=False, indent=1)
+        except OSError:
+            pass
+        return rec
+    finally:
+        _BACKUP["running"] = False
+        _BACKUP["cur"] = ""
+        _BACKUP_LOCK.release()
+
+
+def backup_loop():
+    """「매일 자동으로」: 마지막 백업이 20시간 넘었고 새벽 3~7시이거나, 36시간 넘게 못 했으면 한 번"""
+    time.sleep(180)
+    while True:
+        try:
+            b = backup_cfg()
+            if b.get("auto") and b.get("dir") and not _BACKUP["running"]:
+                age = time.time() - float((b.get("last") or {}).get("t") or 0)
+                if (age > 20 * 3600 and 3 <= time.localtime().tm_hour < 7) or age > 36 * 3600:
+                    backup_run()
+        except Exception:
+            pass
+        time.sleep(1200)
+
+
+class _Server(ThreadingHTTPServer):
+    request_queue_size = 64      # 기본 5 — 요청이 한꺼번에 몰리면(여러 기기·여러 창) 일부가 응답 없이 끊겼다
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -3883,8 +4308,202 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    # ---- 다른 기기에서 쓰기 (2026-11-06) ----
+    def _gate(self, method):
+        """이 PC 밖에서 온 요청은 「다른 기기에서 열기」 가 켜져 있고 로그인한 기기만 통과한다. 이 PC 안의 요청은 그대로. 통과하면 True"""
+        local = is_local_request(self)
+        self._remote = _TL.remote = not local
+        self._preauth = False         # 로그인 없이 열려 있는 길로 들어온 요청인가 (do_POST 가 본문 크기를 줄여 받는다)
+        if method == "POST":
+            # 브라우저는 POST 에 Origin(그 화면의 주소)을 붙인다. 다른 사이트의 화면이 이 서버로 보내는 요청은 받지 않는다 — 이 PC 안에서도, 로그인한 기기에서도.
+            origin = (self.headers.get("Origin") or "").strip().lower()
+            if origin:
+                mine = {(self.headers.get(k) or "").strip().lower() for k in ("Host", "X-Forwarded-Host")} - {""}
+                if origin == "null" or urlparse(origin).netloc not in mine:
+                    self._send(403, {"error": "다른 사이트에서 보낸 요청은 받지 않습니다"})
+                    return False
+        if local:
+            return True
+        path = urlparse(self.path).path
+        rc = remote_cfg()
+        if not rc.get("on") or not rc.get("hash"):
+            self._deny(403, "이 Athenaeum 은 다른 기기에서 여는 것이 꺼져 있습니다. Athenaeum 이 깔린 PC 의 ⚙ 설정 → 기기 에서 켭니다.", path)
+            return False
+        if path in _REMOTE_OPEN or path.startswith(("/logo/", "/fonts/")):
+            self._preauth = True
+            return True
+        if _session_ok(_cookie_token(self)):
+            if method == "POST" and path in _REMOTE_BLOCK_POST:
+                self._send(403, {"error": _LOCAL_ONLY_MSG})
+                return False
+            return True
+        if method == "POST" or path.startswith("/api/"):
+            self._send(401, {"error": "로그인이 필요합니다", "login": True})
+        else:
+            from urllib.parse import quote
+            self.send_response(302)
+            self.send_header("Location", "/login?next=" + quote(self.path, safe=""))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        return False
+
+    def _deny(self, code, msg, path):
+        if path.startswith("/api/"):
+            return self._send(code, {"error": msg})
+        page = ("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Athenaeum</title>"
+                "<body style='font-family:system-ui,sans-serif;max-width:520px;margin:18vh auto;padding:0 20px;line-height:1.7;color:#333'>"
+                "<h3>Athenaeum</h3><p>%s</p></body>") % html_mod.escape(msg)
+        self._send(code, page.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _json_cookie(self, code, out, cookie):
+        data = json.dumps(out, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _remote_get(self, url):
+        if url.path == "/login":
+            if not self._remote:      # 이 PC 에서는 로그인이 필요 없다
+                self.send_response(302); self.send_header("Location", "/"); self.send_header("Content-Length", "0"); self.end_headers()
+                return
+            with open(os.path.join(BASE, "login.html"), "rb") as f:
+                return self._send(200, f.read(), "text/html; charset=utf-8")
+        if url.path == "/m":          # 휴대폰용 화면 (서재 · 읽기 · 메모 · 공부 장)
+            with open(os.path.join(BASE, "m.html"), "rb") as f:
+                return self._send(200, f.read(), "text/html; charset=utf-8")
+        if url.path == "/manifest.webmanifest":
+            return self._send(200, json.dumps(MANIFEST).encode("utf-8"), "application/manifest+json")
+        if url.path == "/api/remote":
+            return self._send(200, remote_view(self._remote, "check" in parse_qs(url.query)))
+        if url.path == "/api/backup":
+            if self._remote:
+                return self._send(403, {"error": _LOCAL_ONLY_MSG})
+            return self._send(200, backup_view())
+
+    def _remote_post(self, body):
+        p = self.path
+        if p == "/api/login":
+            try:
+                code, out, cookie = remote_login(self, body)
+            except Exception as e:
+                code, out, cookie = 503, {"error": "지금은 로그인하지 못했습니다 — 잠시 뒤 다시 해 주세요 (%s)" % str(e)[:80]}, None
+            return self._json_cookie(code, out, cookie)
+        if p == "/api/logout":
+            try:
+                remote_logout(self)
+            except Exception:
+                pass
+            return self._json_cookie(200, {"ok": True}, "ath_s=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+        if self._remote:              # 아래는 이 PC 에서만 (_gate 가 먼저 막지만 한 번 더)
+            return self._send(403, {"error": _LOCAL_ONLY_MSG})
+        try:
+            return self._remote_admin(p, body)
+        except Exception as e:
+            return self._send(200, {"error": "설정을 저장하지 못했습니다: %s" % str(e)[:160], "result": {"error": str(e)[:160]}})
+
+    def _remote_admin(self, p, body):
+        op = body.get("op")
+        if p == "/api/remote":
+            if op == "password":
+                r = remote_set_password(body.get("password"))
+            elif op == "on":
+                on = bool(body.get("on"))
+                if on and not remote_cfg().get("hash"):
+                    r = {"error": "먼저 비밀번호를 정해 주세요"}
+                else:
+                    _settings_change("remote", lambda x: x.update(on=on))
+                    r = {"ok": True}
+            elif op == "logout_all":
+                _settings_change("remote", lambda x: x.update(sessions={}))
+                _SESS_SEEN.clear()
+                r = {"ok": True}
+            elif op == "serve":
+                r = tailscale_serve(bool(body.get("on", True)))
+            else:
+                r = {"error": "bad op"}
+            v = remote_view(False, True)
+            v["result"] = r
+            return self._send(200, v)
+        if p == "/api/backup":
+            if op == "set":
+                r = backup_set(body)
+            elif op == "run":
+                if _BACKUP["running"]:
+                    r = {"error": "이미 백업하는 중입니다"}
+                else:
+                    err = _backup_dir_error(backup_cfg().get("dir") or "")
+                    if err:
+                        r = {"error": "백업 폴더를 먼저 정해 주세요" if not backup_cfg().get("dir") else err}
+                    else:
+                        threading.Thread(target=backup_run, daemon=True).start()
+                        time.sleep(0.3)
+                        r = {"ok": True}
+            elif op == "stop":
+                _BACKUP["stop"] = True
+                r = {"ok": True}
+            else:
+                r = {"error": "bad op"}
+            v = backup_view()
+            v["result"] = r
+            return self._send(200, v)
+
+    def _upload(self):
+        """PDF 올리기 — 다른 기기에서 받은 논문이나 끌어다 놓은 파일. 본문 = PDF 바이트, ?name=파일 이름.
+        수집과 같은 판정(본문의 DOI·파일 이름의 PII → Crossref → 제목 대조)으로 보관소에 넣고, 확인 안 되면 지우지 않고 수집/올리기/_확인필요 에 둔다"""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 200 * 1024 * 1024:
+            return self._send(400, {"error": "파일이 없거나 200 MB 를 넘습니다"})
+        q = parse_qs(urlparse(self.path).query)
+        name = os.path.basename(unquote(q.get("name", ["paper.pdf"])[0]).replace("\\", "/")) or "paper.pdf"
+        name = re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", name)[:150]
+        if not name.lower().endswith(".pdf"):
+            name += ".pdf"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        dest = intake.unique_path(UPLOAD_DIR, name)
+        remain, first = length, True
+        try:
+            with open(dest, "wb") as f:
+                while remain > 0:
+                    chunk = self.rfile.read(min(1 << 20, remain))
+                    if not chunk:
+                        break
+                    if first:
+                        first = False
+                        if chunk.lstrip()[:5] != b"%PDF-":
+                            raise ValueError("PDF 파일이 아닙니다")
+                    f.write(chunk)
+                    remain -= len(chunk)
+            if remain > 0:
+                raise ValueError("전송이 끊겼습니다")
+        except Exception as e:
+            try:
+                os.remove(dest)       # 방금 내가 만든, 다 받지 못한 파일
+            except OSError:
+                pass
+            return self._send(400, {"error": str(e)[:200]})
+        r = intake.ingest(dest, doi="", title="")
+        if r.get("file"):
+            threading.Thread(target=refresh_new_papers, daemon=True).start()
+            return self._send(200, {"ok": True, "file": r["file"], "dup": bool(r.get("dup"))})
+        return self._send(200, {"error": r.get("error") or "보관소에 넣지 못했습니다"})
+
     def do_GET(self):
+        if not self._gate("GET"):
+            return
         url = urlparse(self.path)
+        if url.path in ("/login", "/m", "/manifest.webmanifest", "/api/remote", "/api/backup"):
+            return self._remote_get(url)
+        if url.path in ("/", "/index.html") and "desktop" not in url.query and re.search(r"Mobi|Android|iPhone", self.headers.get("User-Agent") or ""):
+            self.send_response(302); self.send_header("Location", "/m"); self.send_header("Content-Length", "0"); self.end_headers()   # 휴대폰은 폰용 화면으로 (PC 화면은 /?desktop=1)
+            return
         if url.path == "/ms" or url.path.startswith("/api/ms") or url.path.startswith("/fig/"):
             return ms.handle_get(self, url)
         if url.path in ("/vocab", "/vocab/quiz") or url.path.startswith("/api/vocab"):
@@ -4202,7 +4821,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(404, {"error": "no font"})
         elif url.path == "/api/version":   # 실행 bat(launch_check)·설치 도우미·환경설정이 어느 판이 도는지 확인
-            self._send(200, {"version": app_version(), "ui": ui_stamp(), "engine": engine()})   # ui = 화면 파일이 마지막으로 바뀐 때 · engine = 화면이 모델 이름표를 맞추는 데 — 열어 둔 창이 옛 화면인지 ui.js 가 견준다
+            self._send(200, {"version": app_version(), "ui": ui_stamp(), "engine": engine(), "remote": bool(getattr(self, "_remote", False))})   # ui = 화면 파일이 마지막으로 바뀐 때 · engine = 화면이 모델 이름표를 맞추는 데 — 열어 둔 창이 옛 화면인지 ui.js 가 견준다
         elif url.path == "/ui.js":
             with open(os.path.join(BASE, "ui.js"), "rb") as f:
                 self._send(200, f.read(), "application/javascript; charset=utf-8")
@@ -4387,12 +5006,36 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            return self._do_post()
+        except PermissionError as e:
+            if getattr(self, "_remote", False) and str(e) == _LOCAL_ONLY_MSG:      # 다른 기기에서 이 PC 의 폴더·파일을 열려고 한 요청 (막아 둔 os.startfile)
+                return self._send(403, {"error": _LOCAL_ONLY_MSG})
+            raise
+
+    def _do_post(self):
+        if not self._gate("POST"):
+            return
+        if urlparse(self.path).path == "/api/upload":
+            return self._upload()
+        try:
+            length = max(0, int(self.headers.get("Content-Length") or 0))
+        except ValueError:
+            return self._send(400, {"error": "bad length"})
+        if self._preauth and length > 4096:      # 로그인 전의 요청이 큰 본문을 읽히지 못하게 (주소에 ?x 를 붙여도)
+            self.close_connection = True
+            return self._send(413, {"error": "요청이 너무 큽니다"})
         try:
             body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
         except ValueError:
             self._send(400, {"error": "bad json"})
             return
+        if not isinstance(body, dict):
+            body = {}
+        if self.path in ("/api/login", "/api/logout", "/api/remote", "/api/backup"):
+            return self._remote_post(body)
+        if self._remote and self.path == "/api/intake" and body.get("op") in ("open_log", "open_watch", "open_config", "config"):
+            return self._send(403, {"error": _LOCAL_ONLY_MSG})
         if self.path.startswith("/api/ms"):
             return ms.handle_post(self, body)
         if self.path.startswith("/api/vocab"):
@@ -4814,7 +5457,8 @@ def main():
     threading.Thread(target=refresh_new_papers, daemon=True).start()
     threading.Thread(target=libnet_build, daemon=True).start()   # 서재 인용 이웃 색인 (새 논문만, 배경)
     corpus.start()   # 서재 학습 — 설정의 시간대에 배경으로(편마다 한 번, 하루 상한)
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    threading.Thread(target=backup_loop, daemon=True).start()   # 백업 폴더가 정해져 있고 「매일 자동으로」 가 켜져 있으면 새벽에 한 번
+    _Server(("127.0.0.1", PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

@@ -165,6 +165,20 @@ function openSettings(cat) {
         row("글꼴 파일 넣기", "<button class='ureset' id='fontFileBtn'>파일 고르기…</button><input type='file' id='fontFile' accept='.ttf,.otf,.woff,.woff2' style='display:none'>", ".ttf · .otf · .woff2"),
         row("설치된 글꼴 이름으로", "<input type='text' id='fontName' placeholder='예: 함초롬바탕'><button class='ureset' id='fontNameBtn'>추가</button>", "이 컴퓨터에 깔린 글꼴의 이름을 그대로 적습니다"),
         "<div class='urow'><div class='uhint' id='fontState'>추가한 글꼴은 읽기·원고의 「글꼴 모양」 목록에 나옵니다</div></div>"] }] },
+    { id: "devices", name: "기기", groups: [
+      { title: "다른 기기에서 쓰기", rows: [
+        row("다른 기기에서 열기", "<label class='usw'><input type='checkbox' id='rmOn'><i></i></label><span class='uout' id='rmState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "집 PC·노트북·휴대폰의 브라우저에서 이 PC 의 Athenaeum 을 엽니다. 이 PC 밖에서 온 요청은 비밀번호 로그인을 거치고, 꺼 두면 밖에서는 열리지 않습니다", true),
+        row("비밀번호", "<input type='password' id='rmPw' placeholder='8자 이상' autocomplete='new-password'><button class='ureset' id='rmPwSet'>정하기</button><span class='uout' id='rmPwState' style='min-width:0'></span>",
+            "다른 기기에서 로그인할 때 씁니다. 비밀번호 자체는 저장하지 않고 확인용 값만 둡니다. 바꾸면 로그인돼 있던 기기는 모두 풀립니다", true),
+        row("연결", "<button class='ureset' id='rmServe'>연결 설정</button><span class='uout' id='rmTs' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "Tailscale(내 기기끼리만 통하는 사설망)을 이 PC 와 쓸 기기에 깔고 같은 계정으로 로그인한 뒤 「연결 설정」 을 누르면 주소가 나옵니다. 인터넷에 공개하지 않습니다. 휴대폰은 그 주소를 열어 홈 화면에 추가하면 앱처럼 씁니다", true),
+        row("로그인된 기기", "<button class='ureset' id='rmOut'>모두 로그아웃</button><span class='uout' id='rmSess' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>", "", true)] },
+      { title: "백업", rows: [
+        row("백업 폴더", "<input type='text' id='bkDir' placeholder='폴더의 전체 경로' style='width:260px'><button class='ureset' id='bkSave'>저장</button>",
+            "논문·번역·메모·원고·공부·연구 노트를 이 폴더에 복사해 둡니다(바뀐 파일만, 지운 파일은 백업에서 지우지 않음). Google Drive 같은 클라우드 폴더를 고르면 PC 가 고장 나도 남고 다른 PC 에서도 파일이 보입니다", true),
+        row("매일 자동으로", "<label class='usw'><input type='checkbox' id='bkAuto'><i></i></label>", "새벽에 한 번"),
+        row("지금 백업", "<button class='ureset' id='bkNow'>백업</button><span class='uout' id='bkState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>", "", true)] }] },
     { id: "keys", name: "연결", groups: [
       { title: "논문 탐색 · 관련맵", rows: [
         row("OpenAlex API 키", key("oaKey", "oaKeyState"), "키가 없으면 같은 네트워크(학교)가 나눠 쓰는 무료 일일 한도에 걸릴 수 있습니다. 무료 키: <a href='https://help.openalex.org/api/authentication/' target='_blank'>help.openalex.org</a>", true),
@@ -302,6 +316,61 @@ function openSettings(cat) {
     };
     document.getElementById("codexCheck").onclick = () => { cs.textContent = "확인 중…"; post({ codex_recheck: true }); };
   }
+  {   /* 기기 갈래: 다른 기기에서 열기(로그인) · Tailscale 연결 · 백업 (2026-11-06) */
+    const $i = id => document.getElementById(id), on = $i("rmOn");
+    if (on) {
+      const st = $i("rmState"), pw = $i("rmPw"), pws = $i("rmPwState"), ts = $i("rmTs"), ss = $i("rmSess");
+      const fmtT = t => { if (!t) return ""; const d = new Date(t * 1000); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+      const showR = v => {
+        if (v.remote) {   /* 다른 기기에서 연 설정 창 — 바꾸는 것은 Athenaeum 이 깔린 PC 에서만 */
+          ["rmOn", "rmPw", "rmPwSet", "rmServe", "rmOut", "bkDir", "bkSave", "bkAuto", "bkNow"].forEach(id => { const e = $i(id); if (e) e.disabled = true; });
+          on.checked = true; st.innerHTML = "이 설정은 Athenaeum 이 깔린 PC 에서만 바꿉니다 · <a href='#' id='rmMeOut'>이 기기 로그아웃</a>";
+          $i("rmMeOut").onclick = async e => { e.preventDefault(); try { await fetch("/api/logout", { method: "POST", body: "{}" }); } catch (e2) {} location.href = "/login"; };
+          return;
+        }
+        on.checked = !!v.on;
+        st.textContent = v.on ? "켜짐" : (v.has_password ? "꺼짐" : "꺼짐 — 먼저 비밀번호를 정합니다");
+        pws.textContent = v.has_password ? "정해져 있음" : "아직 없음";
+        const t = v.tailscale || {};
+        ts.innerHTML = !t.found ? "Tailscale 이 이 PC 에 없습니다 — <a href='https://tailscale.com/download' target='_blank' rel='noopener'>tailscale.com/download</a> 에서 받아 설치하고 로그인합니다"
+          : !t.running ? "Tailscale 이 로그인되어 있지 않습니다 (작업 표시줄의 아이콘에서 로그인)"
+          : t.serving ? "연결됨 — 다른 기기에서 <b>" + (t.urls || []).map(uiEsc).join("</b> 또는 <b>") + "</b>"
+          : "Tailscale 켜짐 (" + uiEsc(t.name || "") + ") — 「연결 설정」 을 누르면 주소가 열립니다";
+        const list = v.sessions || [];
+        ss.textContent = list.length ? list.length + "대 — " + list.slice(0, 4).map(x => x.dev + " " + fmtT(x.t)).join(", ") : "없음";
+        if (v.result && v.result.error) st.textContent = "⚠ " + v.result.error;
+      };
+      const postR = body => fetch("/api/remote", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(v => { showR(v); return v; }).catch(() => { st.textContent = "저장하지 못했습니다"; });
+      fetch("/api/remote?check=1").then(r => r.json()).then(showR).catch(() => {});
+      on.addEventListener("change", () => postR({ op: "on", on: on.checked }));
+      $i("rmPwSet").onclick = async () => {
+        if ((pw.value || "").length < 8) { pws.textContent = "8자 이상으로 적어 주세요"; pw.focus(); return; }
+        const v = await postR({ op: "password", password: pw.value });
+        if (v && v.result && v.result.ok) { pw.value = ""; pws.textContent = "정했습니다"; } else if (v && v.result) pws.textContent = "⚠ " + (v.result.error || "");
+      };
+      $i("rmServe").onclick = async () => { ts.textContent = "설정 중…"; const v = await postR({ op: "serve", on: true }); if (v && v.result && v.result.error) ts.textContent = "⚠ " + v.result.error; };
+      $i("rmOut").onclick = () => postR({ op: "logout_all" });
+      const bd = $i("bkDir"), ba = $i("bkAuto"), bs = $i("bkState"); let bt = null;
+      const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round(n / 1e6) + " MB";
+      const showB = v => {
+        if (!v || !("dir" in v)) return;
+        if (document.activeElement !== bd) bd.value = v.dir || "";
+        ba.checked = !!v.auto;
+        const l = v.last;
+        bs.textContent = v.running ? "백업 중 " + v.done + " / " + v.total + " · 복사 " + v.copied + "개 (" + mb(v.bytes) + ")"
+          : (v.result && v.result.error) ? "⚠ " + v.result.error
+          : l ? "마지막 " + fmtT(l.t) + " — 파일 " + l.files + "개 가운데 " + l.copied + "개 복사 (" + mb(l.bytes) + ")" + (l.errors ? " · 실패 " + l.errors : "") + (l.stopped ? " · 중단됨" : "")
+          : (v.dir ? "아직 백업한 적이 없습니다" : "폴더를 정하면 백업할 수 있습니다");
+        clearTimeout(bt); if (v.running && $i("uiSettings")) bt = setTimeout(loadB, 2000);
+      };
+      const loadB = () => fetch("/api/backup").then(r => r.json()).then(showB).catch(() => {});
+      const postB = body => fetch("/api/backup", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(showB).catch(() => { bs.textContent = "저장하지 못했습니다"; });
+      loadB();
+      $i("bkSave").onclick = () => postB({ op: "set", dir: bd.value.trim() });
+      ba.addEventListener("change", () => postB({ op: "set", auto: ba.checked }));
+      $i("bkNow").onclick = () => { bs.textContent = "시작하는 중…"; postB({ op: "run" }); };
+    }
+  }
   document.addEventListener("keydown", escClose);
 }
 function escClose(e) { if (e.key === "Escape") closeSettings(); }
@@ -376,6 +445,6 @@ function uiUpdateInfo() { return fetch("/api/update_check").then(r => r.json()).
     fix(document);
     new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) fix(n); }))).observe(document.documentElement, { childList: true, subtree: true });
   }
-  const go = () => fetch("/api/version").then(r => r.json()).then(v => { window.UI_ENGINE = v.engine || "claude"; if (v.engine === "codex") start(); }).catch(() => {});
+  const go = () => fetch("/api/version").then(r => r.json()).then(v => { window.UI_ENGINE = v.engine || "claude"; if (v.remote) document.documentElement.dataset.remote = "1"; if (v.engine === "codex") start(); }).catch(() => {});
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
 })();

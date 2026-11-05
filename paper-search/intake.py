@@ -614,7 +614,7 @@ def ingest(pdf_path, doi="", title=""):
     if meta is None or not (title_matches(meta["title"], page_text) or _same_title(meta["title"], title)):
         _park(pdf_path)
         log("받기 — 논문으로 확인되지 않아 _확인필요 에 둠: {}".format(name))
-        return {"error": "받은 파일이 그 논문인지 확인되지 않아 보관소에 넣지 않았습니다 (수집\\받기\\_확인필요 에 두었습니다)"}
+        return {"error": "논문으로 확인되지 않아 보관소에 넣지 않았습니다 — DOI 를 찾지 못했거나 제목이 맞지 않습니다 (파일은 지우지 않고 _확인필요 폴더에 두었습니다)"}
     os.makedirs(cfg.target_dir, exist_ok=True)
     canonical = os.path.join(cfg.target_dir, build_filename(meta, cfg))
     if os.path.exists(canonical):
