@@ -925,7 +925,9 @@ async function viewNote(id, my) {
     nav.querySelector(".nt").textContent = nt.title || "노트";
     $("msgs").innerHTML = "<div class='ch2' style='margin-top:6px'>" + (nt.kind === "ask" ? "물음" : "연구 주제 · " + (NSTAT[nt.status] || "")) + "</div><div class='ch1'>" + esc(nt.title || "") + "</div>" +
       (nt.seed && nt.seed.text ? "<div class='doc' style='padding:0;font-size:14px'><details><summary>출발점</summary><p style='white-space:pre-wrap'>" + esc(nt.seed.text) + "</p></details></div>" : "") +
-      th.map(m => { if (m.role === "user") return bubble(m.text || ""); Object.assign(ancs, m.anchors || {});
+      th.map(m => { if (m.role === "user") return bubble(m.text || "");
+        if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
+        Object.assign(ancs, m.anchors || {});
         return answer(m.text || "", { anchors: m.anchors || {} }) + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + "</span></div>"; }).join("") +
       (nt.pending ? waitHtml("Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");

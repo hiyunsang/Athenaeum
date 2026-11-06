@@ -155,6 +155,13 @@ function openSettings(cat) {
       { title: "그 밖에", rows: [
         row("쓰다 멈추면 자동 검토", sw("ms_autorev"), "30초 멈추면 그 문단을 검토합니다. 사용량이 듭니다"),
         row("도식 코드 모델", sel("fig_model", [["opus", "Opus (꼼꼼함, 5~7분)"], ["sonnet", "Sonnet (빠름, 약 2분)"]]), "말로 만드는 도식의 그리기 코드를 쓰는 모델")] },
+      { title: "Claude 채팅이 보는 폴더", rows: [
+        row("서재 사본 만들어 두기", "<label class='usw'><input type='checkbox' id='shOn'><i></i></label><span class='uout' id='shState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "연구 노트·공부·논문 요약·번역·원고를 Claude 채팅(데스크톱 앱)이 읽기 좋은 md 파일로 한 폴더에 만들어 둡니다. 바뀐 것만 30초마다 맞추고, 토큰은 들지 않고, 원본은 건드리지 않습니다", true),
+        row("폴더", "<input type='text' id='shDir' placeholder='비우면 Athenaeum 폴더 안의 Claude용' style='width:250px'><button class='ureset' id='shDirSave'>저장</button> <button class='ureset' id='shOpen' data-local='1'>열기</button>",
+            "Claude 의 프로젝트에 이 폴더를 연결합니다. 빈 폴더이거나 Athenaeum 이 만든 폴더여야 합니다", true),
+        row("Claude 프로젝트에 붙일 지침", "<button class='ureset' id='shCopy'>지침 복사</button> <button class='ureset' id='shSync'>지금 맞추기</button><span class='uout' id='shInbox' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "복사한 글을 프로젝트의 지침 칸에 붙이면 Claude 가 폴더의 「읽어보기.md」 부터 읽습니다. 채팅에서 정리한 것을 \"Athenaeum 에 남겨 줘\" 라고 하면 폴더의 「Athenaeum에 남기기」 에 글을 쓰고, 그 글이 연구 노트의 대화에 붙습니다", true)] },
       { title: "계정", rows: [
         row("Athenaeum 전용 Claude 계정", "<label class='usw'><input type='checkbox' id='claudeOwn'><i></i></label><span class='uout' id='claudeOwnState'></span>",
             "켜면 요약·번역·공부·연구 노트가 터미널의 claude 와 다른 계정으로 돕니다(로그인 폴더를 따로 둠). 켠 뒤 아래 「로그인 창 열기」 에서 그 계정으로 한 번 로그인. 두 계정 모두 Pro 나 Max 여야 합니다", true),
@@ -317,6 +324,39 @@ function openSettings(cat) {
       try { const r = await (await fetch("/api/claude_login", { method: "POST", body: JSON.stringify({ engine: "codex", default: !cxo.checked }) })).json(); cs.textContent = r.error ? "⚠ " + r.error : "검은 창이 열렸습니다 — 브라우저에서 로그인한 뒤 「다시 확인」"; } catch (e) { cs.textContent = "창을 열지 못했습니다"; }
     };
     document.getElementById("codexCheck").onclick = () => { cs.textContent = "확인 중…"; post({ codex_recheck: true }); };
+  }
+  {   /* AI 갈래: Claude 채팅이 보는 폴더 (2026-11-07) — 서재의 md 사본을 만들어 두고, 채팅에서 정리한 글을 연구 노트로 되가져온다 */
+    const $s = id => document.getElementById(id), on = $s("shOn");
+    if (on) {
+      const st = $s("shState"), dir = $s("shDir"), ib = $s("shInbox"); let prompt = "", tm = null;
+      const fmtT = t => { if (!t) return ""; const d = new Date(t * 1000); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+      const showS = v => {
+        if (!v || !("dir" in v)) { st.textContent = (v && v.error) ? "⚠ " + v.error : ""; return; }
+        on.checked = !!v.on; prompt = v.prompt || "";
+        if (document.activeElement !== dir) dir.value = v.custom ? v.dir : "";
+        dir.placeholder = v.custom ? "" : v.dir;
+        const c = v.counts || {}, r = v.result || {}, errs = ((v.last || {}).errors || []).length;
+        st.textContent = r.error ? "⚠ " + r.error : v.err ? "⚠ " + v.err : v.running ? "맞추는 중…"
+          : !v.on ? (v.exists ? "꺼짐 — 폴더는 그대로 있습니다" : "꺼짐")
+          : !v.synced ? "켜짐 — 처음 만드는 중입니다 (10초쯤)"
+          : "켜짐 — 논문 " + (c.papers || 0) + " · 번역 " + (c.translations || 0) + " · 연구 노트 " + (c.notes || 0) + " · 공부 " + (c.studies || 0) + " · 원고 " + (c.ms || 0) + " · 파일 " + (c.files || 0).toLocaleString() + "개 " + Math.round((c.bytes || 0) / 1e6) + " MB · 마지막으로 바뀐 때 " + fmtT(v.synced) + (errs ? " · 못 만든 것 " + errs : "");
+        const held = v.held || [];
+        ib.textContent = (v.inbox_n ? "가져온 글 " + v.inbox_n + "개" : "") + (held.length ? (v.inbox_n ? " · " : "") + "넣지 못한 글: " + held.map(x => x.name + " — " + x.why).join(" / ") : "");
+        clearTimeout(tm); if ((v.running || (v.on && !v.synced)) && $s("uiSettings")) tm = setTimeout(loadS, 2000);
+      };
+      const loadS = () => fetch("/api/shelf").then(r => r.json()).then(showS).catch(() => {});
+      const postS = body => fetch("/api/shelf", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(v => { showS(v); return v; }).catch(() => { st.textContent = "저장하지 못했습니다"; });
+      loadS();
+      on.addEventListener("change", () => { st.textContent = "설정 중…"; postS({ op: "on", on: on.checked }).then(() => setTimeout(loadS, 2500)); });
+      $s("shDirSave").onclick = () => postS({ op: "dir", dir: dir.value.trim() }).then(() => setTimeout(loadS, 2500));
+      $s("shOpen").onclick = () => postS({ op: "open" });
+      $s("shSync").onclick = () => { st.textContent = "맞추는 중…"; postS({ op: "sync" }); };
+      $s("shCopy").onclick = async () => {
+        const b = $s("shCopy");
+        try { await navigator.clipboard.writeText(prompt); b.textContent = "복사했습니다"; } catch (e) { window.prompt("이 글을 복사해 Claude 프로젝트의 지침 칸에 붙입니다", prompt); }
+        setTimeout(() => { b.textContent = "지침 복사"; }, 1800);
+      };
+    }
   }
   {   /* 기기 갈래: 다른 기기에서 열기(로그인) · Tailscale 연결 · 백업 (2026-11-06) */
     const $i = id => document.getElementById(id), on = $i("rmOn");

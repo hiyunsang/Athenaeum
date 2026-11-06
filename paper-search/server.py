@@ -3785,6 +3785,15 @@ notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_tex
                  plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map, forest_material=corpus.forest_material)   # 큰 물음의 재료 (2026-10-28)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
 
 
+# ---------- Claude 채팅이 보는 폴더 (2026-11-07, 사용자: '데이터베이스를 폴더째 공유해서 클로드 chat 에서도 쓸 수 있게 … 라이브러리식으로 필요한 정보만 쏙쏙') ----------
+# 연구 노트·공부·논문 요약·번역·원고를 Claude 채팅이 읽기 좋은 md 사본으로 한 폴더에 만들어 둔다(차례 → 필요한 파일). 한쪽 방향이고 토큰은 들지 않는다.
+# 그 폴더의 「Athenaeum에 남기기」 에 Claude 채팅이 쓴 글은 그 연구 노트의 대화에 'Claude 채팅에서 가져온 글' 로 붙는다. 켜고 끄기는 ⚙ 설정 → AI.
+import shelf
+shelf.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, LABELS_PATH=LABELS_PATH, HIST_DIR=HIST_DIR, load_json=load_json, save_json=save_json,
+           settings=_mapper.settings, save_settings=_mapper.save_settings, archive_pdfs=lambda: archive_pdfs(), parse_name=lambda f: parse_name(f), gen_path=gen_path,
+           notes_path=notes_path, load_notes=load_notes, is_review=is_review_paper, pref_abbrs=pref_file_abbrs, paper_line=ms._paper_line, load_readlog=load_readlog)
+
+
 def settings_view():
     """⚙ 환경설정에 보이는 서버 쪽 설정 — 키 값은 끝 4자만, 우선 저널, 전용 Claude 계정(폴더·로그인 여부)"""
     import mapper
@@ -3888,7 +3897,7 @@ _SESS_SEEN = {}                          # 세션 → 마지막으로 쓴 시각
 _FWD_HEADERS = ("X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded", "X-Real-IP",
                 "Tailscale-User-Login", "Tailscale-User-Name", "CF-Connecting-IP", "CF-Ray")
 _REMOTE_OPEN = {"/login", "/api/login", "/ui.css", "/favicon.ico", "/manifest.webmanifest"}      # 로그인 전에도 주는 것 (로그인 화면의 재료)
-_REMOTE_BLOCK_POST = {"/api/remote", "/api/backup", "/api/settings", "/api/open", "/api/claude_install", "/api/claude_login", "/api/fonts"}
+_REMOTE_BLOCK_POST = {"/api/remote", "/api/backup", "/api/settings", "/api/open", "/api/claude_install", "/api/claude_login", "/api/fonts", "/api/shelf"}
 _LOCAL_ONLY_MSG = "이 기능은 Athenaeum 이 깔린 PC 에서만 됩니다"
 MANIFEST = {"name": "Athenaeum", "short_name": "Athenaeum", "start_url": "/m", "scope": "/", "display": "standalone", "lang": "ko",
             "background_color": "#ffffff", "theme_color": "#ffffff", "description": "연구실 PC 의 Athenaeum 을 휴대폰에서 — 이어 읽기 · 서재 · 공부 · 연구 노트",
@@ -4654,6 +4663,8 @@ class Handler(BaseHTTPRequestHandler):
             return study.handle_get(self, url)
         if url.path == "/learn" or url.path.startswith("/api/learn"):
             return corpus.handle_get(self, url)   # 서재 학습
+        if url.path == "/api/shelf":
+            return shelf.handle_get(self, url)    # Claude 채팅이 보는 폴더
         if url.path == "/notes" or url.path.startswith("/api/notes/") or (url.path == "/api/notes" and "file" not in parse_qs(url.query)):
             return notes.handle_get(self, url)   # 읽기 화면의 논문 메모 /api/notes?file= 는 아래 옛 라우트로 — 접두사로 넘기다 가로채 읽기 창이 '불러오는 중'에서 멈췄다(2026-10-08~09)
         if url.path == "/api/intake":
@@ -5192,6 +5203,8 @@ class Handler(BaseHTTPRequestHandler):
             return study.handle_post(self, body)
         if self.path.startswith("/api/learn"):
             return corpus.handle_post(self, body)
+        if self.path == "/api/shelf":
+            return shelf.handle_post(self, body)
         if self.path.startswith("/api/notes/") or (self.path == "/api/notes" and not body.get("file")):
             return notes.handle_post(self, body)   # 읽기 화면의 논문 메모(POST /api/notes {file, op}) 는 아래 옛 라우트로
         if self.path == "/api/intake":
@@ -5605,6 +5618,7 @@ def main():
     threading.Thread(target=refresh_new_papers, daemon=True).start()
     threading.Thread(target=libnet_build, daemon=True).start()   # 서재 인용 이웃 색인 (새 논문만, 배경)
     corpus.start()   # 서재 학습 — 설정의 시간대에 배경으로(편마다 한 번, 하루 상한)
+    shelf.start()   # Claude 채팅이 보는 폴더 — 켜 두었으면 30초마다 바뀐 것을 맞춘다
     threading.Thread(target=backup_loop, daemon=True).start()   # 백업 폴더가 정해져 있고 「매일 자동으로」 가 켜져 있으면 새벽에 한 번
     _Server(("127.0.0.1", PORT), Handler).serve_forever()
 

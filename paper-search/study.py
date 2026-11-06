@@ -3525,6 +3525,55 @@ def to_md(st):
         out.append("")
     return "\n".join(out)
 
+def md_parts(st):
+    """다 쓴 장을 나눠서 md 로 — 「Claude 채팅이 보는 폴더」(shelf)가 장마다 폴더에 쓴다 (2026-11-07).
+    → {sections: [(번호, 제목, 글)], summary(핵심 정리), refs[(n, 참고문헌, 서재 파일)], evidence(근거 문장 — 논문의 원문 그대로), chats(물은 것)}
+    절의 글은 to_md 와 같은 조각(_block_text)으로 만든다."""
+    ch = st.get("chapter") or {}
+    papers = st.get("papers") or []
+    src = st.get("src") or {}
+    num = lambda keys: sorted({papers[int(k.split(":")[0])].get("n") for k in keys if papers[int(k.split(":")[0])].get("n")})
+    cite = lambda u: (" [%s]" % ",".join(str(n) for n in num(u["src"]))) if u.get("src") else ""
+    secs, summary, k = [], "", 0
+    for sec in ch.get("sections") or []:
+        if sec.get("kind") == "summary":
+            summary = "\n".join("- %s%s" % (u.get("t", ""), cite(u)) for b in sec.get("blocks") or [] for u in b.get("units") or [])
+            continue
+        k += 1
+        out = ["# %d. %s" % (k, sec.get("title") or ""), ""]
+        if sec.get("aim"):
+            out += ["> 이 절이 답하는 것: " + str(sec["aim"]), ""]
+        for b in sec.get("blocks") or []:
+            out += _block_text(st, b, cite) + [""]
+        if (sec.get("comment") or {}).get("parts"):
+            out += ["> **Claude 의 생각** — 서재의 문장으로 확인한 것이 아니라 Claude 의 풀이입니다."] + ["> **%s.** %s" % (x["h"], x["t"]) for x in sec["comment"]["parts"]] + [""]
+        if (sec.get("quiz") or {}).get("items"):
+            out += ["**확인 물음**", ""] + ["%d. %s\n   — %s" % (qi + 1, q["q"], q["a"]) for qi, q in enumerate(sec["quiz"]["items"])] + [""]
+        secs.append((k, str(sec.get("title") or ""), "\n".join(out)))
+    cited = sorted(((i, p) for i, p in enumerate(papers) if p.get("n")), key=lambda x: x[1]["n"])
+    ev = []
+    for pi, p in cited:
+        ev.append("## [%d] %s" % (p["n"], p.get("short") or ""))
+        ks = sorted((k2 for k2 in src if k2.startswith("%d:" % pi)), key=lambda k2: int(re.sub(r"\D", "", k2.split(":")[1]) or 0))
+        for k2 in ks:
+            x = src[k2]
+            ev.append("- (%s%s%s) %s" % (k2.split(":")[1], (", p." + str(x["page"])) if x.get("page") else "", "" if x.get("own", True) else ", 다른 연구를 전한 문장", x.get("en", "")))
+        ev.append("")
+    chats = []
+    for c in st.get("chats") or []:
+        th = [m for m in c.get("thread") or [] if m.get("text")]
+        if not th:
+            continue
+        chats.append("## %s%s" % (time.strftime("%Y-%m-%d", time.localtime(c.get("t") or 0)), (" · " + str(c["sec"])) if c.get("sec") else " · 장 전체"))
+        if c.get("quote"):
+            chats.append("> 고른 대목: " + re.sub(r"\s+", " ", str(c["quote"]))[:600])
+        chats.append("")
+        for m in th:
+            chats += ["**%s**" % ("나" if m.get("role") == "user" else "Claude"), m["text"], ""]
+    return {"sections": secs, "summary": summary, "refs": [(p["n"], p.get("ref") or p.get("title") or "", p.get("file") or "") for _i, p in cited],
+            "evidence": "\n".join(ev), "chats": "\n".join(chats)}
+
+
 # ---------- 묻기: 장의 글을 드래그해 Claude 에게 (원고의 대화와 같은 길) ----------
 # 사용자(2026-10-06): '드래그해서 질문할 수 있게 — Claude Opus 로(엑스트라 이상), 원고처럼'. 배경(장 전체 + 참고문헌)은 시스템 프롬프트로 주어
 # 두 번째 물음부터 캐시에서 읽히게 하고, 고른 대목의 근거 원문과 물음만 물음에 붙인다. 답은 서버가 그 대화에 얹어 저장한다 — 창을 닫아도 남는다.

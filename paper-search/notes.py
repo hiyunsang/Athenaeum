@@ -124,6 +124,30 @@ def _save(nt):
         cfg["save_json"](_path(nt["id"]), nt)
 
 
+def _who(m):
+    """대화의 한 턴을 누가 했나 — 연구자 · Claude · Claude 채팅에서 가져온 글(연구자가 다른 창의 Claude 와 나눈 이야기를 정리해 넣은 것, 2026-11-07)"""
+    r = m.get("role")
+    return "연구자" if r == "user" else ("Claude 채팅에서 가져온 글" if r == "chat" else "Claude")
+
+
+def chat_import(nid, text, src=""):
+    """Claude 채팅(데스크톱 앱의 다른 대화)에서 나눈 이야기를 정리한 글을 이 주제의 대화에 붙인다 — 「Claude 채팅이 보는 폴더」(shelf)의 'Athenaeum에 남기기' 가 부른다.
+    말한 사람은 'chat' — 화면은 'Claude 채팅에서 가져온 글' 로 가르고, 다음 물음의 [지난 대화] 에도 그 이름으로 들어가 Athenaeum 쪽 Claude 가 채팅에서 정한 것을 안다.
+    답을 기다리는 중이면 끼워 넣지 않는다(물음과 답 사이에 들어간다) → {busy}."""
+    text = str(text or "").strip()
+    if len(text) < 2:
+        return {"error": "글이 비어 있습니다"}
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return {"error": "주제를 찾지 못했습니다"}
+        if nt.get("pending"):
+            return {"busy": True}
+        nt.setdefault("thread", []).append({"role": "chat", "text": text[:60000], "t": time.time(), "src": str(src or "")[:200]})
+        _save(nt)
+    return {"ok": True, "id": nt["id"], "title": nt.get("title") or ""}
+
+
 def _brief(nt):
     th = nt.get("thread") or []
     last = next((m for m in reversed(th) if m.get("text")), None)
@@ -692,8 +716,10 @@ def _prompt(nt, question, lib, others, studies="", mstext=""):
             if i in full:
                 return t[:3200]
             return t[:900].rstrip() + ("…(줄임)" if len(t) > 900 else "")
-        past = "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", _cut(i, m)) for i, m in enumerate(past_items))
+        past = "\n\n".join("%s: %s" % (_who(m), _cut(i, m)) for i, m in enumerate(past_items))
         out += "\n[지난 대화]\n" + past + "\n"
+        if any(m.get("role") == "chat" for m in past_items):
+            out += "(「Claude 채팅에서 가져온 글」 은 연구자가 다른 창의 Claude 와 나눈 이야기를 정리해 이 노트에 넣은 것입니다. 연구자가 이미 읽은 내용이니 되풀이하지 않고 그 위에서 답합니다.)\n"
     if nt.get("plan"):
         out += "\n[실험 설계서 — 지금까지 세운 것]\n" + _plan_text(nt["plan"], cap=700) + "\n"
     if nt.get("intro"):
@@ -1168,7 +1194,7 @@ def _card_job(nid):
         return
     model, eff = _EFFORT.get((nt.get("card_opts") or {}).get("effort"), _EFFORT["xhigh"])
     th = [m for m in nt.get("thread") or [] if m.get("text")]
-    conv = "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", m["text"][:5000]) for m in th[-20:])
+    conv = "\n\n".join("%s: %s" % (_who(m), m["text"][:5000]) for m in th[-20:])
     prompt = ("아래는 연구자와 나눈 연구 주제 토의다. 토의에서 정해진 것·거론된 것을 주제 카드 하나로 정리하라. 토의에 없는 것은 지어 넣지 말고 빈 문자열로 둔다. 연구자가 손으로 고친 카드가 있으면 그것을 바탕으로 고친다. 칸의 글은 한눈에 읽히게 — 따질 것이 여럿이면 항목마다 줄을 바꿔 '① 머리말: …' 꼴로(design 은 '재료: … / 장비: … / 조건: … / 측정: …' 처럼 줄마다 하나, expected 는 결과마다 한 줄), 한 문장에 사실 하나(화면이 항목마다 한 줄로 그린다).\n"
               "JSON 으로만 답하라(한국어, 마크다운 없이):\n"
               "{\"question\": \"연구 물음 한두 문장\", \"hypothesis\": \"가설 — 무엇이 어떻게 될 것이라 보는가\", \"design\": \"실험·해석 설계: 재료, 장비, 조건, 측정·관찰 (토의에서 나온 것만)\", "
@@ -1279,7 +1305,7 @@ def _clean_feas(v):
 
 def _thread_text(nt, n=24, cap=3000):
     th = [m for m in nt.get("thread") or [] if m.get("text")]
-    return "\n\n".join("%s: %s" % ("연구자" if m.get("role") == "user" else "Claude", m["text"][:cap]) for m in th[-n:])
+    return "\n\n".join("%s: %s" % (_who(m), m["text"][:cap]) for m in th[-n:])
 
 
 def _answered_text(nt):
@@ -3297,8 +3323,9 @@ def objection_set(nid, body):
 
 
 # ---------- 내보내기 ----------
-def to_md(nt):
-    out = ["# " + (nt.get("title") or ""), "상태: %s · %s" % (STATUS_KO.get(nt.get("status"), ""), time.strftime("%Y-%m-%d", time.localtime(nt.get("t") or 0))), ""]
+def _md_card(nt):
+    """출발점 · 주제 카드 · 연구자가 정한 것"""
+    out = []
     seed = nt.get("seed") or {}
     if seed.get("text"):
         out += ["## 출발점", seed["text"], ""]
@@ -3312,6 +3339,12 @@ def to_md(nt):
             out += (["- " + str(x) for x in v] if isinstance(v, list) else [str(v)]) + [""]
     if nt.get("decisions"):
         out += ["## 연구자가 정한 것"] + ["- " + str(d.get("text") or "") for d in nt["decisions"] if isinstance(d, dict)] + [""]
+    return out
+
+
+def _md_plan(nt):
+    """큰 물음 · 작은 물음 · 연구의 틀 · 실험 설계서 · 식별력 표 · 약속 ↔ 답 지도 · 공백 검증"""
+    out = []
     if nt.get("forest"):
         out += ["## 큰 물음 (숲)", _forest_text(nt["forest"], all_items=True), ""]
     if nt.get("trees"):
@@ -3334,6 +3367,12 @@ def to_md(nt):
         out += ["## 약속 ↔ 답 지도", _argmap_text(nt["argmap"]), ""]
     if nt.get("gapcheck"):
         out += ["## 공백 검증 — 세상의 문헌에서", _gapcheck_text(nt["gapcheck"]), ""]
+    return out
+
+
+def _md_intro(nt):
+    """서론 구조 · 쓴 문단 · 그 참고문헌"""
+    out = []
     if nt.get("intro"):
         out += ["## 서론 구조", _intro_text(nt["intro"]), ""]
         drafts = [q["draft"]["text"] for q in nt["intro"].get("paras") or [] if (q.get("draft") or {}).get("text")]
@@ -3341,18 +3380,37 @@ def to_md(nt):
             out += ["## 서론 초안 (쓴 문단)"] + [t + "\n" for t in drafts]
         if nt["intro"].get("refs"):
             out += ["## 참고문헌 (서론)"] + [str(r) for r in nt["intro"]["refs"]] + [""]
+    return out
+
+
+def _md_objections(nt):
+    out = []
     if nt.get("objections"):
         out += ["## 심사위원의 반론"]
         for o in nt["objections"]:
             out += ["- [%s · %s] %s%s%s" % (REVIEWER_KO.get(o.get("who"), ""), {"open": "열림", "answered": "답함", "dropped": "보류"}.get(o.get("status"), ""), o.get("t"), (" — 물음: " + o["ask"]) if o.get("ask") else "", (" — 답: " + o["reply"]) if o.get("reply") else "")]
         out.append("")
+    return out
+
+
+def _md_turns(th):
+    """대화의 턴들 → md 줄. 말한 사람: 나 · Claude · Claude 채팅에서 가져온 글"""
+    out = []
+    for m in th:
+        who = "나" if m.get("role") == "user" else ("Claude 채팅에서 가져온 글" if m.get("role") == "chat" else "Claude")
+        out += ["**%s** (%s)%s" % (who, time.strftime("%Y-%m-%d %H:%M", time.localtime(m.get("t") or 0)),
+                                    ((" — 공부 " + " · ".join("「%s」" % x.get("title", "") for x in m["studies"]) + " 를 봄") if m.get("studies") else "") +
+                                    ((" — 원고 「%s」 를 봄" % (m.get("ms") or {}).get("title", "")) if m.get("ms") else "")), m["text"], ""]
+    return out
+
+
+def to_md(nt):
+    """주제 하나를 md 한 장으로 (화면의 「md 복사」). 같은 조각들을 「Claude 채팅이 보는 폴더」(shelf)가 파일로 나눠 쓴다 — 내보내는 글은 여기 한 곳에서만 만든다."""
+    out = ["# " + (nt.get("title") or ""), "상태: %s · %s" % (STATUS_KO.get(nt.get("status"), ""), time.strftime("%Y-%m-%d", time.localtime(nt.get("t") or 0))), ""]
+    out += _md_card(nt) + _md_plan(nt) + _md_intro(nt) + _md_objections(nt)
     th = [m for m in nt.get("thread") or [] if m.get("text")]
     if th:
-        out += ["## 토의"]
-        for m in th:
-            out += ["**%s** (%s)%s" % ("나" if m.get("role") == "user" else "Claude", time.strftime("%m-%d %H:%M", time.localtime(m.get("t") or 0)),
-                                        ((" — 공부 " + " · ".join("「%s」" % x.get("title", "") for x in m["studies"]) + " 를 봄") if m.get("studies") else "") +
-                                        ((" — 원고 「%s」 를 봄" % (m.get("ms") or {}).get("title", "")) if m.get("ms") else "")), m["text"], ""]
+        out += ["## 토의"] + _md_turns(th)
     return "\n".join(out)
 
 
