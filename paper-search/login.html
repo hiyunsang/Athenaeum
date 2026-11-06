@@ -8,20 +8,24 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="/ui.css">
 <style>
-  body { background: var(--surface); }
-  .box { max-width: 320px; margin: 20vh auto 0; padding: 0 var(--s6); text-align: center; }
-  .box img { height: 46px; }
-  .box h1 { font-size: 15px; font-weight: 600; letter-spacing: .1em; margin: var(--s3) 0 var(--s6); }
-  .box input { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); }
-  .box button { width: 100%; margin-top: var(--s3); font-size: 15px; padding: 10px; }
-  #msg { margin-top: var(--s3); font-size: 13px; color: var(--red); min-height: 1.5em; }
-  .box .hint { margin-top: var(--s6); line-height: 1.6; }
+  /* 휴대폰 화면(m.html)과 같은 결 — 큰 입력 칸과 단추, 둥근 모서리 */
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: var(--surface); -webkit-tap-highlight-color: transparent; }
+  .box { max-width: 340px; margin: 18vh auto 0; padding: 0 28px; text-align: center; }
+  .box img { height: 56px; }
+  .box h1 { font-family: var(--font-serif); font-size: 26px; font-weight: 500; letter-spacing: -.01em; margin: 10px 0 30px; }
+  .box input { width: 100%; box-sizing: border-box; height: 50px; font-size: 17px; padding: 0 16px; border: 0; border-radius: 14px; background: rgba(118, 118, 128, .14); color: var(--text); -webkit-appearance: none; appearance: none; }
+  .box input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+  .box button { width: 100%; height: 50px; margin-top: 12px; font-size: 17px; font-weight: 600; border: 0; border-radius: 14px; background: var(--accent); color: var(--surface); }
+  .box button:disabled { opacity: .5; }
+  #msg { margin-top: 12px; font-size: 14px; color: var(--red); min-height: 1.5em; }
+  .box .hint { margin-top: 22px; font-size: 13px; line-height: 1.6; }
 </style>
 </head>
 <body>
 <form class="box" id="f">
   <img src="/logo/mark.svg" alt="">
-  <h1>ATHENAEUM</h1>
+  <h1>Athenaeum</h1>
   <input type="password" id="pw" placeholder="비밀번호" autocomplete="current-password" autofocus>
   <button class="primary" id="go" type="submit">로그인</button>
   <div id="msg"></div>

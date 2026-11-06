@@ -9,322 +9,383 @@
 <meta name="theme-color" content="#202020" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Athenaeum"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
 <link rel="apple-touch-icon" href="/logo/icon-180.png">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="192x192" href="/logo/icon-192.png">
 <link rel="stylesheet" href="/ui.css">
 <style>
-  :root { --mfs: 16px; }
-  html { -webkit-text-size-adjust: 100%; }
-  body { background: var(--surface); font-size: 15px; -webkit-tap-highlight-color: transparent; }
-  #top { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line-2); padding-top: env(safe-area-inset-top); }
-  #bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: 36px; }
-  #bar .back { font-size: 22px; line-height: 1; padding: 4px 10px 6px 0; color: var(--text-2); background: none; border: 0; }
-  #bar .ttl { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #bar img.mark { height: 24px; }
-  #bar input { flex: 1; min-width: 0; font-size: 16px; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg); color: var(--text); }
-  #bar a.lnk, #bar button.lnk { font-size: 13.5px; color: var(--accent); background: none; border: 0; padding: 6px 4px; text-decoration: none; white-space: nowrap; }
-  #tabs { display: flex; border-top: 1px solid var(--line); }
-  #tabs button { flex: 1; padding: 9px 4px 8px; background: none; border: 0; border-bottom: 2px solid transparent; font-size: 14px; color: var(--text-2); }
-  #tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-  #app { padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
-  .sub { display: flex; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
-  .sub select { font-size: 14px; padding: 3px 4px; background: var(--surface); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--r); }
-  .sub .sp { flex: 1; }
-  .sub button.fs { font-size: 14px; padding: 3px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text-2); }
-  .row { padding: 12px 14px; border-bottom: 1px solid var(--line); }
-  .row:active { background: var(--hover); }
-  .row .t { font-family: var(--font-serif); font-size: 16px; line-height: 1.36; }
-  .row .m { font-size: 12.5px; color: var(--text-2); margin-top: 4px; line-height: 1.4; }
-  .row .m .has { color: var(--accent); } .row .m .rd { color: var(--text-3); }
-  .empty { padding: 44px 22px; text-align: center; color: var(--text-3); font-size: 13.5px; line-height: 1.75; }
-  .empty button { margin-top: 12px; }
-  .doc { padding: 16px 16px 40px; font-size: var(--mfs); line-height: 1.78; word-break: keep-all; overflow-wrap: anywhere; }
-  .doc h1 { font-family: var(--font-serif); font-size: 1.22em; line-height: 1.36; margin: 0 0 .7em; font-weight: 500; }
-  .doc h2 { font-size: 1.04em; margin: 1.7em 0 .55em; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
-  .doc h3 { font-size: 1em; margin: 1.4em 0 .45em; }
-  .doc h3.extra { color: var(--text-2); font-size: .9em; border-top: 1px solid var(--line); padding-top: .9em; }
-  .doc p { margin: 0 0 .95em; } .doc p.extra { font-size: .92em; color: var(--text-2); }
-  .doc ul, .doc ol { padding-left: 1.3em; margin: 0 0 .95em; } .doc li { margin-bottom: .35em; }
-  .doc table { border-collapse: collapse; font-size: .84em; line-height: 1.5; margin: 0 0 1.1em; display: block; overflow-x: auto; max-width: 100%; }
-  .doc th, .doc td { border: 1px solid var(--line-2); padding: 4px 7px; vertical-align: top; min-width: 3.5em; }
-  .doc th { background: var(--bg); font-weight: 600; }
-  .doc caption { caption-side: top; text-align: left; font-size: .95em; color: var(--text-2); padding-bottom: 4px; }
+  /* 휴대폰 화면 — 아이폰 앱의 결: 아래 탭 막대, 큰 제목, 둥근 카드, 읽을 때는 막대가 숨는다. 색·글꼴은 ui.css 의 토큰 그대로.
+     ui.css 의 공용 이름(.act .chip .sec .sel .prog .hint .primary)과 겹치지 않게 이름을 지었다. */
+  :root { --mfs: 17px; --nav-h: 46px; --tab-h: 54px; --kb: 0px;
+    --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    --fill: rgba(118, 118, 128, .12); --fill-2: rgba(118, 118, 128, .22); --glass: rgba(255, 255, 255, .86); --card: #f4f4f2; --pop: #ffffff; --seg-on: #ffffff; }
+  :root[data-theme="dark"] { --fill: rgba(118, 118, 128, .24); --fill-2: rgba(118, 118, 128, .4); --glass: rgba(32, 32, 32, .86); --card: #2a2a28; --pop: #2c2c2a; --seg-on: #5c5c60; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fill: rgba(118, 118, 128, .24); --fill-2: rgba(118, 118, 128, .4); --glass: rgba(32, 32, 32, .86); --card: #2a2a28; --pop: #2c2c2a; --seg-on: #5c5c60; } }
+  html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+  body { background: var(--surface); font-size: 15px; line-height: 1.45; -webkit-tap-highlight-color: transparent; word-break: keep-all; overflow-wrap: anywhere; }
+  a { -webkit-touch-callout: none; } a:hover { text-decoration: none; }
+  button { -webkit-appearance: none; appearance: none; font: inherit; color: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+  .cl2, .cl3, .cl1 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; } .cl1 { -webkit-line-clamp: 1; } .cl2 { -webkit-line-clamp: 2; } .cl3 { -webkit-line-clamp: 3; }
+
+  /* 위 막대 · 읽은 만큼 줄 · 아래 탭 */
+  #nav { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: calc(var(--nav-h) + var(--sat)); padding: var(--sat) 4px 0; box-sizing: border-box; display: flex; align-items: center;
+    background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); border-bottom: 1px solid var(--line); transition: transform .24s ease, background-color .2s, border-color .2s; }
+  #nav.rootnav.top { background: transparent; border-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  #nav.top .nt.fade { opacity: 0; }
+  #nav .nl, #nav .nr { flex: none; min-width: 48px; display: flex; align-items: center; } #nav .nr { justify-content: flex-end; }
+  #nav .nc { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: center; }
+  #nav .nt { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .18s; }
+  .nb { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; padding: 0; color: var(--accent); font-size: 18px; font-weight: 600; border-radius: 22px; }
+  .nb svg { width: 25px; height: 25px; } .nb:active { background: var(--fill); }
+  body.hidebars #nav { transform: translateY(-100%); }
+  #rp { position: fixed; z-index: 22; top: var(--sat); left: 0; height: 2.5px; width: 0; background: var(--accent); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  body.reading #rp { opacity: 1; }
+  #tabbar { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; height: calc(var(--tab-h) + var(--sab)); padding-bottom: var(--sab); box-sizing: border-box; display: flex;
+    background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); border-top: 1px solid var(--line); }
+  body.inner #tabbar { display: none; }
+  #tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--text-3); font-size: 10.5px; font-weight: 500; text-decoration: none; }
+  #tabbar a svg { width: 26px; height: 26px; } #tabbar a.on { color: var(--accent); }
+  #app { padding-top: calc(var(--nav-h) + var(--sat)); padding-bottom: calc(var(--sab) + 40px); min-height: 100vh; min-height: 100dvh; box-sizing: border-box; }
+  body.root #app { padding-bottom: calc(var(--tab-h) + var(--sab) + 28px); }
+  body.chatp #app { padding-bottom: 0; }
+  #app.push { animation: push .2s ease-out; } #app.fade { animation: fade .16s ease-out; }
+  @keyframes push { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #app.push, #app.fade { animation: none; } }
+  .noanim *, .noanim *::before, .noanim *::after { animation: none !important; transition: none !important; }
+
+  /* 큰 제목 · 묶음 · 줄 */
+  .brand { display: flex; align-items: center; gap: 9px; padding: 0 0 0 14px; white-space: nowrap; }
+  .brand img { height: 27px; } .brand b { font-family: var(--font-serif); font-size: 22px; font-weight: 500; letter-spacing: -.01em; }
+  .lt { font-size: 31px; font-weight: 800; letter-spacing: -.025em; line-height: 1.15; padding: 0 20px 12px; }
+  .sh { display: flex; align-items: baseline; padding: 28px 20px 10px; }
+  .sh h2 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; }
+  .sh a { margin-left: auto; font-size: 14px; color: var(--accent); padding: 4px 0 4px 12px; }
+  .hero { display: block; margin: 0 16px; padding: 18px 18px 16px; border-radius: 20px; background: var(--accent-bg); color: var(--text); text-decoration: none; transition: transform .12s; }
+  .hero:active { transform: scale(.985); }
+  .hero .hk { font-size: 12.5px; font-weight: 700; color: var(--accent); }
+  .hero .ht { font-family: var(--font-serif); font-size: 20px; line-height: 1.3; margin-top: 8px; }
+  .hero .ht.ko { font-family: var(--font); font-weight: 700; font-size: 19px; line-height: 1.38; letter-spacing: -.01em; }
+  .hero .hm { font-size: 13px; color: var(--text-2); margin-top: 8px; }
+  .hero .hp { height: 5px; border-radius: 3px; background: var(--fill-2); margin-top: 16px; overflow: hidden; }
+  .hero .hp i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .hero .hf { display: flex; align-items: center; margin-top: 12px; font-size: 13px; color: var(--text-2); }
+  .hero .go { margin-left: auto; background: var(--accent); color: var(--surface); font-weight: 600; font-size: 14px; padding: 8px 16px; border-radius: 18px; }
+  .grp { margin: 0 16px; background: var(--card); border-radius: 16px; overflow: hidden; }
+  .grp + .grp, .hero + .grp { margin-top: 12px; }
+  .plain { margin: 0 4px; }
+  .row { display: block; position: relative; padding: 13px 16px 14px; color: var(--text); text-decoration: none; }
+  .row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line); }
+  .row:active { background: var(--fill); }
+  .row .t { font-family: var(--font-serif); font-size: 16.5px; line-height: 1.32; }
+  .row .t.ko { font-family: var(--font); font-weight: 600; font-size: 16px; line-height: 1.38; }
+  .row .g { font-size: 14px; line-height: 1.45; color: var(--text-2); margin-top: 5px; }
+  .row .m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 7px; font-size: 12.5px; color: var(--text-3); }
+  .row.chev { padding-right: 34px; } .row.chev::after { content: ""; position: absolute; right: 16px; top: 50%; width: 7px; height: 7px; margin-top: -4px; border-right: 2px solid var(--line-2); border-top: 2px solid var(--line-2); transform: rotate(45deg); }
+  .row .no { color: var(--text-3); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .tg { display: inline-block; font-size: 11.5px; font-weight: 600; line-height: 1.5; padding: 1px 8px; border-radius: 9px; background: var(--fill); color: var(--text-2); text-decoration: none; white-space: nowrap; }
+  .tg.hi { background: var(--accent-bg); color: var(--accent); } .tg.warn { background: var(--amber-bg); color: var(--amber); }
+  .search { position: relative; margin: 0 16px 10px; }
+  .search svg { position: absolute; left: 10px; top: 50%; width: 18px; height: 18px; margin-top: -9px; color: var(--text-3); pointer-events: none; }
+  .search input { width: 100%; box-sizing: border-box; height: 40px; border: 0; border-radius: 12px; background: var(--fill); padding: 0 12px 0 36px; font-size: 16px; color: var(--text); -webkit-appearance: none; appearance: none; }
+  .search input:focus { outline: none; } .search input::-webkit-search-decoration { display: none; }
+  .fbar { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 10px; scrollbar-width: none; } .fbar::-webkit-scrollbar { display: none; }
+  .fc { flex: none; height: 32px; padding: 0 13px; border: 0; border-radius: 16px; background: var(--fill); color: var(--text); font-size: 14px; white-space: nowrap; }
+  .fc.on { background: var(--text); color: var(--surface); font-weight: 600; }
+  .cnt { display: flex; align-items: center; min-height: 30px; padding: 0 20px 4px; font-size: 13px; color: var(--text-3); }
+  .cnt button { margin-left: auto; background: none; border: 0; color: var(--accent); font-size: 13.5px; padding: 6px 0 6px 10px; }
+  .pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 15px; border-radius: 18px; border: 0; background: var(--fill); color: var(--text); font-size: 14.5px; text-decoration: none; white-space: nowrap; }
+  .pill.pri { background: var(--accent); color: var(--surface); font-weight: 600; } .pill:disabled { opacity: .5; } .pill:active { opacity: .7; }
+  .pill.big { height: 48px; border-radius: 14px; font-size: 16px; width: 100%; box-sizing: border-box; }
+  .empty { padding: 56px 28px; text-align: center; color: var(--text-3); font-size: 14.5px; line-height: 1.7; }
+  .empty b { display: block; color: var(--text); font-size: 17px; margin-bottom: 6px; } .empty .pill { margin-top: 16px; }
+  .sk { border-radius: 14px; background: var(--fill); animation: sk 1s ease-in-out infinite alternate; margin: 0 16px 12px; } @keyframes sk { from { opacity: .45; } to { opacity: 1; } }
+  .seg { display: inline-flex; background: var(--fill); border-radius: 10px; padding: 2px; }
+  .seg button { border: 0; background: none; min-width: 60px; height: 30px; padding: 0 12px; border-radius: 8px; font-size: 14px; color: var(--text); }
+  .seg button.on { background: var(--seg-on); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .16); }
+
+  /* 논문 머리 · 읽는 글 */
+  .ph { padding: 8px 20px 2px; }
+  .ph .pm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--text-2); }
+  .ph h1 { font-family: var(--font-serif); font-size: 22px; line-height: 1.3; font-weight: 500; margin: 8px 0 0; }
+  .ph h1.ko { font-family: var(--font); font-weight: 700; font-size: 24px; letter-spacing: -.02em; }
+  .ph .ko2 { font-size: 15px; line-height: 1.5; color: var(--text-2); margin-top: 8px; }
+  .ph .lb { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .ph .pa { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .doc { padding: 16px 20px 20px; font-size: var(--mfs); line-height: 1.78; word-break: keep-all; overflow-wrap: anywhere; }
+  .doc h1 { font-size: 1.3em; line-height: 1.3; font-weight: 700; letter-spacing: -.015em; margin: 0 0 .5em; }
+  .doc h2 { font-size: 1.14em; line-height: 1.4; font-weight: 700; letter-spacing: -.01em; margin: 1.9em 0 .6em; }
+  .doc h3 { font-size: 1em; font-weight: 700; margin: 1.5em 0 .45em; }
+  .doc h3.extra { color: var(--text-2); font-size: .9em; border-top: 1px solid var(--line); padding-top: 1em; }
+  .doc > :first-child { margin-top: 0; }
+  .doc p { margin: 0 0 1em; } .doc p.extra { font-size: .93em; color: var(--text-2); } .doc p.out { border-left: 3px solid var(--amber); padding-left: 12px; }
+  .doc ul, .doc ol { padding-left: 1.25em; margin: 0 0 1em; } .doc li { margin-bottom: .45em; }
+  .doc table { border-collapse: collapse; font-size: .84em; line-height: 1.5; margin: 0 0 1.2em; display: block; overflow-x: auto; max-width: 100%; }
+  .doc th, .doc td { border: 1px solid var(--line-2); padding: 5px 8px; vertical-align: top; min-width: 3.5em; }
+  .doc th { background: var(--card); font-weight: 600; } .doc caption { caption-side: top; text-align: left; font-size: .95em; color: var(--text-2); padding-bottom: 5px; }
   .doc img { max-width: 100%; height: auto; }
-  .doc img.eq { display: block; margin: .7em auto; max-height: 7em; background: #fff; border-radius: 2px; }
-  .doc blockquote { margin: 0 0 .95em; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--text-2); }
-  .doc hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
-  .doc code { font-size: .9em; background: var(--bg); padding: 0 3px; border-radius: 2px; }
-  .doc figure { margin: 1.2em 0; }
-  .doc figure img { display: block; margin: 0 auto; background: #fff; border-radius: var(--r); }
-  .doc figcaption { font-size: .82em; color: var(--text-2); margin-top: .5em; line-height: 1.6; }
-  .doc figcaption .src { color: var(--text-3); }
-  .doc .aim { color: var(--text-2); font-size: .92em; margin: -.2em 0 1.1em; }
-  .doc .c { font-size: .72em; color: var(--text-3); vertical-align: 2px; margin-left: 1px; }
-  .doc .eqn { overflow-x: auto; text-align: center; padding: .5em 0 .1em; font-size: 1.05em; }
-  .doc .imath.fail, .doc .eqn.fail { font-family: Consolas, monospace; font-size: .85em; color: var(--text-2); }
-  .doc aside { border-left: 3px solid var(--amber); padding: 2px 0 2px 12px; margin: 1.6em 0; font-size: .92em; }
-  .doc aside .hd { color: var(--amber); font-weight: 700; font-size: .92em; }
-  .doc aside h4 { margin: .8em 0 .2em; font-size: 1em; }
-  .doc details { margin: .5em 0; } .doc details summary { color: var(--text-2); font-size: .92em; }
-  .doc .seclist a { display: block; padding: 11px 0; border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
-  .doc .seclist a span { color: var(--text-3); font-size: .85em; margin-right: 6px; }
-  .secnav { display: flex; justify-content: space-between; gap: 10px; padding: 0 16px 30px; }
-  .note { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.68; overflow-wrap: anywhere; }
-  .note .when { font-size: 12px; color: var(--text-3); margin-bottom: 3px; }
-  .note .q { font-weight: 600; margin-bottom: 6px; white-space: pre-wrap; }
-  .note .a, .note .tx { white-space: pre-wrap; }
-  .note .quote { color: var(--text-2); border-left: 3px solid var(--line-2); padding-left: 8px; margin-bottom: 6px; font-size: 13.5px; }
-  .compose { padding: 12px 14px; border-bottom: 1px solid var(--line-2); }
-  .compose textarea { width: 100%; box-sizing: border-box; min-height: 68px; font-size: 16px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); font-family: inherit; }
-  .compose .acts { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
-  .compose .acts .hint { flex: 1; line-height: 1.4; }
-  button.big, a.big { display: inline-block; font-size: 14.5px; padding: 8px 14px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--surface); color: var(--text); text-decoration: none; }
-  button.big.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.big:disabled { opacity: .5; }
-  .sech { padding: 14px 14px 6px; font-size: 12px; font-weight: 700; }
-  .foot { padding: 22px 14px; text-align: center; font-size: 12.5px; color: var(--text-3); line-height: 2; }
-  .foot a, .foot button { color: var(--text-2); background: none; border: 0; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; padding: 0 6px; }
+  .doc img.eq { display: block; margin: .8em auto; max-height: 7em; background: #fff; border-radius: 8px; padding: 4px; box-sizing: border-box; }
+  .doc blockquote { margin: 0 0 1em; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--text-2); }
+  .doc hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
+  .doc code { font-size: .9em; background: var(--fill); padding: 0 4px; border-radius: 4px; }
+  .doc pre { background: var(--card); border-radius: 12px; padding: 10px 12px; margin: 0 0 1em; overflow-x: auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8em; line-height: 1.55; white-space: pre; word-break: normal; overflow-wrap: normal; }
+  .doc p.todo { font-size: .9em; color: var(--text-2); }
+  .doc .lead { background: var(--card); border-radius: 16px; padding: 14px 16px 15px; margin: 0 -4px 1.3em; }
+  .doc .lead .lk { font-size: 12.5px; font-weight: 700; color: var(--accent); margin-bottom: 5px; } .doc .lead > :last-child { margin-bottom: 0; }
+  .doc details { margin: .6em 0; } .doc details summary { color: var(--text-2); font-size: .92em; padding: 4px 0; }
+  .doc details.fm { font-size: .88em; color: var(--text-2); margin: 0 0 1.3em; }
+  .doc .aim { color: var(--text-2); font-size: .94em; margin: -.1em 0 1.3em; }
+  .doc .s, .doc .u { -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 3px; cursor: pointer; }
+  .doc sup.c, .doc figure img, .mu div.long, #sheetbg, #zoom, #zoom img { cursor: pointer; }
+  .doc .s.on, .doc .u.on { background: var(--accent-bg); box-shadow: 0 0 0 2px var(--accent-bg); }
+  .doc .flash { animation: flash 1.8s ease-out; } @keyframes flash { 0%, 40% { background: var(--amber-bg); box-shadow: 0 0 0 2px var(--amber-bg); } 100% { background: transparent; box-shadow: none; } }
+  .doc sup.c { font-size: .68em; color: var(--accent); padding: 0 3px; font-weight: 600; line-height: 0; }
+  .doc figure { margin: 1.4em 0; } .doc figure img { display: block; margin: 0 auto; background: #fff; border-radius: 10px; }
+  .doc figcaption { font-size: .82em; color: var(--text-2); margin-top: .6em; line-height: 1.6; } .doc figcaption .src { color: var(--text-3); }
+  .doc .eqn { overflow-x: auto; overflow-y: hidden; text-align: center; padding: .5em 0 .2em; font-size: 1.05em; }
+  .doc .imath.fail, .doc .eqn.fail { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82em; color: var(--text-2); }
+  .doc aside { background: var(--amber-bg); border-radius: 16px; padding: 14px 16px 15px; margin: 1.8em -4px; font-size: .93em; }
+  .doc aside .hd { color: var(--amber); font-weight: 700; font-size: .9em; } .doc aside h4 { margin: .9em 0 .2em; font-size: 1em; }
+  .doc .anc { font-size: .72em; font-weight: 700; color: var(--accent); background: var(--accent-bg); border-radius: 6px; padding: 1px 5px; margin: 0 1px; white-space: nowrap; text-decoration: none; vertical-align: 1px; }
+  .secnav { display: flex; gap: 10px; padding: 8px 16px 0; } .secnav .pill { flex: 1; min-width: 0; height: 48px; border-radius: 14px; }
+
+  /* 아래에서 올라오는 칸 (원문·근거) · 창 · 그림 크게 · 알림 */
+  #peek { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: calc(8px + var(--sab)); max-height: 54vh; max-height: 54dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; box-sizing: border-box;
+    background: var(--pop); border-radius: 20px; box-shadow: 0 10px 40px rgba(0, 0, 0, .26), 0 0 0 1px var(--line); padding: 14px 16px; transform: translateY(calc(100% + 60px)); transition: transform .26s cubic-bezier(.2, .8, .2, 1); }
+  #peek.on { transform: none; }
+  #peek .px { position: absolute; top: 9px; right: 9px; width: 30px; height: 30px; border: 0; border-radius: 15px; background: var(--fill); color: var(--text-2); display: flex; align-items: center; justify-content: center; padding: 0; }
+  #peek .px svg { width: 15px; height: 15px; }
+  .pkl { font-size: 12.5px; font-weight: 700; color: var(--accent); margin-bottom: 6px; padding-right: 36px; min-height: 20px; }
+  .pke { font-size: 15.5px; line-height: 1.62; overflow-wrap: anywhere; } .pkk { font-size: 14.5px; line-height: 1.62; color: var(--text-2); margin-top: 8px; word-break: keep-all; overflow-wrap: anywhere; }
+  .pki { padding: 12px 0; border-top: 1px solid var(--line); } .pkl + .pki { border-top: 0; padding-top: 0; }
+  .pkm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; color: var(--text-2); margin-bottom: 6px; } .pkm b { color: var(--text); }
+  .pka { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; clear: both; }
+  #sheetbg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40; background: rgba(0, 0, 0, .38); opacity: 0; transition: opacity .2s; touch-action: none; } #sheetbg.on { opacity: 1; }
+  #sheet { position: fixed; z-index: 41; left: 0; right: 0; bottom: 0; max-height: 88vh; max-height: 88dvh; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; background: var(--pop); border-radius: 22px 22px 0 0;
+    padding: 8px 18px calc(18px + max(var(--sab), var(--kb))); transform: translateY(100%); transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+  #sheet.on { transform: none; }
+  #sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--fill-2); margin: 0 auto 14px; }
+  #sheet h3 { font-size: 18px; font-weight: 700; margin: 2px 0 12px; }
+  #sheet textarea { width: 100%; box-sizing: border-box; min-height: 110px; border: 0; border-radius: 14px; background: var(--fill); padding: 12px 14px; font-size: 16px; line-height: 1.5; color: var(--text); font-family: inherit; resize: none; }
+  #sheet textarea:focus { outline: none; } #sheet .q { font-size: 13.5px; color: var(--text-2); border-left: 3px solid var(--line-2); padding-left: 10px; margin: 0 0 12px; line-height: 1.55; }
+  .mi { display: flex; align-items: center; width: 100%; box-sizing: border-box; min-height: 52px; padding: 8px 2px; background: none; border: 0; border-bottom: 1px solid var(--line); font-size: 16px; color: var(--text); text-align: left; text-decoration: none; }
+  .mi:last-child { border-bottom: 0; } .mi span { margin-left: auto; color: var(--text-3); font-size: 14px; } .mi.red { color: var(--red); }
+  .fsrow { display: flex; align-items: center; gap: 12px; padding: 6px 0 14px; } .fsrow button { width: 56px; height: 44px; border: 0; border-radius: 12px; background: var(--fill); font-weight: 600; }
+  .fsrow .sm { font-size: 14px; } .fsrow .lg { font-size: 21px; } .fsrow div { flex: 1; text-align: center; color: var(--text-2); font-size: 14px; }
+  #zoom { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: rgba(0, 0, 0, .93); overflow: auto; -webkit-overflow-scrolling: touch; display: flex; }
+  #zoom img { margin: auto; width: 100vw; max-width: none; height: auto; background: #fff; } #zoom.big img { width: 230vw; }
+  #zoom .zx { position: fixed; top: calc(var(--sat) + 10px); right: 12px; width: 38px; height: 38px; border: 0; border-radius: 19px; background: rgba(120, 120, 128, .5); color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+  #zoom .zx svg { width: 18px; height: 18px; } #zoom .zh { position: fixed; left: 0; right: 0; bottom: calc(var(--sab) + 16px); text-align: center; color: rgba(255, 255, 255, .7); font-size: 13px; pointer-events: none; }
+  #toast { position: fixed; z-index: 60; left: 50%; bottom: calc(var(--sab) + 86px); transform: translateX(-50%); background: rgba(40, 40, 40, .94); color: #fff; padding: 10px 16px; border-radius: 20px; font-size: 14px; line-height: 1.45; max-width: 84vw; text-align: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  #toast.on { opacity: 1; }
+  #quizbox { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 45; background: var(--surface); display: flex; flex-direction: column; padding-top: var(--sat); }
+  #quizbox .qh { display: flex; align-items: center; height: 46px; padding: 0 4px 0 16px; font-weight: 600; font-size: 16px; border-bottom: 1px solid var(--line); } #quizbox .qh button { margin-left: auto; }
+  #quizbox iframe { flex: 1; border: 0; width: 100%; }
+
+  /* 대화 (논문에 묻기 · 연구 노트 · 공부 장에 묻기) */
+  .chat { display: flex; flex-direction: column; min-height: calc(100vh - var(--nav-h) - var(--sat)); min-height: calc(100dvh - var(--nav-h) - var(--sat)); }
+  .msgs { flex: 1; padding: 6px 18px 14px; }
+  .ch1 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; line-height: 1.35; margin: 4px 0 4px; } .ch2 { font-size: 13px; color: var(--text-3); margin-bottom: 6px; }
+  .mu { display: flex; justify-content: flex-end; margin: 22px 0 12px; }
+  .mu div { max-width: 86%; background: var(--accent); color: var(--surface); border-radius: 20px 20px 6px 20px; padding: 10px 14px; font-size: 15.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; }
+  .mu div.long { max-height: 9.2em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .mq { margin: 20px 0 -12px auto; max-width: 86%; box-sizing: border-box; border-left: 3px solid var(--line-2); padding-left: 10px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+  .mc.doc { padding: 0; font-size: 16px; line-height: 1.72; }
+  .mm { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 12px; color: var(--text-3); margin: 2px 0 4px; }
+  .mm button { background: none; border: 0; color: var(--accent); font-size: 13.5px; padding: 6px 0; }
+  .mn { background: var(--amber-bg); border-radius: 14px; padding: 10px 14px 11px; margin: 18px 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .mn .k { font-size: 12px; font-weight: 700; color: var(--amber); margin-bottom: 2px; }
+  .mw { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--text-2); font-size: 14px; margin: 10px 0 14px; }
+  .mw button { background: none; border: 0; color: var(--accent); font-size: 14px; padding: 6px 0; }
+  .dots { display: inline-flex; gap: 4px; } .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--text-3); animation: dot 1s infinite ease-in-out; } .dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+  @keyframes dot { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .merr { color: var(--red); font-size: 14px; margin: 10px 0; }
+  .composer { position: -webkit-sticky; position: sticky; bottom: var(--kb); z-index: 5; background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); border-top: 1px solid var(--line);
+    padding: 8px 12px calc(8px + max(0px, var(--sab) - var(--kb))); }
+  .composer .ctx { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; color: var(--text-2); background: var(--fill); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
+  .composer .ctx div { flex: 1; min-width: 0; } .composer .ctx button { flex: none; background: none; border: 0; color: var(--text-3); padding: 0 2px; font-size: 16px; line-height: 1.2; }
+  .composer .crow { display: flex; align-items: flex-end; gap: 8px; }
+  .composer textarea { flex: 1; min-width: 0; box-sizing: border-box; height: 40px; max-height: 140px; resize: none; border: 0; border-radius: 20px; background: var(--fill); padding: 9px 14px; font-size: 16px; line-height: 1.4; color: var(--text); font-family: inherit; }
+  .composer textarea:focus { outline: none; }
+  .composer .send { flex: none; width: 40px; height: 40px; border-radius: 20px; border: 0; padding: 0; background: var(--accent); color: var(--surface); display: flex; align-items: center; justify-content: center; }
+  .composer .send svg { width: 22px; height: 22px; } .composer .send:disabled { background: var(--fill-2); color: var(--text-3); }
+  .composer .alt { flex: none; height: 40px; padding: 0 13px; border: 0; border-radius: 20px; background: var(--fill); font-size: 14px; color: var(--text); }
 </style>
 </head>
-<body>
-<header id="top"><div id="bar"></div><div id="tabs" hidden></div></header>
+<body class="root">
+<div id="rp"></div>
+<header id="nav" class="rootnav top"></header>
 <main id="app"></main>
+<nav id="tabbar"></nav>
+<div id="peek" hidden></div>
+<div id="sheetbg" hidden></div><div id="sheet" hidden></div>
+<div id="zoom" hidden></div>
+<div id="toast"></div>
 <script>
-/* 휴대폰용 Athenaeum (2026-11-06, 사용자: '아테네움 폰으로 웹앱으로 볼 수 있으면'). 서재에서 논문을 찾아 요약·번역을 읽고, 메모를 적고 Claude 에게 묻고, 공부로 쓴 장을 읽는다.
-   새 API 는 없다 — PC 화면이 쓰는 것(/api/data · /api/gentext · /api/notes · /api/ask · /api/study · /api/ms/math)을 그대로 부른다. 주소: #/ 서재 · #/p/<파일>/<탭> 논문 · #/study 공부 · #/s/<장>/<절> */
-const $ = id => document.getElementById(id), app = $("app"), bar = $("bar"), tabs = $("tabs");
+/* 휴대폰용 Athenaeum — 다시 만든 판 (2026-11-06, 사용자: '폰 UI는 누가 만든겨? 다시 같이 만들어볼래?' → 첫 화면·읽는 화면·누르고 오가기가 별로, 이어 읽기가 먼저, 아이폰 앱처럼).
+   화면: 읽기(이어 읽기 · 공부 · 새로 들어온 논문) · 서재 · 공부 · 노트(연구 노트) 가 아래 탭, 논문·장·대화는 그 위에 쌓이는 화면(위 막대의 ‹ 로 돌아간다).
+   읽는 화면은 굴리면 위 막대가 숨고, 번역의 문장을 누르면 원문이, 공부의 문장을 누르면 근거 원문이 아래에서 올라온다.
+   주소: #/ 읽기 · #/lib 서재 · #/study 공부 · #/notes 노트 · #/p/<파일>/<summary|translation|ask>[/s번호] 논문 · #/s/<장>[/<절>|/c/<대화>] 공부 · #/n/<노트>
+   서버에는 PC 화면이 쓰는 길을 그대로 부른다 (/api/data?lines=1 · /api/gentext · /api/align · /api/notes · /api/ask · /api/study · /api/ms/math). 시험은 /m?nolog=1 (읽기 기록을 남기지 않는다). */
+"use strict";
+const $ = id => document.getElementById(id);
+const app = $("app"), nav = $("nav"), tabbar = $("tabbar"), peek = $("peek"), rp = $("rp"), sheet = $("sheet"), sheetbg = $("sheetbg"), zoom = $("zoom"), toastEl = $("toast");
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const enc = encodeURIComponent;
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-function toLogin() { location.href = "/login?next=" + enc(location.pathname + location.hash); }
+const jGet = (k, d) => { try { const v = JSON.parse(lsGet(k, "null")); return v == null ? d : v; } catch (e) { return d; } };
+const NOLOG = /[?&]nolog=1/.test(location.search);
+if (/[?&]noanim=1/.test(location.search)) document.documentElement.classList.add("noanim");      /* 시험용: 움직임 없이 */
+function toLogin() { location.href = "/login?next=" + enc(location.pathname + location.search + location.hash); }
 async function api(url, body) {
   const r = await fetch(url, body ? { method: "POST", body: JSON.stringify(body) } : undefined);
   if (r.status === 401) { toLogin(); throw new Error("login"); }
   return r.json();
 }
 async function text(url) { const r = await fetch(url); if (r.status === 401) { toLogin(); throw new Error("login"); } return r.ok ? r.text() : null; }
-const fmtDay = t => { const d = new Date(t * 1000); return (d.getMonth() + 1) + "/" + d.getDate(); };
+function ago(t) {
+  const s = Date.now() / 1000 - t, d = new Date(t * 1000);
+  if (s < 90) return "방금"; if (s < 3600) return Math.round(s / 60) + "분 전"; if (s < 86400) return Math.round(s / 3600) + "시간 전";
+  if (s < 86400 * 2) return "어제"; if (s < 86400 * 30) return Math.floor(s / 86400) + "일 전";
+  return (d.getFullYear() !== new Date().getFullYear() ? d.getFullYear() + "년 " : "") + (d.getMonth() + 1) + "월 " + d.getDate() + "일";
+}
 const fmtDur = s => s < 60 ? s + "초" : Math.floor(s / 60) + "분 " + (s % 60) + "초";
+const svg = (p, sw) => "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='" + (sw || 1.7) + "' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>" + p + "</svg>";
+const IC = {
+  read: svg("<path d='M12 6.6C10.3 5.4 8 4.8 5 4.8a1 1 0 0 0-1 1v11.4a1 1 0 0 0 1 1c3 0 5.3.6 7 1.8 1.7-1.2 4-1.8 7-1.8a1 1 0 0 0 1-1V5.8a1 1 0 0 0-1-1c-3 0-5.3.6-7 1.8z'/><path d='M12 6.6V20'/>"),
+  lib: svg("<rect x='3.2' y='4' width='4.3' height='16' rx='1.1'/><rect x='9.4' y='4' width='4.3' height='16' rx='1.1'/><path d='M16.3 7.2l2.6-.7a1.1 1.1 0 0 1 1.3.8l2.5 9.6a1.1 1.1 0 0 1-.8 1.3l-2.6.7a1.1 1.1 0 0 1-1.3-.8L15.5 8.5a1.1 1.1 0 0 1 .8-1.3z'/>"),
+  study: svg("<path d='M12 4.6L2.6 9.2 12 13.8l9.4-4.6z'/><path d='M6.3 11.2v4.2c0 1.5 2.6 3 5.7 3s5.7-1.5 5.7-3v-4.2'/><path d='M21.4 9.2v5.2'/>"),
+  note: svg("<path d='M5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-6l-4.7 3.6V17H5.5A2.5 2.5 0 0 1 3 14.5v-7A2.5 2.5 0 0 1 5.5 5z'/>"),
+  back: svg("<path d='M15 5l-7 7 7 7'/>", 2.3), search: svg("<circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/>", 2),
+  more: "<svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><circle cx='5.5' cy='12' r='1.8'/><circle cx='12' cy='12' r='1.8'/><circle cx='18.5' cy='12' r='1.8'/></svg>",
+  plus: svg("<path d='M12 5v14M5 12h14'/>", 2.2), send: svg("<path d='M12 19V6M6.2 11.6L12 5.8l5.8 5.8'/>", 2.4), close: svg("<path d='M6 6l12 12M18 6L6 18'/>", 2.4)
+};
 
-let papers = null, studies = null, q = lsGet("m_q", ""), sort = lsGet("m_sort", "added"), route = {}, view = 0, isRemote = false;
-const studyCache = {}, pos = (() => { try { return JSON.parse(lsGet("m_pos", "{}")) || {}; } catch (e) { return {}; } })();
-let curHash = location.hash, posT = null, pingT = null, lastTouch = Date.now();
-function applyFs() { document.documentElement.style.setProperty("--mfs", (+lsGet("m_fs", "16") || 16) + "px"); }
-function fsBtns() { return "<button class='fs' data-fs='-1' aria-label='글씨 작게'>가−</button><button class='fs' data-fs='1' aria-label='글씨 크게'>가+</button>"; }
-document.addEventListener("click", e => {
-  const b = e.target.closest("[data-fs]"); if (!b) return;
-  lsSet("m_fs", String(Math.min(24, Math.max(13, (+lsGet("m_fs", "16") || 16) + (+b.dataset.fs))))); applyFs();
-});
-window.addEventListener("scroll", () => {   /* 읽던 자리 기억 (화면마다) */
-  lastTouch = Date.now(); clearTimeout(posT);
-  posT = setTimeout(() => { pos[curHash] = Math.round(window.scrollY); const ks = Object.keys(pos); if (ks.length > 60) delete pos[ks[0]]; lsSet("m_pos", JSON.stringify(pos)); }, 400);
+/* ---------- 상태 ---------- */
+let papers = null, papersT = 0, studies = null, studiesT = 0, notesList = null, isRemote = false;
+let view = 0, curHash = location.hash, lastRoot = lsGet("m_root", "#/"), refresh = null, pollT = null, pingT = null, prevDepth = -1;
+let animT = null, pingLast = null, askCtx = {}, peekCtx = null;              /* 묻는 칸에 붙일 인용·이어 묻기 · 지금 올라와 있는 칸이 가리키는 것 */
+const stack = [], studyCache = {}, alignCache = {}, pos = jGet("m_pos", {});
+function applyLook() {
+  const de = document.documentElement, th = lsGet("m_theme", "");
+  de.style.setProperty("--mfs", (+lsGet("m_fs", "17") || 17) + "px");
+  if (th) de.dataset.theme = th; else de.removeAttribute("data-theme");
+}
+
+/* ---------- 굴리기: 읽던 자리 · 위 막대 숨기기 · 읽은 만큼 줄 ---------- */
+let lastY = 0, acc = 0, posT = null, posPend = null, lastTouch = Date.now();
+const setBars = show => document.body.classList.toggle("hidebars", !show);
+const peekOpen = () => peek.classList.contains("on");
+function flushPos() {
+  clearTimeout(posT); posT = null;
+  if (!posPend) return;
+  pos[posPend[0]] = [posPend[1], Date.now()]; posPend = null;
+  const ks = Object.keys(pos); if (ks.length > 80) delete pos[ks[0]];
+  lsSet("m_pos", JSON.stringify(pos));
+}
+window.addEventListener("scroll", () => {
+  const y = Math.max(0, Math.round(window.scrollY)), b = document.body;
+  lastTouch = Date.now();
+  nav.classList.toggle("top", y < 24);
+  if (b.classList.contains("reading")) {
+    const dy = y - lastY, max = document.documentElement.scrollHeight - window.innerHeight;
+    if (y < 70) { setBars(true); acc = 0; }
+    else if (dy > 0) { acc = acc > 0 ? acc + dy : dy; if (acc > 30) setBars(false); }
+    else if (dy < 0) { acc = acc < 0 ? acc + dy : dy; if (acc < -30) setBars(true); }
+    rp.style.width = (max > 0 ? Math.min(100, y / max * 100) : 0) + "%";
+  }
+  lastY = y; posPend = [curHash, y];
+  clearTimeout(posT); posT = setTimeout(flushPos, 350);
 }, { passive: true });
 document.addEventListener("touchstart", () => { lastTouch = Date.now(); }, { passive: true });
-function restorePos() { const y = pos[curHash] || 0; setTimeout(() => window.scrollTo(0, y), 30); }
-
-function setBar(html, tabList, cur, onTab) {
-  bar.innerHTML = html;
-  if (!tabList) { tabs.hidden = true; tabs.innerHTML = ""; return; }
-  tabs.hidden = false;
-  tabs.innerHTML = tabList.map(t => "<button data-t='" + t[0] + "'" + (t[0] === cur ? " class='on'" : "") + ">" + t[1] + "</button>").join("");
-  tabs.querySelectorAll("button").forEach(b => b.onclick = () => onTab(b.dataset.t));
-  const bk = bar.querySelector(".back"); if (bk) bk.onclick = () => { if (history.length > 1) history.back(); else location.hash = "#/"; };
-}
-const homeBar = cur => setBar("<img class='mark' src='/logo/mark.svg' alt=''>" + (cur === "lib" ? "<input type='search' id='q' placeholder='제목 · 저자 · 저널 · 연도 · 라벨' value='" + esc(q) + "'>" : "<span class='ttl'>공부</span>"),
-  [["lib", "서재"], ["study", "공부"]], cur, t => { location.hash = t === "lib" ? "#/" : "#/study"; });
-
-/* ---------- 서재 ---------- */
-function matchQ(p, words) {
-  const hay = (p.title + " " + (p.author || "") + " " + (p.journal || "") + " " + (p.year || "") + " " + (p.labels || []).join(" ")).toLowerCase();
-  return words.every(w => hay.indexOf(w) >= 0);
-}
-function drawLib() {
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  let list = (papers || []).filter(p => !words.length || matchQ(p, words));
-  const key = { added: p => p.added || 0, read: p => (p.read && p.read.last) || 0, year: p => +p.year || 0 }[sort] || (p => p.added || 0);
-  list = list.slice().sort((a, b) => key(b) - key(a) || (b.added || 0) - (a.added || 0));
-  if (sort === "read") list = list.filter(p => p.read && p.read.last);
-  const shown = list.slice(0, 300);
-  let h = "<div class='sub'><span>" + list.length + "편</span><span class='sp'></span><select id='sort'><option value='added'>최근에 넣은 순</option><option value='read'>최근에 읽은 순</option><option value='year'>연도순</option></select></div>";
-  h += shown.map(p => "<div class='row' data-f='" + esc(p.file) + "'><div class='t'>" + esc(p.title) + "</div><div class='m'>" + esc([p.year, p.journal, p.author].filter(Boolean).join(" · ")) +
-    (p.review ? " · 리뷰" : "") + (p.has_summary ? " · <span class='has'>요약</span>" : "") + (p.has_translation ? " · <span class='has'>번역</span>" : "") +
-    (p.read && p.read.last ? " · <span class='rd'>읽음 " + fmtDay(p.read.last) + "</span>" : "") + (p.notes_n ? " · 메모 " + p.notes_n : "") + "</div></div>").join("");
-  if (!list.length) h += "<div class='empty'>" + (papers && papers.length ? "맞는 논문이 없습니다." : "서재에 논문이 없습니다.") + "</div>";
-  else if (list.length > shown.length) h += "<div class='empty'>앞의 " + shown.length + "편만 보였습니다 — 검색어로 좁혀 주세요.</div>";
-  h += "<div class='foot'><a href='/?desktop=1'>PC 화면으로 보기</a>" + (isRemote ? "<button id='out'>로그아웃</button>" : "") + "</div>";
-  app.innerHTML = h;
-  $("sort").value = sort; $("sort").onchange = e => { sort = e.target.value; lsSet("m_sort", sort); drawLib(); window.scrollTo(0, 0); };
-  app.querySelectorAll(".row").forEach(r => r.onclick = () => { location.hash = "#/p/" + enc(r.dataset.f); });
-  const ob = $("out"); if (ob) ob.onclick = async () => { try { await api("/api/logout", {}); } catch (e) {} location.href = "/login"; };
-}
-async function viewLib(my) {
-  homeBar("lib");
-  const qi = $("q"); let t = null;
-  qi.oninput = () => { clearTimeout(t); t = setTimeout(() => { q = qi.value.trim(); lsSet("m_q", q); if (papers) { drawLib(); window.scrollTo(0, 0); } }, 180); };
-  if (!papers) { app.innerHTML = "<div class='empty'>서재를 불러오는 중…</div>"; const d = await api("/api/data"); if (my !== view) return; papers = d.papers || []; }
-  else api("/api/data").then(d => { papers = d.papers || papers; if (my === view) { const y = window.scrollY; drawLib(); window.scrollTo(0, y); } }).catch(() => {});   /* 조용히 새로 받기 */
-  drawLib(); restorePos();
+function savedY(h) { const v = pos[h]; return Array.isArray(v) ? v : [+v || 0, 0]; }
+function restorePos(y) { if (y == null) y = savedY(curHash)[0]; lastY = y; acc = 0; window.scrollTo(0, y); setTimeout(() => { if (Math.abs(window.scrollY - y) > 4) window.scrollTo(0, y); }, 60); }
+if (window.visualViewport) {   /* 자판이 올라오면 묻는 칸을 그 위로 */
+  const vv = window.visualViewport, f = () => document.documentElement.style.setProperty("--kb", Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + "px");
+  vv.addEventListener("resize", f); vv.addEventListener("scroll", f);
 }
 
-/* ---------- 글(요약·번역) 그리기 ---------- */
-function inline(s, file) {
+/* ---------- 올라오는 칸 · 창 · 알림 · 그림 크게 ---------- */
+function openPeek(html) {
+  peek.innerHTML = "<button class='px' aria-label='닫기'>" + IC.close + "</button>" + html; peek.scrollTop = 0;
+  if (!peekOpen()) { peek.hidden = false; void peek.offsetWidth; peek.classList.add("on"); }
+}
+function closePeek() { peek.classList.remove("on"); peekCtx = null; document.querySelectorAll(".doc .on").forEach(e => e.classList.remove("on")); }
+function openSheet(html) {
+  sheet.onclick = null; sheet.innerHTML = "<div class='grab'></div>" + html; sheet.hidden = sheetbg.hidden = false; sheet.scrollTop = 0;
+  void sheet.offsetWidth; sheet.classList.add("on"); sheetbg.classList.add("on");
+}
+function closeSheet() {
+  sheet.classList.remove("on"); sheetbg.classList.remove("on");
+  if (document.activeElement && sheet.contains(document.activeElement)) document.activeElement.blur();
+  setTimeout(() => { if (!sheet.classList.contains("on")) { sheet.hidden = sheetbg.hidden = true; sheet.innerHTML = ""; } }, 300);
+}
+sheetbg.onclick = closeSheet;
+(() => {   /* 창을 아래로 쓸어 닫기 */
+  let y0 = null;
+  sheet.addEventListener("touchstart", e => { y0 = sheet.scrollTop <= 0 && !e.target.closest("textarea") ? e.touches[0].clientY : null; }, { passive: true });
+  sheet.addEventListener("touchmove", e => { if (y0 != null && e.touches[0].clientY - y0 > 90) { y0 = null; closeSheet(); } }, { passive: true });
+  let p0 = null;
+  peek.addEventListener("touchstart", e => { p0 = peek.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+  peek.addEventListener("touchmove", e => { if (p0 != null && e.touches[0].clientY - p0 > 70) { p0 = null; closePeek(); } }, { passive: true });
+})();
+let toastT = null;
+function toast(msg, ms) { toastEl.textContent = msg; toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), ms || 2600); }
+function openZoom(src) {
+  zoom.className = ""; zoom.innerHTML = "<img alt='' src='" + esc(src) + "'><button class='zx' aria-label='닫기'>" + IC.close + "</button><div class='zh'>그림을 누르면 크게 · 다시 누르면 맞춤</div>";
+  zoom.hidden = false;
+  zoom.querySelector("img").onclick = e => { e.stopPropagation(); zoom.classList.toggle("big"); if (zoom.classList.contains("big")) zoom.scrollLeft = (zoom.scrollWidth - zoom.clientWidth) / 2; };
+  zoom.onclick = () => { zoom.hidden = true; zoom.innerHTML = ""; };
+}
+
+/* ---------- 글 그리기 (요약 · 번역 · 답) ---------- */
+function inline(s, o) {
   s = esc(s).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");
-  s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' src='/eq?file=" + enc(file || "") + "&name=" + enc(n) + "'>");
-  s = s.replace(/\[s\d+\]\s*/g, "");
-  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
-  return s;
+  s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' src='/eq?file=" + enc(o.file || "") + "&name=" + enc(n) + "'>");
+  if (o.math) s = s.replace(/\$([^$\n]{1,300})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  if (o.anchors) s = s.replace(/⟦([A-Z]\d+\.\d+)⟧/g, (m, k) => o.anchors[k] ? "<a class='anc' href='#' data-anc='" + k + "'>" + k + "</a>" : "");
+  if (!o.sent) return s.replace(/\[s\d+\]\s*/g, "");
+  const parts = s.split(/\[s(\d+)\]\s*/); let h = parts[0];      /* 번역: 문장마다 누를 수 있게 */
+  for (let i = 1; i < parts.length; i += 2) h += "<span class='s' data-s='" + parts[i] + "'>" + parts[i + 1] + "</span>";
+  return h;
 }
-function mdTable(rows, file) {
+function mdTable(rows, o) {
   const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
   const isSep = r => /^[\s|:\-]+$/.test(r) && r.indexOf("-") >= 0;
   const head = rows.length > 1 && isSep(rows[1]);
-  return "<table>" + rows.map((r, k) => isSep(r) ? "" : "<tr>" + cells(r).map(c => (head && k === 0 ? "<th>" : "<td>") + inline(c, file) + (head && k === 0 ? "</th>" : "</td>")).join("") + "</tr>").join("") + "</table>";
+  return "<table>" + rows.map((r, k) => isSep(r) ? "" : "<tr>" + cells(r).map(c => (head && k === 0 ? "<th>" : "<td>") + inline(c, o) + (head && k === 0 ? "</th>" : "</td>")).join("") + "</tr>").join("") + "</table>";
 }
-function md(src, file) {
-  const lines = String(src || "").replace(/\r/g, "").split("\n"), out = []; let i = 0, para = [];
-  const flush = () => { if (para.length) { out.push("<p>" + inline(para.join(" "), file) + "</p>"); para = []; } };
+function md(src, o) {
+  o = o || {};
+  const lines = String(src || "").replace(/\r/g, "").split("\n"), out = []; let i = 0, para = [], h1 = !o.skipH1;
+  const flush = () => { if (para.length) { const t = para.join(" "); out.push("<p" + (/^서재 밖\s*[:：]/.test(t) ? " class='out'" : /^(탐색|공부)\s*[:：]/.test(t) ? " class='todo'" : "") + ">" + inline(t, o) + "</p>"); para = []; } };
   const isLi = s => /^\s*([-*•]|\d+[.)])\s+/.test(s), isTb = s => /^\s*\|.*\|\s*$/.test(s);
   while (i < lines.length) {
     const ln = lines[i]; let m;
     if (!ln.trim()) { flush(); i++; continue; }
-    if ((m = /^(#{1,4})\s+(.*)$/.exec(ln))) { flush(); const lv = Math.min(3, m[1].length); out.push("<h" + lv + ">" + inline(m[2], file) + "</h" + lv + ">"); i++; continue; }
-    if (isTb(ln)) { flush(); const rows = []; while (i < lines.length && isTb(lines[i])) rows.push(lines[i++]); out.push(mdTable(rows, file)); continue; }
+    if (/^\s*```/.test(ln)) {      /* 코드 블록 — 글자 그대로 */
+      flush(); i++; const code = []; while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]); i++;
+      out.push("<pre>" + esc(code.join("\n")) + "</pre>"); continue;
+    }
+    if ((m = /^(#{1,4})\s+(.*)$/.exec(ln))) {
+      flush(); i++;
+      if (m[1].length === 1 && !h1) { h1 = true; continue; }      /* 파일 머리의 '(요약) [저널] (연도), 제목' 줄 — 화면 머리에 제목이 이미 있다 */
+      const lv = Math.min(3, Math.max(o.minH || 1, m[1].length)); out.push("<h" + lv + ">" + inline(m[2], o) + "</h" + lv + ">"); continue;
+    }
+    if (isTb(ln)) { flush(); const rows = []; while (i < lines.length && isTb(lines[i])) rows.push(lines[i++]); out.push(mdTable(rows, o)); continue; }
     if (isLi(ln)) {
       flush(); const ord = /^\s*\d+[.)]\s+/.test(ln), items = [];
       while (i < lines.length && (isLi(lines[i]) || (items.length && /^\s{2,}\S/.test(lines[i])))) { if (isLi(lines[i])) items.push(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, "")); else items[items.length - 1] += " " + lines[i].trim(); i++; }
-      out.push((ord ? "<ol>" : "<ul>") + items.map(x => "<li>" + inline(x, file) + "</li>").join("") + (ord ? "</ol>" : "</ul>")); continue;
+      out.push((ord ? "<ol>" : "<ul>") + items.map(x => "<li>" + inline(x, o) + "</li>").join("") + (ord ? "</ol>" : "</ul>")); continue;
     }
-    if (/^\s*>/.test(ln)) { flush(); const b = []; while (i < lines.length && /^\s*>/.test(lines[i])) b.push(lines[i++].replace(/^\s*>\s?/, "")); out.push("<blockquote>" + inline(b.join(" "), file) + "</blockquote>"); continue; }
+    if (/^\s*>/.test(ln)) { flush(); const b = []; while (i < lines.length && /^\s*>/.test(lines[i])) b.push(lines[i++].replace(/^\s*>\s?/, "")); out.push("<blockquote>" + inline(b.join(" "), o) + "</blockquote>"); continue; }
     if (/^\s*(-{3,}|\*{3,})\s*$/.test(ln)) { flush(); out.push("<hr>"); i++; continue; }
     para.push(ln.trim()); i++;
   }
   flush(); return out.join("");
-}
-
-/* ---------- 논문 ---------- */
-const PTABS = [["summary", "요약"], ["translation", "번역"], ["notes", "메모 · 질문"]];
-function paperBar(file, title, tab) {
-  setBar("<button class='back' aria-label='뒤로'>‹</button><span class='ttl'>" + esc(title) + "</span><a class='lnk' href='/pdf?file=" + enc(file) + "' target='_blank' rel='noopener'>PDF</a>",
-    PTABS, tab, t => { location.replace("#/p/" + enc(file) + "/" + t); });
-}
-async function viewPaper(file, tab, my) {
-  tab = PTABS.some(t => t[0] === tab) ? tab : lsGet("m_tab", "summary");
-  if (tab !== "notes") lsSet("m_tab", tab);
-  let p = (papers || []).find(x => x.file === file);
-  paperBar(file, p ? p.title : file.replace(/\.pdf$/i, ""), tab);
-  if (!p) { try { p = await api("/api/paperinfo?file=" + enc(file)); } catch (e) { p = { title: file }; } if (my !== view) return; paperBar(file, p.title || file, tab); }
-  if (tab === "notes") return viewNotes(file, my);
-  app.innerHTML = "<div class='empty'>불러오는 중…</div>";
-  const src = await text("/api/gentext?file=" + enc(file) + "&kind=" + tab); if (my !== view) return;
-  if (src == null) return viewMissing(file, tab, my);
-  const meta = [p.year, p.journal, p.author].filter(Boolean).join(" · ");
-  app.innerHTML = "<div class='sub'><span>" + esc(meta) + "</span><span class='sp'></span>" + fsBtns() + "</div><div class='doc'>" + md(src, file) + "</div>";
-  restorePos(); startPing(file, tab);
-}
-async function viewMissing(file, kind, my) {
-  const ko = kind === "summary" ? "요약" : "번역";
-  const st = await api("/api/genstatus?file=" + enc(file) + "&kind=" + kind).catch(() => ({})); if (my !== view) return;
-  if (st.status === "running") return waitGen(file, kind, my);
-  app.innerHTML = "<div class='empty'>이 논문의 " + ko + "이 아직 없습니다." + (st.status === "error" && st.error ? "<br>지난번 오류: " + esc(st.error) : "") +
-    "<br><button class='big primary' id='gen'>" + ko + " 만들기</button><br><span class='hint'>" + (kind === "summary" ? "1~3분 걸립니다." : "논문 길이에 따라 5~20분 걸리고 토큰을 많이 씁니다.") + " 화면을 닫아도 PC 에서 계속 만듭니다.</span></div>";
-  $("gen").onclick = async () => { $("gen").disabled = true; try { await api("/api/generate", { file, kind }); } catch (e) {} if (my === view) waitGen(file, kind, my); };
-}
-async function waitGen(file, kind, my) {
-  const t0 = Date.now();
-  const tick = async () => {
-    if (my !== view) return;
-    let st; try { st = await api("/api/genstatus?file=" + enc(file) + "&kind=" + kind); } catch (e) { st = {}; }
-    if (my !== view) return;
-    if (st.status === "done") return viewPaper(file, kind, my);
-    if (st.status === "error" || st.status === "none") return viewMissing(file, kind, my);
-    app.innerHTML = "<div class='empty'>만드는 중… " + esc(st.stage || "") + "<br>" + fmtDur(st.elapsed || Math.round((Date.now() - t0) / 1000)) + "째<br><span class='hint'>화면을 닫아도 계속 만듭니다.</span></div>";
-    setTimeout(tick, 5000);
-  };
-  tick();
-}
-function startPing(file, kind) {   /* 읽기 기록 — PC 의 읽기 화면과 같은 신호(30초마다, 화면이 보이고 최근 2분 안에 만졌을 때만) */
-  clearInterval(pingT);
-  if (/[?&]nolog=1/.test(location.search)) return;   /* 시험으로 열 때 (/m?nolog=1) 는 읽기 기록을 남기지 않는다 — PC 읽기 화면의 &nolog=1 과 같다 */
-  pingT = setInterval(() => {
-    if (document.hidden || Date.now() - lastTouch > 120000) return;
-    const h = document.documentElement.scrollHeight - window.innerHeight;
-    fetch("/api/read_ping", { method: "POST", body: JSON.stringify({ file, kind, pos: h > 0 ? Math.min(1, window.scrollY / h) : 0, sec: 30 }) }).catch(() => {});
-  }, 30000);
-}
-async function viewNotes(file, my) {
-  app.innerHTML = "<div class='empty'>불러오는 중…</div>";
-  let d; try { d = await api("/api/notes?file=" + enc(file)); } catch (e) { d = {}; } if (my !== view) return;
-  const draw = () => {
-    const notes = d.notes || [], qa = d.qa || [];
-    let h = "<div class='compose'><textarea id='nt' placeholder='메모를 적거나, 이 논문에 관해 Claude 에게 물어보세요'></textarea><div class='acts'><span class='hint' id='nmsg'></span><button class='big' id='nsave'>메모로</button><button class='big primary' id='nask'>묻기</button></div></div>";
-    if (qa.length) h += "<div class='sech'>질문과 답 " + qa.length + "</div>" + qa.map(x => "<div class='note'><div class='when'>" + esc(x.t || "") + "</div>" + (x.quote ? "<div class='quote'>" + esc(String(x.quote).slice(0, 300)) + "</div>" : "") + "<div class='q'>" + esc(x.q || "") + "</div><div class='a'>" + esc(x.a || "") + "</div></div>").join("");
-    if (notes.length) h += "<div class='sech'>메모 " + notes.length + "</div>" + notes.map(x => "<div class='note'><div class='when'>" + esc(x.t || "") + "</div>" + (x.quote ? "<div class='quote'>" + esc(String(x.quote).slice(0, 300)) + "</div>" : "") + "<div class='tx'>" + esc(x.text || "") + "</div></div>").join("");
-    if (!qa.length && !notes.length) h += "<div class='empty'>아직 메모나 질문이 없습니다.</div>";
-    app.innerHTML = h;
-    const ta = $("nt"), msg = $("nmsg");
-    $("nsave").onclick = async () => {
-      const v = ta.value.trim(); if (!v) { ta.focus(); return; }
-      $("nsave").disabled = true;
-      try { await api("/api/notes", { file, op: "add_note", text: v, quote: "", kind: "mobile" }); d = await api("/api/notes?file=" + enc(file)); } catch (e) { msg.textContent = "저장하지 못했습니다"; $("nsave").disabled = false; return; }
-      if (my === view) draw();
-    };
-    $("nask").onclick = async () => {
-      const v = ta.value.trim(); if (!v) { ta.focus(); return; }
-      $("nask").disabled = $("nsave").disabled = true; const t0 = Date.now();
-      const tm = setInterval(() => { msg.textContent = "Claude 가 논문을 읽고 답하는 중 · " + fmtDur(Math.round((Date.now() - t0) / 1000)) + " (보통 30초~2분)"; }, 1000);
-      let r; try { r = await api("/api/ask", { file, question: v, quote: "", kind: "mobile" }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
-      clearInterval(tm); if (my !== view) return;
-      if (r.error) { msg.textContent = "⚠ " + r.error; $("nask").disabled = $("nsave").disabled = false; return; }
-      d.qa = r.qa || d.qa; draw();
-    };
-  };
-  draw(); restorePos();
-}
-
-/* ---------- 공부 ---------- */
-async function viewStudies(my) {
-  homeBar("study");
-  if (!studies) { app.innerHTML = "<div class='empty'>불러오는 중…</div>"; const d = await api("/api/study"); if (my !== view) return; studies = d.items || []; }
-  const done = studies.filter(s => s.status === "done"), busy = studies.filter(s => s.status === "running");
-  let h = done.map(s => { const st = s.stats || {}; return "<div class='row' data-s='" + esc(s.id) + "'><div class='t'>" + esc(s.title || s.topic) + "</div><div class='m'>" + fmtDay(s.t) + " · 논문 " + (s.papers || 0) + "편" + (st.units ? " · 문장 " + st.units : "") + (st.figs ? " · 그림 " + st.figs : "") + (st.eqs ? " · 식 " + st.eqs : "") + "</div></div>"; }).join("");
-  if (busy.length) h += "<div class='sech'>쓰는 중</div>" + busy.map(s => "<div class='row'><div class='t'>" + esc(s.title || s.topic) + "</div><div class='m'>" + esc(s.stage || "") + "</div></div>").join("");
-  if (!done.length && !busy.length) h += "<div class='empty'>아직 다 쓴 장이 없습니다. 새 장은 PC 화면의 「공부」 에서 씁니다.</div>";
-  app.innerHTML = h;
-  app.querySelectorAll("[data-s]").forEach(r => r.onclick = () => { location.hash = "#/s/" + enc(r.dataset.s); });
-  restorePos();
-}
-const citeNums = (st, u) => [...new Set((u.src || []).map(s => (st.papers[+String(s).split(":")[0]] || {}).n).filter(Boolean))].sort((a, b) => a - b);
-function mtext(t) {   /* 본문의 $…$ 는 수식으로 (나중에 한꺼번에 그린다) */
-  return esc(t || "").replace(/\$([^$\n]{1,400})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
-}
-const unitsHtml = (st, b) => (b.units || []).map(u => { const ns = citeNums(st, u); return mtext(u.t) + (ns.length ? "<span class='c'>[" + ns.join(",") + "]</span>" : ""); }).join(" ");
-function secHtml(st, si) {
-  const sec = st.chapter.sections[si], fig = n => "/api/study/fig?id=" + enc(st.id) + "&name=" + enc(n);
-  let h = "<h1>" + (sec.kind === "summary" ? "" : (si + 1) + ". ") + esc(sec.title) + "</h1>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "");
-  (sec.blocks || []).forEach(b => {
-    if (b.h) { h += b.kind === "extra" ? "<h3 class='extra'>번외</h3>" : "<h3>" + esc(b.h) + "</h3>"; return; }
-    if (b.table) {
-      h += "<table><caption><b>표 " + (b.table.no || "") + ".</b> " + esc(b.table.cap || "") + "</caption>" + ((b.table.cols || []).length ? "<tr>" + b.table.cols.map(c => "<th>" + esc(c) + "</th>").join("") + "</tr>" : "") +
-        (b.units || []).map(u => "<tr>" + (u.cells || [u.t]).map(c => "<td>" + esc(c) + "</td>").join("") + "</tr>").join("") + "</table>"; return;
-    }
-    if (b.eq) {
-      const e = b.eq, p = st.papers[e.pi] || {};
-      h += "<figure><div class='eqn' data-display='1'" + (e.latex ? " data-tex=\"" + esc(e.latex) + "\"" : "") + (e.img ? " data-img='" + fig(e.img) + "'" : "") + ">" + (e.latex ? esc(e.latex) : (e.img ? "<img alt='수식' src='" + fig(e.img) + "'>" : "")) + "</div>" +
-        "<figcaption><b>식 " + (e.no || "") + ".</b> " + unitsHtml(st, b) + " <span class='src'>— " + esc(p.short || "") + (e.n ? ", 식 (" + esc(e.n) + ")" : "") + "</span></figcaption></figure>"; return;
-    }
-    if (b.fig) {
-      const f = b.fig, p = st.papers[f.pi] || {};
-      h += "<figure><img loading='lazy' alt='' src='" + fig(f.img) + "'" + (f.w && f.h ? " width='" + f.w + "' height='" + f.h + "'" : "") + "><figcaption><b>" + (f.kind === "fig" ? "그림 " : "표 ") + (f.no || "") + ".</b> " + unitsHtml(st, b) +
-        " <span class='src'>— " + esc(p.short || "") + ", " + (f.kind === "fig" ? "Fig. " : "Table ") + esc(f.n) + "</span></figcaption></figure>"; return;
-    }
-    h += "<p" + (b.kind === "extra" ? " class='extra'" : "") + ">" + unitsHtml(st, b) + "</p>";
-  });
-  const cm = sec.comment && sec.comment.parts;
-  if (cm && cm.length) h += "<aside><div class='hd'>Claude 의 생각 — 서재의 문장으로 확인한 것이 아니라 풀이입니다</div>" + cm.map(x => "<h4>" + esc(x.h || "") + "</h4><div>" + esc(x.t || "") + "</div>").join("") + "</aside>";
-  const qz = sec.quiz && sec.quiz.items;
-  if (qz && qz.length) h += "<h3>확인 물음</h3>" + qz.map(x => "<details><summary>" + esc(x.q || "") + "</summary><p>" + esc(x.a || "") + "</p></details>").join("");
-  return h;
 }
 async function renderMath(root) {
   const els = [...root.querySelectorAll("[data-tex]:not([data-mml])")]; if (!els.length) return;
@@ -337,42 +398,656 @@ async function renderMath(root) {
     if (el.dataset.img) el.innerHTML = "<img alt='수식' src='" + el.dataset.img + "'>"; else el.classList.add("fail");   /* 엔진이 못 그리면 원문 그림으로 */
   });
 }
-async function viewStudy(id, si, my) {
+
+/* ---------- 틀: 위 막대 · 아래 탭 · 뒤로 ---------- */
+const TABS = [["home", "#/", "읽기", IC.read], ["lib", "#/lib", "서재", IC.lib], ["study", "#/study", "공부", IC.study], ["notes", "#/notes", "노트", IC.note]];
+function shell(o) {
+  document.body.className = (o.root ? "root" : "inner") + (o.reading ? " reading" : "") + (o.chat ? " chatp" : "");
+  nav.className = (o.root ? "rootnav " : "") + "top";
+  nav.innerHTML = "<div class='nl'>" + (o.left || (o.root ? "" : "<button class='nb' id='back' aria-label='뒤로'>" + IC.back + "</button>")) + "</div><div class='nc'>" +
+    (o.center != null ? o.center : "<span class='nt" + (o.fade ? " fade" : "") + "'>" + esc(o.title || "") + "</span>") + "</div><div class='nr'>" + (o.right || "") + "</div>";
+  const bk = $("back"); if (bk) bk.onclick = () => { if (stack.length > 1) history.back(); else location.replace(o.parent || lastRoot || "#/"); };
+  if (o.root) {
+    tabbar.innerHTML = TABS.map(t => "<a href='" + t[1] + "'" + (t[0] === o.root ? " class='on'" : "") + ">" + t[3] + "<span>" + t[2] + "</span></a>").join("");
+    lastRoot = TABS.find(t => t[0] === o.root)[1]; lsSet("m_root", lastRoot);
+  }
+  rp.style.width = "0";
+}
+tabbar.addEventListener("click", e => {
+  const a = e.target.closest("a"); if (!a) return; e.preventDefault();
+  if (a.classList.contains("on")) { window.scrollTo(0, 0); return; }      /* 지금 탭을 다시 누르면 맨 위로 */
+  location.replace(a.getAttribute("href"));
+});
+const segHtml = (list, cur) => "<div class='seg'>" + list.map(t => "<button data-seg='" + t[0] + "'" + (t[0] === cur ? " class='on'" : "") + ">" + t[1] + "</button>").join("") + "</div>";
+const skeleton = () => "<div class='sk' style='height:150px;margin-top:8px'></div><div class='sk' style='height:74px'></div><div class='sk' style='height:74px'></div><div class='sk' style='height:74px'></div>";
+const failHtml = () => "<div class='empty'><b>불러오지 못했습니다</b>연구실 PC 가 켜져 있는지, Tailscale 이 연결돼 있는지 확인해 주세요.<br><button class='pill' onclick='location.reload()'>다시 시도</button></div>";
+
+/* ---------- 자료 받기 (가진 것으로 먼저 그리고, 새로 받은 것이 오면 다시 그린다) ---------- */
+const slim = p => ({ file: p.file, title: p.title, year: p.year, journal: p.journal, author: p.author, added: p.added, labels: p.labels || [], review: p.review, has_summary: p.has_summary, has_translation: p.has_translation, read: p.read, notes_n: p.notes_n, line: p.line || "" });
+function loadPapers() {
+  if (!papers) { const c = jGet("m_papers", null); if (c && c.length) papers = c; }
+  if (papers && Date.now() - papersT < 20000) return Promise.resolve(papers);
+  const had = !!papers, t0 = papersT; papersT = Date.now();
+  const p = api("/api/data?lines=1").then(d => { papers = (d.papers || []).map(slim); papersT = Date.now(); lsSet("m_papers", JSON.stringify(papers)); return papers; });
+  if (!had) return p.catch(e => { papersT = t0; throw e; });
+  p.then(() => { if (refresh) refresh(); }).catch(() => { papersT = t0; });
+  return Promise.resolve(papers);
+}
+function loadStudies() {
+  if (!studies) { const c = jGet("m_studies", null); if (c && c.length) studies = c; }
+  if (studies && Date.now() - studiesT < 20000) return Promise.resolve(studies);
+  const had = !!studies, t0 = studiesT; studiesT = Date.now();
+  const p = api("/api/study").then(d => {
+    studies = (d.items || []).map(s => ({ id: s.id, title: s.title || s.topic, t: s.t, status: s.status, stage: s.stage, papers: s.papers, stats: s.stats || {}, chats: (s.chats || []).length })).sort((a, b) => b.t - a.t);
+    studiesT = Date.now(); lsSet("m_studies", JSON.stringify(studies)); return studies;
+  });
+  if (!had) return p.catch(e => { studiesT = t0; throw e; });
+  p.then(() => { if (refresh) refresh(); }).catch(() => { studiesT = t0; });
+  return Promise.resolve(studies);
+}
+const pUrl = (file, tab, s) => "#/p/" + enc(file) + (tab ? "/" + tab : "") + (s ? "/" + s : "");
+const KIND_KO = { summary: "요약", translation: "번역" };
+function readOf(p) {   /* 읽던 자리: {kind, frac, last} */
+  const r = p.read; if (!r || !r.last) return null;
+  let k = r.kind === "translation" ? "translation" : "summary";
+  if (k === "translation" && !p.has_translation) k = "summary";
+  return { kind: k, frac: Math.max(0, Math.min(1, +((r.pos || {})[k]) || 0)), last: r.last };
+}
+function rowPaper(p, o) {
+  o = o || {}; const rd = readOf(p);
+  return "<a class='row' href='" + esc(pUrl(p.file, o.cont && rd ? rd.kind : "")) + "'><div class='t cl2'>" + esc(p.title) + "</div>" + (p.line && !o.compact ? "<div class='g cl2'>" + esc(p.line) + "</div>" : "") +
+    "<div class='m'><span>" + esc([p.year, p.journal, p.author].filter(Boolean).join(" · ")) + "</span>" + (p.review ? "<span class='tg'>리뷰</span>" : "") +
+    (rd ? "<span class='tg hi'>" + (rd.frac > .02 ? KIND_KO[rd.kind] + " " + Math.round(rd.frac * 100) + "%" : "읽던 것") + "</span>" : "") + (o.when && rd ? "<span>" + ago(rd.last) + "</span>" : "") +
+    (!p.has_summary && !p.has_translation ? "<span class='tg'>요약 없음</span>" : "") + "</div></a>";
+}
+const lastStudy = () => jGet("m_lastst", null);      /* 이 휴대폰에서 마지막으로 읽던 장 {id, si, t} */
+function rowStudy(s, ls) {
+  const st = s.stats || {};
+  return "<a class='row' href='#/s/" + esc(enc(s.id)) + (ls && ls.si != null ? "/" + ls.si : "") + "'><div class='t ko cl2'>" + esc(s.title) + "</div><div class='m'>" +
+    (ls && ls.si != null ? "<span class='tg hi'>" + (ls.si + 1) + "절 읽던 중</span>" : "") + "<span>" + ago(s.t) + " · 논문 " + (s.papers || 0) + "편" + (st.figs ? " · 그림 " + st.figs : "") + (st.eqs ? " · 식 " + st.eqs : "") + "</span></div></a>";
+}
+
+/* ---------- 읽기 (첫 화면) ---------- */
+function homeHtml() {
+  const ps = papers || [], reads = ps.filter(p => p.read && p.read.last).sort((a, b) => b.read.last - a.read.last);
+  let h = "<div class='sh' style='padding-top:14px'><h2>이어 읽기</h2></div>";
+  const ls0 = lastStudy(), s0 = ls0 && (studies || []).find(x => x.id === ls0.id && x.status === "done");
+  const stFirst = !!(s0 && ls0.si != null && (!reads.length || ls0.t > reads[0].read.last * 1000));      /* 마지막에 읽던 것이 공부 장이면 그 장이 큰 카드 */
+  if (stFirst) {
+    const pc = ls0.n ? Math.round((ls0.si + 1) / ls0.n * 100) : 0;
+    h += "<a class='hero' href='#/s/" + esc(enc(s0.id)) + "/" + ls0.si + "'><div class='hk'>읽던 공부 장 · " + (ls0.si + 1) + "절" + (ls0.n ? " / " + ls0.n : "") + "</div><div class='ht ko cl3'>" + esc(s0.title) + "</div><div class='hm'>논문 " + (s0.papers || 0) + "편" + ((s0.stats || {}).figs ? " · 그림 " + s0.stats.figs : "") + "</div>" +
+      "<div class='hp'><i style='width:" + Math.max(pc, 2) + "%'></i></div><div class='hf'><span>" + ago(ls0.t / 1000) + "</span><span class='go'>이어 읽기</span></div></a>";
+    if (reads.length) h += "<div class='grp'>" + reads.slice(0, 3).map(p => rowPaper(p, { compact: true, cont: true, when: true })).join("") + "</div>";
+  } else if (reads.length) {
+    const p = reads[0], rd = readOf(p), pc = Math.round(rd.frac * 100);
+    h += "<a class='hero' href='" + esc(pUrl(p.file, rd.kind)) + "'><div class='hk'>읽던 논문 · " + KIND_KO[rd.kind] + "</div><div class='ht cl3'>" + esc(p.title) + "</div><div class='hm'>" + esc([p.year, p.journal, p.author].filter(Boolean).join(" · ")) + "</div>" +
+      "<div class='hp'><i style='width:" + Math.max(pc, 2) + "%'></i></div><div class='hf'><span>" + (pc > 2 ? pc + "% · " : "") + ago(rd.last) + "</span><span class='go'>이어 읽기</span></div></a>";
+    if (reads.length > 1) h += "<div class='grp'>" + reads.slice(1, 4).map(p => rowPaper(p, { compact: true, cont: true, when: true })).join("") + "</div>";
+  } else h += "<div class='grp'><div class='empty' style='padding:30px 20px'><b>아직 읽은 논문이 없습니다</b>서재에서 논문을 골라 요약이나 번역을 읽으면 여기에서 이어 읽을 수 있습니다.<br><a class='pill pri' href='#/lib'>서재 열기</a></div></div>";
+  const done = (studies || []).filter(s => s.status === "done"), ls = lastStudy(), sl = [];
+  if (ls) { const s = done.find(x => x.id === ls.id); if (s) sl.push([s, ls]); }
+  done.forEach(s => { if (sl.length < 3 && !sl.some(x => x[0].id === s.id)) sl.push([s, null]); });
+  if (sl.length) h += "<div class='sh'><h2>공부</h2><a href='#/study' data-tabgo='1'>모두 보기</a></div><div class='grp'>" + sl.map(x => rowStudy(x[0], x[1])).join("") + "</div>";
+  const fresh = ps.slice().sort((a, b) => (b.added || 0) - (a.added || 0)).slice(0, 5);
+  if (fresh.length) h += "<div class='sh'><h2>새로 들어온 논문</h2><a href='#/lib' data-tabgo='1'>서재</a></div><div class='grp'>" + fresh.map(p => rowPaper(p)).join("") + "</div>";
+  return h;
+}
+async function viewHome(my) {
+  shell({ root: "home", left: "<div class='brand'><img src='/logo/mark.svg' alt=''><b>Athenaeum</b></div>", right: "<button class='nb' id='more' aria-label='더 보기'>" + IC.more + "</button>" });
+  $("more").onclick = moreSheet;
+  refresh = () => { if (my !== view) return; const y = window.scrollY; app.innerHTML = homeHtml(); window.scrollTo(0, y); };
+  if (!papers && !jGet("m_papers", null)) app.innerHTML = "<div style='height:50px'></div>" + skeleton();
+  try { await Promise.all([loadPapers(), loadStudies().catch(() => null)]); } catch (e) { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
+  if (my !== view) return;
+  app.innerHTML = homeHtml(); restorePos();
+}
+
+/* ---------- 서재 ---------- */
+let q = lsGet("m_q", ""), flt = lsGet("m_flt", "all"), sort = lsGet("m_sort", "added"), libList = [], libShown = 0, libIO = null;
+const FLT = [["all", "전체"], ["reading", "읽던 것"], ["unread", "안 읽은 것"], ["review", "리뷰"]];
+function matchQ(p, words) {
+  const hay = (p.title + " " + (p.author || "") + " " + (p.journal || "") + " " + (p.year || "") + " " + (p.labels || []).join(" ") + " " + (p.line || "")).toLowerCase();
+  return words.every(w => hay.indexOf(w) >= 0);
+}
+function libMore() {
+  const box = $("liblist"); if (!box || libShown >= libList.length) return false;
+  const part = libList.slice(libShown, libShown + 40); libShown += part.length;
+  box.insertAdjacentHTML("beforeend", part.map(p => rowPaper(p, { cont: flt === "reading", when: flt === "reading" })).join(""));
+  return libShown < libList.length;
+}
+function libDraw() {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean), isRead = p => !!(p.read && p.read.last);
+  const list = (papers || []).filter(p => (!words.length || matchQ(p, words)) && (flt === "all" || (flt === "reading" ? isRead(p) : flt === "unread" ? !isRead(p) : !!p.review)));
+  const key = flt === "reading" ? (p => p.read.last) : sort === "year" ? (p => +p.year || 0) : (p => p.added || 0);
+  list.sort((a, b) => key(b) - key(a) || (b.added || 0) - (a.added || 0));
+  libList = list; libShown = 0;
+  $("fbar").innerHTML = FLT.map(f => "<button class='fc" + (f[0] === flt ? " on" : "") + "' data-f='" + f[0] + "'>" + f[1] + "</button>").join("");
+  $("cnt").textContent = list.length + "편"; $("sortb").textContent = flt === "reading" ? "" : sort === "year" ? "연도순" : "최근에 넣은 순";
+  $("liblist").innerHTML = list.length ? "" : "<div class='empty'><b>" + (papers && papers.length ? "맞는 논문이 없습니다" : "서재가 비어 있습니다") + "</b>" + (words.length ? "검색어를 줄이거나 다른 낱말로 찾아보세요." : "") + "</div>";
+  libMore();
+}
+async function viewLib(my) {
+  shell({ root: "lib", title: "서재", fade: true });
+  app.innerHTML = "<div class='lt'>서재</div><div class='search'>" + IC.search + "<input type='search' id='q' placeholder='제목 · 저자 · 저널 · 요약의 낱말' autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' enterkeyhint='search' value='" + esc(q) + "'></div>" +
+    "<div class='fbar' id='fbar'></div><div class='cnt'><span id='cnt'></span><button id='sortb'></button></div><div class='plain' id='liblist'></div><div id='libend' style='height:1px'></div>";
+  const qi = $("q"); let t = null;
+  qi.oninput = () => { clearTimeout(t); t = setTimeout(() => { q = qi.value.trim(); lsSet("m_q", q); if (papers) libDraw(); }, 160); };
+  qi.onkeydown = e => { if (e.key === "Enter") qi.blur(); };
+  $("fbar").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; flt = b.dataset.f; lsSet("m_flt", flt); libDraw(); };
+  $("sortb").onclick = () => { sort = sort === "year" ? "added" : "year"; lsSet("m_sort", sort); libDraw(); };
+  refresh = () => { if (my !== view) return; const y = window.scrollY, n = libShown; libDraw(); while (libShown < n && libMore()) {} window.scrollTo(0, y); };
+  if (!papers && !jGet("m_papers", null)) $("liblist").innerHTML = skeleton();
+  try { await loadPapers(); } catch (e) { if (my === view && String(e && e.message) !== "login") $("liblist").innerHTML = failHtml(); return; }
+  if (my !== view) return;
+  libDraw();
+  const y = savedY(curHash)[0]; while (document.documentElement.scrollHeight < y + window.innerHeight + 400 && libMore()) {}
+  restorePos(y);
+  if (libIO) libIO.disconnect();
+  if (window.IntersectionObserver) { libIO = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) libMore(); }, { rootMargin: "900px" }); libIO.observe($("libend")); }
+}
+
+/* ---------- 논문: 요약 · 번역 · 묻기 ---------- */
+const PTABS = [["summary", "요약"], ["translation", "번역"], ["ask", "묻기"]];
+function paperHead(p) {
+  return "<div class='ph'><div class='pm'><span>" + esc([p.journal, p.year, p.author].filter(Boolean).join(" · ")) + "</span>" + (p.review ? "<span class='tg'>리뷰</span>" : "") + "</div><h1>" + esc(p.title || "") + "</h1><div class='ko2' id='phko' hidden></div>" +
+    ((p.labels || []).length ? "<div class='lb'>" + p.labels.slice(0, 6).map(l => "<a class='tg' href='#/lib' data-lab='" + esc(l) + "'>" + esc(l) + "</a>").join("") + "</div>" : "") +
+    "<div class='pa'><a class='pill' href='/pdf?file=" + esc(enc(p.file)) + "' target='_blank' rel='noopener'>PDF 열기</a></div></div>";
+}
+function foldFront(doc) {   /* 번역의 앞머리(제목·저자·소속 조각)는 접어 두고, 한국어 제목은 머리에 올린다 */
+  const lead = [];
+  for (const el of [...doc.children]) { if (el.tagName !== "P" || el.textContent.trim().length > 140) break; lead.push(el); }
+  if (lead.length < 2) return "";
+  const ko = lead.map(e => e.textContent.trim()).find(t => (t.match(/[가-힣]/g) || []).length >= 10) || "";
+  const d = document.createElement("details"); d.className = "fm"; d.innerHTML = "<summary>원문 앞머리 (제목 · 저자 · 소속)</summary>";
+  lead.forEach(e => d.appendChild(e)); doc.insertBefore(d, doc.firstChild);
+  return ko;
+}
+function leadCard(doc) {    /* 요약의 '한줄 요약' 은 맨 위의 상자로 */
+  const h = [...doc.querySelectorAll("h2, h3")].find(x => /한\s*줄\s*요약/.test(x.textContent)); if (!h) return;
+  const box = document.createElement("div"); box.className = "lead"; box.innerHTML = "<div class='lk'>한 줄 요약</div>";
+  let n = h.nextElementSibling; while (n && !/^H[1-3]$/.test(n.tagName)) { const nx = n.nextElementSibling; box.appendChild(n); n = nx; }
+  h.replaceWith(box);
+}
+function startPing(file, kind) {   /* 읽기 기록 — PC 의 읽기 화면과 같은 신호(30초마다, 화면이 보이고 최근 2분 안에 만졌을 때만). 화면을 떠날 때는 자리만 한 번 더 */
+  clearInterval(pingT); document.onvisibilitychange = null; pingLast = null;
+  if (NOLOG) return;
+  const t0 = Date.now();
+  const frac = () => { const h = document.documentElement.scrollHeight - window.innerHeight; return h > 0 ? Math.min(1, Math.max(0, window.scrollY / h)) : 0; };
+  const send = sec => {
+    const f = Math.round(frac() * 1000) / 1000, p = (papers || []).find(x => x.file === file);
+    if (p) { p.read = p.read || {}; p.read.last = Date.now() / 1000; p.read.kind = kind; (p.read.pos = p.read.pos || {})[kind] = f; }      /* 첫 화면의 「이어 읽기」 가 곧바로 맞게 */
+    fetch("/api/read_ping", { method: "POST", keepalive: true, body: JSON.stringify({ file, kind, pos: f, sec }) }).catch(() => {});
+  };
+  const leave = () => { if (Date.now() - t0 > 15000) send(0); };      /* 잠깐 열어 본 것은 '읽던 것' 으로 치지 않는다 */
+  pingT = setInterval(() => { if (!document.hidden && Date.now() - lastTouch < 120000) send(30); }, 30000);
+  document.onvisibilitychange = () => { if (document.hidden) leave(); };
+  pingLast = leave;
+}
+async function viewPaper(file, tab, sent, my) {
+  if (tab === "notes") tab = "ask";
+  tab = PTABS.some(t => t[0] === tab) ? tab : lsGet("m_tab", "summary");
+  if (tab !== "ask") lsSet("m_tab", tab);
+  let p = (papers || []).find(x => x.file === file);
+  const bar = () => {
+    shell({ parent: lastRoot, center: segHtml(PTABS, tab), right: tab === "ask" ? "" : "<button class='nb' id='look' aria-label='글씨와 화면'>가</button>", reading: tab !== "ask", chat: tab === "ask" });
+    nav.querySelector(".seg").onclick = e => { const b = e.target.closest("[data-seg]"); if (b && b.dataset.seg !== tab) location.replace(pUrl(file, b.dataset.seg)); };
+    if ($("look")) $("look").onclick = lookSheet;
+  };
+  bar();
+  if (!p) {
+    app.innerHTML = skeleton();
+    try { await loadPapers(); } catch (e) {}
+    if (my !== view) return;
+    p = (papers || []).find(x => x.file === file);
+    if (!p) { try { p = await api("/api/paperinfo?file=" + enc(file)); } catch (e) { p = null; } if (my !== view) return; }
+    if (!p) p = { file, title: file.replace(/\.pdf$/i, "") };
+  }
+  if (tab === "ask") return viewAsk(file, p, my);
+  app.innerHTML = paperHead(p) + skeleton();
+  const src = await text("/api/gentext?file=" + enc(file) + "&kind=" + tab); if (my !== view) return;
+  if (src == null) return viewMissing(file, p, tab, my);
+  app.innerHTML = paperHead(p) + "<article class='doc' id='doc'>" + md(src, { file, sent: tab === "translation", skipH1: true, minH: 2 }) + "</article>" +
+    (tab === "summary" && p.has_translation ? "<div class='secnav'><a class='pill' href='" + esc(pUrl(file, "translation")) + "' data-rep='1'>전문 번역 읽기</a></div>" : "");
+  const doc = $("doc");
+  if (tab === "translation") { const ko = foldFront(doc); if (ko) { $("phko").textContent = ko; $("phko").hidden = false; } } else leadCard(doc);
+  doc.onclick = e => {
+    const s = e.target.closest(".s[data-s]"); if (!s) return;
+    const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
+    e.stopPropagation();
+    if (s.classList.contains("on")) return closePeek();
+    peekSent(file, s);
+  };
+  /* 읽던 자리: 이 휴대폰의 자리와 PC 의 자리 가운데 더 나중 것 */
+  const loc = savedY(curHash), rd = p.read || {}, srv = +((rd.pos || {})[tab]) || 0, srvT = (rd.last || 0) * 1000;
+  let y = loc[0];
+  if (sent) { const el = doc.querySelector(".s[data-s='" + String(sent).replace(/\D/g, "") + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); } }
+  else if (srv > .01 && srvT > loc[1] + 90000) y = Math.round(srv * (document.documentElement.scrollHeight - window.innerHeight));
+  restorePos(y); startPing(file, tab);
+}
+async function viewMissing(file, p, kind, my) {
+  const ko = KIND_KO[kind];
+  const st = await api("/api/genstatus?file=" + enc(file) + "&kind=" + kind).catch(() => ({})); if (my !== view) return;
+  if (st.status === "running") return waitGen(file, p, kind, my);
+  app.innerHTML = paperHead(p) + "<div class='empty'><b>이 논문의 " + ko + "이 아직 없습니다</b>" + (st.status === "error" && st.error ? "지난번 오류: " + esc(st.error) + "<br>" : "") +
+    (kind === "summary" ? "만드는 데 1~3분 걸립니다." : "논문 길이에 따라 5~20분 걸리고 토큰을 많이 씁니다.") + " 화면을 닫아도 연구실 PC 에서 계속 만듭니다.<br><button class='pill pri' id='gen'>" + ko + " 만들기</button></div>";
+  $("gen").onclick = async () => { $("gen").disabled = true; try { await api("/api/generate", { file, kind }); } catch (e) {} if (my === view) waitGen(file, p, kind, my); };
+}
+function waitGen(file, p, kind, my) {
+  const t0 = Date.now();
+  const tick = async () => {
+    if (my !== view) return;
+    let st; try { st = await api("/api/genstatus?file=" + enc(file) + "&kind=" + kind); } catch (e) { st = {}; }
+    if (my !== view) return;
+    if (st.status === "done") { p["has_" + kind] = true; return viewPaper(file, kind, null, my); }
+    if (st.status === "error" || st.status === "none") return viewMissing(file, p, kind, my);
+    app.innerHTML = paperHead(p) + "<div class='empty'><b>" + KIND_KO[kind] + " 만드는 중</b>" + esc(st.stage || "") + "<br>" + fmtDur(st.elapsed || Math.round((Date.now() - t0) / 1000)) + "째 · 화면을 닫아도 계속 만듭니다.</div>";
+    pollT = setTimeout(tick, 5000);
+  };
+  tick();
+}
+async function peekSent(file, el) {   /* 번역의 문장을 누르면 그 원문 문장 */
+  document.querySelectorAll(".doc .on").forEach(e => e.classList.remove("on")); el.classList.add("on");
+  const n = el.dataset.s; peekCtx = { kind: "sent", file, ko: el.textContent.trim().slice(0, 900) };
+  if (!alignCache[file]) { openPeek("<div class='pkl'>원문</div><div class='pke'><span class='dots'><i></i><i></i><i></i></span></div>"); try { alignCache[file] = await api("/api/align?file=" + enc(file)); } catch (e) { alignCache[file] = null; } }
+  if (!el.classList.contains("on")) return;
+  const a = (alignCache[file] || {})[n] || {};
+  openPeek("<div class='pkl'>원문" + (a.p != null ? " · " + (a.p + 1) + "쪽" : "") + "</div><div class='pke' lang='en'>" + (a.t ? esc(a.t) : "<span style='color:var(--text-3)'>이 문장의 원문을 찾지 못했습니다.</span>") + "</div>" +
+    "<div class='pka'><button class='pill pri' data-pk='ask'>이 문장으로 묻기</button><button class='pill' data-pk='memo'>메모</button></div>");
+}
+function memoSheet(file, quote) {
+  openSheet("<h3>메모</h3>" + (quote ? "<div class='q cl3'>" + esc(quote) + "</div>" : "") + "<textarea id='mta' placeholder='이 논문에 남길 메모'></textarea><div style='height:12px'></div><button class='pill pri big' id='msave'>메모 남기기</button>");
+  $("msave").onclick = async () => {
+    const v = $("mta").value.trim(); if (!v) { $("mta").focus(); return; }
+    $("msave").disabled = true;
+    try { await api("/api/notes", { file, op: "add_note", text: v, quote: quote || "", kind: "mobile" }); closeSheet(); closePeek(); toast("메모를 남겼습니다 — 「묻기」 에서 볼 수 있습니다"); }
+    catch (e) { $("msave").disabled = false; toast("저장하지 못했습니다"); }
+  };
+}
+
+/* ---------- 대화 그리기 (논문에 묻기 · 연구 노트 · 공부 장에 묻기가 같이 쓴다) ---------- */
+const bubble = t => "<div class='mu'><div" + (String(t).length > 380 ? " class='long'" : "") + ">" + esc(t) + "</div></div>";
+const quoteHtml = t => t ? "<div class='mq cl3'>" + esc(t) + "</div>" : "";
+const answer = (t, o) => "<div class='mc doc'>" + md(t, Object.assign({ math: true, minH: 3 }, o || {})) + "</div>";
+const waitHtml = (label, t0, cancel) => "<div class='mw'><span class='dots'><i></i><i></i><i></i></span><span>" + label + " · <span id='waitT' data-t0='" + t0 + "'>" + fmtDur(Math.max(0, Math.round((Date.now() - t0) / 1000))) + "</span></span>" + (cancel ? "<button id='waitX'>취소</button>" : "") + "</div>";
+setInterval(() => { const w = $("waitT"); if (w) w.textContent = fmtDur(Math.max(0, Math.round((Date.now() - (+w.dataset.t0)) / 1000))); }, 1000);
+function composerHtml(ph, alt) {
+  return "<div class='composer'><div class='ctx' id='cctx' hidden></div><div class='crow'><textarea id='cta' rows='1' placeholder='" + esc(ph) + "'></textarea>" + (alt ? "<button class='alt' id='calt'>" + alt + "</button>" : "") +
+    "<button class='send' id='csend' aria-label='보내기' disabled>" + IC.send + "</button></div></div>";
+}
+function bindComposer(onSend, onAlt) {
+  const ta = $("cta"), sb = $("csend"), key = "m_draft_" + curHash;
+  const fit = () => { sb.disabled = !ta.value.trim(); if (ta.clientWidth < 80) return; ta.style.height = "40px"; ta.style.height = Math.min(140, Math.max(40, ta.scrollHeight)) + "px"; };
+  let dt = null; ta.value = lsGet(key, ""); fit();
+  ta.oninput = () => { fit(); clearTimeout(dt); dt = setTimeout(() => lsSet(key, ta.value), 400); };
+  const take = () => { const v = ta.value.trim(); if (!v) { ta.focus(); return ""; } ta.value = ""; lsSet(key, ""); fit(); ta.blur(); return v; };
+  sb.onclick = () => { const v = take(); if (v) onSend(v); };
+  if ($("calt")) $("calt").onclick = () => { const v = take(); if (v) onAlt(v); };
+  drawCtx();
+}
+function drawCtx() {   /* 묻는 칸 위의 '무엇을 두고 묻는가' */
+  const c = $("cctx"); if (!c) return;
+  const t = askCtx.quote ? "인용: " + askCtx.quote : askCtx.parentQ ? "이어서: " + askCtx.parentQ : "";
+  c.hidden = !t; c.innerHTML = t ? "<div class='cl2'>" + esc(t) + "</div><button aria-label='빼기'>×</button>" : "";
+  if (t) c.querySelector("button").onclick = () => { askCtx = {}; drawCtx(); };
+}
+const toBottom = () => setTimeout(() => window.scrollTo(0, document.documentElement.scrollHeight), 30);
+function putBack(v) { const ta = $("cta"); if (ta) { ta.value = v; ta.dispatchEvent(new Event("input")); } }      /* 못 보낸 글은 묻는 칸에 되돌린다 */
+document.addEventListener("click", e => { const d = e.target.closest(".mu div.long"); if (d) d.classList.remove("long"); });
+
+/* ---------- 논문에 묻기 · 메모 ---------- */
+async function viewAsk(file, p, my) {
+  const head = "<div class='ch2' style='margin-top:6px'>" + esc([p.journal, p.year, p.author].filter(Boolean).join(" · ")) + "</div><div class='ch1 cl3' style='font-family:var(--font-serif);font-weight:500'>" + esc(p.title || "") + "</div>";
+  app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'>" + head + "</div>" + composerHtml("이 논문에 관해 묻기", "메모") + "</div>";
+  let d = {}, waiting = null, err = "";
+  const draw = () => {
+    const qa = d.qa || [], ids = {}, kids = {}; qa.forEach(x => { ids[x.id] = 1; });
+    qa.forEach(x => { if (x.parent && ids[x.parent]) (kids[x.parent] = kids[x.parent] || []).push(x); });
+    const byT = (a, b) => (a.t || "") < (b.t || "") ? -1 : (a.t || "") > (b.t || "") ? 1 : 0;
+    const one = x => quoteHtml(x.quote && !x.parent ? x.quote : "") + bubble(x.q || "") + answer(x.a || "", { file }) + "<div class='mm'><span>" + esc(x.t || "") + "</span><button data-re='" + esc(x.id) + "'>이어서 묻기</button></div>" + (kids[x.id] || []).sort(byT).map(one).join("");
+    const items = qa.filter(x => !x.parent || !ids[x.parent]).map(x => ({ t: x.t || "", h: one(x) })).concat((d.notes || []).map(x => ({ t: x.t || "", h: "<div class='mn'><div class='k'>메모 · " + esc(x.t || "") + "</div>" + (x.quote ? "<div style='color:var(--text-2);font-size:13.5px;margin-bottom:4px'>" + esc(String(x.quote).slice(0, 300)) + "</div>" : "") + esc(x.text || "") + "</div>" })));
+    items.sort(byT);
+    $("msgs").innerHTML = head + (items.length || waiting ? items.map(x => x.h).join("") : "<div class='empty' style='padding:40px 10px'>이 논문에 관해 궁금한 것을 물어보세요.<br>Claude 가 논문을 읽고 답합니다. 보통 30초~2분 걸립니다.</div>") +
+      (waiting ? quoteHtml(waiting.quote) + bubble(waiting.q) + waitHtml("Claude 가 논문을 읽고 답하는 중", waiting.t0) : "") + (err ? "<div class='merr'>" + esc(err) + "</div>" : "");
+    $("msgs").querySelectorAll("[data-re]").forEach(b => b.onclick = () => { const x = qa.find(v => v.id === b.dataset.re); askCtx = { parent: x.id, parentQ: x.q || "" }; drawCtx(); $("cta").focus(); });
+    renderMath($("msgs"));
+  };
+  const recover = async (qt, had) => {   /* 화면이 꺼져 요청이 끊겨도 PC 는 답을 메모 파일에 적는다 — 다시 받아 본다 */
+    for (let i = 0; i < 40 && my === view; i++) {
+      await new Promise(r => setTimeout(r, 6000));
+      try { const n = await api("/api/notes?file=" + enc(file)); if ((n.qa || []).some(x => x.q === qt && !had[x.id])) return { qa: n.qa }; } catch (e) {}
+    }
+    return { error: "답을 받지 못했습니다 — 연결을 확인하고 다시 물어 주세요" };
+  };
+  bindComposer(async v => {
+    const quote = askCtx.quote || "", parent = askCtx.parent || "", had = {}; (d.qa || []).forEach(x => { had[x.id] = 1; });
+    waiting = { q: v, quote, t0: Date.now() }; err = ""; askCtx = {}; drawCtx(); draw(); toBottom();
+    let r; try { r = await api("/api/ask", { file, question: v, quote, parent, kind: "mobile" }); } catch (e) { r = String(e && e.message) === "login" ? { error: "로그인이 필요합니다" } : await recover(v, had); }
+    if (my !== view) return;
+    waiting = null;
+    if (r.error) { err = r.error; putBack(v); } else d.qa = r.qa || d.qa;
+    draw(); toBottom();
+  }, async v => {
+    try { d = await api("/api/notes", { file, op: "add_note", text: v, quote: askCtx.quote || "", kind: "mobile" }); askCtx = {}; drawCtx(); draw(); toBottom(); } catch (e) { toast("저장하지 못했습니다"); putBack(v); }
+  });
+  try { d = await api("/api/notes?file=" + enc(file)); } catch (e) { d = {}; } if (my !== view) return;
+  draw(); if (askCtx.quote) $("cta").focus(); toBottom();
+}
+
+/* ---------- 공부 ---------- */
+async function viewStudies(my) {
+  shell({ root: "study", title: "공부", fade: true });
+  const draw = () => {
+    const done = (studies || []).filter(s => s.status === "done"), busy = (studies || []).filter(s => s.status === "running"), ls = lastStudy();
+    app.innerHTML = "<div class='lt'>공부</div>" + (done.length ? "<div class='grp'>" + done.map(s => rowStudy(s, ls && ls.id === s.id ? ls : null)).join("") + "</div>" : "") +
+      (busy.length ? "<div class='sh'><h2>쓰는 중</h2></div><div class='grp'>" + busy.map(s => "<div class='row'><div class='t ko cl2'>" + esc(s.title) + "</div><div class='m'>" + esc(s.stage || "") + "</div></div>").join("") + "</div>" : "") +
+      (!done.length && !busy.length ? "<div class='empty'><b>아직 다 쓴 장이 없습니다</b>새 장은 PC 화면의 「공부」 에서 씁니다.</div>" : "");
+  };
+  refresh = () => { if (my !== view) return; const y = window.scrollY; draw(); window.scrollTo(0, y); };
+  if (!studies && !jGet("m_studies", null)) app.innerHTML = "<div class='lt'>공부</div>" + skeleton();
+  try { await loadStudies(); } catch (e) { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
+  if (my !== view) return;
+  draw(); restorePos();
+}
+async function loadStudy(id) {
+  if (studyCache[id]) return studyCache[id];
+  const st = await api("/api/study/get?id=" + enc(id));
+  if (!st || !st.chapter || !(st.chapter.sections || []).length) return null;
+  return (studyCache[id] = st);
+}
+const citeNums = (st, u) => [...new Set((u.src || []).map(s => (st.papers[+String(s).split(":")[0]] || {}).n).filter(Boolean))].sort((a, b) => a - b);
+const mtext = t => esc(t || "").replace(/\$([^$\n]{1,400})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
+const unitsHtml = (st, b, si, bi) => (b.units || []).map((u, ui) => { const ns = citeNums(st, u); return "<span class='u' data-k='" + si + "." + bi + "." + ui + "'>" + mtext(u.t) + "</span>" + (ns.length ? "<sup class='c' data-c='" + ns.join(",") + "'>" + ns.join(",") + "</sup>" : ""); }).join(" ");
+function secHtml(st, si) {
+  const sec = st.chapter.sections[si], fig = n => "/api/study/fig?id=" + enc(st.id) + "&name=" + enc(n);
+  let h = "<h1>" + (sec.kind === "summary" ? "" : (si + 1) + ". ") + esc(sec.title) + "</h1>" + (sec.aim ? "<div class='aim'>" + esc(sec.aim) + "</div>" : "");
+  (sec.blocks || []).forEach((b, bi) => {
+    if (b.h) { h += b.kind === "extra" ? "<h3 class='extra'>번외</h3>" : "<h3>" + esc(b.h) + "</h3>"; return; }
+    if (b.table) {
+      h += "<table><caption><b>표 " + (b.table.no || "") + ".</b> " + esc(b.table.cap || "") + "</caption>" + ((b.table.cols || []).length ? "<tr>" + b.table.cols.map(c => "<th>" + esc(c) + "</th>").join("") + "</tr>" : "") +
+        (b.units || []).map((u, ui) => "<tr class='u' data-k='" + si + "." + bi + "." + ui + "'>" + (u.cells || [u.t]).map(c => "<td>" + mtext(c) + "</td>").join("") + "</tr>").join("") + "</table>"; return;
+    }
+    if (b.eq) {
+      const e = b.eq, p = st.papers[e.pi] || {};
+      h += "<figure><div class='eqn' data-display='1'" + (e.latex ? " data-tex=\"" + esc(e.latex) + "\"" : "") + (e.img ? " data-img='" + fig(e.img) + "'" : "") + ">" + (e.latex ? esc(e.latex) : (e.img ? "<img alt='수식' src='" + fig(e.img) + "'>" : "")) + "</div>" +
+        "<figcaption><b>식 " + (e.no || "") + ".</b> " + unitsHtml(st, b, si, bi) + " <span class='src'>— " + esc(p.short || "") + (e.n ? ", 식 (" + esc(e.n) + ")" : "") + "</span></figcaption></figure>"; return;
+    }
+    if (b.fig) {
+      const f = b.fig, p = st.papers[f.pi] || {};
+      h += "<figure><img class='zm' loading='lazy' alt='' src='" + fig(f.img) + "'" + (f.w && f.h ? " width='" + f.w + "' height='" + f.h + "'" : "") + "><figcaption><b>" + (f.kind === "fig" ? "그림 " : "표 ") + (f.no || "") + ".</b> " + unitsHtml(st, b, si, bi) +
+        " <span class='src'>— " + esc(p.short || "") + ", " + (f.kind === "fig" ? "Fig. " : "Table ") + esc(f.n) + "</span></figcaption></figure>"; return;
+    }
+    h += "<p" + (b.kind === "extra" ? " class='extra'" : "") + ">" + unitsHtml(st, b, si, bi) + "</p>";
+  });
+  const cm = sec.comment && sec.comment.parts;
+  if (cm && cm.length) h += "<aside><div class='hd'>Claude 의 생각 — 서재의 문장으로 확인한 것이 아니라 풀이입니다</div>" + cm.map(x => "<h4>" + esc(x.h || "") + "</h4><div>" + mtext(x.t) + "</div>").join("") + "</aside>";
+  const qz = sec.quiz && sec.quiz.items;
+  if (qz && qz.length) h += "<h3>확인 물음</h3>" + qz.map(x => "<details><summary>" + mtext(x.q) + "</summary><p>" + mtext(x.a) + "</p></details>").join("");
+  return h;
+}
+function peekUnit(st, el) {   /* 공부의 문장을 누르면 그 근거인 원문 문장 */
+  document.querySelectorAll(".doc .on").forEach(e => e.classList.remove("on")); el.classList.add("on");
+  const k = el.dataset.k.split(".").map(Number), u = ((((st.chapter.sections[k[0]] || {}).blocks || [])[k[1]] || {}).units || [])[k[2]] || {};
+  const src = (u.src || []).map(x => [x, st.src[x]]).filter(x => x[1]);
+  peekCtx = { kind: "unit", sid: st.id, key: el.dataset.k, ko: String(u.t || (u.cells || []).join(" · ")).slice(0, 900) };
+  const items = src.map(x => {
+    const pi = +x[0].split(":")[0], sid = x[0].split(":")[1], p = st.papers[pi] || {}, s = x[1], can = /^s\d+$/.test(sid);
+    return "<div class='pki'><div class='pkm'><b>[" + (p.n || "") + "] " + esc(p.short || "") + "</b><span>" + esc(p.journal || "") + (s.page ? " · " + s.page + "쪽" : "") + "</span>" + (s.own === false ? "<span class='tg warn'>다른 연구를 전한 문장</span>" : "") + "</div>" +
+      "<div class='pke' lang='en'>" + esc(s.en || "") + "</div>" + (s.ko ? "<div class='pkk'>" + esc(String(s.ko).replace(/<\/?(sub|sup)>/g, "")) + "</div>" : "") +
+      (p.file ? "<div class='pka' style='margin-top:8px'><a class='pill' href='" + esc(pUrl(p.file, can ? "translation" : "summary", can ? sid : "")) + "'>" + (can ? "논문에서 이 문장 보기" : "논문 열기") + "</a></div>" : "") + "</div>";
+  }).join("");
+  openPeek("<div class='pkl'>" + (src.length ? "근거 — 논문의 원문 문장 " + src.length + "개" : "잇는 문장") + "</div>" + (src.length ? items : "<div class='pkk' style='margin-top:0'>앞뒤의 사실을 잇는 문장입니다. 새 사실을 담지 않았는지 대조했고, 근거 문장은 달지 않았습니다.</div>") +
+    "<div class='pka'><button class='pill pri' data-pk='askst'>이 문장으로 묻기</button></div>");
+}
+function peekCite(st, nums) {
+  const ps = nums.map(n => (st.papers || []).find(p => p.n === n)).filter(Boolean);
+  openPeek("<div class='pkl'>참고문헌</div>" + ps.map(p => "<div class='pki'><div class='pkm'><b>[" + p.n + "] " + esc(p.short || "") + "</b><span>" + esc(p.journal || "") + "</span></div><div class='pkk' style='margin-top:0;color:var(--text)'>" + esc(p.ref || p.title || "") + "</div>" +
+    (p.file ? "<div class='pka' style='margin-top:8px'><a class='pill' href='" + esc(pUrl(p.file)) + "'>논문 열기</a></div>" : "") + "</div>").join(""));
+}
+function studyAskSheet(st, quote, keys) {
+  openSheet("<h3>이 장에 묻기</h3>" + (quote ? "<div class='q cl3'>" + esc(quote) + "</div>" : "") + "<textarea id='sta' placeholder='궁금한 것을 적어 주세요'></textarea><div style='height:12px'></div><button class='pill pri big' id='ssend'>묻기</button><div style='font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.5'>Claude 가 이 장과 근거 원문을 놓고 답합니다. 보통 1~2분 걸리고, 답은 PC 의 공부 화면에도 남습니다.</div>");
+  $("ssend").onclick = async () => {
+    const v = $("sta").value.trim(); if (!v) { $("sta").focus(); return; }
+    $("ssend").disabled = true;
+    let r; try { r = await api("/api/study", { op: "ask", id: st.id, quote: quote || "", keys: keys || [], question: v, effort: "xhigh", lib: false }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    if (r.error || !r.chat) { $("ssend").disabled = false; toast(r.error || "묻지 못했습니다"); return; }
+    closeSheet(); closePeek(); location.hash = "#/s/" + enc(st.id) + "/c/" + enc(r.chat);
+  };
+}
+async function viewStudy(id, rest, my) {
   let st = studyCache[id];
-  setBar("<button class='back' aria-label='뒤로'>‹</button><span class='ttl'>" + esc(st ? st.chapter.title : "공부") + "</span>");
   if (!st) {
-    app.innerHTML = "<div class='empty'>장을 불러오는 중…</div>";
-    try { st = await api("/api/study/get?id=" + enc(id)); } catch (e) { st = null; } if (my !== view) return;
-    if (!st || !st.chapter || !(st.chapter.sections || []).length) { app.innerHTML = "<div class='empty'>이 장을 열 수 없습니다 (아직 쓰는 중이거나 지워졌습니다).</div>"; return; }
-    studyCache[id] = st; bar.querySelector(".ttl").textContent = st.chapter.title || "";
+    shell({ parent: "#/study", title: "공부" }); app.innerHTML = skeleton();
+    try { st = await loadStudy(id); } catch (e) { st = null; } if (my !== view) return;
+    if (!st) { app.innerHTML = "<div class='empty'><b>이 장을 열 수 없습니다</b>아직 쓰는 중이거나 지워졌습니다.</div>"; return; }
   }
   const ch = st.chapter, secs = ch.sections, go = k => "#/s/" + enc(id) + "/" + k;
-  if (si == null || isNaN(si) || !secs[si]) {   /* 개요: 제목 · 범위 · 차례 · 답하지 못한 것 · 참고문헌 */
-    const refs = (st.papers || []).filter(p => p.n).sort((a, b) => a.n - b.n);
-    app.innerHTML = "<div class='doc'><h1>" + esc(ch.title) + "</h1>" + (ch.scope ? "<div class='aim'>" + esc(ch.scope) + "</div>" : "") +
-      "<div class='seclist'>" + secs.map((s, k) => "<a href='" + go(k) + "'>" + (s.kind === "summary" ? "" : "<span>" + (k + 1) + "</span>") + esc(s.title) + "</a>").join("") + "</div>" +
-      ((ch.gaps || []).length ? "<h2>이 서재로는 답하지 못한 것</h2><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul>" : "") +
-      (refs.length ? "<details><summary>참고문헌 " + refs.length + "편</summary><ol>" + refs.map(p => "<li value='" + p.n + "'>" + esc(p.ref || p.title || p.file) + "</li>").join("") + "</ol></details>" : "") + "</div>";
+  if (rest[0] === "c") return viewStudyChat(st, rest[1], my);
+  const si = rest[0] == null || rest[0] === "" ? null : +rest[0];
+  if (si == null || isNaN(si) || !secs[si]) {   /* 개요: 제목 · 범위 · 차례 · 물은 것 · 답하지 못한 것 · 참고문헌 */
+    shell({ parent: "#/study", title: ch.title, fade: true });
+    const refs = (st.papers || []).filter(p => p.n).sort((a, b) => a.n - b.n), ls = lastStudy(), cont = ls && ls.id === id && secs[ls.si] ? ls.si : null, stt = st.stats || {};
+    app.innerHTML = "<div class='ph'><div class='pm'><span>논문 " + refs.length + "편" + (stt.units ? " · 문장 " + stt.units : "") + (stt.figs ? " · 그림 " + stt.figs : "") + (stt.eqs ? " · 식 " + stt.eqs : "") + "</span></div><h1 class='ko'>" + esc(ch.title) + "</h1>" +
+      (ch.scope ? "<div class='ko2'>" + esc(ch.scope) + "</div>" : "") + "<div class='pa'><a class='pill pri' href='" + go(cont != null ? cont : 0) + "'>" + (cont != null ? (cont + 1) + "절부터 이어 읽기" : "처음부터 읽기") + "</a><button class='pill' id='stask'>이 장에 묻기</button></div></div>" +
+      "<div class='sh'><h2>차례</h2></div><div class='grp'>" + secs.map((s, k) => "<a class='row chev' href='" + go(k) + "'><div class='t ko'>" + (s.kind === "summary" ? "" : "<span class='no'>" + (k + 1) + "</span>") + esc(s.title) + "</div></a>").join("") + "</div>" +
+      ((st.chats || []).length ? "<div class='sh'><h2>물은 것</h2></div><div class='grp'>" + st.chats.slice().reverse().map(c => "<a class='row chev' href='#/s/" + esc(enc(id)) + "/c/" + esc(enc(c.id)) + "'><div class='t ko cl2'>" + esc(((c.thread || []).find(m => m.role === "user") || {}).text || "") + "</div><div class='m'><span>" + esc(c.sec || "장 전체") + "</span>" + (c.pending ? "<span class='tg hi'>답하는 중</span>" : "") + "</div></a>").join("") + "</div>" : "") +
+      ((ch.gaps || []).length ? "<div class='sh'><h2>이 서재로는 답하지 못한 것</h2></div><div class='doc' style='padding-top:0;padding-bottom:0;font-size:15px'><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul></div>" : "") +
+      (refs.length ? "<div class='doc' style='padding-top:8px;font-size:14.5px'><details><summary>참고문헌 " + refs.length + "편</summary><ol>" + refs.map(p => "<li value='" + p.n + "'>" + esc(p.ref || p.title || p.file) + "</li>").join("") + "</ol></details></div>" : "");
+    $("stask").onclick = () => studyAskSheet(st, "", []);
     restorePos(); return;
   }
-  app.innerHTML = "<div class='sub'><span>" + (si + 1) + " / " + secs.length + "</span><span class='sp'></span>" + fsBtns() + "</div><div class='doc' id='chdoc'>" + secHtml(st, si) + "</div>" +
-    "<div class='secnav'>" + (si > 0 ? "<a class='big' href='" + go(si - 1) + "'>‹ 앞 절</a>" : "<span></span>") + "<a class='big' href='#/s/" + enc(id) + "'>차례</a>" + (si < secs.length - 1 ? "<a class='big' href='" + go(si + 1) + "'>다음 절 ›</a>" : "<span></span>") + "</div>";
-  renderMath($("chdoc")); restorePos();
+  shell({ parent: "#/s/" + enc(id), title: (si + 1) + " / " + secs.length, right: "<button class='nb' id='look' aria-label='글씨와 화면'>가</button>", reading: true });
+  $("look").onclick = lookSheet;
+  const nx = secs[si + 1], pv = secs[si - 1];
+  app.innerHTML = "<article class='doc' id='doc'>" + secHtml(st, si) + "</article><div class='secnav'>" + (pv ? "<a class='pill' data-rep='1' href='" + go(si - 1) + "'>앞 절</a>" : "") +
+    (nx ? "<a class='pill pri' data-rep='1' href='" + go(si + 1) + "'><span class='cl1'>다음 · " + esc(nx.title) + "</span></a>" : "<a class='pill' data-rep='1' href='#/s/" + esc(enc(id)) + "'>차례로</a>") + "</div>";
+  const doc = $("doc");
+  doc.onclick = e => {
+    const c = e.target.closest("sup.c"); if (c) { e.stopPropagation(); return peekCite(st, c.dataset.c.split(",").map(Number)); }
+    const u = e.target.closest(".u[data-k]"); if (!u) return;
+    const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
+    e.stopPropagation();
+    if (u.classList.contains("on")) return closePeek();
+    peekUnit(st, u);
+  };
+  lsSet("m_lastst", JSON.stringify({ id, si, n: secs.length, t: Date.now() }));
+  renderMath(doc);
+  let y = savedY(curHash)[0];
+  if (rest[1]) { const el = doc.querySelector(".u[data-k='" + String(rest[1]).replace(/[^\d.]/g, "") + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); } }
+  restorePos(y);
 }
+async function viewStudyChat(st, cid, my) {
+  shell({ parent: "#/s/" + enc(st.id), title: "이 장에 묻기", chat: true });
+  app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'></div>" + composerHtml("이어서 묻기") + "</div>";
+  let chat = (st.chats || []).find(c => c.id === cid) || null, now0 = Date.now() / 1000, got = Date.now();
+  const draw = () => {
+    if (!chat) { $("msgs").innerHTML = "<div class='empty'>대화를 불러오는 중…</div>"; return; }
+    const th = chat.thread || [];
+    $("msgs").innerHTML = "<div class='ch2' style='margin-top:6px'>" + esc(st.chapter.title) + (chat.sec ? " · " + esc(chat.sec) : "") + "</div>" + quoteHtml(chat.quote) +
+      th.map(m => m.role === "user" ? bubble(m.text || "") : answer(m.text || "") + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + "</span></div>").join("") +
+      (chat.pending ? waitHtml("Claude 가 답하는 중", got - Math.max(0, now0 - chat.pending) * 1000) : "") + (chat.error ? "<div class='merr'>" + esc(chat.error) + "</div>" : "");
+    renderMath($("msgs"));
+  };
+  const pull = async () => {
+    let r; try { r = await api("/api/study/chats?id=" + enc(st.id)); } catch (e) { return; }
+    if (my !== view) return;
+    st.chats = r.chats || []; now0 = r.now || Date.now() / 1000; got = Date.now();
+    const was = chat && chat.pending, c = st.chats.find(x => x.id === cid) || chat; chat = c; draw();
+    if (was && !(c && c.pending)) toBottom();
+    if (!(c && c.pending)) { clearInterval(pollT); pollT = null; }
+  };
+  bindComposer(async v => {
+    let r; try { r = await api("/api/study", { op: "ask", id: st.id, chat: cid, question: v, effort: "xhigh", lib: false }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    if (my !== view) return;
+    if (r.error) { toast(r.error); putBack(v); return; }
+    await pull(); toBottom(); clearInterval(pollT); pollT = setInterval(pull, 4000);
+  });
+  draw(); await pull(); if (my !== view) return;
+  toBottom(); if (chat && chat.pending) pollT = setInterval(pull, 4000);
+}
+
+/* ---------- 노트 (연구 노트) ---------- */
+const NSTAT = { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" };
+async function viewNotes(my) {
+  shell({ root: "notes", title: "노트", fade: true, right: "<button class='nb' id='nnew' aria-label='새 물음'>" + IC.plus + "</button>" });
+  $("nnew").onclick = newNoteSheet;
+  const draw = () => {
+    const row = n => "<a class='row' href='#/n/" + esc(enc(n.id)) + "'><div class='t ko cl2'>" + esc(n.title) + "</div>" + (n.last ? "<div class='g cl1'>" + esc(n.last) + "</div>" : "") + "<div class='m'>" +
+      (n.pending ? "<span class='tg hi'>답하는 중</span>" : "") + "<span>" + (n.kind === "ask" ? "물음" : (NSTAT[n.status] || "주제")) + " · 답 " + (n.answers || 0) + " · " + ago(n.updated || n.t) + "</span></div></a>";
+    app.innerHTML = "<div class='lt'>노트</div>" + ((notesList || []).length ? "<div class='grp'>" + notesList.map(row).join("") + "</div>" :
+      "<div class='empty'><b>아직 연구 노트가 없습니다</b>오른쪽 위의 + 를 눌러 궁금한 것을 물어보세요. Claude 가 서재 전체를 배경으로 답합니다.</div>");
+  };
+  if (notesList) draw(); else app.innerHTML = "<div class='lt'>노트</div>" + skeleton();
+  try { notesList = (await api("/api/notes")).items || []; } catch (e) { if (my === view && !notesList && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
+  if (my !== view) return;
+  draw(); restorePos();
+}
+function newNoteSheet() {
+  openSheet("<h3>새 물음</h3><textarea id='nta' placeholder='무엇이 궁금한가요? 분야나 연구 주제에 관해 물어보세요'></textarea><div style='height:12px'></div><button class='pill pri big' id='nsend'>묻기</button><div style='font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.5'>Claude 가 서재의 논문·공부 장을 배경으로 답합니다. 보통 1~3분 걸립니다.</div>");
+  $("nsend").onclick = async () => {
+    const v = $("nta").value.trim(); if (v.length < 2) { $("nta").focus(); return; }
+    $("nsend").disabled = true;
+    try {
+      const r = await api("/api/notes", { op: "new", kind: "ask", title: v.split("\n")[0].slice(0, 80) });
+      if (r.error || !r.note) throw new Error(r.error || "만들지 못했습니다");
+      const a = await api("/api/notes", { op: "ask", id: r.note.id, question: v, effort: "xhigh", lib: false, study: "auto" });
+      if (a.error) toast(a.error);
+      closeSheet(); location.hash = "#/n/" + enc(r.note.id);
+    } catch (e) { $("nsend").disabled = false; toast(String(e && e.message || "묻지 못했습니다")); }
+  };
+}
+async function viewNote(id, my) {
+  shell({ parent: "#/notes", title: "노트", fade: true, chat: true });
+  app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'><div class='sk' style='height:80px;margin:14px 0'></div><div class='sk' style='height:200px;margin:0'></div></div>" + composerHtml("이어서 묻기") + "</div>";
+  let nt = null, now0 = Date.now() / 1000, got = Date.now(), ancs = {};
+  const draw = () => {
+    if (!nt) return;
+    const th = nt.thread || []; ancs = {};
+    nav.querySelector(".nt").textContent = nt.title || "노트";
+    $("msgs").innerHTML = "<div class='ch2' style='margin-top:6px'>" + (nt.kind === "ask" ? "물음" : "연구 주제 · " + (NSTAT[nt.status] || "")) + "</div><div class='ch1'>" + esc(nt.title || "") + "</div>" +
+      (nt.seed && nt.seed.text ? "<div class='doc' style='padding:0;font-size:14px'><details><summary>출발점</summary><p style='white-space:pre-wrap'>" + esc(nt.seed.text) + "</p></details></div>" : "") +
+      th.map(m => { if (m.role === "user") return bubble(m.text || ""); Object.assign(ancs, m.anchors || {});
+        return answer(m.text || "", { anchors: m.anchors || {} }) + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + "</span></div>"; }).join("") +
+      (nt.pending ? waitHtml("Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
+      (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
+    const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel", id }); } catch (e) {} pull(); };
+    $("msgs").querySelectorAll("[data-anc]").forEach(a => a.onclick = e => {
+      e.preventDefault(); const k = a.dataset.anc, v = ancs[k]; if (!v) return;
+      openPeek("<div class='pkl'>공부 장의 논지 " + esc(k) + "</div><div class='pkk' style='margin-top:0;color:var(--text)'>" + mtext(v.claim || v.t || "") + "</div><div class='pka'><a class='pill pri' href='#/s/" + esc(enc(v.sid)) + "/" + (+v.si || 0) + "/" + esc(v.key || "") + "'>공부 장에서 보기</a></div>");
+      renderMath(peek);
+    });
+    renderMath($("msgs"));
+  };
+  const pull = async () => {
+    let r; try { r = await api("/api/notes/get?id=" + enc(id)); } catch (e) { return; }
+    if (my !== view) return;
+    if (!r.note) { $("msgs").innerHTML = "<div class='empty'><b>이 노트를 찾지 못했습니다</b></div>"; clearInterval(pollT); return; }
+    const was = nt && nt.pending, n0 = nt ? (nt.thread || []).length : -1;
+    nt = r.note; now0 = r.now || Date.now() / 1000; got = Date.now(); draw();
+    if (n0 < 0 || (was && !nt.pending) || (nt.thread || []).length !== n0) toBottom();
+    clearInterval(pollT); pollT = nt.pending ? setInterval(pull, 4000) : null;
+  };
+  bindComposer(async v => {
+    const o = (nt && nt.opts) || {};
+    let r; try { r = await api("/api/notes", { op: "ask", id, question: v, effort: o.effort && o.effort !== "max" ? o.effort : "xhigh", lib: false, study: o.study == null ? "auto" : o.study, ms: o.ms || "" }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    if (my !== view) return;
+    if (r.error) { toast(r.error); putBack(v); return; }
+    await pull(); toBottom();
+  });
+  await pull();
+}
+
+/* ---------- 더 보기 · 글씨와 화면 · 단어 퀴즈 · PDF 올리기 ---------- */
+function lookSheet() {
+  const draw = () => {
+    const fs = +lsGet("m_fs", "17") || 17, th = lsGet("m_theme", "");
+    sheet.innerHTML = "<div class='grab'></div><h3>글씨와 화면</h3><div class='fsrow'><button class='sm' data-fs='-1' aria-label='글씨 작게'>가</button><div>글씨 크기 " + fs + "</div><button class='lg' data-fs='1' aria-label='글씨 크게'>가</button></div>" +
+      "<div style='display:flex;justify-content:center;padding-bottom:6px'>" + segHtml([["", "기기 설정대로"], ["light", "밝게"], ["dark", "어둡게"]], th) + "</div>";
+    sheet.querySelectorAll("[data-fs]").forEach(b => b.onclick = () => { lsSet("m_fs", String(Math.min(24, Math.max(14, fs + (+b.dataset.fs))))); applyLook(); draw(); });
+    sheet.querySelector(".seg").onclick = e => { const b = e.target.closest("[data-seg]"); if (!b) return; lsSet("m_theme", b.dataset.seg); applyLook(); draw(); };
+  };
+  openSheet(""); draw();
+}
+function moreSheet() {
+  openSheet("<h3>더 보기</h3><button class='mi' data-m='quiz'>단어 퀴즈<span>단어장</span></button><button class='mi' data-m='up'>PDF 올리기<span>받은 논문을 서재에</span></button><button class='mi' data-m='look'>글씨와 화면</button>" +
+    "<a class='mi' href='/?desktop=1'>PC 화면으로 보기</a>" + (isRemote ? "<button class='mi red' data-m='out'>로그아웃</button>" : "") + "<input type='file' id='upf' accept='application/pdf,.pdf' multiple hidden>");
+  sheet.onclick = async e => {
+    const b = e.target.closest("[data-m]"); if (!b) return;
+    const m = b.dataset.m;
+    if (m === "look") return lookSheet();
+    if (m === "quiz") { closeSheet(); return openQuiz(); }
+    if (m === "up") return $("upf").click();
+    if (m === "out") { try { await api("/api/logout", {}); } catch (err) {} location.href = "/login"; }
+  };
+  $("upf").onchange = async e => {
+    const files = [...e.target.files]; if (!files.length) return;
+    closeSheet(); let ok = 0, bad = "";
+    for (const f of files) {
+      toast("올리는 중 · " + f.name, 60000);
+      try { const r = await (await fetch("/api/upload?name=" + enc(f.name), { method: "POST", body: f })).json(); if (r.ok) ok++; else bad = r.error || "넣지 못했습니다"; } catch (err) { bad = "서버에 닿지 못했습니다"; }
+    }
+    toast(ok ? ok + "편을 서재에 넣었습니다" + (bad ? " · 나머지: " + bad : "") : bad, 5000);
+    if (ok) { papersT = 0; loadPapers().catch(() => {}); }
+  };
+}
+function openQuiz() {
+  const d = document.createElement("div"); d.id = "quizbox";
+  d.innerHTML = "<div class='qh'>단어 퀴즈<button class='nb' aria-label='닫기'>" + IC.close + "</button></div><iframe src='/vocab/quiz' title='단어 퀴즈'></iframe>";
+  document.body.appendChild(d); d.querySelector("button").onclick = () => d.remove();
+}
+
+/* ---------- 누르기: 읽는 화면의 빈 곳 · 올라온 칸 · 그림 · 라벨 ---------- */
+app.addEventListener("click", e => {
+  const lab = e.target.closest("[data-lab]");
+  if (lab) { e.preventDefault(); q = lab.dataset.lab; flt = "all"; lsSet("m_q", q); lsSet("m_flt", flt); delete pos["#/lib"]; location.hash = "#/lib"; return; }
+  const tg = e.target.closest("[data-tabgo]"); if (tg) { e.preventDefault(); location.replace(tg.getAttribute("href")); return; }
+  const rep = e.target.closest("[data-rep]"); if (rep) { e.preventDefault(); delete pos[rep.getAttribute("href")]; location.replace(rep.getAttribute("href")); return; }
+  const im = e.target.closest("img.zm, .doc figure img"); if (im && im.getAttribute("src")) { openZoom(im.getAttribute("src")); return; }
+  if (!document.body.classList.contains("reading") || e.target.closest("a, button, summary, input, textarea, select, img, sup")) return;
+  const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
+  if (peekOpen()) return closePeek();
+  document.body.classList.toggle("hidebars");      /* 읽는 글의 빈 곳을 누르면 위 막대가 나왔다 들어간다 */
+});
+peek.addEventListener("click", e => {
+  if (e.target.closest(".px")) return closePeek();
+  const b = e.target.closest("[data-pk]"), c = peekCtx;
+  if (b && c) {
+    if (b.dataset.pk === "ask") { askCtx = { quote: c.ko }; closePeek(); location.replace(pUrl(c.file, "ask")); }
+    else if (b.dataset.pk === "memo") memoSheet(c.file, c.ko);
+    else if (b.dataset.pk === "askst") studyAskSheet(studyCache[c.sid], c.ko, [c.key]);
+    return;
+  }
+  if (e.target.closest("a[href^='#']")) closePeek();
+});
 
 /* ---------- 길 ---------- */
 function onRoute() {
-  clearInterval(pingT); curHash = location.hash; const my = ++view;
-  const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
-  const done = p => p && p.catch && p.catch(e => { if (my === view && String(e && e.message) !== "login") app.innerHTML = "<div class='empty'>불러오지 못했습니다 — 연결을 확인하고 다시 열어 주세요.</div>"; });
-  if (parts[0] === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], my));
-  if (parts[0] === "study") return done(viewStudies(my));
-  if (parts[0] === "s" && parts[1]) return done(viewStudy(parts[1], parts[2] == null ? null : +parts[2], my));
-  return done(viewLib(my));
+  if (pingLast) { try { pingLast(); } catch (e) {} pingLast = null; }      /* 읽는 화면을 떠날 때 읽던 자리를 한 번 더 알린다 (아직 그 화면이 그려져 있을 때) */
+  flushPos(); clearInterval(pingT); clearInterval(pollT); clearTimeout(pollT); pollT = null; document.onvisibilitychange = null; refresh = null;
+  closePeek(); if (sheet.classList.contains("on")) closeSheet(); setBars(true); { const qb = $("quizbox"); if (qb) qb.remove(); }
+  curHash = location.hash; const my = ++view;
+  const parts = location.hash.replace(/^#\/?/, "").split("/").map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } });
+  const r = parts[0] || "", depth = r === "p" || r === "n" ? 1 : r === "s" ? (parts[2] != null && parts[2] !== "" ? 2 : 1) : 0;
+  const key = depth ? r + "/" + parts[1] + (depth === 2 ? "/x" : "") : "root";
+  if (stack.length > 1 && stack[stack.length - 2] === key) stack.pop(); else if (stack[stack.length - 1] !== key) stack.push(key);
+  app.classList.remove("push", "fade"); void app.offsetWidth;
+  if (prevDepth >= 0) { if (depth > prevDepth) app.classList.add("push"); else if (depth === 0 && prevDepth === 0) app.classList.add("fade"); }
+  clearTimeout(animT); animT = setTimeout(() => app.classList.remove("push", "fade"), 450);      /* 화면이 가려져 애니메이션이 멈춰도 내용은 보이게 */
+  prevDepth = depth; lastY = 0; acc = 0; window.scrollTo(0, 0);
+  const done = p => p && p.catch && p.catch(e => { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); });
+  if (r === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], parts[3], my));
+  if (r === "s" && parts[1]) return done(viewStudy(parts[1], parts.slice(2), my));
+  if (r === "n" && parts[1]) return done(viewNote(parts[1], my));
+  if (r === "lib") return done(viewLib(my));
+  if (r === "study") return done(viewStudies(my));
+  if (r === "notes") return done(viewNotes(my));
+  return done(viewHome(my));
 }
 window.addEventListener("hashchange", onRoute);
-applyFs();
-(async () => { try { isRemote = !!(await api("/api/version")).remote; } catch (e) {} onRoute(); })();   /* 다른 기기에서 열었는가 — 「로그아웃」 을 보일지 */
+document.addEventListener("visibilitychange", () => { if (!document.hidden && refresh && document.body.classList.contains("root")) { loadPapers().catch(() => {}); } });   /* 다시 열면 읽던 자리·새 논문을 새로 받는다 */
+applyLook();
+if (!location.hash && lastRoot !== "#/" && /^#\/(lib|study|notes)$/.test(lastRoot)) lastRoot = "#/";      /* 앱을 새로 열면 늘 「읽기」 부터 */
+(async () => { try { isRemote = !!(await api("/api/version")).remote; } catch (e) {} })();   /* 다른 기기에서 열었는가 — 「로그아웃」 을 보일지 */
+onRoute();
 </script>
 </body>
 </html>

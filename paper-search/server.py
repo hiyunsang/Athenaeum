@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Athenaeum 로컬 서버 (논문 수집·검색·읽기·원고). Athenaeum_실행.bat 또는 시작프로그램의 Athenaeum_시작.vbs 로 실행."""
+import gzip
 import hashlib
 import io
 import html as html_mod
@@ -3890,7 +3891,7 @@ _REMOTE_OPEN = {"/login", "/api/login", "/ui.css", "/favicon.ico", "/manifest.we
 _REMOTE_BLOCK_POST = {"/api/remote", "/api/backup", "/api/settings", "/api/open", "/api/claude_install", "/api/claude_login", "/api/fonts"}
 _LOCAL_ONLY_MSG = "이 기능은 Athenaeum 이 깔린 PC 에서만 됩니다"
 MANIFEST = {"name": "Athenaeum", "short_name": "Athenaeum", "start_url": "/m", "scope": "/", "display": "standalone", "lang": "ko",
-            "background_color": "#ffffff", "theme_color": "#ffffff",
+            "background_color": "#ffffff", "theme_color": "#ffffff", "description": "연구실 PC 의 Athenaeum 을 휴대폰에서 — 이어 읽기 · 서재 · 공부 · 연구 노트",
             "icons": [{"src": "/logo/icon-192.png", "sizes": "192x192", "type": "image/png"},
                       {"src": "/logo/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
 
@@ -4417,6 +4418,9 @@ def backup_loop():
         time.sleep(1200)
 
 
+_GZIP_TYPES = {"application/json", "text/html", "text/plain", "text/css", "application/javascript", "text/javascript", "image/svg+xml", "application/manifest+json"}
+
+
 class _Server(ThreadingHTTPServer):
     request_queue_size = 64      # 기본 5 — 요청이 한꺼번에 몰리면(여러 기기·여러 창) 일부가 응답 없이 끊겼다
 
@@ -4424,8 +4428,16 @@ class _Server(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
+        # 다른 기기(휴대폰·집 PC)로 보내는 글 응답은 줄여 보낸다 — 서재 목록 300 KB → 50 KB, 공부 장 470 KB → 140 KB (2026-11-06). 이 PC 안의 요청은 그대로.
+        gz = (getattr(self, "_remote", False) and len(data) > 1400 and ctype.split(";")[0].strip() in _GZIP_TYPES
+              and "gzip" in (self.headers.get("Accept-Encoding") or "").lower())
+        if gz:
+            data = gzip.compress(data, 5)
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(data)))
         # 화면 코드(HTML/JS/CSS)는 캐시 금지 — 새로고침하면 항상 최신 기능이 뜨도록 (글꼴은 별도 경로에서 캐시함)
         if ctype.startswith("text/html") or "javascript" in ctype or ctype.startswith("text/css"):
@@ -4666,6 +4678,7 @@ class Handler(BaseHTTPRequestHandler):
                 classifying = True
             papers = []
             readlog = load_readlog()["papers"]
+            want_lines = "lines" in parse_qs(url.query)   # 휴대폰 화면: 목록의 제목 아래에 요약의 한 줄을 보인다 (파일 mtime 캐시 — 처음 한 번만 읽는다)
             for f in archive_pdfs():
                 meta = parse_name(f)
                 try:
@@ -4689,6 +4702,11 @@ class Handler(BaseHTTPRequestHandler):
                 if meta["has_notes"]:
                     nd = load_notes(f)
                     meta["notes_n"] = len(nd.get("notes", [])) + len(nd.get("qa", []))
+                if want_lines and meta["has_summary"]:
+                    try:
+                        meta["line"] = ms._paper_line(f)[:160]
+                    except Exception:
+                        pass
                 jobs = {}
                 for kind in ("summary", "translation", "map"):
                     j = _jobs.get((f, kind))

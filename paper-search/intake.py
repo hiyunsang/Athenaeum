@@ -75,7 +75,7 @@ def log(msg):
     if sys.stdout:  # pythonw(백그라운드)로 실행하면 화면 출력이 없음
         try:
             print(line, flush=True)
-        except OSError:
+        except (OSError, ValueError):   # ValueError: 콘솔이 cp949 라 '—' 같은 글자를 못 찍을 때(UnicodeEncodeError) — 기록 때문에 수집·올리기가 죽지 않게
             pass
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
