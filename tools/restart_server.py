@@ -5,8 +5,13 @@ Athenaeum 서버 재시작 (창 없이).
     python tools\\restart_server.py            진행 중인 요약·번역 작업이 있으면 멈추지 않고 알려만 준다
     python tools\\restart_server.py --force    작업이 있어도 재시작 (그 작업은 끊긴다)
 
-1) /api/jobs 로 진행 중 작업 확인  2) 포트를 잡은 프로세스 종료  3) pythonw 로 server.py 를 창 없이 다시 띄움
+1) /api/jobs 로 진행 중 작업 확인  2) 포트를 잡은 프로세스 종료  3) server.py 를 창 없이 다시 띄움
 4) 응답이 올 때까지 기다린다. 코드를 고친 뒤 서버에 반영하려면 이것을 실행한다.
+
+서버는 탐색기(셸)에게 자동 시작 스크립트(Athenaeum_시작.vbs)를 열게 해서 띄운다 — 이 도구의 자식이 아니라 셸의 자식이 된다.
+    --direct    예전처럼 이 프로세스가 직접 띄운다 (다른 포트로 시험할 때는 늘 이쪽)
+2026-11-06: Claude 데스크톱 앱 안에서 직접 띄운 서버는 앱의 작업 묶음(Job)에 딸려 들어가, 새벽 4시 26분에 앱이 자동 업데이트될 때
+윈도우가 같이 닫았다(이벤트 기록 'Application Hang … Quiesce'). 서버가 9시간 꺼져 있었고 아무도 몰랐다.
 
 주의: 일괄 생성(batch_generate.py)이 도는 중에 재시작하면 서버 안의 작업이 사라진다.
       배치는 '작업이 사라짐'을 보고 다시 요청하지만 그 논문은 처음부터 다시 만든다.
@@ -32,6 +37,48 @@ def pythonw():
         return bundled
     here = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     return here if os.path.exists(here) else "pythonw"
+
+
+def in_job(pid):
+    """그 프로세스가 작업 묶음(Job) 안에서 도는가 — True 면 묶음의 주인(예: Claude 데스크톱 앱)이 닫히거나 업데이트될 때 같이 닫힐 수 있다. 못 알아내면 None."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.OpenProcess.restype = wintypes.HANDLE
+        k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
+        h = k.OpenProcess(0x1000, False, int(pid))      # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            r = wintypes.BOOL(0)
+            return bool(r.value) if k.IsProcessInJob(h, None, ctypes.byref(r)) else None
+        finally:
+            k.CloseHandle(h)
+    except Exception:
+        return None
+
+
+def start_server():
+    """서버를 띄우고 어떻게 띄웠는지 돌려준다: 'shell'(탐색기를 거쳐) | 'direct'(이 프로세스가 직접)."""
+    vbs = os.path.join(PS, "Athenaeum_시작.vbs")
+    explorer = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "explorer.exe")
+    if PORT == 8770 and "--direct" not in sys.argv and os.path.isfile(vbs) and os.path.isfile(explorer):
+        try:
+            # explorer.exe <파일> 은 이미 떠 있는 셸에게 그 파일을 열게 하고 바로 끝난다(종료 코드는 늘 1 — 오류가 아니다)
+            subprocess.Popen([explorer, vbs], close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return "shell"
+        except Exception:
+            pass
+    start_direct()
+    return "direct"
+
+
+def start_direct():
+    subprocess.Popen([pythonw(), os.path.join(PS, "server.py")], cwd=PS, creationflags=DETACHED, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def running_jobs():
@@ -125,10 +172,12 @@ def main():
         subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, creationflags=NO_WINDOW)
         out("서버 종료 (pid %s)" % pid)
     time.sleep(1.5)
-    subprocess.Popen([pythonw(), os.path.join(PS, "server.py")], cwd=PS, creationflags=DETACHED, close_fds=True,
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    how = start_server()
     for i in range(30):
         time.sleep(1)
+        if how == "shell" and i == 12:      # 셸이 스크립트를 열지 못한 경우(.vbs 가 다른 프로그램에 묶여 있는 PC 등) — 직접 띄운다
+            how = "direct"
+            start_direct()
         try:
             urllib.request.urlopen(URL + "/", timeout=3)
             try:
@@ -136,6 +185,12 @@ def main():
                 out("서버 켜짐 (%d초) · 수집 감시 %s" % (i + 1, "켜짐" if d.get("alive") else "시작 중"))
             except Exception:
                 out("서버 켜짐 (%d초)" % (i + 1))
+            tied = [pid for pid in server_pids() if in_job(pid)]
+            if tied:
+                out("주의: 서버(pid %s)가 이 도구를 돌린 프로그램의 작업 묶음 안에서 돕니다 — 그 프로그램(예: Claude 데스크톱 앱)이 닫히거나 "
+                    "업데이트되면 서버도 같이 꺼질 수 있습니다. 바탕화면의 Athenaeum 바로가기로 다시 켜면 풀립니다." % ", ".join(sorted(tied)))
+            elif how == "shell":
+                out("탐색기를 거쳐 띄웠습니다 (이 도구를 돌린 프로그램이 닫혀도 서버는 남습니다)")
             return
         except Exception:
             pass
