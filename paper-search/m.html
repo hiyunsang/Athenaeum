@@ -967,13 +967,24 @@ function lookSheet() {
   };
   openSheet(""); draw();
 }
+const isStandalone = () => window.navigator.standalone === true || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+function installSheet() {   /* 홈 화면에 추가하는 법 — 아이폰은 사이트가 설치 단추를 띄울 수 없어 길만 알려 준다 */
+  const ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua), crios = /CriOS|FxiOS|EdgiOS/.test(ua);
+  const steps = ios ? (crios ?
+      ["주소 막대 오른쪽의 공유 단추(네모에서 화살표가 올라가는 모양)를 누릅니다.", "목록을 아래로 내려 「홈 화면에 추가」 를 누릅니다.", "「추가」 를 누릅니다."] :
+      ["사파리 주소 막대 옆의 ⋯ 를 누릅니다. 예전 모양의 사파리면 아래 가운데의 공유 단추(네모에서 화살표가 올라가는 모양)입니다.", "「공유」 를 누릅니다.", "목록을 아래로 내려 「홈 화면에 추가」 를 누릅니다. 안 보이면 목록 맨 아래 「동작 편집」 에서 「홈 화면에 추가」 를 켭니다.", "「웹 앱으로 열기」 가 켜져 있는지 보고 「추가」 를 누릅니다."]) :
+      ["브라우저의 메뉴(⋮)를 누릅니다.", "「홈 화면에 추가」 를 누릅니다.", "「추가」 를 누릅니다."];
+  openSheet("<h3>홈 화면에 추가</h3><div class='doc' style='padding:0;font-size:15.5px'><p>홈 화면에 두면 주소 막대 없이 앱처럼 열립니다. " + (ios ? "아이폰에서는 '웹 앱' 이라는 단추가 따로 없고, 공유 메뉴의 「홈 화면에 추가」 가 그것입니다." : "") + "</p><ol>" +
+    steps.map(x => "<li>" + esc(x) + "</li>").join("") + "</ol><p style='color:var(--text-2);font-size:.92em'>홈 화면의 Athenaeum 으로 처음 열 때 한 번 다시 로그인합니다." + (ios && !crios ? "" : (ios ? " 사파리로 열어서 하면 「웹 앱으로 열기」 를 고를 수 있습니다." : "")) + "</p></div>");
+}
 function moreSheet() {
-  openSheet("<h3>더 보기</h3><button class='mi' data-m='quiz'>단어 퀴즈<span>단어장</span></button><button class='mi' data-m='up'>PDF 올리기<span>받은 논문을 서재에</span></button><button class='mi' data-m='look'>글씨와 화면</button>" +
+  openSheet("<h3>더 보기</h3>" + (isStandalone() ? "" : "<button class='mi' data-m='install'>홈 화면에 추가<span>앱처럼 열기</span></button>") + "<button class='mi' data-m='quiz'>단어 퀴즈<span>단어장</span></button><button class='mi' data-m='up'>PDF 올리기<span>받은 논문을 서재에</span></button><button class='mi' data-m='look'>글씨와 화면</button>" +
     "<a class='mi' href='/?desktop=1'>PC 화면으로 보기</a>" + (isRemote ? "<button class='mi red' data-m='out'>로그아웃</button>" : "") + "<input type='file' id='upf' accept='application/pdf,.pdf' multiple hidden>");
   sheet.onclick = async e => {
     const b = e.target.closest("[data-m]"); if (!b) return;
     const m = b.dataset.m;
     if (m === "look") return lookSheet();
+    if (m === "install") return installSheet();
     if (m === "quiz") { closeSheet(); return openQuiz(); }
     if (m === "up") return $("upf").click();
     if (m === "out") { try { await api("/api/logout", {}); } catch (err) {} location.href = "/login"; }
