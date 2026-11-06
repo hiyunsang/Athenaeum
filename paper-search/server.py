@@ -4124,11 +4124,12 @@ def tailscale_view(fresh=False):
         if v["running"]:
             rc, out = _ts_run(exe, "serve", "status", timeout=10)
             v["serving"] = ("127.0.0.1:%d" % PORT) in out
-            host = v["name"] or (v["ips"][0] if v["ips"] else "")
-            if host:
-                v["urls"] = ["http://%s:%d" % (host, PORT)]
-                if v["ips"] and host != v["ips"][0]:
-                    v["urls"].append("http://%s:%d" % (v["ips"][0], PORT))
+            # tailscale serve 는 요청의 이름(Host)으로 갈라 넘긴다 — 100.x 주소로 열면 404 다(2026-11-06 실제로 확인).
+            # 그래서 짧은 이름 주소와, 그 이름이 안 풀리는 기기를 위한 긴 이름(…ts.net) 주소만 보인다.
+            if v["name"]:
+                v["urls"] = ["http://%s:%d" % (v["name"], PORT)]
+                if v["dns"] and v["dns"] != v["name"]:
+                    v["urls"].append("http://%s:%d" % (v["dns"], PORT))
     _TS.update(t=now, v=v)
     return v
 
