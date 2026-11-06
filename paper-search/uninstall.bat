@@ -16,6 +16,8 @@ echo   program folder : %HERE%
 if defined DRY echo   DRY RUN - nothing will be changed
 echo.
 echo [1/3] Stopping the background server ...
+rem the keeper task (Task Scheduler) would start the server again within 5 minutes - remove it first if it points into this folder
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$h=$env:HERE.ToLower(); $x=(schtasks /Query /TN AthenaeumKeeper /XML 2>$null | Out-String); if ($x -and $x.ToLower().Contains($h)) { if ($env:DRY) { 'would remove scheduled task AthenaeumKeeper' } else { schtasks /Delete /TN AthenaeumKeeper /F | Out-Null; 'removed scheduled task AthenaeumKeeper' } }"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$h=$env:HERE.ToLower(); Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Contains('server.py') -and $_.CommandLine.ToLower().Contains($h) } | ForEach-Object { if ($env:DRY) { 'would stop pid ' + $_.ProcessId } else { Stop-Process -Id $_.ProcessId -Force; 'stopped pid ' + $_.ProcessId } }"
 if defined DRY goto shortcuts
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":%ATHENAEUM_PORT% .*LISTENING"') do taskkill /PID %%p /F >nul 2>nul

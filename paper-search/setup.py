@@ -259,8 +259,37 @@ def paper_count(root):
         return 0
 
 
+def keeper_pause(root, on=True):
+    """그 폴더의 서버 지킴이(작업 스케줄러가 5분마다 부르는 keeper.py)를 잠깐 쉬게 한다 — 업데이트로 서버를 꺼 둔 사이에 다시 켜지 않게.
+    keeper.py 는 수집\\지킴이_쉼.txt 가 30분 안에 고쳐졌으면 아무것도 하지 않는다. on=False 면 쉼을 푼다."""
+    try:
+        d = os.path.join(root, "수집")
+        f = os.path.join(d, "지킴이_쉼.txt")
+        if on:
+            os.makedirs(d, exist_ok=True)
+            with io.open(f, "w", encoding="utf-8") as fh:
+                fh.write("설치 도우미가 %s 에 서버를 껐습니다. 30분 동안 지킴이가 서버를 다시 켜지 않습니다.\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+        elif os.path.isfile(f):
+            os.remove(f)
+    except OSError:
+        pass
+
+
+def keeper_task_remove(root):
+    """작업 스케줄러의 AthenaeumKeeper 가 그 폴더의 것이면 지운다 (그 폴더를 정리할 때 — 안 지우면 5분마다 없는 서버를 켜려 든다)."""
+    try:
+        r = subprocess.run(["schtasks", "/Query", "/TN", "AthenaeumKeeper", "/XML"], capture_output=True, timeout=40, creationflags=NO_WINDOW)
+        x = (r.stdout or b"").decode("mbcs", "replace").lower()
+        if r.returncode == 0 and os.path.join(root, "paper-search", "keeper.py").lower() in x:
+            subprocess.run(["schtasks", "/Delete", "/TN", "AthenaeumKeeper", "/F"], capture_output=True, timeout=40, creationflags=NO_WINDOW)
+            say("      서버 지킴이(작업 스케줄러)를 지웠습니다")
+    except Exception:
+        pass
+
+
 def stop_server_at(root):
     """그 폴더의 server.py 를 돌리는 프로세스를 끈다."""
+    keeper_pause(root)
     key = os.path.join(root, "paper-search", "server.py").lower().replace("'", "''")
     ps = ("$k='%s'; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Contains($k) } "
           "| ForEach-Object { Stop-Process -Id $_.ProcessId -Force; 'stopped ' + $_.ProcessId }") % key
@@ -358,6 +387,7 @@ def update_in_place(old, prog=None):
     prog(90)
     say("      업데이트 끝. 이제부터 바로가기와 실행은 기존 폴더를 씁니다. 새로 푼 이 폴더(%s)는 지워도 됩니다." % ROOT)
     say("      Athenaeum 앱 창이 열려 있으면 F5 로 새로 고치세요. 어느 판인지는 홈의 ⚙ 환경설정 머리에 적혀 있습니다.")
+    keeper_pause(old, False)      # 지킴이를 다시 일하게 — 서버가 아직 꺼져 있으면 5분 안에 새 판으로 켠다
     return True
 
 
@@ -375,6 +405,7 @@ def apply_existing_choice(old, c, prog=None):
         remove_shortcuts_pointing(old)   # 새 바로가기를 다시 만든다
         target["root"] = old
     elif c == 2:
+        keeper_task_remove(old)
         stop_server_at(old)
         remove_shortcuts_pointing(old)
         say("      기존 폴더는 직접 지우세요 (논문·번역·원고가 들어 있으니 필요하면 먼저 옮기세요): " + old)

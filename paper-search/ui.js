@@ -173,7 +173,9 @@ function openSettings(cat) {
             "다른 기기에서 로그인할 때 씁니다. 비밀번호 자체는 저장하지 않고 확인용 값만 둡니다. 바꾸면 로그인돼 있던 기기는 모두 풀립니다", true),
         row("연결", "<button class='ureset' id='rmServe'>연결 설정</button><span class='uout' id='rmTs' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
             "Tailscale(내 기기끼리만 통하는 사설망)을 이 PC 와 쓸 기기에 깔고 같은 계정으로 로그인한 뒤 「연결 설정」 을 누르면 주소가 나옵니다. 인터넷에 공개하지 않습니다. 휴대폰은 그 주소를 열어 홈 화면에 추가하면 앱처럼 씁니다", true),
-        row("로그인된 기기", "<button class='ureset' id='rmOut'>모두 로그아웃</button><span class='uout' id='rmSess' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>", "", true)] },
+        row("로그인된 기기", "<button class='ureset' id='rmOut'>모두 로그아웃</button><span class='uout' id='rmSess' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>", "", true),
+        row("서버 지킴이", "<label class='usw'><input type='checkbox' id='kpOn'><i></i></label><span class='uout' id='kpState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "Athenaeum 서버가 꺼져 있으면 5분 안에 다시 켭니다(윈도우 작업 스케줄러에 등록). 다른 기기에서 쓸 때는 켜 두세요. 켜 둔 동안은 작업 관리자로 서버를 꺼도 다시 켜지므로, 서버를 끄려면 이 스위치부터 끕니다", true)] },
       { title: "백업", rows: [
         row("백업 폴더", "<input type='text' id='bkDir' placeholder='폴더의 전체 경로' style='width:260px'><button class='ureset' id='bkSave'>저장</button>",
             "논문·번역·메모·원고·공부·연구 노트를 이 폴더에 복사해 둡니다(바뀐 파일만, 지운 파일은 백업에서 지우지 않음). Google Drive 같은 클라우드 폴더를 고르면 PC 가 고장 나도 남고 다른 PC 에서도 파일이 보입니다", true),
@@ -323,7 +325,7 @@ function openSettings(cat) {
       const fmtT = t => { if (!t) return ""; const d = new Date(t * 1000); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
       const showR = v => {
         if (v.remote) {   /* 다른 기기에서 연 설정 창 — 바꾸는 것은 Athenaeum 이 깔린 PC 에서만 */
-          ["rmOn", "rmPw", "rmPwSet", "rmServe", "rmOut", "bkDir", "bkSave", "bkAuto", "bkNow"].forEach(id => { const e = $i(id); if (e) e.disabled = true; });
+          ["rmOn", "rmPw", "rmPwSet", "rmServe", "rmOut", "kpOn", "bkDir", "bkSave", "bkAuto", "bkNow"].forEach(id => { const e = $i(id); if (e) e.disabled = true; });
           on.checked = true; st.innerHTML = "이 설정은 Athenaeum 이 깔린 PC 에서만 바꿉니다 · <a href='#' id='rmMeOut'>이 기기 로그아웃</a>";
           $i("rmMeOut").onclick = async e => { e.preventDefault(); try { await fetch("/api/logout", { method: "POST", body: "{}" }); } catch (e2) {} location.href = "/login"; };
           return;
@@ -338,17 +340,22 @@ function openSettings(cat) {
           : "Tailscale 켜짐 (" + uiEsc(t.name || "") + ") — 「연결 설정」 을 누르면 주소가 열립니다";
         const list = v.sessions || [];
         ss.textContent = list.length ? list.length + "대 — " + list.slice(0, 4).map(x => x.dev + " " + fmtT(x.t)).join(", ") : "없음";
+        const kp = v.keeper || {}, kpOn = $i("kpOn"), kpSt = $i("kpState");
+        if (kpOn) kpOn.checked = !!kp.on;
+        if (kpSt) kpSt.textContent = !kp.on ? "꺼짐" : !kp.mine ? "켜짐 — 다른 폴더의 Athenaeum 을 지키고 있습니다 (껐다 켜면 이 폴더로 바뀝니다)" : "켜짐 — 5분마다 확인" + (kp.last ? " · 마지막 기록: " + kp.last : "");
         if (v.result && v.result.error) st.textContent = "⚠ " + v.result.error;
       };
       const postR = body => fetch("/api/remote", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(v => { showR(v); return v; }).catch(() => { st.textContent = "저장하지 못했습니다"; });
       fetch("/api/remote?check=1").then(r => r.json()).then(showR).catch(() => {});
       on.addEventListener("change", () => postR({ op: "on", on: on.checked }));
+      const kpOnEl = $i("kpOn");
+      if (kpOnEl) kpOnEl.addEventListener("change", async () => { $i("kpState").textContent = "설정 중…"; const v = await postR({ op: "keeper", on: kpOnEl.checked }); if (v && v.result && v.result.error) $i("kpState").textContent = "⚠ " + v.result.error; });
       $i("rmPwSet").onclick = async () => {
         if ((pw.value || "").length < 8) { pws.textContent = "8자 이상으로 적어 주세요"; pw.focus(); return; }
         const v = await postR({ op: "password", password: pw.value });
         if (v && v.result && v.result.ok) { pw.value = ""; pws.textContent = "정했습니다"; } else if (v && v.result) pws.textContent = "⚠ " + (v.result.error || "");
       };
-      $i("rmServe").onclick = async () => { ts.textContent = "설정 중…"; const v = await postR({ op: "serve", on: true }); if (v && v.result && v.result.error) ts.textContent = "⚠ " + v.result.error; };
+      $i("rmServe").onclick = async () => { ts.textContent = "설정 중… (길면 40초)"; const v = await postR({ op: "serve", on: true }); if (v && v.result && v.result.error) ts.innerHTML = "⚠ " + uiEsc(v.result.error).replace(/https?:\/\/[^\s<]+/g, u => "<a href='" + u + "' target='_blank' rel='noopener'>" + u + "</a>"); };
       $i("rmOut").onclick = () => postR({ op: "logout_all" });
       const bd = $i("bkDir"), ba = $i("bkAuto"), bs = $i("bkState"); let bt = null;
       const mb = n => n > 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round(n / 1e6) + " MB";

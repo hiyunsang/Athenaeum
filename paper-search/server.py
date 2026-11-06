@@ -4076,6 +4076,7 @@ def remote_view(is_remote, fresh=False):
         out["sessions"] = sorted(({"t": s.get("t"), "dev": _ua_short(s.get("ua")), "ip": s.get("ip", ""), "seen": _SESS_SEEN.get(k)} for k, s in ss.items() if isinstance(s, dict)),
                                  key=lambda x: -(x.get("t") or 0))
         out["tailscale"] = tailscale_view(fresh)
+        out["keeper"] = keeper_view(fresh)
     return out
 
 
@@ -4094,8 +4095,9 @@ def _ts_run(exe, *args, timeout=25):
     try:
         r = subprocess.run([exe] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, **_no_window())
         return r.returncode, ((r.stdout or b"") + (r.stderr or b"")).decode("utf-8", "replace").strip()
-    except subprocess.TimeoutExpired:
-        return 124, "시간 초과"
+    except subprocess.TimeoutExpired as e:      # 기다리다 끊겼어도 그때까지 찍힌 글은 돌려준다 (처음 쓸 때 관리 화면에서 허락하라는 주소가 찍힐 수 있다)
+        part = ((e.stdout or b"") + (e.stderr or b"")).decode("utf-8", "replace").strip()
+        return 124, ("%d초 안에 끝나지 않았습니다. " % timeout) + part
     except Exception as e:
         return 1, "%s: %s" % (type(e).__name__, e)
 
@@ -4143,6 +4145,131 @@ def tailscale_serve(on=True):
         rc, out = _ts_run(exe, "serve", "--http=%d" % PORT, "off", timeout=40)
     _TS["v"] = None
     return {"ok": True, "out": out[:600]} if rc == 0 else {"error": "설정하지 못했습니다: " + out[:400]}
+
+
+# ---- 서버 지킴이: 윈도우 작업 스케줄러가 5분마다 keeper.py 를 불러, 서버가 꺼져 있으면 다시 켠다 (⚙ 설정 → 기기) ----
+# 2026-11-06: Claude 데스크톱 앱이 새벽에 자동 업데이트되면서 서버가 같이 닫혀 9시간 꺼져 있었다. 다른 기기에서 열 때는 꺼진 서버를 다시 켤 길이 없다.
+KEEPER_TASK = "AthenaeumKeeper"
+_KEEPER = {"t": 0, "v": None}
+_KEEPER_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Athenaeum: every 5 minutes, start the local server again if it is not running. Turn off in Athenaeum settings (Devices).</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>%(user)s</UserId>
+      <Delay>PT2M</Delay>
+    </LogonTrigger>
+    <TimeTrigger>
+      <Repetition>
+        <Interval>PT5M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>%(user)s</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>%(pyw)s</Command>
+      <Arguments>"%(script)s"</Arguments>
+      <WorkingDirectory>%(cwd)s</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
+def _schtasks(*args, timeout=40):
+    try:
+        r = subprocess.run(["schtasks"] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, **_no_window())
+        return r.returncode, ((r.stdout or b"") + (r.stderr or b"")).decode("mbcs", "replace")
+    except subprocess.TimeoutExpired:
+        return 124, "시간 초과"
+    except Exception as e:
+        return 1, "%s: %s" % (type(e).__name__, e)
+
+
+def keeper_view(fresh=False):
+    """지킴이가 작업 스케줄러에 등록돼 있는가. mine = 이 폴더의 keeper.py 를 부르는 작업인가(다른 폴더의 Athenaeum 것이면 False)."""
+    now = time.time()
+    if not fresh and _KEEPER["v"] is not None and now - _KEEPER["t"] < 30:
+        return _KEEPER["v"]
+    rc, out = _schtasks("/Query", "/TN", KEEPER_TASK, "/XML")
+    on = rc == 0 and "<Task" in out
+    v = {"on": on, "mine": on and os.path.join(BASE, "keeper.py").lower() in out.lower(), "every": 5}
+    try:      # 마지막으로 한 일 (켰을 때와 이상할 때만 적힌다)
+        with open(os.path.join(os.path.dirname(ARCHIVE), "수집", "지킴이기록.txt"), encoding="utf-8") as f:
+            lines = [x.strip() for x in f.read().splitlines() if x.strip()]
+        v["last"] = lines[-1][:200] if lines else ""
+        v["n"] = len(lines)
+    except OSError:
+        v["last"], v["n"] = "", 0
+    _KEEPER.update(t=now, v=v)
+    return v
+
+
+def keeper_set(on):
+    from xml.sax.saxutils import escape as _xe
+    _KEEPER["v"] = None
+    if not on:
+        rc, out = _schtasks("/Delete", "/TN", KEEPER_TASK, "/F")
+        if rc != 0 and keeper_view(True)["on"]:
+            return {"error": "지킴이를 끄지 못했습니다: " + out.strip()[:200]}
+        return {"ok": True}
+    script = os.path.join(BASE, "keeper.py")
+    if not os.path.isfile(script):
+        return {"error": "keeper.py 가 없습니다"}
+    pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    if not os.path.isfile(pyw):
+        pyw = sys.executable
+    user = os.environ.get("USERNAME") or ""
+    if os.environ.get("USERDOMAIN"):
+        user = os.environ["USERDOMAIN"] + "\\" + user
+    if not user:
+        return {"error": "윈도우 사용자 이름을 알 수 없어 등록하지 못했습니다"}
+    xml = _KEEPER_XML % {"user": _xe(user), "pyw": _xe(pyw), "script": _xe(script), "cwd": _xe(BASE)}
+    tmp = os.path.join(tempfile.gettempdir(), "athenaeum_keeper_%d.xml" % os.getpid())
+    try:
+        with open(tmp, "w", encoding="utf-16") as f:
+            f.write(xml)
+        rc, out = _schtasks("/Create", "/TN", KEEPER_TASK, "/XML", tmp, "/F")
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    if rc != 0:
+        return {"error": "작업 스케줄러에 등록하지 못했습니다: " + out.strip()[:240]}
+    return {"ok": True}
 
 
 # ---- 백업: 데이터를 고른 폴더(Google Drive 같은 클라우드 폴더)에 한쪽 방향으로 복사한다. 바뀐 파일만, 지운 파일은 백업에서 지우지 않는다 ----
@@ -4424,6 +4551,8 @@ class Handler(BaseHTTPRequestHandler):
                 r = {"ok": True}
             elif op == "serve":
                 r = tailscale_serve(bool(body.get("on", True)))
+            elif op == "keeper":
+                r = keeper_set(bool(body.get("on")))
             else:
                 r = {"error": "bad op"}
             v = remote_view(False, True)
