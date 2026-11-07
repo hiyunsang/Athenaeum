@@ -219,10 +219,7 @@
   body.focus #editor { max-width: 880px; margin: 0 auto; padding: 0 var(--s4); }
   #draft { min-height: 420px; overflow: hidden; }
   input.inl:focus { outline: none; border-bottom-color: var(--accent); }
-  /* 수식: 글 속 $LaTeX$ 를 글 칸 아래에 그려 보여 준다 (누르면 고침) */
-  math { font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", serif; }
-  math .mover { border-top: 1px solid currentColor; padding-top: 1px; } math .munder { border-bottom: 1px solid currentColor; }
-  math .mErr { color: var(--red); } math mtd.mL { text-align: left; } math mtd.mR { text-align: right; }
+  /* 수식: 글 속 $LaTeX$ 를 글 칸 아래에 그려 보여 준다 (누르면 고침). math 의 글꼴(동봉한 STIX Two Math)·칸 맞춤(mtd.mL/.mR)·.mover·.mErr 는 ui.css 의 수식 공통 절 (2026-11-07) */
   .mprev { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; padding: 3px 6px 4px; font-size: calc(14px * var(--ms-scale, 1)); color: var(--text); border-left: 2px solid var(--line-2); margin: 2px 0 2px 2px; }
   .mprev .mq { cursor: pointer; padding: 2px 6px; border-radius: var(--r); } .mprev .mq:hover { background: var(--hover); }
   .mprev .mq.d { flex-basis: 100%; text-align: center; padding: 4px 6px; position: relative; }

@@ -857,6 +857,8 @@ function eqUnits(imgs, by) {
   units.forEach(u => { u.tex = u.parts.map(x => x && x.latex).join(" \\\\ "); u.ok = u.parts.length > 1 ? u.parts.every(x => x && x.latex && x.mml_ok) : eqUsable(u.e); });
   return units;
 }
+/* 수식 글꼴(STIX Two Math — ui.css 의 @font-face, 처음 한 번 받아 온다)이 내려오기 전에 재면 폭·칸 자리가 어긋나므로 줄이기·맞춤 앞에 한 번 기다린다 (없는 브라우저면 바로) */
+const mathFontReady = () => (document.fonts && document.fonts.load ? document.fonts.load('1em "STIX Two Math"').catch(() => {}) : Promise.resolve());
 /* 표 칸의 맞춤 (2026-11-07): 크롬의 MathML Core 는 mtd 의 text-align 을 무시해 aligned 의 등호가 안 맞고 이어진 줄의 오른쪽 맞춤도 안 된다(사파리는 columnalign 으로 된다) —
    그려진 뒤 칸마다 내용이 선 자리를 재서 모자란 만큼 왼쪽 여백으로 민다. 이미 맞게 그린 엔진에서는 0 이라 바뀌지 않는다. 글자 크기를 줄인 뒤에 부른다 */
 function mathAlign(root) {
@@ -891,6 +893,7 @@ async function eqRenderM(doc, file, my) {
     let mml = []; try { mml = (await api("/api/ms/math", { items: items.map(x => ({ tex: x.tex, display: true })) })).mml || []; } catch (e) {}
     if (my !== view) return;
     keepView(() => items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelectorAll("img.orig").forEach(o => o.hidden = false); } }));   /* 엔진이 못 읽은 조각은 그림으로 */
+    await mathFontReady(); if (my !== view) return;
     items.forEach(x => {      /* 폰 폭보다 긴 식은 글자를 줄여 맞춘다 (0.6배까지 — 그보다 길면 옆으로 굴린다). 한 번에 재면 2~3% 가 남아 굴림 막대가 생기므로 세 번까지 다시 잰다 */
       const el = x.el; if (el.hidden) return; let f = 1;
       for (let k = 0; k < 3 && f > .6; k++) { const r = el.scrollWidth / Math.max(1, el.clientWidth); if (r <= 1) break; f = Math.max(.6, f / r * .985); el.style.fontSize = f.toFixed(3) + "em"; }
