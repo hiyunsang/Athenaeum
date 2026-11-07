@@ -4188,7 +4188,11 @@ _LOCAL_ONLY_MSG = "이 기능은 Athenaeum 이 깔린 PC 에서만 됩니다"
 MANIFEST = {"name": "Athenaeum", "short_name": "Athenaeum", "start_url": "/m", "scope": "/", "display": "standalone", "lang": "ko",
             "background_color": "#ffffff", "theme_color": "#ffffff", "description": "연구실 PC 의 Athenaeum 을 휴대폰에서 — 이어 읽기 · 서재 · 공부 · 연구 노트",
             "icons": [{"src": "/logo/icon-192.png", "sizes": "192x192", "type": "image/png"},
-                      {"src": "/logo/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
+                      {"src": "/logo/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                      # 안드로이드 홈 화면은 아이콘을 원·둥근 네모로 깎는다 — 투명 아이콘이면 크롬이 흰 원판을 깔고, maskable 이 있으면 그것을 꽉 채워 깎는다
+                      # (불투명 아이보리 바탕, A 는 가운데 80% 원 안; 아이폰은 manifest 가 아니라 각 화면의 apple-touch-icon = touch-180.png. make_logo.py touch, 2026-11-08)
+                      {"src": "/logo/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+                      {"src": "/logo/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
 
 _os_startfile = getattr(os, "startfile", None)
 
