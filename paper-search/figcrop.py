@@ -15,7 +15,9 @@ import re
 _CAP = re.compile(r"^\s*(Fig\.?|Figure|Table)\s*(\d+)\s*[.:|]?\s*[.:|]?\s*(.*)$", re.I | re.S)
 # 본문의 참조 문장: 번호 바로 뒤에 괄호·소문자(Fig. 1(c), Fig. 1a shows) 또는 동사. 'Fig.1 (a) A +ve…' 처럼 빈칸 뒤 괄호는 캡션이다
 _CAP_REF = re.compile(r"^(?i:fig\.?|figure|table)\s*\d+(?:\(|[a-z]|\s+(?i:shows?|illustrates?|presents?|depicts?|compares?|summari[sz]es?|gives?|and|to|in|of)\b)")
-_CAP_STYLE = re.compile(r"^(?:fig\.?|figure|table)\s*\d+\s*[.:|]?\s*[.:|]?\s*[A-Z(]", re.I)
+_CAP_STYLE = re.compile(r"^(?i:fig\.?|figure|table)\s*\d+\s*[.:|]?\s*[.:|]?\s*(?:[A-Z(]|[a-z](?:,\s*[a-z])*(?:[.)]|\s+(?:[A-Z(\d]|[a-z][.)]))|[a-z][-\u2013]\S)")
+# 캡션은 대문자·괄호로 시작하거나 소문자 부분 기호('a Rake face …', 'a) …', 'a. …', 'a, b …', 'c-EBSD')로 시작한다 — 전에는 re.I 라 [A-Z] 가 소문자도 받아
+# 'Fig. 6 is a SEM image …'·'Fig. 2 includes …' 같은 본문 문장이 캡션이 됐다(Davis 2020 의 Fig. 6·15 가 그래서 안 잘렸다, 서재 398편에서 81곳; 2026-11-07). 소문자 낱말로 시작하는 캡션('von Mises …')은 놓친다
 _LABEL_ONLY = re.compile(r"^\s*(?:Fig\.?|Figure|Table)\s*\d+\s*[.:|]?\s*$", re.I)   # 번호만 홀로 있는 블록 ('Figure 1')
 
 

@@ -3769,6 +3769,175 @@ def gen_state(name, kind):
 study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel, pref_abbrs=pref_file_abbrs,
            gen_ensure=gen_ensure, gen_state=gen_state)
 
+# ---------- 논문의 그림·표 — 휴대폰 화면이 번역 사이에 끼운다 (2026-11-07, 사용자: '폰으로 논문 볼 때 그림 보는 게 불편해 — 적재적소에, 스크롤 내리며 보고, 확대도, 캡션도') ----------
+# 캡션 자리(figcrop.captions)에서 그림·표를 잘라 번역\그림\<stem>\fig<n>.png · tab<n>.png 에 둔다 — 그림은 공부의 그림 색인이 쓰는 것과 같은 파일(이미 잘라 둔 199편은 그대로 쓴다).
+# 목록은 번역\그림\<stem>\_목록.json 에 두고 PDF 의 mtime 으로 무효화한다. 처음 여는 논문은 캡션 목록을 바로 주고 자르기는 배경 스레드에서(building) — 화면이 2초마다 다시 묻는다.
+# 캡션 번역은 .캡션.json 이 있을 때만 붙인다(Claude 를 부르지 않는다 — 토큰 0). 그림을 가리키는 문장 번호(refs)는 정렬표에서 'Fig. n'·'Table n' 을 말한 문장(번호 순 4개까지) — 화면이 그 첫 문장의 문단 아래에 그림을 둔다.
+import figcrop
+
+FIGS_V = 1
+_FIG_BUILDING, _FIG_LOCK = {}, threading.Lock()      # 논문 이름 → {"t", "items"} (자르는 중)
+_FIG_REF_RX = re.compile(r"(?i)\b(fig(?:ure|s)?\.?|tables?)\s*(\d{1,3}(?:\s*(?:,|and|&|to|\u2013|\u2014|-)\s*\d{1,3})*)(?!\d|\.\d)")   # 'Fig. 3', 'Figs. 3 and 4', 'Table 2', 'Figs. 3\u20135' — 뒤에 숫자·'.숫자'(3.2절) 만 막는다, 문장 끝 마침표는 둔다
+_FIG_RANGE_RX = re.compile(r"(\d+)\s*(?:to|\u2013|\u2014|-)\s*(\d+)")
+
+
+def fig_dir(name):
+    return os.path.join(GEN_DIR, "그림", os.path.splitext(os.path.basename(name))[0])
+
+
+def _fig_list_path(name):
+    return os.path.join(fig_dir(name), "_목록.json")
+
+
+def _fig_img_name(kind, n):
+    return ("fig%d.png" if kind == "fig" else "tab%d.png") % n
+
+
+def _png_size(path):
+    """PNG 의 가로·세로(IHDR) — 화면이 그림이 오기 전에 자리를 잡아 두게"""
+    try:
+        with open(path, "rb") as f:
+            b = f.read(24)
+        if b[:8] == b"\x89PNG\r\n\x1a\n":
+            return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
+    except Exception:
+        pass
+    return None
+
+
+def _fig_mentions(name):
+    """정렬표에서 'Fig. n'·'Table n' 을 말한 문장 → {(kind, n): [문장 번호(숫자 글), ...]} (번호 순 4개까지). 본문 문장이 곁텍스트(캡션)보다 앞 번호라 첫 것이 본문의 첫 언급이다"""
+    al = load_json(align_path(name), {}) or {}
+    hits = {}
+    for k, v in al.items():
+        t = (v.get("t") if isinstance(v, dict) else "") or ""
+        if len(t) < 25:
+            continue
+        digits = re.sub(r"\D", "", str(k))
+        if not digits:
+            continue
+        num = int(digits)
+        for m in _FIG_REF_RX.finditer(t):
+            kind = "table" if m.group(1).lower().startswith("t") else "fig"
+            ns = set(int(x) for x in re.findall(r"\d+", m.group(2)))
+            for a, b in _FIG_RANGE_RX.findall(m.group(2)):      # 'Figs. 3\u20135' 는 3·4·5
+                a, b = int(a), int(b)
+                if 0 < b - a <= 6:
+                    ns.update(range(a, b + 1))
+            for n in ns:
+                hits.setdefault((kind, n), set()).add((num, digits))
+    return {key: [d for _, d in sorted(v)[:4]] for key, v in hits.items()}
+
+
+def _fig_quick(name, pdf):
+    """캡션 목록 → [{kind, n, page, en, img}] — img 는 PNG 가 이미 있을 때만(없으면 None → 배경에서 자른다)"""
+    d = fig_dir(name)
+    out = []
+    for c in figcrop.captions(pdf):
+        img = _fig_img_name(c["kind"], c["n"])
+        out.append({"kind": c["kind"], "n": c["n"], "page": c["page"], "en": (c.get("text") or "")[:600], "img": img if os.path.isfile(os.path.join(d, img)) else None})
+    return out
+
+
+def _fig_build_job(name, pdf, items):
+    """없는 그림·표를 차례로 잘라 두고 목록을 저장한다 (한 편에 그림마다 0.2~0.5초). 못 자른 것은 err 로 적어 PDF 가 그대로인 동안 다시 시도하지 않는다"""
+    try:
+        d = fig_dir(name)
+        os.makedirs(d, exist_ok=True)
+        for it in items:
+            if it.get("img"):
+                continue
+            img = _fig_img_name(it["kind"], it["n"])
+            png = os.path.join(d, img)
+            try:
+                r = figcrop.crop(pdf, it["kind"], it["n"], png)
+            except Exception as e:
+                r = {"err": str(e)[:100]}
+            if "err" in r or not os.path.isfile(png):
+                it["err"] = str(r.get("err") or "?")[:100]
+            else:
+                it["img"] = img
+        save_json(_fig_list_path(name), {"v": FIGS_V, "mtime": os.path.getmtime(pdf), "figs": [dict(it) for it in items]})
+    except Exception as e:
+        logging.warning("그림 자르기 실패 %s: %s", name, e)
+    finally:
+        with _FIG_LOCK:
+            _FIG_BUILDING.pop(name, None)
+
+
+def paper_figs(name):
+    """논문의 그림·표 → {figs: [{kind, n, page, en, ko, what, img, w, h, refs, err}], building, ko}.
+    ko = 캡션 번역(.캡션.json 이 있을 때), what = 그림 색인의 '그림 읽기'(있을 때), img 가 None 이면 아직 자르는 중(building)이거나 못 자른 것(err)"""
+    name = os.path.basename(str(name or ""))
+    pdf = os.path.join(ARCHIVE, name)
+    if not name or not os.path.isfile(pdf):
+        return {"figs": [], "building": False, "error": "no file"}
+    mt = os.path.getmtime(pdf)
+    building = False
+    d = load_json(_fig_list_path(name), None)
+    if isinstance(d, dict) and d.get("v") == FIGS_V and abs((d.get("mtime") or 0) - mt) < 2 and isinstance(d.get("figs"), list):
+        items = d["figs"]
+    else:
+        with _FIG_LOCK:
+            b = _FIG_BUILDING.get(name)
+        if b is None:
+            try:
+                items = _fig_quick(name, pdf)
+            except Exception as e:
+                return {"figs": [], "building": False, "error": str(e)[:200]}
+            if any(not it.get("img") for it in items):
+                with _FIG_LOCK:
+                    b = _FIG_BUILDING.get(name)
+                    if b is None:
+                        _FIG_BUILDING[name] = {"t": time.time(), "items": items}
+                        threading.Thread(target=_fig_build_job, args=(name, pdf, items), daemon=True).start()
+                    else:
+                        items = b["items"]
+                building = True
+            else:
+                try:
+                    os.makedirs(fig_dir(name), exist_ok=True)
+                    save_json(_fig_list_path(name), {"v": FIGS_V, "mtime": mt, "figs": items})
+                except Exception as e:
+                    logging.warning("그림 목록 저장 실패 %s: %s", name, e)
+        else:
+            items, building = b["items"], True
+    items = [dict(it) for it in items]      # 자르는 스레드가 고치는 중일 수 있다
+    ko = {}
+    caps = load_json(captions_path(name), None)
+    if isinstance(caps, dict):
+        for c in caps.get("captions") or []:
+            if isinstance(c, dict) and c.get("ko"):
+                ko[(c.get("kind"), c.get("n"))] = str(c["ko"])[:600]
+    what = {}
+    try:
+        for x in (study._fi().load(name) or {}).get("figs") or []:
+            if isinstance(x, dict) and x.get("what"):
+                what[x.get("n")] = {"what": str(x["what"])[:500], "type": x.get("type")}
+    except Exception:
+        pass
+    try:
+        refs = _fig_mentions(name)
+    except Exception:
+        refs = {}
+    dd = fig_dir(name)
+    out = []
+    for it in items:
+        key = (it.get("kind"), it.get("n"))
+        o = {"kind": it.get("kind"), "n": it.get("n"), "page": it.get("page"), "en": it.get("en") or "", "ko": ko.get(key, ""), "img": it.get("img"), "refs": refs.get(key, [])}
+        if o["img"]:
+            sz = _png_size(os.path.join(dd, o["img"]))
+            if sz:
+                o["w"], o["h"] = sz
+        if it.get("kind") == "fig" and what.get(it.get("n")):
+            o["what"] = what[it["n"]]["what"]
+            o["type"] = what[it["n"]].get("type")
+        if it.get("err"):
+            o["err"] = it["err"]
+        out.append(o)
+    return {"figs": out, "building": building, "ko": bool(ko)}
+
+
 # ---------- 연구 노트 (연구 주제를 놓고 Claude 와 토의 — 서재 전체·공부 장·탐색 기록·인용 이웃·원고를 알고 답한다. 사용자 2026-10-08) ----------
 import notes
 notes.init(sweep=True, BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
@@ -4755,6 +4924,25 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, get_captions(name))
                 except Exception as e:
                     self._send(200, {"captions": [], "error": str(e)[:200]})
+        elif url.path == "/api/figs":
+            # 논문의 그림·표 목록 — 휴대폰 화면이 번역 사이에 끼운다 (2026-11-07). 처음 여는 논문은 배경에서 자르며 building 을 준다
+            name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
+            try:
+                self._send(200, paper_figs(name))
+            except Exception as e:
+                self._send(200, {"figs": [], "building": False, "error": str(e)[:200]})
+        elif url.path == "/figimg":
+            # 잘라 둔 그림·표 PNG: ?file=<논문>&name=<fig3.png|tab1.png>
+            q = parse_qs(url.query)
+            name = os.path.basename(q.get("file", [""])[0]); fname = os.path.basename(q.get("name", [""])[0])
+            fp = os.path.join(fig_dir(name), fname) if fname.lower().endswith(".png") else ""
+            if fp and os.path.isfile(fp):
+                with open(fp, "rb") as f:
+                    data = f.read()
+                self.send_response(200); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "private, max-age=86400"); self.end_headers(); self.wfile.write(data)
+            else:
+                self._send(404, {"error": "no fig"})
         elif url.path == "/api/eqindex":
             # 수식 색인(eqindex) — 읽기 창이 번역문의 [[EQ]] 그림을 전사로 그린다 (2026-10-30). {eqs, building}
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])

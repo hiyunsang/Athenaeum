@@ -143,6 +143,15 @@
   .doc sup.c { font-size: .68em; color: var(--accent); padding: 0 3px; font-weight: 600; line-height: 0; }
   .doc figure { margin: 1.4em 0; } .doc figure img { display: block; margin: 0 auto; background: #fff; border-radius: 10px; }
   .doc figcaption { font-size: .82em; color: var(--text-2); margin-top: .6em; line-height: 1.6; } .doc figcaption .src { color: var(--text-3); }
+  /* 논문의 그림·표 — 번역에서 처음 가리킨 문단 아래 (2026-11-07). 상자는 그림이 오기 전에 비율대로 자리를 잡아 글이 밀리지 않는다 */
+  .doc figure.pf { margin: 1.5em -4px; } .doc figure.pf .pfi { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+  .doc figure.pf .pfi img { display: block; width: 100%; height: auto; margin: 0; border-radius: 0; cursor: zoom-in; }
+  .doc figure.pf .pfi.wait { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 110px; background: var(--card); color: var(--text-3); font-size: .85em; box-shadow: none; }
+  .doc figure.pf figcaption { padding: 0 4px; } .doc figure.pf figcaption b { color: var(--text); }
+  .doc figure.pf .pfo { background: none; border: 0; padding: 0 0 0 8px; color: var(--accent); font-size: .92em; font-weight: 600; cursor: pointer; }
+  .doc figure.pf .pfx { margin-top: .5em; color: var(--text-3); font-size: .96em; line-height: 1.55; } .doc figure.pf .pfx [lang=en] { word-break: normal; }
+  .doc figure.pf .pfx .rd { margin-top: .45em; color: var(--text-2); } .doc figure.pf .pfx .rd b { color: var(--amber); font-weight: 600; }
+  .doc h2.pft { margin-top: 2.4em; padding-top: 1em; border-top: 1px solid var(--line); }
   .doc .eqn { overflow-x: auto; overflow-y: hidden; text-align: center; padding: .5em 0 .2em; font-size: 1.05em; }
   .doc .imath.fail, .doc .eqn.fail { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82em; color: var(--text-2); }
   .doc aside { background: var(--amber-bg); border-radius: 16px; padding: 14px 16px 15px; margin: 1.8em -4px; font-size: .93em; }
@@ -173,10 +182,15 @@
   .mi:last-child { border-bottom: 0; } .mi span { margin-left: auto; color: var(--text-3); font-size: 14px; } .mi.red { color: var(--red); }
   .fsrow { display: flex; align-items: center; gap: 12px; padding: 6px 0 14px; } .fsrow button { width: 56px; height: 44px; border: 0; border-radius: 12px; background: var(--fill); font-weight: 600; }
   .fsrow .sm { font-size: 14px; } .fsrow .lg { font-size: 21px; } .fsrow div { flex: 1; text-align: center; color: var(--text-2); font-size: 14px; }
-  #zoom { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: rgba(0, 0, 0, .93); overflow: auto; -webkit-overflow-scrolling: touch; display: flex; }
-  #zoom img { margin: auto; width: 100vw; max-width: none; height: auto; background: #fff; } #zoom.big img { width: 230vw; }
-  #zoom .zx { position: fixed; top: calc(var(--sat) + 10px); right: 12px; width: 38px; height: 38px; border: 0; border-radius: 19px; background: rgba(120, 120, 128, .5); color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
-  #zoom .zx svg { width: 18px; height: 18px; } #zoom .zh { position: fixed; left: 0; right: 0; bottom: calc(var(--sab) + 16px); text-align: center; color: rgba(255, 255, 255, .7); font-size: 13px; pointer-events: none; }
+  /* 그림 크게 — 두 손가락으로 확대·끌기, 두 번 눌러 확대/맞춤, 맞춘 채 아래로 쓸어 닫기. 변환은 그림에 transform 으로(브라우저의 화면 확대는 touch-action: none 으로 막는다) */
+  #zoom { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: rgba(0, 0, 0, .97); overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+  #zoom .zc { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; }
+  #zoom .zc img { max-width: 100vw; max-height: 100vh; max-height: 100dvh; width: auto; height: auto; background: #fff; transform-origin: 0 0; will-change: transform; -webkit-user-drag: none; -webkit-touch-callout: none; }
+  #zoom .zx { position: absolute; z-index: 2; top: calc(var(--sat) + 10px); right: 12px; width: 38px; height: 38px; border: 0; border-radius: 19px; background: rgba(120, 120, 128, .5); color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; }
+  #zoom .zx svg { width: 18px; height: 18px; }
+  #zoom .zcap { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 18px calc(var(--sab) + 40px); background: linear-gradient(transparent, rgba(0, 0, 0, .78) 30%); color: rgba(255, 255, 255, .9); font-size: 14px; line-height: 1.55; max-height: 38vh; overflow: auto; transition: opacity .25s; word-break: keep-all; overflow-wrap: anywhere; }
+  #zoom .zcap b { color: #fff; } #zoom.z .zcap { opacity: 0; pointer-events: none; }
+  #zoom .zh { position: absolute; left: 0; right: 0; bottom: calc(var(--sab) + 14px); text-align: center; color: rgba(255, 255, 255, .6); font-size: 12.5px; pointer-events: none; transition: opacity .5s; } #zoom.h .zh, #zoom.z .zh { opacity: 0; }
   #toast { position: fixed; z-index: 60; left: 50%; bottom: calc(var(--sab) + 86px); transform: translateX(-50%); background: rgba(40, 40, 40, .94); color: #fff; padding: 10px 16px; border-radius: 20px; font-size: 14px; line-height: 1.45; max-width: 84vw; text-align: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
   #toast.on { opacity: 1; }
   #quizbox { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 45; background: var(--surface); display: flex; flex-direction: column; padding-top: var(--sat); }
@@ -227,7 +241,7 @@
    화면: 읽기(이어 읽기 · 공부 · 새로 들어온 논문) · 서재 · 공부 · 노트(연구 노트) 가 아래 탭, 논문·장·대화는 그 위에 쌓이는 화면(위 막대의 ‹ 로 돌아간다).
    읽는 화면은 굴리면 위 막대가 숨고, 번역의 문장을 누르면 원문이, 공부의 문장을 누르면 근거 원문이 아래에서 올라온다.
    주소: #/ 읽기 · #/lib 서재 · #/study 공부 · #/notes 노트 · #/p/<파일>/<summary|translation|ask>[/s번호] 논문 · #/s/<장>[/<절>|/c/<대화>] 공부 · #/n/<노트>
-   서버에는 PC 화면이 쓰는 길을 그대로 부른다 (/api/data?lines=1 · /api/gentext · /api/align · /api/notes · /api/ask · /api/study · /api/ms/math). 시험은 /m?nolog=1 (읽기 기록을 남기지 않는다). */
+   서버에는 PC 화면이 쓰는 길을 그대로 부른다 (/api/data?lines=1 · /api/gentext · /api/figs · /api/align · /api/notes · /api/ask · /api/study · /api/ms/math). 시험은 /m?nolog=1 (읽기 기록을 남기지 않는다). */
 "use strict";
 const $ = id => document.getElementById(id);
 const app = $("app"), nav = $("nav"), tabbar = $("tabbar"), peek = $("peek"), rp = $("rp"), sheet = $("sheet"), sheetbg = $("sheetbg"), zoom = $("zoom"), toastEl = $("toast");
@@ -333,12 +347,66 @@ sheetbg.onclick = closeSheet;
 })();
 let toastT = null;
 function toast(msg, ms) { toastEl.textContent = msg; toastEl.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove("on"), ms || 2600); }
-function openZoom(src) {
-  zoom.className = ""; zoom.innerHTML = "<img alt='' src='" + esc(src) + "'><button class='zx' aria-label='닫기'>" + IC.close + "</button><div class='zh'>그림을 누르면 크게 · 다시 누르면 맞춤</div>";
+function openZoom(src, cap) {   /* 그림 크게: 두 손가락으로 확대·끌기, 두 번 눌러 확대/맞춤, 맞춘 채 아래로 쓸면 닫힘. 아래에 캡션 (2026-11-07) */
+  zoom.className = ""; zoom.style.opacity = "";
+  zoom.innerHTML = "<div class='zc'><img alt='' draggable='false' src='" + esc(src) + "'></div><button class='zx' aria-label='닫기'>" + IC.close + "</button>" +
+    (cap ? "<div class='zcap'>" + cap + "</div>" : "") + "<div class='zh'>두 손가락으로 확대 · 두 번 눌러 확대/맞춤 · 아래로 쓸어 닫기</div>";
   zoom.hidden = false;
-  zoom.querySelector("img").onclick = e => { e.stopPropagation(); zoom.classList.toggle("big"); if (zoom.classList.contains("big")) zoom.scrollLeft = (zoom.scrollWidth - zoom.clientWidth) / 2; };
-  zoom.onclick = () => { zoom.hidden = true; zoom.innerHTML = ""; };
+  const zc = zoom.querySelector(".zc"), img = zc.querySelector("img"), pts = new Map();
+  let s = 1, tx = 0, ty = 0, g = null, moved = false, lastTap = 0;
+  const close = () => { zoom.hidden = true; zoom.innerHTML = ""; zoom.style.opacity = ""; };
+  const L = () => { const r = img.getBoundingClientRect(); return { x: r.left - tx, y: r.top - ty, w: r.width / s, h: r.height / s }; };      /* 변환 전의 자리(가운데 맞춤) */
+  const apply = () => { img.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + s + ")"; zoom.classList.toggle("z", s > 1.02); };
+  const clamp = () => {      /* 화면보다 작으면 가운데, 크면 가장자리가 화면 안쪽으로 들어오지 않게 */
+    const l = L(), vw = window.innerWidth, vh = window.innerHeight, W = l.w * s, H = l.h * s;
+    tx = W <= vw + 1 ? (vw - W) / 2 - l.x : Math.min(-l.x, Math.max(vw - W - l.x, tx));
+    ty = H <= vh + 1 ? (vh - H) / 2 - l.y : Math.min(-l.y, Math.max(vh - H - l.y, ty));
+  };
+  const zoomAt = (ns, cx, cy) => {      /* 화면의 (cx, cy) 아래 그림 점을 그대로 둔 채 배율 ns 로 */
+    const l = L(); ns = Math.min(8, Math.max(1, ns));
+    const px = (cx - l.x - tx) / s, py = (cy - l.y - ty) / s;
+    s = ns; tx = cx - l.x - s * px; ty = cy - l.y - s * py; clamp(); apply();
+  };
+  const mid = a => ({ d: a.length >= 2 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, x: a.length >= 2 ? (a[0].x + a[1].x) / 2 : a[0].x, y: a.length >= 2 ? (a[0].y + a[1].y) / 2 : a[0].y });
+  zc.addEventListener("pointerdown", e => {
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { zc.setPointerCapture(e.pointerId); } catch (x) {}
+    const m = mid([...pts.values()]); g = { s, tx, ty, x: e.clientX, y: e.clientY, d: m.d, mx: m.x, my: m.y, two: pts.size >= 2 };
+    moved = false; zoom.classList.add("h"); e.preventDefault();
+  });
+  zc.addEventListener("pointermove", e => {
+    if (!g || !pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const a = [...pts.values()];
+    if (a.length >= 2) {      /* 두 손가락: 처음 거리 대 지금 거리의 비로 배율, 가운데 점은 손가락을 따라간다 */
+      const m = mid(a);
+      if (!g.two) { g.two = true; g.d = m.d; g.mx = m.x; g.my = m.y; g.s = s; g.tx = tx; g.ty = ty; }
+      if (g.d < 1) return;
+      const l = L(), ns = Math.min(8, Math.max(1, g.s * m.d / g.d)), px = (g.mx - l.x - g.tx) / g.s, py = (g.my - l.y - g.ty) / g.s;
+      s = ns; tx = m.x - l.x - s * px; ty = m.y - l.y - s * py; clamp(); apply(); moved = true; return;
+    }
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+    if (s > 1.02) { tx = g.tx + dx; ty = g.ty + dy; clamp(); apply(); }
+    else if (moved) { img.style.transform = "translate(0px," + dy + "px)"; zoom.style.opacity = String(Math.max(.25, 1 - Math.abs(dy) / 420)); }      /* 맞춘 채 끌면 닫는 몸짓 */
+  });
+  const up = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (pts.size) { const r = [...pts.values()][0]; g = { s, tx, ty, x: r.x, y: r.y, d: 0, two: false }; moved = true; return; }      /* 한 손가락이 먼저 떼어지면 남은 손가락으로 이어 끈다 */
+    const dy = e.clientY - (g ? g.y : e.clientY); g = null;
+    if (s <= 1.02) { if (moved && Math.abs(dy) > 90) return close(); zoom.style.opacity = ""; s = 1; tx = ty = 0; apply(); }
+    if (!moved) {
+      const now = Date.now();
+      if (now - lastTap < 330) { lastTap = 0; zoomAt(s > 1.02 ? 1 : 2.6, e.clientX, e.clientY); }
+      else { lastTap = now; if (e.target === zc) setTimeout(() => { if (lastTap === now && !zoom.hidden) close(); }, 340); }      /* 그림 밖을 한 번 누르면 닫힘 */
+    }
+  };
+  zc.addEventListener("pointerup", up); zc.addEventListener("pointercancel", up);
+  zc.addEventListener("wheel", e => { e.preventDefault(); zoomAt(s * (e.deltaY < 0 ? 1.18 : 1 / 1.18), e.clientX, e.clientY); zoom.classList.add("h"); }, { passive: false });
+  zoom.querySelector(".zx").onclick = close;
+  zoom._zoomAt = zoomAt; zoom._state = () => ({ s, tx, ty });      /* 시험용 */
 }
+zoom.addEventListener("touchmove", e => { if (!zoom.hidden) e.preventDefault(); }, { passive: false });      /* 사파리가 화면 자체를 확대하지 않게 */
 
 /* ---------- 글 그리기 (요약 · 번역 · 답) ---------- */
 function inline(s, o) {
@@ -604,12 +672,16 @@ async function viewPaper(file, tab, sent, my) {
   }
   if (tab === "ask") return viewAsk(file, p, my);
   app.innerHTML = paperHead(p) + skeleton();
+  const figsP = api("/api/figs?file=" + enc(file)).catch(() => null);      /* 그림·표 목록은 글과 나란히 받는다 (2026-11-07) */
   const src = await text("/api/gentext?file=" + enc(file) + "&kind=" + tab); if (my !== view) return;
   if (src == null) return viewMissing(file, p, tab, my);
+  const fg = await Promise.race([figsP, new Promise(r => setTimeout(() => r(undefined), 1500))]); if (my !== view) return;      /* 1.5초까지만 — 늦으면 글을 먼저 그리고 나중에 끼운다 */
   app.innerHTML = paperHead(p) + "<article class='doc' id='doc'>" + md(src, { file, sent: tab === "translation", skipH1: true, minH: 2 }) + "</article>" +
     (tab === "summary" && p.has_translation ? "<div class='secnav'><a class='pill' href='" + esc(pUrl(file, "translation")) + "' data-rep='1'>전문 번역 읽기</a></div>" : "");
   const doc = $("doc");
   if (tab === "translation") { const ko = foldFront(doc); if (ko) { $("phko").textContent = ko; $("phko").hidden = false; } } else leadCard(doc);
+  if (fg) { placeFigs(doc, file, fg, tab); if (fg.building) figsPoll(file, doc, my); }
+  else if (fg === undefined) figsP.then(f => { if (my === view && f && $("doc") === doc) { keepView(() => placeFigs(doc, file, f, tab)); if (f.building) figsPoll(file, doc, my); } });
   doc.onclick = e => {
     const s = e.target.closest(".s[data-s]"); if (!s) return;
     const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
@@ -662,6 +734,74 @@ function memoSheet(file, quote) {
     try { await api("/api/notes", { file, op: "add_note", text: v, quote: quote || "", kind: "mobile" }); closeSheet(); closePeek(); toast("메모를 남겼습니다 — 「묻기」 에서 볼 수 있습니다"); }
     catch (e) { $("msave").disabled = false; toast("저장하지 못했습니다"); }
   };
+}
+
+/* ---------- 논문의 그림·표 — 번역 사이에 끼우기 (2026-11-07) ----------
+   /api/figs 가 캡션 자리에서 잘라 둔 그림·표와 번역 캡션, 그 그림을 가리키는 문장 번호(refs)를 준다. 번역에서는 처음 가리킨 문장의 문단 바로 아래에, 가리키는 문장이 없는 것과 요약은 글 끝 「그림과 표」 에.
+   처음 여는 논문은 서버가 배경에서 자르는 동안(building) 캡션 자리에 '그림 준비 중' 을 두고 2초마다 채운다 — 채울 때는 보던 문장이 움직이지 않게(keepView). */
+const CAP_PRE = /^\s*(그림|표|Fig\.?|Figure|Table)\s*\d+\s*[.:·\-–—]?\s*/i;
+const figId = f => (f.kind === "table" ? "tab" : "fig") + f.n;
+const figSrc = (file, img) => "/figimg?file=" + enc(file) + "&name=" + enc(img);
+function figCap(f) { return { label: (f.kind === "table" ? "표 " : "그림 ") + f.n + ".", ko: (f.ko || "").replace(CAP_PRE, "").trim(), en: (f.en || "").trim() }; }
+function figBox(file, f) {
+  if (!f.img) return "<div class='pfi wait'>그림 준비 중 <span class='dots'><i></i><i></i><i></i></span></div>";
+  const wh = f.w && f.h ? " width='" + f.w + "' height='" + f.h + "'" : "";
+  return "<div class='pfi'" + (f.w && f.h ? " style='aspect-ratio:" + f.w + "/" + f.h + "'" : "") + "><img loading='lazy' alt='' src='" + figSrc(file, f.img) + "'" + wh + "></div>";
+}
+function figHtml(file, f) {
+  const c = figCap(f);
+  const extra = (c.ko && c.en ? "<div lang='en'>" + esc(c.en) + "</div>" : "") + (f.what ? "<div class='rd'><b>그림 읽기 (Claude)</b> " + esc(f.what) + "</div>" : "");
+  const lbl = c.ko && c.en ? "원문" : "그림 읽기";
+  return "<figure class='pf' data-fig='" + figId(f) + "'>" + figBox(file, f) + "<figcaption><b>" + c.label + "</b> <span class='cap'>" + esc(c.ko || c.en) + "</span>" +
+    (f.page ? " <span class='src'>p." + f.page + "</span>" : "") + (extra ? "<button class='pfo' data-l='" + lbl + "'>" + lbl + "</button><div class='pfx' hidden>" + extra + "</div>" : "") + "</figcaption></figure>";
+}
+function placeFigs(doc, file, fg, tab) {
+  const figs = ((fg && fg.figs) || []).filter(f => f.img || (!f.err && fg.building));      /* 못 자른 것은 싣지 않는다 */
+  if (!figs.length) return;
+  const tail = [];
+  figs.forEach(f => {
+    let a = null;
+    if (tab === "translation") for (const sid of (f.refs || [])) { const el = doc.querySelector(".s[data-s='" + String(sid).replace(/\D/g, "") + "']"); if (el) { a = el.closest("p, li, h2, h3, blockquote, details, table") || el; break; } }
+    if (!a) { tail.push(f); return; }
+    if (a.tagName === "LI") a = a.closest("ul, ol") || a;
+    while (a.nextElementSibling && a.nextElementSibling.matches("figure.pf")) a = a.nextElementSibling;      /* 같은 문단이 둘을 가리키면 차례대로 */
+    a.insertAdjacentHTML("afterend", figHtml(file, f));
+  });
+  if (tail.length) doc.insertAdjacentHTML("beforeend", "<h2 class='pft'>그림과 표</h2>" + tail.map(f => figHtml(file, f)).join(""));
+}
+function fillFigs(doc, file, fg) {      /* 자르기가 끝난 것을 채우고, 못 자른 것은 뺀다 */
+  keepView(() => {
+    (fg.figs || []).forEach(f => {
+      const el = doc.querySelector("figure.pf[data-fig='" + figId(f) + "'] .pfi.wait"); if (!el) return;
+      if (f.img) el.outerHTML = figBox(file, f);
+      else if (f.err || !fg.building) el.closest("figure").remove();
+    });
+    const h = doc.querySelector("h2.pft"); if (h && !h.nextElementSibling) h.remove();
+  });
+}
+function figsPoll(file, doc, my) {
+  let n = 0;
+  const tick = async () => {
+    if (my !== view) return;
+    let fg = null; try { fg = await api("/api/figs?file=" + enc(file)); } catch (e) {}
+    if (my !== view || !fg || $("doc") !== doc) return;
+    fillFigs(doc, file, fg);
+    if (fg.building && ++n < 60) pollT = setTimeout(tick, 2000);
+  };
+  pollT = setTimeout(tick, 2000);
+}
+function keepView(fn) {      /* 글 가운데를 고치는 동안 보던 줄이 그 자리에 있게 */
+  const top = (nav.offsetHeight || 46) + 8, doc = $("doc");
+  let a = null;
+  if (doc) for (const el of doc.querySelectorAll("p, h2, h3, li, figure, table, blockquote, details")) { const r = el.getBoundingClientRect(); if (r.height > 0 && r.bottom > top) { a = [el, r.top]; break; } }
+  fn();
+  if (a && a[0].isConnected) { const d = a[0].getBoundingClientRect().top - a[1]; if (Math.abs(d) > 1) { window.scrollBy(0, d); lastY = window.scrollY; } }
+}
+function fcHtml(fc) {      /* 확대 창 아래에 둘 캡션 — 그림 번호와 글만 */
+  const b = fc.querySelector("b"), c = fc.querySelector(".cap");
+  if (b && c) return "<b>" + esc(b.textContent) + "</b> " + esc(c.textContent);
+  const t = fc.cloneNode(true); t.querySelectorAll("button, .pfx, .src").forEach(x => x.remove());
+  return esc(t.textContent.replace(/\s+/g, " ").trim().slice(0, 500));
 }
 
 /* ---------- 대화 그리기 (논문에 묻기 · 연구 노트 · 공부 장에 묻기가 같이 쓴다) ---------- */
@@ -1014,7 +1154,9 @@ app.addEventListener("click", e => {
   if (lab) { e.preventDefault(); q = lab.dataset.lab; flt = "all"; lsSet("m_q", q); lsSet("m_flt", flt); delete pos["#/lib"]; location.hash = "#/lib"; return; }
   const tg = e.target.closest("[data-tabgo]"); if (tg) { e.preventDefault(); location.replace(tg.getAttribute("href")); return; }
   const rep = e.target.closest("[data-rep]"); if (rep) { e.preventDefault(); delete pos[rep.getAttribute("href")]; location.replace(rep.getAttribute("href")); return; }
-  const im = e.target.closest("img.zm, .doc figure img"); if (im && im.getAttribute("src")) { openZoom(im.getAttribute("src")); return; }
+  const pfo = e.target.closest(".pfo"); if (pfo) { const x = pfo.nextElementSibling; x.hidden = !x.hidden; pfo.textContent = x.hidden ? pfo.dataset.l : "접기"; return; }
+  const im = e.target.closest("img.zm, .doc figure img, .doc img.eq");
+  if (im && im.getAttribute("src")) { const fg = im.closest("figure"), fc = fg && fg.querySelector("figcaption"); openZoom(im.getAttribute("src"), fc ? fcHtml(fc) : ""); return; }
   if (!document.body.classList.contains("reading") || e.target.closest("a, button, summary, input, textarea, select, img, sup")) return;
   const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
   if (peekOpen()) return closePeek();
