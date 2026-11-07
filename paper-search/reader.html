@@ -16,6 +16,7 @@
   .tab.on { background: var(--sel-bg); color: var(--accent); border-color: var(--accent); font-weight: 600; }
   .tab:hover:not(.on) { color: var(--accent); border-color: var(--accent); }
   .tog { cursor: pointer; user-select: none; color: var(--text-2); white-space: nowrap; }
+  #starSlot { display: inline-flex; flex: none; }   /* 읽을 논문(★) 단추 자리 — ui.js starButton (2026-11-08) */
   #layout { display: flex; height: calc(100vh - 40px); }
   #side { width: 340px; min-width: 340px; border-right: 1px solid var(--line-2); background: var(--panel); overflow-y: auto; padding: var(--s2) var(--s3); display: none; font-size: 12px; }
   #side.on { display: block; }
@@ -129,6 +130,7 @@
   <span class="tab" data-kind="translation">전문번역</span>
   <span class="tab" id="regen" title="현재 탭(요약/번역)을 지우고 다시 생성">↻ 다시 생성</span>
   <label class="tog"><input type="checkbox" id="pdfTog" checked> PDF</label>
+  <span id="starSlot"></span>
   <span class="ttl" id="ttl">불러오는 중…</span>
   <span class="hint">번역본에서 드래그 → PDF 원문 문장 표시 · 요약에서는 대조 → 번역본·PDF 로 · 메모 · 질문</span>
 </div>
@@ -629,6 +631,25 @@ function findInPdf(quote, preferPage, onlyPages) {
       return { page: pi, idxs: [...new Set(map.slice(pos, end))] };
     }
   }
+  // 3) 머리가 다른 글이면(러닝 헤더 'ARTICLE IN PRESS' 가 붙은 문장, 앞 낱말이 깨진 문장) 가운데 30자 조각으로 — 그 자리부터 맞는 데까지 늘린다 (2026-11-08)
+  for (const k of [20, 40, 60]) {
+    if (k + 30 > qn.length) break;
+    const piece = qn.slice(k, k + 30);
+    for (const pi of order) {
+      const { s, map } = page(pi); const pos = s.indexOf(piece); if (pos < 0) continue;
+      let lo = 30, hi = qn.length - k;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (s.startsWith(qn.slice(k, k + mid), pos)) lo = mid; else hi = mid - 1; }
+      return { page: pi, idxs: [...new Set(map.slice(pos, pos + lo))] };
+    }
+  }
+  // 4) 쪽 범위 안에서 못 찾은 긴 문장은 문서 전체에서 통째로 (정렬표의 쪽이 틀렸을 때 — 옛 정렬표는 초록 문장을 결론 쪽에 두기도 했다)
+  if (onlyPages && qn.length >= 60) {
+    for (let pi = 0; pi < pages.length; pi++) {
+      if (onlyPages.includes(pi)) continue;
+      const { s, map } = page(pi); const pos = s.indexOf(qn);
+      if (pos >= 0) return { page: pi, idxs: [...new Set(map.slice(pos, pos + qn.length))] };
+    }
+  }
   return null;
 }
 function findCaptionItem(k, n) {
@@ -935,15 +956,21 @@ function mapKoToSrc(el, offset) {
 }
 // 문장 번호 → 쪽. 번호표에 쪽이 없으면 이웃 문장에서 추정 (문장 순서 = 쪽 순서)
 function pageOfSent(id) {
+  // 쪽이 없는 문장은 이웃에서 빌린다 — 다만 앞 이웃과 뒤 이웃이 다른 쪽을 말하면 아주 가까운 쪽만 믿는다
+  // (전에는 어느 쪽이든 먼저 찾히는 이웃의 쪽을 그대로 써서, 6.3절을 읽는데 60문장 떨어진 기호표 문장의 0쪽으로 튀었다 — Fang 2005, 2026-11-08)
   if (!alignData) return null;
   const a = alignData[id]; if (a && a.p != null) return a.p;
-  const n = parseInt(id, 10);
-  for (let d = 1; d < 60; d++) {
-    const b = alignData[n - d], c = alignData[n + d];
-    if (b && b.p != null) return b.p;
-    if (c && c.p != null) return c.p;
+  const n = parseInt(id, 10); let pb = null, db = 0, pc = null, dc = 0;
+  for (let d = 1; d < 60 && (pb == null || pc == null); d++) {
+    if (pb == null) { const b = alignData[n - d]; if (b && b.p != null) { pb = b.p; db = d; } }
+    if (pc == null) { const c = alignData[n + d]; if (c && c.p != null) { pc = c.p; dc = d; } }
   }
-  return null;
+  if (pb != null && pc != null) {
+    if (Math.abs(pb - pc) <= 1) return db <= dc ? pb : pc;
+    return Math.min(db, dc) <= 8 ? (db <= dc ? pb : pc) : null;
+  }
+  const one = pb != null ? [pb, db] : pc != null ? [pc, dc] : null;
+  return one && one[1] <= 25 ? one[0] : null;
 }
 // 같은 쪽 문장들 사이에서 순번 비율로 세로 위치 추정 (글자 검색이 실패했을 때의 근사)
 function approxYOnPage(pi, id) {
@@ -996,32 +1023,41 @@ function followPdf(force) {
   if (!force && Date.now() < pdfPauseUntil) return;
   const ko = koNumSet(), key = [...ko].join(",");
   if (!pdfAnchors || key !== anchorKey) { pdfAnchors = buildPdfAnchors(ko); anchorKey = key; }
-  // 한국어 소제목 위치 (번호 있는 것만)
+  // 한국어 소제목 위치 (번호 있는 것만) = 닻. 번호 소제목이 없는 논문(PNAS·Nature 류 — 서재 15편)도 정렬표가 있으면 문장으로 따라간다
+  // (2026-11-08: 전에는 번호 소제목이 없으면 여기서 그냥 돌아가 '따라가기가 안 된다' 였고, 첫 절 앞(초록)도 안 따라갔다)
   const hs = [...read.querySelectorAll("h2, h3")].map(h => ({ num: numKey(h.textContent), top: h.offsetTop })).filter(h => h.num && pdfAnchors[h.num]);
-  if (hs.length < 1) return;
   const S = read.scrollTop + 60;  // 읽는 줄은 화면 위에서 60px 정도
   let i = -1; for (let k = 0; k < hs.length; k++) if (hs[k].top <= S) i = k;
-  if (i < 0) return;  // 첫 절 위(초록·목차)는 따라가지 않음
-  const a = pdfAnchors[hs[i].num], A = pdfAbs(a.page, a.y);
-  let target = A, pageLo = a.page, pageHi = Math.min(pages.length - 1, a.page + 2);
-  if (hs[i + 1]) {
-    const b = pdfAnchors[hs[i + 1].num], B = pdfAbs(b.page, b.y);
-    const frac = Math.max(0, Math.min(1, (S - hs[i].top) / Math.max(1, hs[i + 1].top - hs[i].top)));
-    target = A + frac * (B - A); pageHi = b.page;
-  }
-  // 토큰 보정: 화면 맨 위 문단의 영문 용어·숫자로 이 절 범위 안의 PDF 줄을 찾는다
   const topEl = [...read.children].find(el => el.offsetTop + el.offsetHeight > S && !/^H[23]$/.test(el.tagName));
-  let mark = null;
-  let sm = null;
+  let mark = null, sm = null;
   if (alignData && topEl) {   // 번호표: 화면 맨 위에 보이는 문장 span → 원문 문장 → PDF 위치
     const rTop = read.getBoundingClientRect().top;
     const sp = [...topEl.querySelectorAll(".sent")].find(x => x.getBoundingClientRect().bottom > rTop + 60);
     const h = sp ? sentHit(sp.dataset.s) : null;        // 정확히 못 찾아도 쪽·순번 근사로 (옛 추정 방식으로 떨어지지 않게)
     if (h) sm = { page: h.page, y: h.y };
   }
-  if (!sm) sm = topEl ? mapKoToSrc(topEl, Math.max(0, Math.round((S - topEl.offsetTop) / Math.max(1, topEl.offsetHeight) * topEl.textContent.length))) : null;
+  if (i < 0 && !sm) return;  // 번호 소제목 앞(초록·목차)인데 문장으로도 못 잡으면 따라가지 않음
+  if (sm && hs.length) {   // 문장이 가리키는 쪽이 이 절의 쪽 범위를 크게 벗어나면(정렬표의 쪽이 틀렸거나 이웃에서 빌린 것) 믿지 않는다 — 본문 꼬리(캡션·표 번역)는 어디든 갈 수 있어 뺀다
+    const sp0 = topEl && [...topEl.querySelectorAll(".sent")][0];
+    const inTail = sp0 && +sp0.dataset.s >= koTailFrom();
+    const lo = i < 0 ? 0 : pdfAnchors[hs[i].num].page;
+    const hi = i < 0 ? pdfAnchors[hs[0].num].page : hs[i + 1] ? pdfAnchors[hs[i + 1].num].page : Math.min(pages.length - 1, lo + 3);
+    if (!inTail && (sm.page < lo - 1 || sm.page > hi + 1)) sm = null;
+  }
+  let a = null, target = null, pageLo = 0, pageHi = pages.length - 1;
+  if (i >= 0) {   // 소제목 사이의 비율로 어림한 자리 — 문장으로 못 잡을 때의 바탕
+    a = pdfAnchors[hs[i].num]; const A = pdfAbs(a.page, a.y);
+    target = A; pageLo = a.page; pageHi = Math.min(pages.length - 1, a.page + 2);
+    if (hs[i + 1]) {
+      const b = pdfAnchors[hs[i + 1].num], B = pdfAbs(b.page, b.y);
+      const frac = Math.max(0, Math.min(1, (S - hs[i].top) / Math.max(1, hs[i + 1].top - hs[i].top)));
+      target = A + frac * (B - A); pageHi = b.page;
+    }
+    if (!sm) sm = topEl ? mapKoToSrc(topEl, Math.max(0, Math.round((S - topEl.offsetTop) / Math.max(1, topEl.offsetHeight) * topEl.textContent.length))) : null;
+  }
   if (sm && pages[sm.page]) { target = pdfAbs(sm.page, sm.y); mark = { pi: sm.page, y: sm.y }; }
-  else if (topEl) {
+  else if (topEl && a) {
+    // 토큰 보정: 화면 맨 위 문단의 영문 용어·숫자로 이 절 범위 안의 PDF 줄을 찾는다
     const toks = tokensOf(topEl.textContent);
     if (toks.length >= 2) {
       let best = null;
@@ -1034,6 +1070,7 @@ function followPdf(force) {
       if (best) { target = pdfAbs(best.pi, best.y); mark = best; }
     }
   }
+  if (target == null) return;
   // 표시선 + 스크롤 (부드럽게). 페이지는 필요하면 렌더
   document.querySelectorAll(".pdfmark").forEach(m => m.remove());
   const mp = mark ? mark.pi : a.page, my = mark ? mark.y : (target - pages[mp].div.offsetTop) / zoomF;
@@ -1403,6 +1440,7 @@ async function restoreReadPos(k) {
   { const ttl = document.getElementById("ttl"); ttl.textContent = (info.year || "") + " · " + (info.journal || "") + " · " + (info.author || "");
     const tb = document.createElement("b"); tb.textContent = info.title || ""; ttl.appendChild(tb); }
   document.title = (info.author || "") + " " + (info.year || "") + " · Athenaeum";
+  starApi().then(sv => { const slot = document.getElementById("starSlot"); if (slot) slot.appendChild(starButton(file, (sv.papers || {})[file] || null, null)); }).catch(() => {});   /* 읽을 논문(★) — 홈·휴대폰과 같은 파일 (2026-11-08) */
   { const fa = document.getElementById("fieldAsk"); if (fa) fa.onclick = ev => { ev.preventDefault();   /* 이 분야에 관해 묻기 → 연구 노트의 물음 (2026-10-27) */
       const w = window.open("/notes?new=1&kind=ask&from=paper&fid=" + encodeURIComponent(file) + "&ftitle=" + encodeURIComponent(info.title || file.replace(/\.pdf$/i, "")) + "&ask=1", "athenaeum_notes", "width=1280,height=900");
       if (w) { try { w.focus(); } catch (e) {} } }; }

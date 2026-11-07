@@ -23,6 +23,7 @@ import logging
 logging.getLogger("pypdf").setLevel(logging.ERROR)   # pypdf 의 글꼴 인코딩 경고(fontTools 관련)는 동작에 영향 없음
 import rules
 import intake   # 논문 수집 (다운로드 폴더 감시 → Crossref → 보관). 예전 paper-organizer 를 이 폴더로 합친 것
+import pagealign   # 번역 정렬표의 문장 → PDF 쪽 (number_chunks · tools/realign_pages.py 공용, 2026-11-08)
 
 ARCHIVE = os.path.join(os.path.dirname(BASE), "논문모음")   # 저장소 루트\논문모음 (배포용: 어느 폴더에 두어도 동작)
 PORT = int(os.environ.get("ATHENAEUM_PORT", "8770"))   # 시험용으로 다른 포트에 띄울 때: set ATHENAEUM_PORT=8790
@@ -1887,6 +1888,81 @@ def record_reading(name, kind, pos, sec):
         save_json(READLOG_PATH, rl)
 
 
+# 읽을 논문(즐겨찾기): 나중에 읽으려고 담아 둔 논문. 주제별 목록 이름을 하나 붙일 수 있다 — 홈·읽기 창·휴대폰 화면의 ★ 가 같은 파일을 본다
+# (2026-11-08, 사용자: '논문 즐겨찾기 기능 — 나중에 읽게끔, 내가 딱 읽고 싶은 주제 논문들 이런 건 해 놓고 싶음'). 읽기기록.json 옆, 백업에 든다.
+STARS_PATH = os.path.join(os.path.dirname(ARCHIVE), "읽을논문.json")
+
+
+def load_stars():
+    d = load_json(STARS_PATH, {"papers": {}, "lists": []})
+    if not isinstance(d.get("papers"), dict):
+        d["papers"] = {}
+    if not isinstance(d.get("lists"), list):
+        d["lists"] = []
+    return d
+
+
+def stars_view(d=None):
+    """{papers: {파일: {t, list}}, lists: [목록 이름 …], counts: {목록: 편수, "": 목록 없는 편수}, n}"""
+    d = d or load_stars()
+    counts = {}
+    for e in d["papers"].values():
+        k = (e.get("list") or "") if isinstance(e, dict) else ""
+        counts[k] = counts.get(k, 0) + 1
+    return {"papers": d["papers"], "lists": d["lists"], "counts": counts, "n": len(d["papers"])}
+
+
+def stars_op(body):
+    """{op: set, file, list} 담기(이미 담긴 것은 목록만 바꿈) · {op: del, file} 빼기 · {op: list_add, name} · {op: list_rename, name, to}
+    · {op: list_del, name, keep} 목록 없애기(keep 이면 그 논문들은 목록 없이 남고, 아니면 같이 뺀다) · {op: list_order, order}"""
+    op = body.get("op")
+    name = os.path.basename(body.get("file") or "")
+    lname = (body.get("list") if op == "set" else body.get("name")) or ""
+    lname = re.sub(r"\s+", " ", str(lname)).strip()[:60]
+    with _lock:
+        d = load_stars()
+        ps, ls = d["papers"], d["lists"]
+        if op == "set":
+            if not name or not os.path.isfile(os.path.join(ARCHIVE, name)):
+                return {"error": "서재에서 그 논문을 찾지 못했습니다"}
+            e = ps.get(name) if isinstance(ps.get(name), dict) else {"t": time.time()}
+            e["list"] = lname
+            ps[name] = e
+            if lname and lname not in ls:
+                ls.append(lname)
+        elif op == "del":
+            ps.pop(name, None)
+        elif op == "list_add":
+            if lname and lname not in ls:
+                ls.append(lname)
+        elif op == "list_rename":
+            to = re.sub(r"\s+", " ", str(body.get("to") or "")).strip()[:60]
+            if lname in ls and to and to != lname:
+                if to in ls:
+                    ls.remove(lname)
+                else:
+                    ls[ls.index(lname)] = to
+                for e in ps.values():
+                    if isinstance(e, dict) and e.get("list") == lname:
+                        e["list"] = to
+        elif op == "list_del":
+            if lname in ls:
+                ls.remove(lname)
+            for f in list(ps):
+                if isinstance(ps[f], dict) and ps[f].get("list") == lname:
+                    if body.get("keep"):
+                        ps[f]["list"] = ""
+                    else:
+                        ps.pop(f)
+        elif op == "list_order":
+            order = [x for x in (body.get("order") or []) if x in ls]
+            d["lists"] = order + [x for x in ls if x not in order]
+        else:
+            return {"error": "모르는 op"}
+        save_json(STARS_PATH, d)
+    return stars_view(d)
+
+
 def notes_path(name):
     return os.path.join(NOTES_DIR, os.path.splitext(name)[0] + ".json")
 
@@ -3141,20 +3217,15 @@ def _split_en(text, keep_paragraphs=False):
 
 
 def number_chunks(chunks, name):
-    """번역용: 구간마다 문장에 [sN] 번호를 붙인 텍스트와, N → {t: 원문 문장, p: 페이지(0부터)} 표를 만든다."""
+    """번역용: 구간마다 문장에 [sN] 번호를 붙인 텍스트와, N → {t: 원문 문장, p: 페이지(0부터)} 표를 만든다.
+    쪽은 문장을 다 모은 뒤 pagealign.assign 으로 한꺼번에(글자만 남겨 견주고, 후보가 여럿이면 앞뒤 차례에 맞는 쪽) — 전에는 문장 앞 60/35/20자를
+    쪽마다 찾아 처음 맞는 쪽으로 두어 띄어쓰기·하이픈이 다르면 비고(서재 평균 16%) 짧은 머리는 엉뚱한 쪽에 맞았다(2026-11-08, 원문 따라가기 오류의 뿌리).
+    이미 만든 정렬표는 tools/realign_pages.py 가 같은 함수로 다시 맞춘다."""
     try:
-        pages = [" ".join(p.lower().split()) for p in pdf_pages_text_raw(name)]
+        raw_pages = pdf_pages_text_raw(name)
     except Exception:
-        pages = []
-    def page_of(sent):
-        key = " ".join(sent.lower().split())
-        for L in (60, 35, 20):
-            k = key[:L]
-            if len(k) < 12: break
-            for pi, pg in enumerate(pages):
-                if k in pg: return pi
-        return None
-    numbered, table, n, pid = [], {}, 0, 0
+        raw_pages = []
+    numbered, table, order, n, pid = [], {}, [], 0, 0
     for ch in chunks:
         paras = []
         for para in split_paragraphs_en(ch):
@@ -3162,10 +3233,17 @@ def number_chunks(chunks, name):
             marked = []
             for sent in para:
                 n += 1
-                table[str(n)] = {"t": sent, "p": page_of(sent), "para": pid}
+                table[str(n)] = {"t": sent, "p": None, "para": pid}
+                order.append(str(n))
                 marked.append("[s%d] %s" % (n, sent))
             paras.append(" ".join(marked))   # 같은 문단 문장은 한 줄에 이어서
         numbered.append("\n\n".join(paras) if paras else ch)
+    if raw_pages and order:
+        try:
+            for k, p in zip(order, pagealign.assign([table[k]["t"] for k in order], raw_pages)):
+                table[k]["p"] = p
+        except Exception as e:
+            log("정렬표 쪽 맞추기 실패 (%s): %s" % (name[:40], e))
     return numbered, table
 
 
@@ -4575,7 +4653,7 @@ def keeper_set(on):
 
 # ---- 백업: 데이터를 고른 폴더(Google Drive 같은 클라우드 폴더)에 한쪽 방향으로 복사한다. 바뀐 파일만, 지운 파일은 백업에서 지우지 않는다 ----
 BACKUP_DIRS = ("논문모음", "번역", "메모", "원고", "공부", "연구노트", "단어장", "관련맵", "수집", "글꼴")
-BACKUP_FILES = (("paper-search", "tags.json"), ("paper-search", "labels.json"), ("paper-search", "수집설정.json"), ("", "읽기기록.json"))   # 설정.json(API 키)·기기설정.json(비밀번호 확인값·로그인된 기기)은 뺀다
+BACKUP_FILES = (("paper-search", "tags.json"), ("paper-search", "labels.json"), ("paper-search", "수집설정.json"), ("", "읽기기록.json"), ("", "읽을논문.json"))   # 설정.json(API 키)·기기설정.json(비밀번호 확인값·로그인된 기기)은 뺀다
 _BACKUP = {"running": False, "stop": False, "done": 0, "total": 0, "copied": 0, "bytes": 0, "err": "", "t0": 0, "cur": ""}
 _BACKUP_LOCK = threading.Lock()
 
@@ -4979,6 +5057,7 @@ class Handler(BaseHTTPRequestHandler):
                 classifying = True
             papers = []
             readlog = load_readlog()["papers"]
+            stars = load_stars()   # 읽을 논문(★): 논문마다 {t, list}, 응답 끝에 목록 이름도
             want_lines = "lines" in parse_qs(url.query)   # 휴대폰 화면: 목록의 제목 아래에 요약의 한 줄을 보인다 (파일 mtime 캐시 — 처음 한 번만 읽는다)
             for f in archive_pdfs():
                 meta = parse_name(f)
@@ -5000,6 +5079,9 @@ class Handler(BaseHTTPRequestHandler):
                 r = readlog.get(f)
                 if r and r.get("last"):
                     meta["read"] = {"last": r["last"], "sec": r.get("sec", 0), "pos": r.get("pos", {}), "kind": r.get("kind", "summary")}
+                s = stars["papers"].get(f)
+                if isinstance(s, dict):
+                    meta["star"] = {"t": s.get("t") or 0, "list": s.get("list") or ""}
                 if meta["has_notes"]:
                     nd = load_notes(f)
                     meta["notes_n"] = len(nd.get("notes", [])) + len(nd.get("qa", []))
@@ -5023,6 +5105,7 @@ class Handler(BaseHTTPRequestHandler):
                     label_meta(groups_now)["분류기준편수"] = len(papers)   # 기준이 없던 기존 설치: 지금 편수를 기준으로 삼는다
                     save_json(LABELS_PATH, groups_now)
             self._send(200, {"papers": papers, "groups": groups_now, "classifying": classifying, "classifying_n": classifying_n,
+                             "star_lists": stars["lists"],   # 읽을 논문의 목록 이름들 (차례대로) — 논문마다의 ★ 는 papers[].star
                              "version": app_version(),
                              "claude_problem": claude_error(),   # 로그인 만료·한도 등 최근 Claude 호출 문제 → 홈 안내
                              "claude": bool(engine_exe()), "engine": engine(), "ai_missing": engine_missing_msg(),   # 홈 화면이 엔진(Claude Code·Codex) 미설치 안내를 띄우는 데 씀
@@ -5091,6 +5174,9 @@ class Handler(BaseHTTPRequestHandler):
             # 번역문의 [s번호] → 원문 문장·페이지 표 (없으면 {})
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
             self._send(200, load_json(align_path(name), {}))
+        elif url.path == "/api/stars":
+            # 읽을 논문(★) 전부 — 목록 이름·편수 포함 (고치는 것은 POST /api/stars)
+            self._send(200, stars_view())
         elif url.path == "/api/readlog":
             name = os.path.basename(parse_qs(url.query).get("file", [""])[0])
             self._send(200, load_readlog()["papers"].get(name, {}))
@@ -5521,6 +5607,9 @@ class Handler(BaseHTTPRequestHandler):
             return notes.handle_post(self, body)   # 읽기 화면의 논문 메모(POST /api/notes {file, op}) 는 아래 옛 라우트로
         if self.path == "/api/intake":
             return self._send(200, intake.control(body))
+        if self.path == "/api/stars":
+            # 읽을 논문(★) 담기·빼기·목록 고치기 — 홈·읽기 창·휴대폰 화면 공통 (다른 기기에서도 된다)
+            return self._send(200, stars_op(body))
         if self.path == "/api/read_ping":
             # 읽기 화면의 30초 신호 {file, kind, pos(0~1), sec}
             name = os.path.basename(body.get("file", ""))

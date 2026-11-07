@@ -495,3 +495,54 @@ function uiUpdateInfo() { return fetch("/api/update_check").then(r => r.json()).
   const go = () => fetch("/api/version").then(r => r.json()).then(v => { window.UI_ENGINE = v.engine || "claude"; if (v.remote) document.documentElement.dataset.remote = "1"; if (v.engine === "codex") start(); }).catch(() => {});
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
 })();
+
+// 읽을 논문(★) — 홈·읽기 창 공통 (2026-11-08, 사용자: '논문 즐겨찾기 기능 — 나중에 읽게끔, 내가 딱 읽고 싶은 주제 논문들 이런 건 해 놓고 싶음').
+// 주인은 서버의 /api/stars(읽을논문.json): 논문마다 {t, list} — list 는 주제 이름 하나(없으면 ""). 휴대폰 화면(m.html)은 같은 API 를 제 그리기로 쓴다.
+// starButton(file, star, onChange) → <button class="starb">. 한 번 누르면 바로 담기/빼기(사용자: '별 누르고 뭐 하나 더 누르는 건 너무 귀찮아'),
+// 오른쪽 단추(contextmenu)로 starPop — 주제 고르기(있는 주제 · 새 주제 · 주제 없이)와 빼기.
+const STAR_SVG = "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3.4l2.6 5.5 6 .8-4.4 4.2 1.1 6L12 17l-5.3 2.9 1.1-6L3.4 9.7l6-.8z'/></svg>";
+function starTitle(star) { return (star ? "읽을 논문에 담김" + (star.list ? " · 주제 " + star.list : "") + " — 누르면 뺍니다" : "읽을 논문에 담기 — 한 번 누르면 바로 담깁니다") + " · 오른쪽 단추: 주제 고르기"; }
+function starButton(file, star, onChange) {
+  const b = document.createElement("button"); b.type = "button"; b.className = "starb" + (star ? " on" : ""); b.innerHTML = STAR_SVG; b.title = starTitle(star); b._star = star || null;
+  b.onclick = async e => {
+    e.preventDefault(); e.stopPropagation(); starPopClose();
+    let res; try { res = await starApi(b._star ? { op: "del", file } : { op: "set", file, list: "" }); } catch (err) { return; }
+    if (res.error) { alert(res.error); return; }
+    const s = (res.papers || {})[file] || null; starPaint(b, s); if (onChange) onChange(s, res);
+  };
+  b.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); starPop(b, file, onChange); };
+  return b;
+}
+function starPaint(b, star) { b._star = star || null; b.classList.toggle("on", !!star); b.title = starTitle(star); }
+async function starApi(body) { const r = await fetch("/api/stars", body ? { method: "POST", body: JSON.stringify(body) } : undefined); return r.json(); }
+let _starPop = null;
+function starPopOut(e) { if (_starPop && !_starPop.contains(e.target)) starPopClose(); }
+function starPopClose() { if (_starPop) { _starPop.remove(); _starPop = null; document.removeEventListener("mousedown", starPopOut, true); } }
+async function starPop(btn, file, onChange) {
+  if (_starPop && _starPop._file === file) return starPopClose();
+  starPopClose();
+  let v; try { v = await starApi(); } catch (e) { return; }
+  const cur = (v.papers || {})[file] || null, lists = v.lists || [], counts = v.counts || {};
+  const pop = document.createElement("div"); pop.className = "starpop"; pop._file = file;
+  let h = "<div class='sph'>" + (cur ? "담겨 있음 · " + (cur.list ? "주제 " + uiEsc(cur.list) : "주제 없음") + " — 주제를 고르거나 새로 적습니다" : "읽을 논문에 담기 — 주제를 고르거나 새로 적습니다") + "</div>";
+  h += "<div class='spi" + (cur && !cur.list ? " on" : "") + "' data-l=''><span class='ck'>" + (cur && !cur.list ? "✓" : "") + "</span>주제 없이<span class='n'>" + (counts[""] || 0) + "</span></div>";
+  for (const l of lists) h += "<div class='spi" + (cur && cur.list === l ? " on" : "") + "' data-l='" + uiEsc(l) + "'><span class='ck'>" + (cur && cur.list === l ? "✓" : "") + "</span>" + uiEsc(l) + "<span class='n'>" + (counts[l] || 0) + "</span></div>";
+  h += "<div class='spn'><input placeholder='새 주제 이름' maxlength='60'><button type='button'>담기</button></div>";
+  if (cur) h += "<div class='spx'>읽을 논문에서 빼기</div>";
+  pop.innerHTML = h;
+  document.body.appendChild(pop); _starPop = pop;
+  const r = btn.getBoundingClientRect(), W = pop.offsetWidth, H = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - W - 8, r.left)) + "px";
+  pop.style.top = (r.bottom + 4 + H > window.innerHeight ? Math.max(8, r.top - H - 4) : r.bottom + 4) + "px";
+  const done = async body => {
+    let res; try { res = await starApi(body); } catch (e) { return; }
+    if (res.error) { alert(res.error); return; }
+    starPopClose(); const s = (res.papers || {})[file] || null; starPaint(btn, s); if (onChange) onChange(s, res);
+  };
+  pop.querySelectorAll(".spi").forEach(el => { el.onclick = () => done({ op: "set", file, list: el.dataset.l }); });
+  const inp = pop.querySelector("input"), add = pop.querySelector(".spn button");
+  const addNew = () => { const l = inp.value.trim(); if (!l) { inp.focus(); return; } done({ op: "set", file, list: l }); };
+  add.onclick = addNew; inp.onkeydown = e => { if (e.key === "Enter") addNew(); if (e.key === "Escape") starPopClose(); };
+  const x = pop.querySelector(".spx"); if (x) x.onclick = () => done({ op: "del", file });
+  setTimeout(() => document.addEventListener("mousedown", starPopOut, true), 0);
+}

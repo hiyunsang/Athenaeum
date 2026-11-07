@@ -86,6 +86,18 @@
   .row .no { color: var(--text-3); font-variant-numeric: tabular-nums; margin-right: 8px; }
   .tg { display: inline-block; font-size: 11.5px; font-weight: 600; line-height: 1.5; padding: 1px 8px; border-radius: 9px; background: var(--fill); color: var(--text-2); text-decoration: none; white-space: nowrap; }
   .tg.hi { background: var(--accent-bg); color: var(--accent); } .tg.warn { background: var(--amber-bg); color: var(--amber); }
+  /* 읽을 논문(★, 2026-11-08): 줄의 오른쪽 위 단추(44px) · 논문 머리의 알약 · 올라오는 창의 주제 줄 · 서재의 주제 거르기 줄 */
+  .tg.st { color: var(--gold); }
+  .row.pr .t { padding-right: 36px; }
+  .starb { position: absolute; right: 4px; top: 5px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--text-3); cursor: pointer; }
+  .starb svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+  .starb.on { color: var(--gold); } .starb.on svg { fill: currentColor; }
+  .starb, .pill.star { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }   /* 길게 눌러도 링크 미리보기가 뜨지 않게 (길게 누르기 = 주제 창) */
+  .starb svg, .pill.star svg { transition: transform .15s; } .starb.lp svg, .pill.star.lp svg { transform: scale(1.3); }
+  .pill.star svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+  .pill.star.on { background: var(--gold); color: var(--surface); font-weight: 600; } .pill.star.on svg { fill: currentColor; }
+  .mi .ck { width: 24px; flex: none; margin-left: 0; color: var(--gold); font-weight: 700; font-size: 15px; }
+  .fbar[hidden] { display: none; }
   .search { position: relative; margin: 0 16px 10px; }
   .search svg { position: absolute; left: 10px; top: 50%; width: 18px; height: 18px; margin-top: -9px; color: var(--text-3); pointer-events: none; }
   .search input { width: 100%; box-sizing: border-box; height: 40px; border: 0; border-radius: 12px; background: var(--fill); padding: 0 12px 0 36px; font-size: 16px; color: var(--text); -webkit-appearance: none; appearance: none; }
@@ -183,6 +195,7 @@
   #sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--fill-2); margin: 0 auto 14px; }
   #sheet h3 { font-size: 18px; font-weight: 700; margin: 2px 0 12px; }
   #sheet textarea { width: 100%; box-sizing: border-box; min-height: 110px; border: 0; border-radius: 14px; background: var(--fill); padding: 12px 14px; font-size: 16px; line-height: 1.5; color: var(--text); font-family: inherit; resize: none; }
+  #sheet input.nin { flex: 1; min-width: 0; height: 36px; border: 0; border-radius: 12px; background: var(--fill); padding: 0 12px; font-size: 16px; color: var(--text); font-family: inherit; } #sheet input.nin:focus { outline: none; }
   #sheet textarea:focus { outline: none; } #sheet .q { font-size: 13.5px; color: var(--text-2); border-left: 3px solid var(--line-2); padding-left: 10px; margin: 0 0 12px; line-height: 1.55; }
   .mi { display: flex; align-items: center; width: 100%; box-sizing: border-box; min-height: 52px; padding: 8px 2px; background: none; border: 0; border-bottom: 1px solid var(--line); font-size: 16px; color: var(--text); text-align: left; text-decoration: none; }
   .mi:last-child { border-bottom: 0; } .mi span { margin-left: auto; color: var(--text-3); font-size: 14px; } .mi.red { color: var(--red); }
@@ -280,7 +293,8 @@ const IC = {
   note: svg("<path d='M5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-6l-4.7 3.6V17H5.5A2.5 2.5 0 0 1 3 14.5v-7A2.5 2.5 0 0 1 5.5 5z'/>"),
   back: svg("<path d='M15 5l-7 7 7 7'/>", 2.3), search: svg("<circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/>", 2),
   more: "<svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><circle cx='5.5' cy='12' r='1.8'/><circle cx='12' cy='12' r='1.8'/><circle cx='18.5' cy='12' r='1.8'/></svg>",
-  plus: svg("<path d='M12 5v14M5 12h14'/>", 2.2), send: svg("<path d='M12 19V6M6.2 11.6L12 5.8l5.8 5.8'/>", 2.4), close: svg("<path d='M6 6l12 12M18 6L6 18'/>", 2.4)
+  plus: svg("<path d='M12 5v14M5 12h14'/>", 2.2), send: svg("<path d='M12 19V6M6.2 11.6L12 5.8l5.8 5.8'/>", 2.4), close: svg("<path d='M6 6l12 12M18 6L6 18'/>", 2.4),
+  star: "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3.4l2.6 5.5 6 .8-4.4 4.2 1.1 6L12 17l-5.3 2.9 1.1-6L3.4 9.7l6-.8z'/></svg>"   /* 읽을 논문(★) — 채움·선은 CSS (.starb / .pill.star) */
 };
 
 /* ---------- 상태 ---------- */
@@ -497,7 +511,7 @@ const skeleton = () => "<div class='sk' style='height:150px;margin-top:8px'></di
 const failHtml = () => "<div class='empty'><b>불러오지 못했습니다</b>연구실 PC 가 켜져 있는지, Tailscale 이 연결돼 있는지 확인해 주세요.<br><button class='pill' onclick='location.reload()'>다시 시도</button></div>";
 
 /* ---------- 자료 받기 (가진 것으로 먼저 그리고, 새로 받은 것이 오면 다시 그린다) ---------- */
-const slim = p => ({ file: p.file, title: p.title, year: p.year, journal: p.journal, author: p.author, added: p.added, labels: p.labels || [], review: p.review, has_summary: p.has_summary, has_translation: p.has_translation, read: p.read, notes_n: p.notes_n, line: p.line || "" });
+const slim = p => ({ file: p.file, title: p.title, year: p.year, journal: p.journal, author: p.author, added: p.added, labels: p.labels || [], review: p.review, has_summary: p.has_summary, has_translation: p.has_translation, read: p.read, notes_n: p.notes_n, line: p.line || "", star: p.star || null });
 function loadPapers() {
   if (!papers) { const c = jGet("m_papers", null); if (c && c.length) papers = c; }
   if (papers && Date.now() - papersT < 20000) return Promise.resolve(papers);
@@ -528,9 +542,11 @@ function readOf(p) {   /* 읽던 자리: {kind, frac, last} */
   return { kind: k, frac: Math.max(0, Math.min(1, +((r.pos || {})[k]) || 0)), last: r.last };
 }
 function rowPaper(p, o) {
-  o = o || {}; const rd = readOf(p);
-  return "<a class='row' href='" + esc(pUrl(p.file, o.cont && rd ? rd.kind : "")) + "'><div class='t cl2'>" + esc(p.title) + "</div>" + (p.line && !o.compact ? "<div class='g cl2'>" + esc(p.line) + "</div>" : "") +
+  o = o || {}; const rd = readOf(p), st = p.star;
+  /* 오른쪽 위 ★ 는 <a> 안의 span — app 의 캡처 리스너가 눌림을 가로채 창(starSheet)을 연다 (줄을 여는 것과 겹치지 않게) */
+  return "<a class='row pr' href='" + esc(pUrl(p.file, o.cont && rd ? rd.kind : "")) + "'><span class='starb" + (st ? " on" : "") + "' role='button' data-star='" + esc(p.file) + "' aria-label='읽을 논문'>" + IC.star + "</span><div class='t cl2'>" + esc(p.title) + "</div>" + (p.line && !o.compact ? "<div class='g cl2'>" + esc(p.line) + "</div>" : "") +
     "<div class='m'><span>" + esc([p.year, p.journal, p.author].filter(Boolean).join(" · ")) + "</span>" + (p.review ? "<span class='tg'>리뷰</span>" : "") +
+    (o.list && st && st.list ? "<span class='tg st'>" + esc(st.list) + "</span>" : "") +
     (rd ? "<span class='tg hi'>" + (rd.frac > .02 ? KIND_KO[rd.kind] + " " + Math.round(rd.frac * 100) + "%" : "읽던 것") + "</span>" : "") + (o.when && rd ? "<span>" + ago(rd.last) + "</span>" : "") +
     (!p.has_summary && !p.has_translation ? "<span class='tg'>요약 없음</span>" : "") + "</div></a>";
 }
@@ -558,6 +574,8 @@ function homeHtml() {
       "<div class='hp'><i style='width:" + Math.max(pc, 2) + "%'></i></div><div class='hf'><span>" + (pc > 2 ? pc + "% · " : "") + ago(rd.last) + "</span><span class='go'>이어 읽기</span></div></a>";
     if (reads.length > 1) h += "<div class='grp'>" + reads.slice(1, 4).map(p => rowPaper(p, { compact: true, cont: true, when: true })).join("") + "</div>";
   } else h += "<div class='grp'><div class='empty' style='padding:30px 20px'><b>아직 읽은 논문이 없습니다</b>서재에서 논문을 골라 요약이나 번역을 읽으면 여기에서 이어 읽을 수 있습니다.<br><a class='pill pri' href='#/lib'>서재 열기</a></div></div>";
+  const starred = ps.filter(p => p.star).sort((a, b) => (b.star.t || 0) - (a.star.t || 0));   /* 읽을 논문(★) — 담은 순, 넷까지 (2026-11-08) */
+  if (starred.length) h += "<div class='sh'><h2>읽을 논문</h2><a href='#/lib' data-tabgo='1' data-flt='star'>모두 보기 " + starred.length + "</a></div><div class='grp'>" + starred.slice(0, 4).map(p => rowPaper(p, { list: true })).join("") + "</div>";
   const done = (studies || []).filter(s => s.status === "done"), ls = lastStudy(), sl = [];
   if (ls) { const s = done.find(x => x.id === ls.id); if (s) sl.push([s, ls]); }
   done.forEach(s => { if (sl.length < 3 && !sl.some(x => x[0].id === s.id)) sl.push([s, null]); });
@@ -578,7 +596,8 @@ async function viewHome(my) {
 
 /* ---------- 서재 ---------- */
 let q = lsGet("m_q", ""), flt = lsGet("m_flt", "all"), sort = lsGet("m_sort", "added"), libList = [], libShown = 0, libIO = null;
-const FLT = [["all", "전체"], ["reading", "읽던 것"], ["unread", "안 읽은 것"], ["review", "리뷰"]];
+const FLT = [["all", "전체"], ["reading", "읽던 것"], ["unread", "안 읽은 것"], ["review", "리뷰"], ["star", "읽을 논문"]];
+let starL = lsGet("m_starl", "");   /* 읽을 논문 보기의 주제 거르기: "" 전체 · "none" 주제 없음 · 주제 이름 */
 function matchQ(p, words) {
   const hay = (p.title + " " + (p.author || "") + " " + (p.journal || "") + " " + (p.year || "") + " " + (p.labels || []).join(" ") + " " + (p.line || "")).toLowerCase();
   return words.every(w => hay.indexOf(w) >= 0);
@@ -586,28 +605,40 @@ function matchQ(p, words) {
 function libMore() {
   const box = $("liblist"); if (!box || libShown >= libList.length) return false;
   const part = libList.slice(libShown, libShown + 40); libShown += part.length;
-  box.insertAdjacentHTML("beforeend", part.map(p => rowPaper(p, { cont: flt === "reading", when: flt === "reading" })).join(""));
+  box.insertAdjacentHTML("beforeend", part.map(p => rowPaper(p, { cont: flt === "reading", when: flt === "reading", list: flt === "star" })).join(""));
   return libShown < libList.length;
 }
 function libDraw() {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean), isRead = p => !!(p.read && p.read.last);
-  const list = (papers || []).filter(p => (!words.length || matchQ(p, words)) && (flt === "all" || (flt === "reading" ? isRead(p) : flt === "unread" ? !isRead(p) : !!p.review)));
-  const key = flt === "reading" ? (p => p.read.last) : sort === "year" ? (p => +p.year || 0) : (p => p.added || 0);
+  const starred = (papers || []).filter(p => p.star), slists = [...new Set(starred.map(p => p.star.list).filter(Boolean))];
+  if (starL && starL !== "none" && !slists.includes(starL)) starL = "";      /* 없어진 주제가 기억돼 있으면 전체로 */
+  const inStar = p => !!p.star && (!starL || (starL === "none" ? !p.star.list : p.star.list === starL));
+  const list = (papers || []).filter(p => (!words.length || matchQ(p, words)) && (flt === "all" || (flt === "reading" ? isRead(p) : flt === "unread" ? !isRead(p) : flt === "star" ? inStar(p) : !!p.review)));
+  const key = flt === "reading" ? (p => p.read.last) : flt === "star" ? (p => p.star.t || 0) : sort === "year" ? (p => +p.year || 0) : (p => p.added || 0);
   list.sort((a, b) => key(b) - key(a) || (b.added || 0) - (a.added || 0));
   libList = list; libShown = 0;
   $("fbar").innerHTML = FLT.map(f => "<button class='fc" + (f[0] === flt ? " on" : "") + "' data-f='" + f[0] + "'>" + f[1] + "</button>").join("");
-  $("cnt").textContent = list.length + "편"; $("sortb").textContent = flt === "reading" ? "" : sort === "year" ? "연도순" : "최근에 넣은 순";
-  $("liblist").innerHTML = list.length ? "" : "<div class='empty'><b>" + (papers && papers.length ? "맞는 논문이 없습니다" : "서재가 비어 있습니다") + "</b>" + (words.length ? "검색어를 줄이거나 다른 낱말로 찾아보세요." : "") + "</div>";
+  const f2 = $("fbar2");   /* 읽을 논문 보기에서는 주제 줄이 하나 더: 전체 · 주제들 · 주제 없음 (주제가 하나도 없으면 줄 없음) */
+  if (f2) {
+    const nn = starred.filter(p => !p.star.list).length;
+    f2.hidden = flt !== "star" || !slists.length;
+    if (!f2.hidden) f2.innerHTML = [["", "전체 " + starred.length]].concat(slists.map(l => [l, l + " " + starred.filter(p => p.star.list === l).length])).concat(nn ? [["none", "주제 없음 " + nn]] : [])
+      .map(f => "<button class='fc" + (f[0] === starL ? " on" : "") + "' data-l='" + esc(f[0]) + "'>" + esc(f[1]) + "</button>").join("");
+  }
+  $("cnt").textContent = list.length + "편"; $("sortb").textContent = flt === "reading" || flt === "star" ? "" : sort === "year" ? "연도순" : "최근에 넣은 순";
+  $("liblist").innerHTML = list.length ? "" : "<div class='empty'><b>" + (papers && papers.length ? (flt === "star" ? "담아 둔 논문이 없습니다" : "맞는 논문이 없습니다") : "서재가 비어 있습니다") + "</b>" +
+    (words.length ? "검색어를 줄이거나 다른 낱말로 찾아보세요." : flt === "star" ? "논문 줄 오른쪽 위의 ☆ 를 누르면 담기고, 길게 누르면 주제를 붙일 수 있습니다." : "") + "</div>";
   libMore();
 }
 async function viewLib(my) {
   shell({ root: "lib", title: "서재", fade: true });
   app.innerHTML = "<div class='lt'>서재</div><div class='search'>" + IC.search + "<input type='search' id='q' placeholder='제목 · 저자 · 저널 · 요약의 낱말' autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' enterkeyhint='search' value='" + esc(q) + "'></div>" +
-    "<div class='fbar' id='fbar'></div><div class='cnt'><span id='cnt'></span><button id='sortb'></button></div><div class='plain' id='liblist'></div><div id='libend' style='height:1px'></div>";
+    "<div class='fbar' id='fbar'></div><div class='fbar' id='fbar2' hidden></div><div class='cnt'><span id='cnt'></span><button id='sortb'></button></div><div class='plain' id='liblist'></div><div id='libend' style='height:1px'></div>";
   const qi = $("q"); let t = null;
   qi.oninput = () => { clearTimeout(t); t = setTimeout(() => { q = qi.value.trim(); lsSet("m_q", q); if (papers) libDraw(); }, 160); };
   qi.onkeydown = e => { if (e.key === "Enter") qi.blur(); };
   $("fbar").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; flt = b.dataset.f; lsSet("m_flt", flt); libDraw(); };
+  $("fbar2").onclick = e => { const b = e.target.closest("[data-l]"); if (!b) return; starL = b.dataset.l; lsSet("m_starl", starL); libDraw(); };
   $("sortb").onclick = () => { sort = sort === "year" ? "added" : "year"; lsSet("m_sort", sort); libDraw(); };
   refresh = () => { if (my !== view) return; const y = window.scrollY, n = libShown; libDraw(); while (libShown < n && libMore()) {} window.scrollTo(0, y); };
   if (!papers && !jGet("m_papers", null)) $("liblist").innerHTML = skeleton();
@@ -625,8 +656,10 @@ const PTABS = [["summary", "요약"], ["translation", "번역"], ["ask", "묻기
 function paperHead(p) {
   return "<div class='ph'><div class='pm'><span>" + esc([p.journal, p.year, p.author].filter(Boolean).join(" · ")) + "</span>" + (p.review ? "<span class='tg'>리뷰</span>" : "") + "</div><h1>" + esc(p.title || "") + "</h1><div class='ko2' id='phko' hidden></div>" +
     ((p.labels || []).length ? "<div class='lb'>" + p.labels.slice(0, 6).map(l => "<a class='tg' href='#/lib' data-lab='" + esc(l) + "'>" + esc(l) + "</a>").join("") + "</div>" : "") +
-    "<div class='pa'><a class='pill' href='/pdf?file=" + esc(enc(p.file)) + "' target='_blank' rel='noopener'>PDF 열기</a></div></div>";
+    "<div class='pa'><a class='pill' href='/pdf?file=" + esc(enc(p.file)) + "' target='_blank' rel='noopener'>PDF 열기</a>" +
+    "<button class='pill star" + (p.star ? " on" : "") + "' data-star='" + esc(p.file) + "'>" + IC.star + starPillText(p) + "</button></div></div>";
 }
+const starPillText = p => p.star ? "읽을 논문" + (p.star.list ? " · " + esc(p.star.list) : "") : "읽을 논문에 담기";
 function foldFront(doc) {   /* 번역의 앞머리(제목·저자·소속 조각)는 접어 두고, 한국어 제목은 머리에 올린다 */
   const lead = [];
   for (const el of [...doc.children]) { if (el.tagName !== "P" || el.textContent.trim().length > 140) break; lead.push(el); }
@@ -1263,6 +1296,60 @@ function openQuiz() {
   d.innerHTML = "<div class='qh'>단어 퀴즈<button class='nb' aria-label='닫기'>" + IC.close + "</button></div><iframe src='/vocab/quiz' title='단어 퀴즈'></iframe>";
   document.body.appendChild(d); d.querySelector("button").onclick = () => d.remove();
 }
+
+/* ---------- 읽을 논문(★) — 나중에 읽을 논문을 주제별로 담아 둔다 (2026-11-08). 주인은 서버의 /api/stars (PC 홈·읽기 창과 같은 파일) ---------- */
+function paintStars(file) {   /* 그 논문의 ★ 표시를 화면에서 바로 고친다 (목록 줄의 단추 · 논문 머리의 알약) */
+  const p = (papers || []).find(x => x.file === file); if (!p) return;
+  document.querySelectorAll("[data-star]").forEach(el => { if (el.dataset.star !== file) return; el.classList.toggle("on", !!p.star); if (el.classList.contains("pill")) el.innerHTML = IC.star + starPillText(p); });
+}
+async function starSheet(file) {
+  const p = (papers || []).find(x => x.file === file); if (!p) return;
+  let v; try { v = await api("/api/stars"); } catch (e) { if (String(e && e.message) !== "login") toast("서버에 닿지 못했습니다"); return; }
+  const cur = (v.papers || {})[file] || null, lists = v.lists || [], counts = v.counts || {};
+  const row = (l, name) => "<button class='mi' data-l='" + esc(l) + "'><span class='ck'>" + (cur && (cur.list || "") === l ? "✓" : "") + "</span>" + esc(name) + (l ? "<span>" + (counts[l] || 0) + "편</span>" : "") + "</button>";
+  openSheet("<h3>읽을 논문</h3><div class='q cl3'>" + esc(p.title) + "</div>" +
+    (cur ? "<div style='font-size:13px;color:var(--text-2);margin:-4px 0 10px'>담겨 있음 · " + (cur.list ? "주제 " + esc(cur.list) : "주제 없음") + " · " + ago(cur.t) + "</div>" : "") +
+    row("", "주제 없이 담기") + lists.map(l => row(l, l)).join("") +
+    "<div style='display:flex;gap:8px;margin-top:12px'><input id='stnew' class='nin' placeholder='새 주제 이름' maxlength='60' autocomplete='off'><button class='pill pri' id='stadd'>담기</button></div>" +
+    (cur ? "<button class='mi red' data-del='1' style='margin-top:12px'>읽을 논문에서 빼기</button>" : ""));
+  const done = async body => {
+    let r; try { r = await api("/api/stars", body); } catch (e) { toast("저장하지 못했습니다"); return; }
+    if (r.error) { toast(r.error); return; }
+    p.star = (r.papers || {})[file] || null; lsSet("m_papers", JSON.stringify(papers)); closeSheet();
+    toast(p.star ? "읽을 논문에 담았습니다" + (p.star.list ? " · " + p.star.list : "") : "읽을 논문에서 뺐습니다");
+    paintStars(file); if (refresh) refresh();
+  };
+  sheet.onclick = e => {
+    const b = e.target.closest("[data-l]"); if (b) return done({ op: "set", file, list: b.dataset.l });
+    if (e.target.closest("[data-del]")) return done({ op: "del", file });
+  };
+  const inp = $("stnew"), addNew = () => { const l = inp.value.trim(); if (!l) { inp.focus(); return; } done({ op: "set", file, list: l }); };
+  $("stadd").onclick = addNew; inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addNew(); } };
+}
+async function starToggle(file) {   /* 한 번 누르면 바로 담기/빼기 (사용자 2026-11-08: '별 누르고 뭐 하나 더 누르는 건 너무 귀찮아') — 주제는 길게 눌러 starSheet 에서 */
+  const p = (papers || []).find(x => x.file === file); if (!p) return;
+  let r; try { r = await api("/api/stars", p.star ? { op: "del", file } : { op: "set", file, list: "" }); } catch (e) { if (String(e && e.message) !== "login") toast("저장하지 못했습니다"); return; }
+  if (r.error) { toast(r.error); return; }
+  p.star = (r.papers || {})[file] || null; lsSet("m_papers", JSON.stringify(papers));
+  const hint = +lsGet("m_starhint", "0") || 0;   /* 처음 세 번은 길게 누르기를 알려 준다 */
+  toast(p.star ? "읽을 논문에 담았습니다" + (hint < 3 ? " — 길게 누르면 주제를 붙입니다" : "") : "읽을 논문에서 뺐습니다");
+  if (p.star && hint < 3) lsSet("m_starhint", String(hint + 1));
+  paintStars(file); if (refresh) refresh();
+}
+let lpT = null, lpHit = false, lpFile = null;   /* 길게 누르기(0.55초) → 주제 창. 손을 뗄 때 열어, 창이 손가락 밑에 생기며 바로 눌리는 일이 없게 */
+app.addEventListener("touchstart", e => { const s = e.target.closest("[data-star]"); clearTimeout(lpT); lpHit = false; if (!s) return; lpFile = s.dataset.star; lpT = setTimeout(() => { lpHit = true; s.classList.add("lp"); }, 550); }, { passive: true });
+app.addEventListener("touchmove", () => { clearTimeout(lpT); }, { passive: true });
+app.addEventListener("touchcancel", () => { clearTimeout(lpT); lpHit = false; }, { passive: true });
+app.addEventListener("touchend", e => { clearTimeout(lpT); if (!lpHit) return; e.preventDefault(); const s = e.target.closest("[data-star]"); if (s) s.classList.remove("lp"); const f = lpFile; setTimeout(() => { lpHit = false; }, 400); starSheet(f); }, { passive: false });
+app.addEventListener("click", e => {   /* 줄 안의 ★(span) 과 논문 머리의 알약 — 줄을 여는 <a> 보다 먼저(캡처) 받는다 */
+  const s = e.target.closest("[data-star]"); if (!s) return;
+  e.preventDefault(); e.stopPropagation(); if (lpHit) return; starToggle(s.dataset.star);
+}, true);
+app.addEventListener("contextmenu", e => { const s = e.target.closest("[data-star]"); if (!s) return; e.preventDefault(); e.stopPropagation(); starSheet(s.dataset.star); });   /* PC 마우스로 볼 때: 오른쪽 단추로 주제 */
+app.addEventListener("click", e => {   /* 첫 화면의 「모두 보기」 → 서재를 읽을 논문 보기로 */
+  const a = e.target.closest("a[data-flt]"); if (!a) return;
+  flt = a.dataset.flt; lsSet("m_flt", flt); starL = ""; lsSet("m_starl", "");
+});
 
 /* ---------- 누르기: 읽는 화면의 빈 곳 · 올라온 칸 · 그림 · 라벨 ---------- */
 app.addEventListener("click", e => {

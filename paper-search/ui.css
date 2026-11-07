@@ -33,6 +33,7 @@
   --amber-bg: #fbf3dc;
   --green: #1f6f45;       /* 정상 상태 */
   --red: #a33a3a;         /* 오류 */
+  --gold: #b8921f;        /* 읽을 논문(★) — 로고의 앤티크 골드를 작은 글자·아이콘용으로 조금 어둡게 (2026-11-08) */
   --hover: #f1f1ee;       /* 행 hover */
   --sel-bg: #f3f5fb;      /* 선택 행 배경 (좌측 강조선과 함께) */
   --r: 4px;
@@ -45,15 +46,33 @@
 :root[data-theme="dark"] { color-scheme: dark;
   --bg: #171716; --panel: #1d1d1b; --surface: #202020; --text: #e8e6e1; --text-2: #b0aea7; --text-3: #7e7d78; --text-quiet: #8a8983;
   --line: #2e2e2b; --line-2: #3e3e3a; --accent: #7fa3ff; --accent-bg: #23304f; --amber: #e0b35a; --amber-bg: #3a2f14;
-  --green: #6fcf97; --red: #ef7b7b; --hover: #262624; --sel-bg: #232a3d; }
+  --green: #6fcf97; --red: #ef7b7b; --gold: #d9b64a; --hover: #262624; --sel-bg: #232a3d; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { color-scheme: dark;
     --bg: #171716; --panel: #1d1d1b; --surface: #202020; --text: #e8e6e1; --text-2: #b0aea7; --text-3: #7e7d78; --text-quiet: #8a8983;
     --line: #2e2e2b; --line-2: #3e3e3a; --accent: #7fa3ff; --accent-bg: #23304f; --amber: #e0b35a; --amber-bg: #3a2f14;
-    --green: #6fcf97; --red: #ef7b7b; --hover: #262624; --sel-bg: #232a3d; }
+    --green: #6fcf97; --red: #ef7b7b; --gold: #d9b64a; --hover: #262624; --sel-bg: #232a3d; }
 }
 /* 환경설정 값 (ui.js 가 localStorage 로 설정): 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 */
 :root { --read-scale: 1; --ms-scale: 1; --read-width: 760px; --read-lh: 1.8; }
+/* 읽을 논문(★) — 홈·읽기 창의 단추와 작은 창 (ui.js starButton·starPop, 2026-11-08). 담긴 것은 금색으로 채우고 아니면 윤곽만. 휴대폰 화면은 제 CSS 를 쓴다 */
+.starb { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; color: var(--text-3); border-radius: 50%; vertical-align: middle; font: inherit; }
+.starb svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.starb:hover { color: var(--gold); background: var(--hover); }
+.starb.on { color: var(--gold); } .starb.on svg { fill: currentColor; }
+.starpop { position: fixed; z-index: 1000; min-width: 220px; max-width: 320px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); padding: 6px 0; font-size: 12.5px; color: var(--text); }
+.starpop .sph { padding: 4px 12px 6px; font-size: 11.5px; color: var(--text-3); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.starpop .spi { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.starpop .spi:hover { background: var(--hover); }
+.starpop .spi.on { color: var(--gold); font-weight: 600; }
+.starpop .spi .ck { width: 14px; color: var(--gold); text-align: center; flex: none; }
+.starpop .spi .n { margin-left: auto; color: var(--text-3); font-size: 11.5px; }
+.starpop .spn { display: flex; gap: 6px; padding: 6px 12px; }
+.starpop .spn input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); }
+.starpop .spn button { font: inherit; font-size: 12px; padding: 3px 8px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); cursor: pointer; }
+.starpop .spn button:hover { border-color: var(--accent); color: var(--accent); }
+.starpop .spx { padding: 6px 12px; color: var(--red); cursor: pointer; border-top: 1px solid var(--line); margin-top: 4px; }
+.starpop .spx:hover { background: var(--hover); }
 /* 환경설정 창: 왼쪽 갈래 목록 + 오른쪽 항목 묶음. 항목이 늘면 갈래·묶음에 넣는다 (아래로만 길어지지 않게) */
 #uiSettings { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--s4); }
 #uiSettings .ubox { width: 760px; max-width: 100%; height: 540px; max-height: 100%; display: flex; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); box-shadow: 0 10px 30px #0004; font-size: 13px; color: var(--text); overflow: hidden; }

@@ -69,6 +69,8 @@
   .lbl.zero { color: var(--text-3); }
   .lbl .n { color: var(--text-3); font-size: 12px; min-width: 3ch; text-align: right; }
   .lbl.on .n { color: var(--accent); }
+  .lbl.stl .tx { visibility: hidden; } .lbl.stl:hover .tx { visibility: visible; }   /* 읽을 논문의 주제 줄: 올리면 이름 바꾸기·없애기 */
+  .row .acts .starb { margin-top: 2px; }
   .mparent { display: flex; justify-content: space-between; padding: 2px 6px; cursor: pointer; font-weight: 600; color: var(--text); line-height: 1.6; }
   .mparent:hover { background: var(--hover); }
   .mparent .n { color: var(--text-3); font-size: 12px; min-width: 3ch; text-align: right; font-weight: 400; }
@@ -289,12 +291,13 @@ function metaMatch(p, words) {
 }
 const barState = {};       // 작업별 마지막 진행 막대 비율 (다시 그릴 때 이어서 차오르게)
 let clsInfo = null;        // 서버가 새 논문을 분류 중이면 {n, start}
+let starSel = null, starLists = [];   // 읽을 논문(★) 거르기: null = 안 함, "" = 담은 것 전부, "none" = 주제 없는 것, 그 밖 = 그 주제 · 주제 이름들은 /api/data 의 star_lists (2026-11-08)
 
 window.addEventListener("focus", () => { if (document.visibilityState === "visible") loadData().then(render).catch(() => {}); });   // 라벨 체계 창에서 고친 뒤 돌아오면 반영
 async function loadData() {
   const r = await fetch("/api/data");
   const d = await r.json();
-  papers = d.papers; groups = d.groups;
+  papers = d.papers; groups = d.groups; starLists = d.star_lists || [];
   clsInfo = d.classifying ? { n: d.classifying_n || 1, start: clsInfo ? clsInfo.start : Date.now() } : null;
   const cn = document.getElementById("claudeNotice");
   if (cn) {   // 미설치면 30초마다 다시 확인. 엔진이 Codex(GPT) 면 그 안내로 (서버의 ai_missing)
@@ -338,6 +341,7 @@ function baseFiltered() {
   const untag = document.getElementById("onlyUntagged").checked;
   return papers.filter(p => {
     if (untag && p.labels.length > 0) return false;
+    if (starSel != null && !(p.star && (starSel === "" || (starSel === "none" ? !p.star.list : p.star.list === starSel)))) return false;   // 읽을 논문(★) 보기
     if (searchQ) {
       const words = searchQ.toLowerCase().split(/\s+/).filter(Boolean);
       // 본문 검색을 했다면 본문에 걸린 논문도 함께 보여준다
@@ -377,6 +381,14 @@ function render() {
     c.onclick = () => { selectedJournals = selectedJournals.filter(v => v !== j); render(); };
     chips.appendChild(c);
   }
+  if (starSel != null) {   // 읽을 논문(★) 보기 중
+    const c = document.createElement("div");
+    c.className = "chip"; c.textContent = "★ 읽을 논문" + (starSel === "" ? "" : starSel === "none" ? " · 주제 없음" : " · " + starSel);
+    const x = document.createElement("span"); x.textContent = "×";
+    c.appendChild(x);
+    c.onclick = () => { starSel = null; render(); };
+    chips.appendChild(c);
+  }
   for (const s of selected) {
     const c = document.createElement("div");
     c.className = "chip"; c.textContent = s;
@@ -397,6 +409,7 @@ function render() {
 
   const side = document.getElementById("side");
   side.innerHTML = "";
+  side.appendChild(renderStars());
   side.appendChild(renderRecent());
 
   const jcounts = {};
@@ -484,8 +497,9 @@ function render() {
   main.innerHTML = "";
   const mode = document.getElementById("sortSel").value;
   const byYear = (a, b) => (b.year || "0").localeCompare(a.year || "0");
-  const lastRead = p => (p.read && p.read.last) || 0;
+  const lastRead = p => (p.read && p.read.last) || 0, starT = p => (p.star && p.star.t) || 0;
   const sorted = cur.slice().sort((a, b) => (bodyOnly(a) - bodyOnly(b)) ||   // 본문에서만 걸린 것은 뒤로
+    (starSel != null && mode === "year" ? starT(b) - starT(a) : 0) ||          // 읽을 논문 보기: 정렬을 따로 고르지 않았으면 담은 순
     (mode === "added" ? (b.added || 0) - (a.added || 0)
     : mode === "read" ? (lastRead(b) - lastRead(a)) || byYear(a, b)
     : mode === "notes" ? ((b.notes_n || 0) - (a.notes_n || 0)) || byYear(a, b)
@@ -505,6 +519,7 @@ function render() {
     btn.onclick = (e) => { e.stopPropagation(); openDrawer(p.file); };
     // 동작 묶음 (표시 순서: 요약 · 번역 · 관련맵 · 라벨 편집) — 제목 줄과 겹치지 않게 첫 줄 오른쪽 칸에 둠
     const acts = document.createElement("div"); acts.className = "acts";
+    acts.appendChild(starButton(p.file, p.star || null, (s, res) => { p.star = s; if (res && res.lists) starLists = res.lists; render(); }));   // 읽을 논문(★) — ui.js, 서버의 /api/stars (새 주제는 서버가 돌려준 목록으로 사이드바에 바로)
     acts.appendChild(genButton(p, "summary", "요약", p.has_summary));
     acts.appendChild(genButton(p, "translation", "번역", p.has_translation));
     acts.appendChild(genButton(p, "map", "관련맵", p.has_map));
@@ -615,6 +630,40 @@ function renderRecent() {
   }
   frag.appendChild(g);
   return frag;
+}
+// 사이드바 '읽을 논문': ★ 로 담은 논문 — 전체 · 주제마다 · 주제 없음 (누르면 그 논문들만; 주제는 올리면 이름 바꾸기·없애기). 하나도 없으면 묶음을 그리지 않는다 — 줄의 ★ 가 안내 (2026-11-08)
+function renderStars() {
+  const frag = document.createDocumentFragment();
+  const all = papers.filter(p => p.star);
+  if (!all.length) return frag;
+  const g = document.createElement("div"); g.className = "group";
+  const h = document.createElement("h3"); h.textContent = "읽을 논문"; g.appendChild(h);
+  const cnt = l => all.filter(p => (p.star.list || "") === l).length;
+  const row = (name, key, n, tools) => {
+    const el = document.createElement("div"); el.className = "lbl stl" + (starSel === key ? " on" : "") + (n === 0 ? " zero" : "");
+    el.innerHTML = "<span>" + escH(name) + "</span><span class='n'>" + n + "</span>";
+    if (tools) for (const t of tools) el.insertBefore(t, el.lastChild);
+    el.onclick = () => { starSel = starSel === key ? null : key; render(); };
+    return el;
+  };
+  g.appendChild(row("전체", "", all.length));
+  for (const l of starLists) {
+    const tools = [
+      taxBtn("이름", "주제 이름 바꾸기", async () => { const nn = askName("새 주제 이름:", l); if (nn && nn !== l) await starListOp({ op: "list_rename", name: l, to: nn }); }),
+      taxBtn("✕", "주제 없애기 (담긴 논문은 주제 없이 남습니다)", async () => { if (confirm("주제 '" + l + "' 를 없앱니다. 담긴 " + cnt(l) + "편은 주제 없이 남습니다. 계속?")) await starListOp({ op: "list_del", name: l, keep: true }); })];
+    g.appendChild(row(l, l, cnt(l), tools));
+  }
+  if (starLists.length && cnt("")) g.appendChild(row("주제 없음", "none", cnt("")));
+  frag.appendChild(g);
+  return frag;
+}
+async function starListOp(body) {
+  let r; try { r = await starApi(body); } catch (e) { return; }
+  if (r.error) { alert(r.error); return; }
+  starLists = r.lists || [];
+  for (const p of papers) p.star = (r.papers || {})[p.file] || null;
+  if (starSel && starSel !== "none" && !starLists.includes(starSel)) starSel = (body.op === "list_rename" && starSel === body.name) ? body.to : null;
+  render();
 }
 
 // ---------- 진행 중 작업 표시 (헤더 '진행 중 N · 대기 M' + 패널) ----------
