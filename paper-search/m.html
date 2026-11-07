@@ -152,6 +152,12 @@
   .doc figure.pf .pfx { margin-top: .5em; color: var(--text-3); font-size: .96em; line-height: 1.55; } .doc figure.pf .pfx [lang=en] { word-break: normal; }
   .doc figure.pf .pfx .rd { margin-top: .45em; color: var(--text-2); } .doc figure.pf .pfx .rd b { color: var(--amber); font-weight: 600; }
   .doc h2.pft { margin-top: 2.4em; padding-top: 1em; border-top: 1px solid var(--line); }
+  /* 번역의 수식 — 수식 색인(Claude 의 전사)이 있으면 MathML 로, 누르면 원문 그림 (2026-11-07) */
+  .doc figure.eqf { margin: .9em 0 1.1em; } .doc .eqf .eqrow { display: flex; align-items: center; gap: 10px; }
+  .doc .eqf .mml { flex: 1; text-align: center; overflow-x: auto; overflow-y: hidden; padding: 6px 0; cursor: pointer; } .doc .eqf .mml math { font-size: 1.08em; }
+  .doc .eqf .eqno { color: var(--text-3); white-space: nowrap; font-size: .88em; }
+  .doc .eqf img.orig { display: block; max-width: 100%; margin: 6px auto 0; background: #fff; border-radius: 8px; padding: 4px; box-sizing: border-box; }
+  .doc .eqtop { font-size: .86em; color: var(--text-2); margin: 0 0 1.1em; line-height: 1.6; } .doc .eqtop .pfo { padding-left: 0; }
   .doc .eqn { overflow-x: auto; overflow-y: hidden; text-align: center; padding: .5em 0 .2em; font-size: 1.05em; }
   .doc .imath.fail, .doc .eqn.fail { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82em; color: var(--text-2); }
   .doc aside { background: var(--amber-bg); border-radius: 16px; padding: 14px 16px 15px; margin: 1.8em -4px; font-size: .93em; }
@@ -241,7 +247,7 @@
    화면: 읽기(이어 읽기 · 공부 · 새로 들어온 논문) · 서재 · 공부 · 노트(연구 노트) 가 아래 탭, 논문·장·대화는 그 위에 쌓이는 화면(위 막대의 ‹ 로 돌아간다).
    읽는 화면은 굴리면 위 막대가 숨고, 번역의 문장을 누르면 원문이, 공부의 문장을 누르면 근거 원문이 아래에서 올라온다.
    주소: #/ 읽기 · #/lib 서재 · #/study 공부 · #/notes 노트 · #/p/<파일>/<summary|translation|ask>[/s번호] 논문 · #/s/<장>[/<절>|/c/<대화>] 공부 · #/n/<노트>
-   서버에는 PC 화면이 쓰는 길을 그대로 부른다 (/api/data?lines=1 · /api/gentext · /api/figs · /api/align · /api/notes · /api/ask · /api/study · /api/ms/math). 시험은 /m?nolog=1 (읽기 기록을 남기지 않는다). */
+   서버에는 PC 화면이 쓰는 길을 그대로 부른다 (/api/data?lines=1 · /api/gentext · /api/figs · /api/eqindex · /api/align · /api/notes · /api/ask · /api/study · /api/ms/math). 시험은 /m?nolog=1 (읽기 기록을 남기지 않는다). */
 "use strict";
 const $ = id => document.getElementById(id);
 const app = $("app"), nav = $("nav"), tabbar = $("tabbar"), peek = $("peek"), rp = $("rp"), sheet = $("sheet"), sheetbg = $("sheetbg"), zoom = $("zoom"), toastEl = $("toast");
@@ -411,7 +417,7 @@ zoom.addEventListener("touchmove", e => { if (!zoom.hidden) e.preventDefault(); 
 /* ---------- 글 그리기 (요약 · 번역 · 답) ---------- */
 function inline(s, o) {
   s = esc(s).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");
-  s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' src='/eq?file=" + enc(o.file || "") + "&name=" + enc(n) + "'>");
+  s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' data-name='" + esc(n) + "' src='/eq?file=" + enc(o.file || "") + "&name=" + enc(n) + "'>");
   if (o.math) s = s.replace(/\$([^$\n]{1,300})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
   s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
   if (o.anchors) s = s.replace(/⟦([A-Z]\d+\.\d+)⟧/g, (m, k) => o.anchors[k] ? "<a class='anc' href='#' data-anc='" + k + "'>" + k + "</a>" : "");
@@ -682,7 +688,9 @@ async function viewPaper(file, tab, sent, my) {
   if (tab === "translation") { const ko = foldFront(doc); if (ko) { $("phko").textContent = ko; $("phko").hidden = false; } } else leadCard(doc);
   if (fg) { placeFigs(doc, file, fg, tab); if (fg.building) figsPoll(file, doc, my); }
   else if (fg === undefined) figsP.then(f => { if (my === view && f && $("doc") === doc) { keepView(() => placeFigs(doc, file, f, tab)); if (f.building) figsPoll(file, doc, my); } });
+  if (tab === "translation") { await Promise.race([eqRenderM(doc, file, my), new Promise(r => setTimeout(r, 1200))]); if (my !== view) return; }      /* 수식은 전사가 있으면 식으로 — 1.2초까지만 기다린다 */
   doc.onclick = e => {
+    if (e.target.closest(".eqf, figure.pf, img.eq")) return;      /* 식·그림 누르기는 아래 app 의 처리로 (식 토글 · 크게 보기) — 문장 안에 든 수식 그림도 */
     const s = e.target.closest(".s[data-s]"); if (!s) return;
     const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
     e.stopPropagation();
@@ -756,7 +764,7 @@ function figHtml(file, f) {
     (f.page ? " <span class='src'>p." + f.page + "</span>" : "") + (extra ? "<button class='pfo' data-l='" + lbl + "'>" + lbl + "</button><div class='pfx' hidden>" + extra + "</div>" : "") + "</figcaption></figure>";
 }
 function placeFigs(doc, file, fg, tab) {
-  const figs = ((fg && fg.figs) || []).filter(f => f.img || (!f.err && fg.building));      /* 못 자른 것은 싣지 않는다 */
+  const figs = ((fg && fg.figs) || []).filter(f => !f.poor && (f.img || (!f.err && fg.building)));      /* 못 자른 것과 그림 색인이 '잘렸거나 흐리다'(poor)고 본 것은 싣지 않는다 */
   if (!figs.length) return;
   const tail = [];
   figs.forEach(f => {
@@ -802,6 +810,55 @@ function fcHtml(fc) {      /* 확대 창 아래에 둘 캡션 — 그림 번호�
   if (b && c) return "<b>" + esc(b.textContent) + "</b> " + esc(c.textContent);
   const t = fc.cloneNode(true); t.querySelectorAll("button, .pfx, .src").forEach(x => x.remove());
   return esc(t.textContent.replace(/\s+/g, " ").trim().slice(0, 500));
+}
+
+/* ---------- 번역의 수식 — 전사가 있으면 식으로 (2026-11-07) ----------
+   PDF 의 수식은 글자로 꺼내면 조각이 나서 번역은 원문 수식을 그림으로 잘라 둔다([[EQ]]). 수식 색인(번역\수식색인, Claude 가 그림을 읽어 LaTeX 로 전사)이 있으면
+   PC 읽기 창과 같은 규칙(eqUsable)으로 MathML 로 그리고, 식을 누르면 원문 그림을 보인다 — 그림이 진본이고 전사는 Claude 의 것.
+   색인이 없으면 서버가 바로 만들기 시작하고(GET /api/eqindex — 사용자 2026-11-07 '전사는 무조건, 토큰 그 정도는 남는 장사') 글 머리에 '옮기는 중' 한 줄, 끝나면 다시 그린다. */
+const eqIdxCache = {}, eqCutRx = /잘려|잘린|잘라|일부만|부분만|한 줄만|좌변만|우변만|앞부분|뒷부분|윗부분|아랫부분|이어지는|나머지|보이지 않|안 보이/;
+const eqUsable = e => !!(e && e.latex && e.mml_ok && !(e.partial && eqCutRx.test(e.what || "")));
+async function eqRenderM(doc, file, my) {
+  const imgs = [...doc.querySelectorAll("img.eq[data-name]")]; if (!imgs.length) return;
+  let idx = eqIdxCache[file];
+  if (!idx) { try { idx = await api("/api/eqindex?file=" + enc(file)); } catch (e) { idx = { eqs: [] }; } if ((idx.eqs || []).length) eqIdxCache[file] = idx; }
+  if (my !== view || $("doc") !== doc) return;
+  const by = {}; (idx.eqs || []).forEach(e => { if (e && e.img) by[e.img] = e; });
+  const items = [];
+  const old = doc.querySelector(".eqtop"); if (old) old.remove();
+  keepView(() => {
+    imgs.forEach(img => {
+      const e = by[img.dataset.name]; if (!eqUsable(e) || !img.isConnected) return;
+      const fig = document.createElement("figure"); fig.className = "eqf";
+      fig.innerHTML = "<div class='eqrow'><div class='mml'>" + esc(e.latex) + "</div>" + (e.n ? "<span class='eqno'>(" + esc(String(e.n)) + ")</span>" : "") + "</div>";
+      const orig = img.cloneNode(true); orig.className = "orig"; orig.hidden = true; fig.appendChild(orig);      /* loading=lazy 그대로 — 누를 때 받는다 */
+      img.replaceWith(fig); items.push({ fig, el: fig.querySelector(".mml"), tex: e.latex });
+    });
+  });
+  if (items.length) {
+    let mml = []; try { mml = (await api("/api/ms/math", { items: items.map(x => ({ tex: x.tex, display: true })) })).mml || []; } catch (e) {}
+    if (my !== view) return;
+    keepView(() => items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelector("img.orig").hidden = false; } }));   /* 엔진이 못 읽은 조각은 그림으로 */
+    items.forEach(x => { const el = x.el; if (el.hidden) return; const r = el.scrollWidth / Math.max(1, el.clientWidth); if (r > 1.02) el.style.fontSize = Math.max(.6, 1 / r).toFixed(2) + "em"; });      /* 폰 폭보다 긴 식은 글자를 줄여 맞춘다 (0.6배까지 — 그보다 길면 옆으로 굴린다) */
+  }
+  if (!(idx.eqs || []).length) {      /* 색인이 없다 — 만들 수 있다고 한 줄 */
+    const bar = document.createElement("div"); bar.className = "eqtop";
+    bar.innerHTML = idx.building ? "수식 " + imgs.length + "개를 식으로 옮기는 중입니다 (Claude 가 원문 그림을 읽어 LaTeX 로, 1~3분) — 끝나면 저절로 바뀝니다."
+      : "수식 " + imgs.length + "개가 원문 그림으로 보입니다 — 지금은 식으로 옮기지 못합니다 (Claude 호출을 확인해 주세요).";
+    doc.insertBefore(bar, doc.firstChild);
+    if (idx.building) eqPollM(doc, file, my);
+  }
+}
+function eqPollM(doc, file, my) {      /* 전사가 끝나면 다시 그린다 (10초마다, 10분까지) */
+  let n = 0;
+  const tick = async () => {
+    if (my !== view || $("doc") !== doc) return;
+    let idx = {}; try { idx = await api("/api/eqindex?file=" + enc(file)); } catch (e) {}
+    if (my !== view || $("doc") !== doc) return;
+    if ((idx.eqs || []).length || !idx.building) { eqIdxCache[file] = idx; eqRenderM(doc, file, my); return; }
+    if (++n < 60) setTimeout(tick, 10000);
+  };
+  setTimeout(tick, 10000);
 }
 
 /* ---------- 대화 그리기 (논문에 묻기 · 연구 노트 · 공부 장에 묻기가 같이 쓴다) ---------- */
@@ -1154,6 +1211,7 @@ app.addEventListener("click", e => {
   if (lab) { e.preventDefault(); q = lab.dataset.lab; flt = "all"; lsSet("m_q", q); lsSet("m_flt", flt); delete pos["#/lib"]; location.hash = "#/lib"; return; }
   const tg = e.target.closest("[data-tabgo]"); if (tg) { e.preventDefault(); location.replace(tg.getAttribute("href")); return; }
   const rep = e.target.closest("[data-rep]"); if (rep) { e.preventDefault(); delete pos[rep.getAttribute("href")]; location.replace(rep.getAttribute("href")); return; }
+  const mm = e.target.closest(".doc .eqf .mml"); if (mm) { const o = mm.closest(".eqf").querySelector("img.orig"); if (o) o.hidden = !o.hidden; return; }      /* 식을 누르면 원문 그림 */
   const pfo = e.target.closest(".pfo"); if (pfo) { const x = pfo.nextElementSibling; x.hidden = !x.hidden; pfo.textContent = x.hidden ? pfo.dataset.l : "접기"; return; }
   const im = e.target.closest("img.zm, .doc figure img, .doc img.eq");
   if (im && im.getAttribute("src")) { const fg = im.closest("figure"), fc = fg && fg.querySelector("figcaption"); openZoom(im.getAttribute("src"), fc ? fcHtml(fc) : ""); return; }

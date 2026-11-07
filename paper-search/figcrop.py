@@ -197,7 +197,8 @@ def crop(pdf_path, kind, n, out_png, dpi=150):
             if kind == "fig":
                 above = [t["bbox"][3] for t in body if t["bbox"][3] <= cb[1] + 2]
                 floor = max(above) if above else 0.0
-                cands = [r for r in rects if r[3] <= cb[1] + 6 and r[1] >= floor - 4 and _hov(r, cb) > min(cw, r[2] - r[0]) * 0.3]
+                # 그림의 이미지 상자가 캡션 윗선 아래로 여백만큼(15~30pt) 삐져나온 편집이 흔하다(O'Toole 2021·la Monaca 2022·Nagaraj 2019; 2026-11-07) — 상자 높이의 30%·45pt 까지는 위의 그림으로 본다
+                cands = [r for r in rects if r[3] <= cb[1] + max(6, min(45, 0.3 * (r[3] - r[1]))) and r[1] >= floor - 4 and _hov(r, cb) > min(cw, r[2] - r[0]) * 0.3]
                 if cands:
                     top = max(min(r[1] for r in cands), floor + 2)
                     # 그림과 본문 사이의 짧은 줄(절 제목 '3. TAPER CUT' 같은)은 그림이 아니다 — 모든 그림 상자보다 위에 있는 글은 바닥을 올린다
@@ -216,8 +217,9 @@ def crop(pdf_path, kind, n, out_png, dpi=150):
                                 x0 = max(x0, tb[2] + 4)
                     rect = fitz.Rect(x0, top - 2, x1, cb[1] - 1)
                 if rect is None or rect.height < 40:
-                    # 캡션 옆에 그림을 두는 편집(Springer 의 좁은 캡션): 같은 높이의 옆 상자. 옆 단의 본문이 끼지 않게 본문 블록 앞에서 자른다
-                    side = [r for r in rects if _vov(r, cb) > 10 and _hov(r, cb) < 5 and (r[3] - r[1]) >= 40]
+                    # 캡션 옆에 그림을 두는 편집(Springer 의 좁은 캡션): 같은 높이의 옆 상자. 옆 단의 본문이 끼지 않게 본문 블록 앞에서 자른다.
+                    # 한 줄 캡션은 그림의 윗줄에만 걸친다(Piquard 2024 Fig. 8: 겹침 7pt) — 세로 겹침이 작아도 윗선이 16pt 안이면 옆 상자로 본다 (2026-11-07)
+                    side = [r for r in rects if _hov(r, cb) < 5 and (r[3] - r[1]) >= 40 and (_vov(r, cb) > 10 or abs(r[1] - cb[1]) <= 16)]
                     if side:
                         x0 = min(r[0] for r in side) - 4
                         x1 = max(r[2] for r in side) + 4
@@ -232,10 +234,28 @@ def crop(pdf_path, kind, n, out_png, dpi=150):
                                     x0 = max(x0, tb[2] + 4)
                         rect = fitz.Rect(x0, y0, x1, y1)
                 if rect is None or rect.height < 40:
-                    rect = fitz.Rect(cb[0] - 4, max(floor + 2, cb[1] - 260), cb[2] + 4, cb[1] - 1) if cb[1] - floor > 60 else None
+                    # 마지막 수단(캡션 위 260pt 를 캡션 폭으로) — 그림이 글자·가는 선으로만 그려져 상자가 안 잡히는 쪽(스캔·선 그래프)을 위한 것. 그 자리가 글이면(본문 문장·수식 더미)
+                    # 그림이 아니다 — 전에는 그대로 잘라 와 본문 글과 식 (30)이 그림 자리에 들어갔다(Piquard 2024 Fig. 8, 2026-11-07). 글 판정: 8낱말 넘는 60자 이상 블록이 하나라도, 또는 자리 안의 글자가 260자 넘으면
+                    rect = fitz.Rect(cb[0] - 4, max(floor + 2, cb[1] - 260, 56), cb[2] + 4, cb[1] - 1) if cb[1] - floor > 60 else None      # 위 56pt 는 쪽 머리글
+                    if rect is not None:
+                        scan = any((r[2] - r[0]) * (r[3] - r[1]) > W * H * 0.5 for r in rects)      # 쪽을 덮는 그림(스캔) — 글자 층은 OCR 이라 믿지 않는다
+                        inside = lambda rc: [t for t in texts if t is not cap and 60 < t["bbox"][1] < H - 60 and _vov(t["bbox"], rc) > 6 and _hov(t["bbox"], rc) > min(40, (t["bbox"][2] - t["bbox"][0]) * 0.5)]
+                        prose = [t for t in inside(rect) if len(t["t"]) >= 60 and len(t["t"].split()) >= 8]
+                        if prose and not scan:      # 산문 아래부터 — Hastings 1980 Fig. 2 는 글 네 줄 아래의 그래프였다; 남는 높이가 40pt 도 안 되면 글이다(Nie 2022 Fig. 2)
+                            top = max(t["bbox"][3] for t in prose) + 2
+                            if rect.y1 - top < 40:
+                                return {"err": "캡션 위가 글이다 (그림 상자가 없다)", "page": pi + 1}
+                            rect = fitz.Rect(rect.x0, top, rect.x1, rect.y1)
+                        rest = inside(rect)
+                        if not scan and (sum(len(t["t"]) for t in rest) > 260 or sum(1 for t in rest if "=" in t["t"]) >= 4):      # 글자가 많거나 식 더미
+                            return {"err": "캡션 위가 글이다 (그림 상자가 없다)", "page": pi + 1}
             else:
                 # 표가 놓인 단(column)의 가로 범위 — 캡션이 짧으면 캡션 폭만으로는 오른쪽 칸이 잘렸다(Liu 2018 Table 1)
-                if cw < W * 0.55:
+                # 캡션 옆에 표를 두는 편집(Springer: 'Table 1 QSD characteristics' 가 왼쪽, 표는 오른쪽으로 쪽 폭의 대부분 — Piquard 2024): 캡션 오른쪽에서 시작해
+                # 쪽 가운데를 넘는 짧은(산문 아닌) 글 블록이 캡션 윗선 40pt 안에 있으면 쪽 전체 폭. 옆 단의 블록은 가운데 뒤에서 시작하므로 걸리지 않는다 (2026-11-07)
+                beside = any(t is not cap and len(t["t"]) < 90 and not _prose(t["t"]) and t["bbox"][0] >= cb[2] + 5 and t["bbox"][0] < W * 0.45
+                             and t["bbox"][2] > W * 0.55 and abs(t["bbox"][1] - cb[1]) <= 40 for t in texts)
+                if cw < W * 0.55 and not beside:
                     cx0, cx1 = (W * 0.04, W * 0.5 + 6) if cb[0] < W * 0.45 else (W * 0.5 - 6, W * 0.96)
                 else:
                     cx0, cx1 = W * 0.04, W * 0.96
@@ -256,9 +276,9 @@ def crop(pdf_path, kind, n, out_png, dpi=150):
                 # 괘선이 없는 표(또는 바닥 괘선이 그려지지 않은 표)는 캡션 아래로 이어지는 칸 글 블록을 따라 내려간다
                 for t in sorted(texts, key=lambda t: t["bbox"][1]):
                     tb = t["bbox"]
-                    if t is not cap and tb[1] >= cb[3] - 2 and tb[1] <= last + 40 and tb[3] <= ceil_ + 2 and tb[0] >= cx0 - 4 and tb[2] <= cx1 + 4 and not _prose(t["t"]):
+                    if t is not cap and tb[1] >= cb[3] - 2 and tb[1] <= last + 40 and tb[3] <= ceil_ + 2 and tb[0] >= cx0 - 4 and tb[2] <= cx1 + 4 and tb[1] < H - 60 and not _prose(t["t"]):      # 쪽 아래 60pt 는 꼬리글(쪽 번호·로고)
                         last = max(last, tb[3])
-                cands = [r for r in rects if r[1] >= cb[3] - 6 and r[3] <= ceil_ + 4 and _hov(r, (cx0, 0, cx1, H)) > (r[2] - r[0]) * 0.5]
+                cands = [r for r in rects if r[1] >= cb[3] - 6 and r[3] <= ceil_ + 4 and r[1] < H - 60 and _hov(r, (cx0, 0, cx1, H)) > (r[2] - r[0]) * 0.5]
                 bottom = max([r[3] for r in cands] + [last]) if (cands or last > cb[3]) else min(ceil_ - 2, cb[3] + 220)
                 x0 = min([r[0] for r in cands] + [cb[0]]) - 4
                 x1 = max([r[2] for r in cands] + [cb[2]]) + 4

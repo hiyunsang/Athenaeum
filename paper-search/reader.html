@@ -289,13 +289,11 @@ async function eqRender() {
     try { const r = await fetch("/api/ms/math", { method: "POST", body: JSON.stringify({ items: items.map(x => ({ tex: x.tex, display: true })) }) }); mml = (await r.json()).mml || []; } catch (e) { mml = []; }
     items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelector("img.orig").hidden = false; } });   // 엔진이 못 읽은 조각(mErr)이 있으면 그림으로
   }
-  if (!(idx.eqs || []).length) {   // 색인이 없다 — 만들 수 있다고 한 줄
+  if (!(idx.eqs || []).length) {   // 색인이 없다 — 서버가 바로 만들기 시작한다(GET /api/eqindex 가 띄움; 사용자 2026-11-07 '전사는 무조건'), 끝나면 다시 그린다
     const n = imgs.length, bar = document.createElement("div"); bar.id = "eqTop";
-    bar.innerHTML = idx.building ? "수식 " + n + "개를 전사하는 중입니다 (Sonnet, 1~3분) — 끝나면 식이 깔끔하게 바뀝니다."
-      : "수식 " + n + "개가 그림으로 보입니다. <button class='act' id='eqBuild' title='논문의 수식 그림을 Claude(Sonnet)가 읽어 LaTeX 로 전사합니다 — 1~3분, 토큰 10만 안팎. 한 번 만들면 공부에서도 씁니다'>전사해서 깔끔하게 보기</button>";
+    bar.innerHTML = idx.building ? "수식 " + n + "개를 식으로 옮기는 중입니다 (Claude 가 원문 그림을 읽어 LaTeX 로, 1~3분) — 끝나면 저절로 바뀝니다."
+      : "수식 " + n + "개가 그림으로 보입니다 — 지금은 식으로 옮기지 못합니다 (Claude 호출을 확인해 주세요).";
     read.insertBefore(bar, read.firstChild);
-    const b = document.getElementById("eqBuild");
-    if (b) b.onclick = async () => { b.disabled = true; try { await fetch("/api/eqindex", { method: "POST", body: JSON.stringify({ file }) }); } catch (e) {} eqIdx = null; eqPoll(); };
     if (idx.building) eqPoll();
   }
 }

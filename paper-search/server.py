@@ -2856,6 +2856,8 @@ def run_generation(name, kind, ext=None):
             with _gen_sem:
                 _set_stage(key, "본문 추출 중", started=True)
                 _run_generation(name, kind)
+            if kind == "translation":
+                eq_build_start(name)      # 번역이 끝나면 수식 전사도 바로 (사용자 2026-11-07: '전사는 무조건')
         _jobs.pop(key, None)
         return
     except subprocess.TimeoutExpired:
@@ -3737,6 +3739,87 @@ def _eq_build_job(name):
     finally:
         with _EQ_LOCK:
             _EQ_BUILDING.pop(name, None)
+_EQ_BACKFILL = {"todo": 0, "done": 0, "fail": 0, "t": 0, "on": False}      # 밀린 수식 전사의 진행 (/api/eqindex 의 backlog)
+
+
+def eq_needs(name):
+    """번역에 수식 그림([[EQ]])이 있는데 이 판(INDEX_V)의 쓸 만한 색인이 없는가 — 실패한 색인은 10분 안에는 다시 시도하지 않는다(eqindex.build 와 같은 규칙)"""
+    try:
+        name = os.path.basename(str(name or ""))
+        p = gen_path(name, "translation")
+        if not name or not os.path.isfile(p) or not os.path.isfile(os.path.join(ARCHIVE, name)):
+            return False
+        ei = study._ei()
+        d = ei.load(name)
+        if d and d.get("v") == ei.INDEX_V and (d.get("ok") or time.time() - (d.get("t") or 0) < ei._RETRY_AFTER):
+            return False
+        with open(p, encoding="utf-8") as fh:
+            return "[[EQ:" in fh.read()
+    except Exception:
+        return False
+
+
+def eq_build_start(name):
+    """수식 색인 만들기를 배경에서 시작한다(이미 돌고 있으면 그대로) → 돌고 있으면 True.
+    사용자(2026-11-07): '전사는 그냥 무조건 하는 걸로 — 토큰 그 정도는 남는 장사' — 번역을 열 때(GET /api/eqindex)·번역이 끝날 때·밀린 것(eq_backfill)이 모두 이 길로"""
+    name = os.path.basename(str(name or ""))
+    if not name or not engine_exe():
+        return False
+    with _EQ_LOCK:
+        if name in _EQ_BUILDING:
+            return True
+        _EQ_BUILDING[name] = time.time()
+    threading.Thread(target=_eq_build_job, args=(name,), name="eqindex-build", daemon=True).start()
+    return True
+
+
+def eq_backfill():
+    """번역에 수식 그림이 있는데 색인이 없거나 옛 판인 논문을 배경에서 차례로 전사한다 — 서버를 켠 뒤 90초부터, 2편씩, 최근 번역부터.
+    Claude 호출에 문제(로그인·한도)가 있으면 10분씩 쉰다. 사용자가 그 사이 연 논문은 eq_build_start 가 먼저 돈다(_EQ_BUILDING 으로 겹치지 않는다)."""
+    time.sleep(90)
+    try:
+        todo = [f for f in os.listdir(ARCHIVE) if f.lower().endswith(".pdf") and eq_needs(f)]
+        todo.sort(key=lambda f: -os.path.getmtime(gen_path(f, "translation")))
+    except Exception as e:
+        logging.warning("수식 전사 밀린 것 세기 실패: %s", e)
+        return
+    _EQ_BACKFILL.update(todo=len(todo), done=0, fail=0, t=time.time(), on=bool(todo))
+    logging.info("수식 전사 밀린 것 %d편 — 배경에서 2편씩", len(todo))
+    sem = threading.BoundedSemaphore(2)
+
+    def one(f):
+        try:
+            while claude_error():          # 로그인 만료·한도 — 풀릴 때까지 10분씩
+                time.sleep(600)
+            if not eq_needs(f):
+                return
+            with _EQ_LOCK:
+                mine = f not in _EQ_BUILDING
+                if mine:
+                    _EQ_BUILDING[f] = time.time()
+            if mine:
+                _eq_build_job(f)
+            while f in _EQ_BUILDING:       # 사용자가 열어 먼저 돌고 있으면 끝나길 기다린다
+                time.sleep(5)
+            d = study._ei().load(f)
+            _EQ_BACKFILL["done" if d and d.get("ok") else "fail"] += 1
+        except Exception as e:
+            _EQ_BACKFILL["fail"] += 1
+            logging.warning("수식 전사 실패 %s: %s", f, e)
+        finally:
+            sem.release()
+
+    for f in todo:
+        if not engine_exe():
+            break
+        sem.acquire()
+        threading.Thread(target=one, args=(f,), name="eqindex-backfill", daemon=True).start()
+    for _ in range(2):
+        sem.acquire()
+    _EQ_BACKFILL["on"] = False
+    logging.info("수식 전사 밀린 것 끝 — 됨 %d · 실패 %d", _EQ_BACKFILL["done"], _EQ_BACKFILL["fail"])
+
+
 def gen_ensure(name, kind):
     """공부가 읽기 전에 번역·요약을 만들어 달라고 할 때(2026-10-19) — 있으면 done, 돌고 있으면 running, 아니면 시작해서 started. /api/generate 와 같은 길."""
     name = os.path.basename(str(name or ""))
@@ -3775,7 +3858,7 @@ study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sav
 # 캡션 번역은 .캡션.json 이 있을 때만 붙인다(Claude 를 부르지 않는다 — 토큰 0). 그림을 가리키는 문장 번호(refs)는 정렬표에서 'Fig. n'·'Table n' 을 말한 문장(번호 순 4개까지) — 화면이 그 첫 문장의 문단 아래에 그림을 둔다.
 import figcrop
 
-FIGS_V = 1
+FIGS_V = 2      # 2: figcrop 의 그림 영역 규칙을 고친 뒤(2026-11-07) 목록을 다시 — 잘라 둔 PNG 는 그대로, 못 잘랐던 것만 다시 시도한다
 _FIG_BUILDING, _FIG_LOCK = {}, threading.Lock()      # 논문 이름 → {"t", "items"} (자르는 중)
 _FIG_REF_RX = re.compile(r"(?i)\b(fig(?:ure|s)?\.?|tables?)\s*(\d{1,3}(?:\s*(?:,|and|&|to|\u2013|\u2014|-)\s*\d{1,3})*)(?!\d|\.\d)")   # 'Fig. 3', 'Figs. 3 and 4', 'Table 2', 'Figs. 3\u20135' — 뒤에 숫자·'.숫자'(3.2절) 만 막는다, 문장 끝 마침표는 둔다
 _FIG_RANGE_RX = re.compile(r"(\d+)\s*(?:to|\u2013|\u2014|-)\s*(\d+)")
@@ -3909,11 +3992,13 @@ def paper_figs(name):
         for c in caps.get("captions") or []:
             if isinstance(c, dict) and c.get("ko"):
                 ko[(c.get("kind"), c.get("n"))] = str(c["ko"])[:600]
-    what = {}
+    what, idx_mt = {}, 0
     try:
-        for x in (study._fi().load(name) or {}).get("figs") or []:
+        fi = study._fi()
+        idx_mt = os.path.getmtime(fi.index_path(name)) if os.path.isfile(fi.index_path(name)) else 0      # 색인이 본 PNG 보다 새로 자른 PNG 에는 옛 poor 판정을 쓰지 않는다
+        for x in (fi.load(name) or {}).get("figs") or []:
             if isinstance(x, dict) and x.get("what"):
-                what[x.get("n")] = {"what": str(x["what"])[:500], "type": x.get("type")}
+                what[x.get("n")] = {"what": str(x["what"])[:500], "type": x.get("type"), "q": x.get("quality")}
     except Exception:
         pass
     try:
@@ -3932,6 +4017,8 @@ def paper_figs(name):
         if it.get("kind") == "fig" and what.get(it.get("n")):
             o["what"] = what[it["n"]]["what"]
             o["type"] = what[it["n"]].get("type")
+            if what[it["n"]].get("q") == "poor" and o["img"] and os.path.getmtime(os.path.join(dd, o["img"])) <= idx_mt + 1:
+                o["poor"] = True      # 그림 색인이 '잘렸거나 흐리다' 고 본 그림(그 색인이 본 바로 그 PNG 일 때만) — 화면이 싣지 않는다
         if it.get("err"):
             o["err"] = it["err"]
         out.append(o)
@@ -4950,7 +5037,10 @@ class Handler(BaseHTTPRequestHandler):
                 ei = study._ei()
                 d = ei.load(name) or {}
                 eqs = [{k: e.get(k) for k in ("img", "n", "latex", "what", "vars", "partial", "key", "mml_ok", "page")} for e in (d.get("eqs") or []) if isinstance(e, dict)]
-                self._send(200, {"eqs": eqs, "ok": bool(d.get("ok")), "building": name in _EQ_BUILDING})
+                building = name in _EQ_BUILDING
+                if not building and eq_needs(name):      # 색인이 없으면(옛 판이면) 바로 만들기 시작한다 — 사용자(2026-11-07): '전사는 무조건'
+                    building = eq_build_start(name)
+                self._send(200, {"eqs": eqs, "ok": bool(d.get("ok")), "building": building, "backlog": dict(_EQ_BACKFILL)})
             except Exception as e:
                 self._send(200, {"eqs": [], "building": name in _EQ_BUILDING, "error": str(e)[:200]})
         elif url.path == "/eq":
@@ -5477,11 +5567,7 @@ class Handler(BaseHTTPRequestHandler):
             if not name:
                 self._send(400, {"error": "file"})
                 return
-            with _EQ_LOCK:
-                if name not in _EQ_BUILDING:
-                    _EQ_BUILDING[name] = time.time()
-                    threading.Thread(target=_eq_build_job, args=(name,), name="eqindex-build", daemon=True).start()
-            self._send(200, {"ok": True, "building": True})
+            self._send(200, {"ok": True, "building": eq_build_start(name)})
         elif self.path == "/api/claude_cancel":   # 대화의 「취소」 — 돌고 있는 claude 호출을 이름으로 끊는다 (원고·탐색은 화면이 물음마다 이름을 붙여 보낸다)
             self._send(200, {"ok": claude_cancel(str(body.get("job") or ""))})
         elif self.path == "/api/explore_chat":
@@ -5805,6 +5891,7 @@ def main():
         os.makedirs(d, exist_ok=True)
     threading.Thread(target=refresh_new_papers, daemon=True).start()
     threading.Thread(target=libnet_build, daemon=True).start()   # 서재 인용 이웃 색인 (새 논문만, 배경)
+    threading.Thread(target=eq_backfill, daemon=True).start()    # 수식 전사 밀린 것 — 90초 뒤부터 2편씩 (사용자 2026-11-07: '전사는 무조건')
     corpus.start()   # 서재 학습 — 설정의 시간대에 배경으로(편마다 한 번, 하루 상한)
     shelf.start()   # Claude 채팅이 보는 폴더 — 켜 두었으면 30초마다 바뀐 것을 맞춘다
     threading.Thread(target=backup_loop, daemon=True).start()   # 백업 폴더가 정해져 있고 「매일 자동으로」 가 켜져 있으면 새벽에 한 번
