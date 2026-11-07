@@ -133,10 +133,13 @@ def claude_procs():
 
 
 def server_pids():
-    """명령줄에 paper-search 의 server.py 가 든 파이썬 프로세스 — netstat 이 포트 주인을 못 알려 줄 때의 폴백.
-    (다른 포트의 시험 서버도 같이 잡힌다 — 폴백은 netstat 이 빈손일 때만 쓴다.)"""
-    cmd = ('Get-CimInstance Win32_Process | Where-Object { $_.Name -like "python*" -and $_.CommandLine -like "*paper-search*server.py*" } '
-           '| Select-Object -ExpandProperty ProcessId')
+    """명령줄에 **이 저장소의** paper-search\\server.py 가 든 파이썬 프로세스 — netstat 이 포트 주인을 못 알려 줄 때의 폴백.
+    경로를 통째로 맞춘다 — 전에는 '*paper-search*server.py*' 라 스크래치 복사본의 시험 서버(다른 포트)까지 같이 껐다 (2026-11-07).
+    실행 bat·vbs·keeper 는 모두 server.py 를 전체 경로로 띄우므로 전체 경로로 맞춰도 실제 서버는 잡힌다."""
+    me = os.path.join(PS, "server.py")
+    pat = "*" + me.replace("[", "[[]").replace("]", "[]]") + "*"
+    cmd = ('Get-CimInstance Win32_Process | Where-Object { $_.Name -like "python*" -and $_.CommandLine -like "%s" } '
+           '| Select-Object -ExpandProperty ProcessId') % pat
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, creationflags=NO_WINDOW, timeout=60)
         return {p.strip() for p in r.stdout.decode("utf-8", "replace").split()

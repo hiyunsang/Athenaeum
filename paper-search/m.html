@@ -688,7 +688,7 @@ async function viewPaper(file, tab, sent, my) {
   if (tab === "translation") { const ko = foldFront(doc); if (ko) { $("phko").textContent = ko; $("phko").hidden = false; } } else leadCard(doc);
   if (fg) { placeFigs(doc, file, fg, tab); if (fg.building) figsPoll(file, doc, my); }
   else if (fg === undefined) figsP.then(f => { if (my === view && f && $("doc") === doc) { keepView(() => placeFigs(doc, file, f, tab)); if (f.building) figsPoll(file, doc, my); } });
-  if (tab === "translation") { await Promise.race([eqRenderM(doc, file, my), new Promise(r => setTimeout(r, 1200))]); if (my !== view) return; }      /* 수식은 전사가 있으면 식으로 — 1.2초까지만 기다린다 */
+  if (tab === "translation") { eqTidy(doc, ".s"); await Promise.race([eqRenderM(doc, file, my), new Promise(r => setTimeout(r, 1200))]); if (my !== view) return; }      /* 수식 곁 부스러기를 숨기고, 수식은 전사가 있으면 식으로 — 1.2초까지만 기다린다 */
   doc.onclick = e => {
     if (e.target.closest(".eqf, figure.pf, img.eq")) return;      /* 식·그림 누르기는 아래 app 의 처리로 (식 토글 · 크게 보기) — 문장 안에 든 수식 그림도 */
     const s = e.target.closest(".s[data-s]"); if (!s) return;
@@ -818,28 +818,84 @@ function fcHtml(fc) {      /* 확대 창 아래에 둘 캡션 — 그림 번호�
    색인이 없으면 서버가 바로 만들기 시작하고(GET /api/eqindex — 사용자 2026-11-07 '전사는 무조건, 토큰 그 정도는 남는 장사') 글 머리에 '옮기는 중' 한 줄, 끝나면 다시 그린다. */
 const eqIdxCache = {}, eqCutRx = /잘려|잘린|잘라|일부만|부분만|한 줄만|좌변만|우변만|앞부분|뒷부분|윗부분|아랫부분|이어지는|나머지|보이지 않|안 보이/;
 const eqUsable = e => !!(e && e.latex && e.mml_ok && !(e.partial && eqCutRx.test(e.what || "")));
+/* 수식 곁에 남은 글자 부스러기 (2026-11-07, 사용자: '식들 위아래로 뭔가 이상한 문자가 있다'): PDF 에서 식을 그림으로 자를 때 따로 떨어진 조각('m2'·'K'·'d'·'Va ='·'t+ − t− = δmax')이
+   글에 남아 번역이 'm₂' 처럼 옮겼다 — 이미 만든 번역은 그대로이므로 화면이 숨긴다(새 번역은 서버가 자를 때 같이 담는다). 한글이 없고 짧고 긴 낱말이 없는 조각만,
+   수식 그림이 든 문장 안의 것과 그 바로 앞뒤 문장(통째로 그런 것)만. 제목 줄은 건드리지 않는다. */
+const eqJunk = t => { t = String(t || "").replace(/\s+/g, " ").trim(); return !t || (t.length <= 28 && !/[가-힣]/.test(t) && !/[A-Za-z]{5,}/.test(t) && !/\b(fig|table|eq|see)\b/i.test(t)); };
+function eqVisText(el) { let t = "", n; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); while ((n = w.nextNode())) { if (!n.parentElement.closest(".eqjunk")) t += n.nodeValue; } return t.trim(); }
+function eqTidy(doc, sel) {
+  const EQ = "img.eq, figure.eqf", sents = [...doc.querySelectorAll(sel)], hasEq = s => !!s.querySelector(EQ), inHead = s => !!s.closest("h1, h2, h3, h4");
+  const wrap = nodes => { const sp = document.createElement("span"); sp.className = "eqjunk"; nodes[0].parentNode.insertBefore(sp, nodes[0]); nodes.forEach(n => sp.appendChild(n)); };
+  sents.forEach((s, i) => {
+    if (inHead(s) || !hasEq(s)) return;
+    let run = [];
+    const flush = () => { if (run.some(n => n.textContent.trim()) && eqJunk(run.map(n => n.textContent).join(""))) wrap(run); run = []; };
+    [...s.childNodes].forEach(n => { if (n.nodeType === 1 && n.matches(EQ)) flush(); else run.push(n); });
+    flush();
+    [i - 1, i + 1].forEach(j => { const t = sents[j]; if (t && !inHead(t) && !hasEq(t) && eqJunk(t.textContent)) t.classList.add("eqjunk"); });
+  });
+  doc.querySelectorAll("p").forEach(p => { if (!p.querySelector(EQ) && p.querySelector(".eqjunk") && !eqVisText(p)) p.classList.add("eqjunk"); });      /* 부스러기만 남은 문단('K')은 통째로 */
+}
+/* 나란히 선 수식 그림을 한 식으로 (2026-11-07): ① 번호와 전사가 같은 것 = 같은 줄을 두 번 자른 것 → 하나만 ② 번호가 같고 뒤 그림의 전사가 =·+·− 로 시작 = 한 식이 좌변·우변 두 그림으로 갈린 것(Piquard 2024 의 (23))
+   → 두 줄로 이어 붙여 번호를 한 번만. 사이에 빈칸·숨긴 부스러기뿐일 때만 — 글이 끼어 있으면 다른 식이다 */
+const eqContRx = /^\s*(=|\+|-|−|\\(times|cdot|pm|mp|leq?|geq?|approx|sim|propto|neq?)(?![A-Za-z]))/, eqNorm = s => String(s || "").replace(/\s+/g, "");
+function eqAdjacent(a, b) {
+  if (a.parentNode !== b.parentNode) return false;
+  for (let n = a.nextSibling; n && n !== b; n = n.nextSibling) { if (n.nodeType === 3 ? n.nodeValue.trim() : !(n.classList && n.classList.contains("eqjunk"))) return false; }
+  return true;
+}
+function eqUnits(imgs, by) {
+  const units = [];
+  imgs.forEach(img => {
+    const e = by[img.dataset.name], last = units[units.length - 1];
+    if (last && e && last.e && (!e.n || !last.n || String(e.n) === String(last.n)) && e.latex && e.mml_ok && eqAdjacent(last.imgs[last.imgs.length - 1], img)) {      /* 번호가 같거나 한쪽에 없다(좌변 그림엔 번호가 없다) */
+      if (eqNorm(e.latex) === eqNorm(last.parts[last.parts.length - 1].latex)) { last.dups.push(img); last.n = last.n || e.n; return; }
+      if (eqContRx.test(e.latex) && last.parts.every(x => x.latex && x.mml_ok)) { last.imgs.push(img); last.parts.push(e); last.n = last.n || e.n; return; }
+    }
+    units.push({ imgs: [img], dups: [], parts: [e], e, n: e && e.n });
+  });
+  units.forEach(u => { u.tex = u.parts.map(x => x && x.latex).join(" \\\\ "); u.ok = u.parts.length > 1 ? u.parts.every(x => x && x.latex && x.mml_ok) : eqUsable(u.e); });
+  return units;
+}
+/* 표 칸의 맞춤 (2026-11-07): 크롬의 MathML Core 는 mtd 의 text-align 을 무시해 aligned 의 등호가 안 맞고 이어진 줄의 오른쪽 맞춤도 안 된다(사파리는 columnalign 으로 된다) —
+   그려진 뒤 칸마다 내용이 선 자리를 재서 모자란 만큼 왼쪽 여백으로 민다. 이미 맞게 그린 엔진에서는 0 이라 바뀌지 않는다. 글자 크기를 줄인 뒤에 부른다 */
+function mathAlign(root) {
+  root.querySelectorAll("mtd").forEach(td => {
+    const k = [...td.children]; if (!k.length) return;
+    const c = td.getBoundingClientRect(), cs = getComputedStyle(td), pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+    const off = k[0].getBoundingClientRect().left - (c.left + pl), room = (c.right - pr) - k[k.length - 1].getBoundingClientRect().right, free = off + room;
+    const want = td.classList.contains("mR") ? room : td.classList.contains("mL") ? 0 : free / 2 - off;
+    if (want > 1) td.style.paddingLeft = (pl + want) + "px";
+  });
+}
 async function eqRenderM(doc, file, my) {
   const imgs = [...doc.querySelectorAll("img.eq[data-name]")]; if (!imgs.length) return;
   let idx = eqIdxCache[file];
   if (!idx) { try { idx = await api("/api/eqindex?file=" + enc(file)); } catch (e) { idx = { eqs: [] }; } if ((idx.eqs || []).length) eqIdxCache[file] = idx; }
   if (my !== view || $("doc") !== doc) return;
   const by = {}; (idx.eqs || []).forEach(e => { if (e && e.img) by[e.img] = e; });
-  const items = [];
+  const units = eqUnits(imgs, by), items = [];
   const old = doc.querySelector(".eqtop"); if (old) old.remove();
   keepView(() => {
-    imgs.forEach(img => {
-      const e = by[img.dataset.name]; if (!eqUsable(e) || !img.isConnected) return;
+    units.forEach(u => {
+      u.dups.forEach(d => d.remove());      /* 같은 줄을 두 번 자른 그림 */
+      if (!u.ok || !u.imgs[0].isConnected) return;
       const fig = document.createElement("figure"); fig.className = "eqf";
-      fig.innerHTML = "<div class='eqrow'><div class='mml'>" + esc(e.latex) + "</div>" + (e.n ? "<span class='eqno'>(" + esc(String(e.n)) + ")</span>" : "") + "</div>";
-      const orig = img.cloneNode(true); orig.className = "orig"; orig.hidden = true; fig.appendChild(orig);      /* loading=lazy 그대로 — 누를 때 받는다 */
-      img.replaceWith(fig); items.push({ fig, el: fig.querySelector(".mml"), tex: e.latex });
+      fig.innerHTML = "<div class='eqrow'><div class='mml'>" + esc(u.tex) + "</div>" + (u.n ? "<span class='eqno'>(" + esc(String(u.n)) + ")</span>" : "") + "</div>";
+      u.imgs.forEach(img => { const orig = img.cloneNode(true); orig.className = "orig"; orig.hidden = true; fig.appendChild(orig); });      /* loading=lazy 그대로 — 누를 때 받는다; 이어 붙인 식은 원문 그림도 둘 */
+      u.imgs[0].replaceWith(fig); u.imgs.slice(1).forEach(img => img.remove());
+      items.push({ fig, el: fig.querySelector(".mml"), tex: u.tex });
     });
   });
   if (items.length) {
     let mml = []; try { mml = (await api("/api/ms/math", { items: items.map(x => ({ tex: x.tex, display: true })) })).mml || []; } catch (e) {}
     if (my !== view) return;
-    keepView(() => items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelector("img.orig").hidden = false; } }));   /* 엔진이 못 읽은 조각은 그림으로 */
-    items.forEach(x => { const el = x.el; if (el.hidden) return; const r = el.scrollWidth / Math.max(1, el.clientWidth); if (r > 1.02) el.style.fontSize = Math.max(.6, 1 / r).toFixed(2) + "em"; });      /* 폰 폭보다 긴 식은 글자를 줄여 맞춘다 (0.6배까지 — 그보다 길면 옆으로 굴린다) */
+    keepView(() => items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelectorAll("img.orig").forEach(o => o.hidden = false); } }));   /* 엔진이 못 읽은 조각은 그림으로 */
+    items.forEach(x => {      /* 폰 폭보다 긴 식은 글자를 줄여 맞춘다 (0.6배까지 — 그보다 길면 옆으로 굴린다). 한 번에 재면 2~3% 가 남아 굴림 막대가 생기므로 세 번까지 다시 잰다 */
+      const el = x.el; if (el.hidden) return; let f = 1;
+      for (let k = 0; k < 3 && f > .6; k++) { const r = el.scrollWidth / Math.max(1, el.clientWidth); if (r <= 1) break; f = Math.max(.6, f / r * .985); el.style.fontSize = f.toFixed(3) + "em"; }
+      mathAlign(el);
+    });
   }
   if (!(idx.eqs || []).length) {      /* 색인이 없다 — 만들 수 있다고 한 줄 */
     const bar = document.createElement("div"); bar.className = "eqtop";
@@ -1211,7 +1267,7 @@ app.addEventListener("click", e => {
   if (lab) { e.preventDefault(); q = lab.dataset.lab; flt = "all"; lsSet("m_q", q); lsSet("m_flt", flt); delete pos["#/lib"]; location.hash = "#/lib"; return; }
   const tg = e.target.closest("[data-tabgo]"); if (tg) { e.preventDefault(); location.replace(tg.getAttribute("href")); return; }
   const rep = e.target.closest("[data-rep]"); if (rep) { e.preventDefault(); delete pos[rep.getAttribute("href")]; location.replace(rep.getAttribute("href")); return; }
-  const mm = e.target.closest(".doc .eqf .mml"); if (mm) { const o = mm.closest(".eqf").querySelector("img.orig"); if (o) o.hidden = !o.hidden; return; }      /* 식을 누르면 원문 그림 */
+  const mm = e.target.closest(".doc .eqf .mml"); if (mm) { mm.closest(".eqf").querySelectorAll("img.orig").forEach(o => o.hidden = !o.hidden); return; }      /* 식을 누르면 원문 그림(이어 붙인 식은 둘) */
   const pfo = e.target.closest(".pfo"); if (pfo) { const x = pfo.nextElementSibling; x.hidden = !x.hidden; pfo.textContent = x.hidden ? pfo.dataset.l : "접기"; return; }
   const im = e.target.closest("img.zm, .doc figure img, .doc img.eq");
   if (im && im.getAttribute("src")) { const fg = im.closest("figure"), fc = fg && fg.querySelector("figcaption"); openZoom(im.getAttribute("src"), fc ? fcHtml(fc) : ""); return; }

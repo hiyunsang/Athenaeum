@@ -329,6 +329,33 @@ def _mrow(n, st=None):
     return "<mrow>%s</mrow>" % s if n[0] == "row" else s
 
 
+def _lone_op(n):
+    """첨자가 연산자 하나뿐인가 (t_+, t_-, x^*) — 그 글자"""
+    if n is not None and n[0] == "row" and len(n[1]) == 1:
+        n = n[1][0]
+    return n[1] if n is not None and n[0] == "o" and len(n[1]) == 1 else None
+
+
+def _script(n, st):
+    """첨자. 연산자 하나뿐이면(t_+) 연산자 띄우기 없이 — 그냥 두면 <mo>+</mo> 가 가운데 연산자로 보여 't _ +' 처럼 벌어진다 (2026-11-07, 휴대폰 화면에서 보임)"""
+    c = _lone_op(n)
+    return '<mo lspace="0" rspace="0">%s</mo>' % _esc(c) if c else _mrow(n, st)
+
+
+_CONT_OPS = set("=+−±∓×⋅≈≤≥⩽⩾≠<>∼≃≅≡∝→")
+
+
+def _starts_op(r):
+    """줄(칸 목록)의 첫 글자가 이어 쓰는 연산자인가 (= + − × …) — 앞 줄에서 이어진 줄"""
+    for c in r:
+        items = c[1] if c[0] == "row" else [c]
+        if not items:
+            continue
+        x = items[0]
+        return x[0] == "o" and x[1] in _CONT_OPS
+    return False
+
+
 def _mml_row(items, st):
     out = []
     for k, x in enumerate(items):
@@ -380,11 +407,11 @@ def _mml(n, st=None):
         b = _mrow(base, st) if not (base[0] == "row" and not base[1]) else "<mrow></mrow>"
         under = _limits(base)
         if sub is not None and sup is not None:
-            return "<%s>%s%s%s</%s>" % (("munderover",) + (b, _mrow(sub, st), _mrow(sup, st)) + ("munderover",)) if under else \
-                   "<msubsup>%s%s%s</msubsup>" % (b, _mrow(sub, st), _mrow(sup, st))
+            return "<%s>%s%s%s</%s>" % (("munderover",) + (b, _script(sub, st), _script(sup, st)) + ("munderover",)) if under else \
+                   "<msubsup>%s%s%s</msubsup>" % (b, _script(sub, st), _script(sup, st))
         if sub is not None:
-            return ("<munder>%s%s</munder>" if under else "<msub>%s%s</msub>") % (b, _mrow(sub, st))
-        return ("<mover>%s%s</mover>" if under else "<msup>%s%s</msup>") % (b, _mrow(sup, st))
+            return ("<munder>%s%s</munder>" if under else "<msub>%s%s</msub>") % (b, _script(sub, st))
+        return ("<mover>%s%s</mover>" if under else "<msup>%s%s</msup>") % (b, _script(sup, st))
     if k == "acc":
         wide = n[1].startswith("wide")
         return '<mover accent="true">%s<mo stretchy="%s">%s</mo></mover>' % (_mrow(n[2], st), "true" if wide else "false", ACCENT[n[1]][0])
@@ -397,10 +424,15 @@ def _mml(n, st=None):
     if k == "m":
         env, rows = n[1], n[2]
         if env in _ALIGN or env == "cases":
-            cells = lambda r: "".join('<mtd class="%s">%s</mtd>' % ("mL" if (j % 2 or env == "cases") else "mR", _mml(c, st)) for j, c in enumerate(r))
+            cells = lambda r, i: "".join('<mtd class="%s">%s</mtd>' % ("mL" if (j % 2 or env == "cases") else "mR", _mml(c, st)) for j, c in enumerate(r))
+        elif env == "lines" and len(rows) >= 2 and all(_starts_op(r) for r in rows[1:]):
+            # 한 식이 길어 다음 줄로 이어진 것(둘째 줄부터 =·+·−·× 로 시작): 첫 줄은 왼쪽, 이어지는 줄은 오른쪽 — 논문의 조판처럼.
+            # 번호가 다른 식을 쌓은 것은 그대로 가운데. columnalign 은 WebKit(사파리) 용, 클래스는 ui.css 의 mtd.mL/.mR (2026-11-07)
+            cells = lambda r, i: "".join('<mtd class="%s" columnalign="%s">%s</mtd>' % ((("mL", "left") if i == 0 else ("mR", "right")) + (_mml(c, st),)) for c in r)
         else:
-            cells = lambda r: "".join("<mtd>%s</mtd>" % _mml(c, st) for c in r)
-        tbl = "<mtable>%s</mtable>" % "".join("<mtr>%s</mtr>" % cells(r) for r in rows)
+            cells = lambda r, i: "".join("<mtd>%s</mtd>" % _mml(c, st) for c in r)
+        # aligned·가지런한 줄(lines)은 LaTeX 처럼 display 꼴로 — MathML Core 는 mtable 칸을 compact 로 두어 칸 안의 분수가 첨자 크기로 작아진다 (2026-11-07, 휴대폰 화면의 (13))
+        tbl = "<mtable%s>%s</mtable>" % (' displaystyle="true"' if (env in _ALIGN or env == "lines") else "", "".join("<mtr>%s</mtr>" % cells(r, i) for i, r in enumerate(rows)))
         l, r = ("{", "") if env == "cases" else _MATRIX.get(env, ("", ""))
         if l or r:
             return "<mrow>%s%s%s</mrow>" % ('<mo fence="true" stretchy="true">%s</mo>' % l if l else "", tbl,

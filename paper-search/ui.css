@@ -208,3 +208,11 @@ button { font: inherit; }
 
 /* 다른 기기에서 연 화면(html[data-remote])에서는 이 PC 에서만 되는 단추(폴더·파일 열기)를 숨긴다 (2026-11-06) */
 html[data-remote] [data-local] { display: none !important; }
+
+/* 수식(MathML — mathtex) 공통 (2026-11-07): 수식을 그리는 모든 화면(원고·읽기·공부·휴대폰)이 이 파일을 읽는다.
+   mtd.mL/.mR = aligned 의 칸 맞춤과 이어진 줄(첫 줄 왼쪽·다음 줄 오른쪽), .mover/.munder = \overline·\underline, .mErr = 엔진이 못 읽은 조각,
+   .eqjunk = 번역에서 수식 곁에 남은 글자 부스러기('m₂'·'K' — PDF 에서 식을 그림으로 자를 때 떨어진 조각)를 화면이 숨긴 것 */
+math mtd.mL { text-align: left; } math mtd.mR { text-align: right; }
+math .mover { border-top: 1px solid currentColor; padding-top: 1px; } math .munder { border-bottom: 1px solid currentColor; }
+math .mErr { color: var(--red); }
+.eqjunk { display: none !important; }

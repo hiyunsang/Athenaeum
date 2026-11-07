@@ -2482,7 +2482,22 @@ def pdf_body_and_asides(name):
         r = fitz.Rect(min(x0, bbox[0] - 4), bbox[1] - 3, max(x1, bbox[2] + 4), bbox[3] + 3) & page.rect
         page.get_pixmap(clip=r, dpi=220, alpha=False).save(path)
 
+    body_src = []      # body 항목마다 (pi, col, bbox) — 수식 바로 앞에 글로 먼저 들어간 조각('K'·'Va =')을 되가져오려고 (수식 표식은 None)
+
+    def _frag(t):
+        """수식 곁에 떨어진 글자 조각인가 — 짧고 진짜 낱말이 없다 ('m2' 'K' 'd' 'Va =' 't+ − t− = δmax'). 2026-11-07(Piquard 2024): 이런 조각이 debris 판정에 안 걸려 글로 남아
+        번역이 'm₂' 처럼 옮겼고, 사이에 끼어 last_eq 를 끊어 한 식이 그림 둘로 갈리거나(식 23 좌변·우변) 같은 줄이 두 번 잘렸다(식 28)"""
+        return len(t) <= 24 and not re.search(r"[A-Za-z]{4,}", t) and not CAP_LINE.match(t)
+
+    def _near(a, b):
+        """두 상자가 세로로 겹치거나 10pt 안에 있다"""
+        return a[1] - b[3] < 10 and b[1] - a[3] < 10
+
+    def _union(a, b):
+        return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+
     for pi, blocks in enumerate(pages):
+        two_col_page = any(x.get("col") == 1 for x in blocks)
         for b in blocks:
             t = b["t"]
             if _NOMEN.match(t):
@@ -2501,31 +2516,46 @@ def pdf_body_and_asides(name):
             looks_eq = bool(re.search(r"[=+−±×÷√∑∫≈≤≥∂∆∇α-ωΑ-Ω^]|\(\d{1,2}\)\s*$", t)) \
                 and "@" not in t and "http" not in t and not re.search(r"\b(University|Department|Institute|Received|Accepted|Keywords)\b", t)
             words4 = len(re.findall(r"[A-Za-z]{4,}", t))   # 진짜 단어 수: 표 행('Size of machined area …')은 많고 수식은 적다
-            if debris and looks_eq and not small and words4 <= 3 and not b["in_fig"] and not in_nomen and not CAP_LINE.match(t) and body:
+            bb = b["bbox"]
+            is_eq = debris and looks_eq and not small and words4 <= 3 and not b["in_fig"] and not in_nomen and not CAP_LINE.match(t) and body
+            if not is_eq and last_eq and last_eq["pi"] == pi and last_eq["col"] == b.get("col") and not b["in_fig"] and not small and not in_nomen \
+                    and _frag(t) and _near(bb, last_eq["bbox"]):
+                # 수식 바로 곁에 떨어진 조각(분모 'm2'·근호 안 'K'·미분 'd') — 글이 아니라 그 수식의 일부. 같은 그림에 담고 글에서는 뺀다
+                # (글로 두면 번역에 'm₂' 가 남고, last_eq 가 끊겨 이어지는 줄이 딴 그림이 된다)
+                try:
+                    u = _union(last_eq["bbox"], bb)
+                    last_eq["bbox"] = list(u)
+                    _eq_render(pi, u, last_eq["path"], b.get("col", 0), two_col_page)
+                    continue
+                except Exception:
+                    pass
+            if is_eq:
                 # 본문 흐름 속 수식(기호 조각): 글자로는 깨지니 PDF 에서 그 자리를 그림으로 잘라 제자리에 둔다
                 try:
                     os.makedirs(eq_dir, exist_ok=True)
-                    bb = b["bbox"]
-                    two_col_page = any(x.get("col") == 1 for x in blocks)
                     if last_eq and last_eq["pi"] == pi and last_eq["col"] == b.get("col") and bb[1] - last_eq["bbox"][3] < 10:
                         # 바로 아래(또는 옆에) 이어지는 조각 → 같은 그림에 합침 (여러 줄 수식, 좌변, 식 번호)
-                        u = (min(last_eq["bbox"][0], bb[0]), min(last_eq["bbox"][1], bb[1]), max(last_eq["bbox"][2], bb[2]), max(last_eq["bbox"][3], bb[3]))
-                        last_eq["bbox"] = u
+                        u = _union(last_eq["bbox"], bb)
+                        last_eq["bbox"] = list(u)
                         _eq_render(pi, u, last_eq["path"], b.get("col", 0), two_col_page)
                     else:
+                        u = tuple(bb)
+                        # 바로 위에 떨어진 조각('K'·'Va ='·'d')이 글로 먼저 들어갔으면 되가져와 그림에 담는다
+                        while body and body_src[-1] is not None and body_src[-1][0] == pi and body_src[-1][1] == b.get("col") and _frag(body[-1]) and _near(body_src[-1][2], u):
+                            u = _union(u, body_src[-1][2]); body.pop(); body_src.pop()
                         eq_n += 1
                         fname = "p%d_%d.png" % (pi + 1, eq_n)
                         path_ = os.path.join(eq_dir, fname)
-                        _eq_render(pi, bb, path_, b.get("col", 0), two_col_page)
-                        body.append("[[EQ:%s]]" % fname)
-                        last_eq = {"pi": pi, "col": b.get("col"), "bbox": list(bb), "path": path_}
+                        _eq_render(pi, u, path_, b.get("col", 0), two_col_page)
+                        body.append("[[EQ:%s]]" % fname); body_src.append(None)
+                        last_eq = {"pi": pi, "col": b.get("col"), "bbox": list(u), "path": path_}
                     continue
                 except Exception:
                     aside.append(t); continue
             if b["in_fig"] or small or debris or in_nomen or CAP_LINE.match(t):
                 aside.append(t)
             else:
-                body.append(t)
+                body.append(t); body_src.append((pi, b.get("col"), tuple(bb)))
                 last_eq = None
     # 단·페이지 경계에서 갈린 문단 잇기: 앞이 문장부호로 끝나지 않고 뒤가 소문자로 시작하면 한 문단
     joined = []

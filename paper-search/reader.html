@@ -270,24 +270,77 @@ let eqIdx = null, eqPollT = null;
 const eqCutRx = /잘려|잘린|잘라|일부만|부분만|한 줄만|좌변만|우변만|앞부분|뒷부분|윗부분|아랫부분|이어지는|나머지|보이지 않|안 보이/;
 const eqUsable = e => !!(e && e.latex && e.mml_ok && !(e.partial && eqCutRx.test(e.what || "")));   // 전사가 있고 엔진이 그리며, '그림이 잘렸다' 고 적힌 것은 아닌 식
 async function eqLoadIndex() { try { eqIdx = await (await fetch("/api/eqindex?file=" + encodeURIComponent(file))).json(); } catch (e) { eqIdx = { eqs: [] }; } return eqIdx; }
+/* 수식 곁에 남은 글자 부스러기 (2026-11-07, 사용자가 휴대폰 화면에서 '식들 위아래로 뭔가 이상한 문자' 를 봄): PDF 에서 식을 그림으로 자를 때 따로 떨어진 조각('m2'·'K'·'d'·'Va =')이 글에 남아
+   번역이 'm₂' 처럼 옮겼다 — 이미 만든 번역은 그대로이므로 화면이 숨긴다(새 번역은 서버가 자를 때 같이 담는다). 한글이 없고 짧고 긴 낱말이 없는 조각만, 수식 그림이 든 문장 안의 것과 그 바로 앞뒤 문장(통째로 그런 것)만. m.html 과 같은 함수. */
+const eqJunk = t => { t = String(t || "").replace(/\s+/g, " ").trim(); return !t || (t.length <= 28 && !/[가-힣]/.test(t) && !/[A-Za-z]{5,}/.test(t) && !/\b(fig|table|eq|see)\b/i.test(t)); };
+function eqVisText(el) { let t = "", n; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); while ((n = w.nextNode())) { if (!n.parentElement.closest(".eqjunk")) t += n.nodeValue; } return t.trim(); }
+function eqTidy(doc, sel) {
+  const EQ = "img.eq, figure.eqf", sents = [...doc.querySelectorAll(sel)], hasEq = s => !!s.querySelector(EQ), inHead = s => !!s.closest("h1, h2, h3, h4");
+  const wrap = nodes => { const sp = document.createElement("span"); sp.className = "eqjunk"; nodes[0].parentNode.insertBefore(sp, nodes[0]); nodes.forEach(n => sp.appendChild(n)); };
+  sents.forEach((s, i) => {
+    if (inHead(s) || !hasEq(s)) return;
+    let run = [];
+    const flush = () => { if (run.some(n => n.textContent.trim()) && eqJunk(run.map(n => n.textContent).join(""))) wrap(run); run = []; };
+    [...s.childNodes].forEach(n => { if (n.nodeType === 1 && n.matches(EQ)) flush(); else run.push(n); });
+    flush();
+    [i - 1, i + 1].forEach(j => { const t = sents[j]; if (t && !inHead(t) && !hasEq(t) && eqJunk(t.textContent)) t.classList.add("eqjunk"); });
+  });
+  doc.querySelectorAll("p").forEach(p => { if (!p.querySelector(EQ) && p.querySelector(".eqjunk") && !eqVisText(p)) p.classList.add("eqjunk"); });   // 부스러기만 남은 문단('K')은 통째로
+}
+/* 나란히 선 수식 그림을 한 식으로 (2026-11-07): ① 번호와 전사가 같은 것 = 같은 줄을 두 번 자른 것 → 하나만 ② 번호가 같고 뒤 그림의 전사가 =·+·− 로 시작 = 한 식이 좌변·우변 두 그림으로 갈린 것
+   → 두 줄로 이어 붙여 번호를 한 번만. 사이에 빈칸·숨긴 부스러기뿐일 때만. m.html 과 같은 함수. */
+const eqContRx = /^\s*(=|\+|-|−|\\(times|cdot|pm|mp|leq?|geq?|approx|sim|propto|neq?)(?![A-Za-z]))/, eqNorm = s => String(s || "").replace(/\s+/g, "");
+function eqAdjacent(a, b) {
+  if (a.parentNode !== b.parentNode) return false;
+  for (let n = a.nextSibling; n && n !== b; n = n.nextSibling) { if (n.nodeType === 3 ? n.nodeValue.trim() : !(n.classList && n.classList.contains("eqjunk"))) return false; }
+  return true;
+}
+function eqUnits(imgs, by) {
+  const units = [];
+  imgs.forEach(img => {
+    const e = by[img.dataset.name], last = units[units.length - 1];
+    if (last && e && last.e && (!e.n || !last.n || String(e.n) === String(last.n)) && e.latex && e.mml_ok && eqAdjacent(last.imgs[last.imgs.length - 1], img)) {   // 번호가 같거나 한쪽에 없다(좌변 그림엔 번호가 없다)
+      if (eqNorm(e.latex) === eqNorm(last.parts[last.parts.length - 1].latex)) { last.dups.push(img); last.n = last.n || e.n; return; }
+      if (eqContRx.test(e.latex) && last.parts.every(x => x.latex && x.mml_ok)) { last.imgs.push(img); last.parts.push(e); last.n = last.n || e.n; return; }
+    }
+    units.push({ imgs: [img], dups: [], parts: [e], e, n: e && e.n });
+  });
+  units.forEach(u => { u.tex = u.parts.map(x => x && x.latex).join(" \\\\ "); u.ok = u.parts.length > 1 ? u.parts.every(x => x && x.latex && x.mml_ok) : eqUsable(u.e); });
+  return units;
+}
+/* 표 칸의 맞춤 (2026-11-07): 크롬의 MathML Core 는 mtd 의 text-align 을 무시해 aligned 의 등호가 안 맞고 이어진 줄의 오른쪽 맞춤도 안 된다(사파리는 columnalign 으로 된다) —
+   그려진 뒤 칸마다 내용이 선 자리를 재서 모자란 만큼 왼쪽 여백으로 민다. 이미 맞게 그린 엔진에서는 0 이라 바뀌지 않는다. m.html 과 같은 함수 */
+function mathAlign(root) {
+  root.querySelectorAll("mtd").forEach(td => {
+    const k = [...td.children]; if (!k.length) return;
+    const c = td.getBoundingClientRect(), cs = getComputedStyle(td), pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+    const off = k[0].getBoundingClientRect().left - (c.left + pl), room = (c.right - pr) - k[k.length - 1].getBoundingClientRect().right, free = off + room;
+    const want = td.classList.contains("mR") ? room : td.classList.contains("mL") ? 0 : free / 2 - off;
+    if (want > 1) td.style.paddingLeft = (pl + want) + "px";
+  });
+}
 async function eqRender() {
   const imgs = [...read.querySelectorAll("img.eq[data-name]")];
   const old = document.getElementById("eqTop"); if (old) old.remove();
   if (!imgs.length) return;
   const idx = eqIdx || await eqLoadIndex(); if (kind !== "translation") return;
   const by = {}; (idx.eqs || []).forEach(e => { if (e && e.img) by[e.img] = e; });
-  const items = [];
-  imgs.forEach(img => {
-    const e = by[img.dataset.name]; if (!eqUsable(e)) return;   // partial 표시는 거칠다(Arrazola (17) 처럼 멀쩡한 cases 식도 partial) — 식 읽기에 '잘렸다' 는 말이 있을 때만 그림으로 둔다
+  const units = eqUnits(imgs, by), items = [];
+  units.forEach(u => {
+    u.dups.forEach(d => d.remove());   // 같은 줄을 두 번 자른 그림
+    if (!u.ok || !u.imgs[0].isConnected) return;   // partial 표시는 거칠다(Arrazola (17) 처럼 멀쩡한 cases 식도 partial) — 식 읽기에 '잘렸다' 는 말이 있을 때만 그림으로 둔다
+    const part = u.parts.some(x => x && x.partial);
     const fig = document.createElement("figure"); fig.className = "eqf";
-    fig.innerHTML = "<div class='eqrow'><div class='mml' title='" + (e.partial ? "논문의 수식 그림을 읽은 Claude 의 전사 (그림이 잘렸을 수 있어 전사가 불완전할 수 있습니다) — 누르면 원문 그림" : "논문의 수식 그림을 읽은 Claude 의 전사 — 누르면 원문 그림") + "'>" + esc(e.latex) + "</div>" + (e.n ? "<span class='eqno'>(" + esc(String(e.n)) + ")</span>" : "") + "</div>";
-    const orig = img.cloneNode(true); orig.className = "orig"; orig.hidden = true; fig.appendChild(orig);
-    img.replaceWith(fig); items.push({ fig, el: fig.querySelector(".mml"), tex: e.latex });
+    fig.innerHTML = "<div class='eqrow'><div class='mml' title='" + (part ? "논문의 수식 그림을 읽은 Claude 의 전사 (그림이 잘렸을 수 있어 전사가 불완전할 수 있습니다) — 누르면 원문 그림" : "논문의 수식 그림을 읽은 Claude 의 전사 — 누르면 원문 그림") + "'>" + esc(u.tex) + "</div>" + (u.n ? "<span class='eqno'>(" + esc(String(u.n)) + ")</span>" : "") + "</div>";
+    u.imgs.forEach(img => { const orig = img.cloneNode(true); orig.className = "orig"; orig.hidden = true; fig.appendChild(orig); });   // 이어 붙인 식은 원문 그림도 둘
+    u.imgs[0].replaceWith(fig); u.imgs.slice(1).forEach(img => img.remove());
+    items.push({ fig, el: fig.querySelector(".mml"), tex: u.tex });
   });
   if (items.length) {
     let mml = [];
     try { const r = await fetch("/api/ms/math", { method: "POST", body: JSON.stringify({ items: items.map(x => ({ tex: x.tex, display: true })) }) }); mml = (await r.json()).mml || []; } catch (e) { mml = []; }
-    items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelector("img.orig").hidden = false; } });   // 엔진이 못 읽은 조각(mErr)이 있으면 그림으로
+    items.forEach((x, i) => { const m = mml[i]; if (m && m.indexOf("<math") === 0 && m.indexOf("mErr") < 0) x.el.innerHTML = m; else { x.el.hidden = true; x.fig.querySelectorAll("img.orig").forEach(o => o.hidden = false); } });   // 엔진이 못 읽은 조각(mErr)이 있으면 그림으로
+    items.forEach(x => { if (!x.el.hidden) mathAlign(x.el); });
   }
   if (!(idx.eqs || []).length) {   // 색인이 없다 — 서버가 바로 만들기 시작한다(GET /api/eqindex 가 띄움; 사용자 2026-11-07 '전사는 무조건'), 끝나면 다시 그린다
     const n = imgs.length, bar = document.createElement("div"); bar.id = "eqTop";
@@ -304,7 +357,7 @@ function eqPoll() {   // 전사가 끝나면 다시 그린다 (10초마다, 10�
 }
 document.addEventListener("click", e => {   // 식을 누르면 원문 그림을 열고 닫는다
   const m = e.target.closest && e.target.closest("#read .eqf .mml"); if (!m) return;
-  const img = m.closest(".eqf").querySelector("img.orig"); if (img) img.hidden = !img.hidden;
+  m.closest(".eqf").querySelectorAll("img.orig").forEach(img => img.hidden = !img.hidden);   // 이어 붙인 식은 둘
 });
 function bindFigrefs(root) { root.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n)); }
 
@@ -350,7 +403,7 @@ function renderMd(md) {
   bindFigrefs(read);
   postProcess();
   markAnchors();
-  if (kind === "translation") eqRender();   // 수식 그림 → 전사(MathML) (2026-10-30)
+  if (kind === "translation") { eqTidy(read, ".sent"); eqRender(); }   // 수식 곁 부스러기 숨기기(2026-11-07) · 수식 그림 → 전사(MathML) (2026-10-30)
   // 원고 카드에서 '원문 열기'로 들어온 경우: ?sent=s12 → 그 문장으로 이동하고 잠깐 강조
   const sentParam = new URLSearchParams(location.search).get("sent");
   if (sentParam && kind === "translation" && !sentJumped) {
