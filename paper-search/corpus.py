@@ -756,6 +756,61 @@ def _sent_ko(stem, sid):
     return ""
 
 
+def on_retranslated(stem, sidmap=None):
+    """번역이 다시 만들어졌다(자동 번역, 2026-11-08) — 문장 번호가 바뀌었으니: 주석은 지워 다음 학습(pending)에 다시 읽게 하고,
+    바탕의 본보기 문장·⟦k⟧ 표식(refs)은 옛→새 대응표로 옮긴다(못 옮기는 것은 뺀다 — expand 가 빈 글로 바꾼다). 문장 캐시도 비운다. 연구 갈래(_갈래.json)는 논문 단위라 그대로."""
+    stem = _stem(stem)
+    _SENT_TXT.pop(stem, None)
+    _ANN_CACHE.pop(stem, None)
+    try:
+        if os.path.isfile(ann_path(stem)):
+            os.remove(ann_path(stem))
+    except OSError:
+        pass
+    m = {}
+    for k, v in (sidmap or {}).items():
+        if v:
+            m[str(k).lstrip("s")] = str(v).lstrip("s")
+
+    def conv(sid):
+        s = str(sid or "")
+        new = m.get(s.lstrip("s"))
+        return (("s" if s.startswith("s") else "") + new) if new else None
+    n = 0
+    try:
+        names = [f for f in os.listdir(cfg["KNOW"]) if f.endswith(".json")]
+    except OSError:
+        names = []
+    for fn in names:
+        p = os.path.join(cfg["KNOW"], fn)
+        k = cfg["load_json"](p, None)
+        if not isinstance(k, dict):
+            continue
+        refs = k.get("refs") if isinstance(k.get("refs"), dict) else {}
+        ex = k.get("exemplars") if isinstance(k.get("exemplars"), list) else []
+        if not any(isinstance(r, list) and len(r) == 2 and r[0] == stem for r in refs.values()) and not any(isinstance(e, dict) and e.get("stem") == stem for e in ex):
+            continue
+        for kk, r in list(refs.items()):
+            if isinstance(r, list) and len(r) == 2 and r[0] == stem:
+                new = conv(r[1])
+                if new:
+                    refs[kk] = [stem, new]
+                else:
+                    refs.pop(kk, None)
+        kept = []
+        for e in ex:
+            if isinstance(e, dict) and e.get("stem") == stem:
+                new = conv(e.get("sid"))
+                if not new:
+                    continue
+                e = dict(e, sid=new)
+            kept.append(e)
+        k["refs"], k["exemplars"] = refs, kept
+        cfg["save_json"](p, k)
+        n += 1
+    return n
+
+
 def synthesize(g, kind, model=None, force=False):
     """묶음 g 의 절 kind 바탕을 세운다(판이 오른다). → 바탕 dict 또는 {"error"}"""
     s = settings()

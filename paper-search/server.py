@@ -2821,6 +2821,9 @@ def job_view(job):
             v["eta"] = int(v["elapsed"] / done * (total - done)) + int(job.get("eta_extra", 0))
     if job.get("phase"):
         v["phase"] = job["phase"]
+    if job.get("auto"):   # 자동 번역(autotr)이 띄운 작업 — 홈의 진행 중 패널이 표시한다
+        v["auto"] = True
+        v["by"] = job.get("by") or ""
     return v
 
 
@@ -2963,6 +2966,7 @@ def run_generation(name, kind, ext=None):
                 _set_stage(key, "본문 추출 중", started=True)
                 _run_generation(name, kind)
             if kind == "translation":
+                _eq_drop(name)            # 번역이 새로 쓰였으니 옛 수식 색인(그림 이름·문장 번호가 다르다)은 버리고
                 eq_build_start(name)      # 번역이 끝나면 수식 전사도 바로 (사용자 2026-11-07: '전사는 무조건')
         _jobs.pop(key, None)
         return
@@ -3030,6 +3034,11 @@ def _run_generation(name, kind):
     os.makedirs(GEN_DIR, exist_ok=True)
     with open(gen_path(name, kind), "w", encoding="utf-8") as f:
         f.write(out)
+    if kind == "translation":   # 어느 판의 파이프라인이 언제 만들었나 (자동 번역의 기록·옛 판 가르기의 재료, 2026-11-08)
+        try:
+            save_json(tr_info_path(name), {"v": TR_V, "t": time.time(), "by": (_jobs.get((name, kind)) or {}).get("by") or "user", "engine": engine(), "chars": len(out)})
+        except Exception:
+            pass
 
 
 def _claude(prompt, timeout=900):
@@ -3284,6 +3293,19 @@ def rebuild_paragraphs(text, table):
 
 def align_path(name):
     return os.path.join(GEN_DIR, os.path.splitext(name)[0] + ".번역.정렬.json")
+
+
+TR_V = 3   # 번역 파이프라인의 판 — 3: 쪽 맞춤(pagealign)·수식 곁 조각·μm 되살림이 든 판 (2026-11-08). .번역.정보.json 에 적어 둔다(정보용 — 자동 번역의 '옛 판' 은 날짜로 가른다, autotr.py)
+
+
+def tr_info_path(name):
+    """번역을 만든 때·판·누가(사용자 ↻ · 공부 prep · 자동 번역) — 번역\\<stem>.번역.정보.json"""
+    return os.path.join(GEN_DIR, os.path.splitext(name)[0] + ".번역.정보.json")
+
+
+def oldnum_path(name):
+    """번역을 다시 만들었을 때 옛 문장 번호 → 새 번호 대응표 — 번역\\<stem>.번역.옛번호.json (autotr 이 적는다)"""
+    return os.path.join(GEN_DIR, os.path.splitext(name)[0] + ".번역.옛번호.json")
 
 
 GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선), "
@@ -3867,6 +3889,16 @@ def eq_needs(name):
         return False
 
 
+def _eq_drop(name):
+    """번역이 다시 만들어진 논문의 옛 수식 색인을 지운다 — 색인은 번역의 [[EQ]] 그림 이름·문장 번호에 묶여 있어 새 번역과 맞지 않는다 (2026-11-08)"""
+    try:
+        p = study._ei().index_path(os.path.basename(str(name or "")))
+        if os.path.isfile(p):
+            os.remove(p)
+    except Exception as e:
+        logging.warning("옛 수식 색인 지우기 실패 %s: %s", name, e)
+
+
 def eq_build_start(name):
     """수식 색인 만들기를 배경에서 시작한다(이미 돌고 있으면 그대로) → 돌고 있으면 True.
     사용자(2026-11-07): '전사는 그냥 무조건 하는 걸로 — 토큰 그 정도는 남는 장사' — 번역을 열 때(GET /api/eqindex)·번역이 끝날 때·밀린 것(eq_backfill)이 모두 이 길로"""
@@ -3955,6 +3987,42 @@ def gen_state(name, kind):
     if job.get("status") == "error":
         return "error:" + str(job.get("error") or "")[:160]
     return "running"
+
+
+def gen_start(name, kind, force=False, by=""):
+    """자동 번역(autotr)이 쓰는 시작 길 — /api/generate 와 같되 있는 파일을 지우지 않는다: force 면 있어도 다시 만들어 끝에서 덮어쓴다(실패하면 옛 파일이 그대로 남는다).
+    → started · running(이미 돌고 있음) · done(있고 force 아님) · none(그런 논문이 없음)"""
+    name = os.path.basename(str(name or ""))
+    if kind not in ("summary", "translation") or not os.path.isfile(os.path.join(ARCHIVE, name)):
+        return "none"
+    key = (name, kind)
+    job = _jobs.get(key)
+    if job and job.get("status") == "running":
+        return "running"
+    if not force and os.path.isfile(gen_path(name, kind)):
+        return "done"
+    _jobs[key] = {"status": "running", "auto": bool(by), "by": by}
+    threading.Thread(target=run_generation, args=(name, kind, None), daemon=True).start()
+    return "started"
+
+
+def job_state(name, kind):
+    """작업 하나의 상태(job_view) — 없으면 {status: none}. 파일이 있어도 작업이 돌고 있으면 running (gen_state 는 파일이 있으면 done 이라 다시 만드는 중을 못 가른다)"""
+    j = _jobs.get((os.path.basename(str(name or "")), kind))
+    return job_view(j) if j else {"status": "none"}
+
+
+def job_clear(name, kind):
+    """끝난(실패한) 작업 기록을 지운다 — 자동 번역이 실패를 제 기록에 옮긴 뒤 홈이 '실패' 로 보이지 않게"""
+    key = (os.path.basename(str(name or "")), kind)
+    j = _jobs.get(key)
+    if j and j.get("status") != "running":
+        _jobs.pop(key, None)
+
+
+def jobs_running(auto=None):
+    """도는 요약·번역 작업 수 — auto=True 는 자동 번역이 띄운 것만, False 는 사람이 시킨 것만"""
+    return sum(1 for k, j in list(_jobs.items()) if j.get("status") == "running" and k[1] in ("summary", "translation") and (auto is None or bool(j.get("auto")) == auto))
 
 
 study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel, pref_abbrs=pref_file_abbrs,
@@ -4158,6 +4226,36 @@ shelf.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, LAB
            notes_path=notes_path, load_notes=load_notes, is_review=is_review_paper, pref_abbrs=pref_file_abbrs, paper_line=ms._paper_line, load_readlog=load_readlog)
 
 
+# ---------- 자동 번역 (2026-11-08, 사용자: '내가 안 보는 동안에도 새로 논문 있으면 알아서 전문 번역 만들고, 너무 옛 번역 있으면 알아서 다시 생성하게 해 줘') ----------
+# 새로 들어온 논문은 한 번에 한 편씩 바로(하루 상한), 옛 판(설정의 날짜 이전에 만든 번역)은 밤 시간대에 하룻밤 n편씩 — ★ 읽을 논문·최근에 읽은 것부터. 설정은 ⚙ 설정 → AI 「번역 자동으로」.
+# 다시 만들면 문장 번호가 바뀌므로: 옛 파일은 번역\_옛판\ 에, 옛→새 번호 대응표는 .번역.옛번호.json 에, 학습 주석은 지워 다음 밤에 다시, 바탕의 본보기 번호는 옮기고, 수식 색인은 새 번역으로 다시 만든다.
+def on_retranslated(name, sidmap):
+    """번역이 다시 만들어진 뒤 — 문장 번호에 묶인 것들을 맞춘다 (autotr 이 끝낼 때 부른다)"""
+    stem = os.path.splitext(os.path.basename(str(name or "")))[0]
+    try:
+        corpus.on_retranslated(stem, sidmap)    # 주석은 지워 pending 으로(다음 학습에), 바탕의 본보기·표식은 새 번호로
+    except Exception as e:
+        logging.warning("주석 되맞춤 실패 %s: %s", name, e)
+    try:
+        study._SENT_CACHE.pop(name, None)
+    except Exception:
+        pass
+    try:
+        ms._ABS_CACHE.clear()
+    except Exception:
+        pass
+    if eq_needs(name):                          # run_generation 이 옛 색인을 지우고 새로 띄웠다 — 그 사이 못 띄웠으면 여기서
+        eq_build_start(name)
+
+
+import autotr
+autotr.init(ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, settings=_mapper.settings, save_settings=_mapper.save_settings,
+            gen_path=gen_path, align_path=align_path, info_path=tr_info_path, oldnum_path=oldnum_path, gen_start=gen_start, job_state=job_state, job_clear=job_clear, jobs_running=jobs_running,
+            claude_error=claude_error, engine_ok=lambda: bool(engine_exe()), load_stars=load_stars, load_readlog=load_readlog, archive_pdfs=archive_pdfs,
+            paper_sents=study._paper_sents, is_korean=study._is_korean_doc, on_retranslated=on_retranslated,
+            others_busy=lambda: bool(corpus._STATE.get("batch_on")) or bool(study._JOBS))   # 밤의 옛 판 다시 만들기는 학습 배치·공부가 도는 동안 기다린다 (Opus 호출이 겹쳐 한도에 걸리지 않게)
+
+
 def settings_view():
     """⚙ 환경설정에 보이는 서버 쪽 설정 — 키 값은 끝 4자만, 우선 저널, 전용 Claude 계정(폴더·로그인 여부)"""
     import mapper
@@ -4261,7 +4359,7 @@ _SESS_SEEN = {}                          # 세션 → 마지막으로 쓴 시각
 _FWD_HEADERS = ("X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded", "X-Real-IP",
                 "Tailscale-User-Login", "Tailscale-User-Name", "CF-Connecting-IP", "CF-Ray")
 _REMOTE_OPEN = {"/login", "/api/login", "/ui.css", "/favicon.ico", "/manifest.webmanifest"}      # 로그인 전에도 주는 것 (로그인 화면의 재료)
-_REMOTE_BLOCK_POST = {"/api/remote", "/api/backup", "/api/settings", "/api/open", "/api/claude_install", "/api/claude_login", "/api/fonts", "/api/shelf"}
+_REMOTE_BLOCK_POST = {"/api/remote", "/api/backup", "/api/settings", "/api/open", "/api/claude_install", "/api/claude_login", "/api/fonts", "/api/shelf", "/api/autotr"}
 _LOCAL_ONLY_MSG = "이 기능은 Athenaeum 이 깔린 PC 에서만 됩니다"
 MANIFEST = {"name": "Athenaeum", "short_name": "Athenaeum", "start_url": "/m", "scope": "/", "display": "standalone", "lang": "ko",
             "background_color": "#ffffff", "theme_color": "#ffffff", "description": "연구실 PC 의 Athenaeum 을 휴대폰에서 — 이어 읽기 · 서재 · 공부 · 연구 노트",
@@ -4708,7 +4806,7 @@ def _backup_items():
             continue
         for dp, dns, fns in os.walk(sd):
             if dp == sd:
-                skip = {"논문모음": ("_중복사본",), "수집": ("받기", "올리기")}.get(d, ())
+                skip = {"논문모음": ("_중복사본",), "수집": ("받기", "올리기"), "번역": ("_옛판",)}.get(d, ())   # _옛판 = 자동 번역이 다시 만들기 전에 둔 옛 번역 (백업에는 새 번역만)
                 dns[:] = [x for x in dns if x not in skip]
             dns[:] = [x for x in dns if x != "__pycache__"]
             rel = os.path.relpath(dp, root)
@@ -5033,6 +5131,8 @@ class Handler(BaseHTTPRequestHandler):
             return corpus.handle_get(self, url)   # 서재 학습
         if url.path == "/api/shelf":
             return shelf.handle_get(self, url)    # Claude 채팅이 보는 폴더
+        if url.path == "/api/autotr":
+            return autotr.handle_get(self, url)   # 자동 번역의 상태 (⚙ 설정 → AI)
         if url.path == "/notes" or url.path.startswith("/api/notes/") or (url.path == "/api/notes" and "file" not in parse_qs(url.query)):
             return notes.handle_get(self, url)   # 읽기 화면의 논문 메모 /api/notes?file= 는 아래 옛 라우트로 — 접두사로 넘기다 가로채 읽기 창이 '불러오는 중'에서 멈췄다(2026-10-08~09)
         if url.path == "/api/intake":
@@ -5603,6 +5703,8 @@ class Handler(BaseHTTPRequestHandler):
             return corpus.handle_post(self, body)
         if self.path == "/api/shelf":
             return shelf.handle_post(self, body)
+        if self.path == "/api/autotr":
+            return autotr.handle_post(self, body)   # 자동 번역: settings · queue_missing · run_now · clear_fails
         if self.path.startswith("/api/notes/") or (self.path == "/api/notes" and not body.get("file")):
             return notes.handle_post(self, body)   # 읽기 화면의 논문 메모(POST /api/notes {file, op}) 는 아래 옛 라우트로
         if self.path == "/api/intake":
@@ -6017,6 +6119,7 @@ def main():
     threading.Thread(target=eq_backfill, daemon=True).start()    # 수식 전사 밀린 것 — 90초 뒤부터 2편씩 (사용자 2026-11-07: '전사는 무조건')
     corpus.start()   # 서재 학습 — 설정의 시간대에 배경으로(편마다 한 번, 하루 상한)
     shelf.start()   # Claude 채팅이 보는 폴더 — 켜 두었으면 30초마다 바뀐 것을 맞춘다
+    autotr.start()  # 자동 번역 — 새 논문은 들어오면 번역, 옛 판은 밤에 다시 (⚙ 설정 → AI 에서 켠다)
     threading.Thread(target=backup_loop, daemon=True).start()   # 백업 폴더가 정해져 있고 「매일 자동으로」 가 켜져 있으면 새벽에 한 번
     _Server(("127.0.0.1", PORT), Handler).serve_forever()
 

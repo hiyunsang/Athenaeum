@@ -49,12 +49,22 @@ def _mtime(f):
         return 0
 
 
+def _tr_mtime(f):
+    """번역문(.번역.md)의 시각 — 색인은 번역의 [[EQ]] 그림 이름·문장 번호에 묶여 있어 번역이 다시 만들어지면 맞지 않는다 (자동 번역, 2026-11-08)"""
+    try:
+        return os.path.getmtime(os.path.join(cfg["GEN_DIR"], _stem(f) + ".번역.md"))
+    except OSError:
+        return 0
+
+
 def load(f):
-    """그 논문의 수식 색인 — 있고 PDF 가 그 뒤 바뀌지 않았으면. 없으면 None"""
+    """그 논문의 수식 색인 — 있고 PDF 가 그 뒤 바뀌지 않았으면(그리고 번역이 그 뒤 다시 만들어지지 않았으면 — tmt 가 적힌 색인만). 없으면 None"""
     d = cfg["load_json"](index_path(f), None)
     if not isinstance(d, dict) or not isinstance(d.get("eqs"), list):
         return None
     if d.get("mtime") and abs(_mtime(f) - d["mtime"]) > 2:
+        return None
+    if d.get("tmt") and abs(_tr_mtime(f) - d["tmt"]) > 2:
         return None
     return d
 
@@ -153,7 +163,7 @@ def build(f, title="", model="sonnet", force=False):
             return d
     t0 = time.time()
     crops = crops_of(f)
-    base = {"file": f, "t": time.time(), "mtime": _mtime(f), "model": model, "n": len(crops), "eqs": [], "ok": False, "v": INDEX_V}
+    base = {"file": f, "t": time.time(), "mtime": _mtime(f), "tmt": _tr_mtime(f), "model": model, "n": len(crops), "eqs": [], "ok": False, "v": INDEX_V}
     if not crops:
         base["ok"] = True
         cfg["save_json"](index_path(f), base)

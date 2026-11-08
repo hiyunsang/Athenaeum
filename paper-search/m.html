@@ -533,7 +533,16 @@ function loadStudies() {
   p.then(() => { if (refresh) refresh(); }).catch(() => { studiesT = t0; });
   return Promise.resolve(studies);
 }
-const pUrl = (file, tab, s) => "#/p/" + enc(file) + (tab ? "/" + tab : "") + (s ? "/" + s : "");
+const pUrl = (file, tab, s, q) => "#/p/" + enc(file) + (tab ? "/" + tab : "") + (s ? "/" + s + (q ? "/" + enc(String(q).slice(0, 120)) : "") : "");   /* q = 그 문장의 원문 머리 — 번역이 다시 만들어져 번호가 바뀌어도 찾는다 (2026-11-08) */
+const normK = t => String(t || "").normalize("NFKD").toLowerCase().replace(/[^a-z0-9À-ɏ가-힣]/g, "");
+function resolveSid(tb, sid, q) {   /* 정렬표에서 원문 글(q)이 같은 문장의 번호 — 받은 번호의 문장이 그 글이면 그대로, 아니면 가장 가까운 번호의 같은 문장 */
+  const qn = normK(q).slice(0, 48); if (qn.length < 12 || !tb) return sid;
+  const same = id => { const a = tb[id]; if (!a || !a.t) return false; const tn = normK(a.t); return tn.indexOf(qn) >= 0 || (tn.length >= 12 && qn.indexOf(tn.slice(0, 48)) >= 0); };
+  if (same(sid)) return sid;
+  let best = null;
+  for (const id of Object.keys(tb)) { if (!/^\d+$/.test(id) || !same(id)) continue; if (best == null || Math.abs(id - sid) < Math.abs(best - sid)) best = id; }
+  return best != null ? best : sid;
+}
 const KIND_KO = { summary: "요약", translation: "번역" };
 function readOf(p) {   /* 읽던 자리: {kind, frac, last} */
   const r = p.read; if (!r || !r.last) return null;
@@ -690,7 +699,7 @@ function startPing(file, kind) {   /* 읽기 기록 — PC 의 읽기 화면과 
   document.onvisibilitychange = () => { if (document.hidden) leave(); };
   pingLast = leave;
 }
-async function viewPaper(file, tab, sent, my) {
+async function viewPaper(file, tab, sent, my, q) {
   if (tab === "notes") tab = "ask";
   tab = PTABS.some(t => t[0] === tab) ? tab : lsGet("m_tab", "summary");
   if (tab !== "ask") lsSet("m_tab", tab);
@@ -733,7 +742,15 @@ async function viewPaper(file, tab, sent, my) {
   /* 읽던 자리: 이 휴대폰의 자리와 PC 의 자리 가운데 더 나중 것 */
   const loc = savedY(curHash), rd = p.read || {}, srv = +((rd.pos || {})[tab]) || 0, srvT = (rd.last || 0) * 1000;
   let y = loc[0];
-  if (sent) { const el = doc.querySelector(".s[data-s='" + String(sent).replace(/\D/g, "") + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); } }
+  if (sent) {
+    let sid = String(sent).replace(/\D/g, "");
+    if (q && tab === "translation") {      /* 원문 글이 같이 왔으면(공부의 근거) 번역이 다시 만들어져 번호가 바뀌었어도 그 문장으로 */
+      try { if (!alignCache[file]) alignCache[file] = await api("/api/align?file=" + enc(file)); } catch (e) {}
+      if (my !== view) return;
+      sid = resolveSid(alignCache[file], sid, q);
+    }
+    const el = doc.querySelector(".s[data-s='" + sid + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); }
+  }
   else if (srv > .01 && srvT > loc[1] + 90000) y = Math.round(srv * (document.documentElement.scrollHeight - window.innerHeight));
   restorePos(y); startPing(file, tab);
 }
@@ -1082,7 +1099,7 @@ function peekUnit(st, el) {   /* 공부의 문장을 누르면 그 근거인 원
     const pi = +x[0].split(":")[0], sid = x[0].split(":")[1], p = st.papers[pi] || {}, s = x[1], can = /^s\d+$/.test(sid);
     return "<div class='pki'><div class='pkm'><b>[" + (p.n || "") + "] " + esc(p.short || "") + "</b><span>" + esc(p.journal || "") + (s.page ? " · " + s.page + "쪽" : "") + "</span>" + (s.own === false ? "<span class='tg warn'>다른 연구를 전한 문장</span>" : "") + "</div>" +
       "<div class='pke' lang='en'>" + esc(s.en || "") + "</div>" + (s.ko ? "<div class='pkk'>" + esc(String(s.ko).replace(/<\/?(sub|sup)>/g, "")) + "</div>" : "") +
-      (p.file ? "<div class='pka' style='margin-top:8px'><a class='pill' href='" + esc(pUrl(p.file, can ? "translation" : "summary", can ? sid : "")) + "'>" + (can ? "논문에서 이 문장 보기" : "논문 열기") + "</a></div>" : "") + "</div>";
+      (p.file ? "<div class='pka' style='margin-top:8px'><a class='pill' href='" + esc(pUrl(p.file, can ? "translation" : "summary", can ? sid : "", can ? (s.en || "") : "")) + "'>" + (can ? "논문에서 이 문장 보기" : "논문 열기") + "</a></div>" : "") + "</div>";
   }).join("");
   openPeek("<div class='pkl'>" + (src.length ? "근거 — 논문의 원문 문장 " + src.length + "개" : "잇는 문장") + "</div>" + (src.length ? items : "<div class='pkk' style='margin-top:0'>앞뒤의 사실을 잇는 문장입니다. 새 사실을 담지 않았는지 대조했고, 근거 문장은 달지 않았습니다.</div>") +
     "<div class='pka'><button class='pill pri' data-pk='askst'>이 문장으로 묻기</button></div>");
@@ -1393,7 +1410,7 @@ function onRoute() {
   clearTimeout(animT); animT = setTimeout(() => app.classList.remove("push", "fade"), 450);      /* 화면이 가려져 애니메이션이 멈춰도 내용은 보이게 */
   prevDepth = depth; lastY = 0; acc = 0; window.scrollTo(0, 0);
   const done = p => p && p.catch && p.catch(e => { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); });
-  if (r === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], parts[3], my));
+  if (r === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], parts[3], my, parts[4]));
   if (r === "s" && parts[1]) return done(viewStudy(parts[1], parts.slice(2), my));
   if (r === "n" && parts[1]) return done(viewNote(parts[1], my));
   if (r === "lib") return done(viewLib(my));

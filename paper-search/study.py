@@ -3263,9 +3263,34 @@ def _paper_record(f, role="core"):
             "top": _is_top(m.get("journal", ""), _top_set()), "role": role, "why": "연구자가 더함", "co": 0, "nsent": 0, "notes": [], "read": False}
 
 
+def _read_end(src):
+    """그 장이 논문을 읽기를 마친 때 — 단계 기록의 read 끝, 없으면(옛 장) 시작 때"""
+    ends = [x.get("t1") for x in (src.get("stages") or []) if x.get("name") == "read" and x.get("t1")]
+    return max(ends) if ends else (src.get("t") or 0)
+
+
+def _unread_stale(st, since):
+    """읽은 뒤 번역이 다시 만들어진 논문(자동 번역의 옛 판 다시 만들기, 2026-11-08)은 메모의 문장 번호가 새 번역과 어긋나므로 다시 읽게 한다 → 그 편수.
+    (그대로 두면 다시 쓰기가 엉뚱한 문장을 근거로 삼는다 — 지어내기 장치 ②는 번호가 그 논문에 있는지만 본다)"""
+    n = 0
+    for p in st.get("papers") or []:
+        if not p.get("read") or not p.get("file"):
+            continue
+        try:
+            mt = os.path.getmtime(os.path.join(cfg["GEN_DIR"], os.path.splitext(p["file"])[0] + ".번역.md"))
+        except OSError:
+            continue
+        if mt > (since or 0) + 60:
+            p["read"], p["notes"] = False, []
+            for k in ("about", "type", "parts", "mode", "dropped", "fail"):
+                p.pop(k, None)
+            n += 1
+    return n
+
+
 def rebuild_start(sid, body):
     """다 쓴 장을 새 규칙으로 다시 만든다(사용자 2026-10-11 '확고히 한 뒤 나머지 전부 다시'): reread = core(통째로 읽은 것) | reviews | all | none 을 다시 읽고, add 의 서재 논문을 더해(통째로),
-    그림 색인은 옛 판이면 저절로 다시, 짜기부터 끝까지 → 새 장(rebuild_of). 옛 장은 남는다."""
+    그림 색인은 옛 판이면 저절로 다시, 짜기부터 끝까지 → 새 장(rebuild_of). 옛 장은 남는다. 읽은 뒤 번역이 다시 만들어진 논문은 어느 방식이든 다시 읽는다."""
     src = _load(sid)
     if not src or not src.get("papers") or not any(p.get("read") for p in src["papers"]):
         return {"error": "읽은 논문이 없는 장은 다시 만들 수 없습니다"}
@@ -3284,6 +3309,7 @@ def rebuild_start(sid, body):
             p["read"], p["notes"] = False, []
             for k in ("about", "type", "parts", "mode", "dropped", "fail"):
                 p.pop(k, None)
+    stale = _unread_stale(st, _read_end(src))
     added = 0
     for f in (body.get("add") if isinstance(body.get("add"), list) else [])[:12]:
         f = os.path.basename(str(f))
@@ -3293,6 +3319,8 @@ def rebuild_start(sid, body):
             added += 1
     st.update(id=nid, t=time.time(), status="running", stage="read" if any(not p.get("read") for p in st["papers"]) else "outline",
               calls=0, sec=0, tok={"in": 0, "cached": 0}, removed=[], joined=False, log=[], rebuild_of=sid, reread=reread, added=added)
+    if stale:
+        _log(st, "읽은 뒤 번역이 다시 만들어진 논문 %d편은 다시 읽습니다 (문장 번호가 새 번역과 다르다)" % stale)
     _save(st)
     r = _spawn(nid)
     r["added"] = added
@@ -3387,7 +3415,10 @@ def rewrite_start(sid, body=None):
         st["opts"]["effort"] = body["effort"]
     if body.get("pace") in _PACE:
         st["opts"]["pace"] = body["pace"]
-    st.update(id=nid, t=time.time(), status="running", stage="outline", calls=0, sec=0, tok={"in": 0, "cached": 0}, removed=[], joined=False, log=[], rewrite_of=sid)
+    stale = _unread_stale(st, _read_end(src))     # 읽은 뒤 번역이 다시 만들어진 논문은 메모를 버리고 다시 읽는다(읽기 비용은 그 논문만)
+    st.update(id=nid, t=time.time(), status="running", stage="read" if stale else "outline", calls=0, sec=0, tok={"in": 0, "cached": 0}, removed=[], joined=False, log=[], rewrite_of=sid)
+    if stale:
+        _log(st, "읽은 뒤 번역이 다시 만들어진 논문 %d편은 다시 읽습니다 (문장 번호가 새 번역과 다르다)" % stale)
     _save(st)
     return _spawn(nid)
 

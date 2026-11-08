@@ -155,6 +155,12 @@ function openSettings(cat) {
       { title: "그 밖에", rows: [
         row("쓰다 멈추면 자동 검토", sw("ms_autorev"), "30초 멈추면 그 문단을 검토합니다. 사용량이 듭니다"),
         row("도식 코드 모델", sel("fig_model", [["opus", "Opus (꼼꼼함, 5~7분)"], ["sonnet", "Sonnet (빠름, 약 2분)"]]), "말로 만드는 도식의 그리기 코드를 쓰는 모델")] },
+      { title: "번역 자동으로", rows: [
+        row("새 논문은 들어오면 번역", "<label class='usw'><input type='checkbox' id='atOn'><i></i></label><span class='uout' id='atState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "서재에 새로 들어온 논문의 전문 번역을 알아서 만듭니다 — 한 번에 한 편, 하루 12편까지. 편마다 번역 한 번 값(5만~15만 토큰)이 듭니다. 전에 들어온 번역 없는 논문은 「모두 넣기」 로 차례에 넣습니다", true),
+        row("요약도 함께", "<label class='usw'><input type='checkbox' id='atSum'><i></i></label>", "새 논문은 요약도 같이 만듭니다 (편마다 요약 한 번 값)"),
+        row("옛 판 번역 다시 만들기", "<label class='usw'><input type='checkbox' id='atRedo'><i></i></label> <input type='date' id='atBefore' style='width:138px'> 이전 · 하룻밤 <input type='number' id='atN' min='1' max='40' style='width:52px'> 편<span class='uout' id='atRedoState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
+            "이 날 이전에 만든 번역을 밤(22시~아침 8시)에 차례로 다시 만듭니다 — 읽을 논문(★)과 최근에 읽은 것부터. 옛 번역은 번역 폴더의 _옛판 에 남고, 공부·학습이 가리키는 문장은 번호가 바뀌어도 원문 글로 다시 찾습니다. 기본 날짜 2026-10-24 는 단위(μm)·쪽 맞춤이 번역에 들어가기 전입니다", true)] },
       { title: "Claude 채팅이 보는 폴더", rows: [
         row("서재 사본 만들어 두기", "<label class='usw'><input type='checkbox' id='shOn'><i></i></label><span class='uout' id='shState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
             "연구 노트·공부·논문 요약·번역·원고를 Claude 채팅(데스크톱 앱)이 읽기 좋은 md 파일로 한 폴더에 만들어 둡니다. 바뀐 것만 30초마다 맞추고, 토큰은 들지 않고, 원본은 건드리지 않습니다", true),
@@ -324,6 +330,41 @@ function openSettings(cat) {
       try { const r = await (await fetch("/api/claude_login", { method: "POST", body: JSON.stringify({ engine: "codex", default: !cxo.checked }) })).json(); cs.textContent = r.error ? "⚠ " + r.error : "검은 창이 열렸습니다 — 브라우저에서 로그인한 뒤 「다시 확인」"; } catch (e) { cs.textContent = "창을 열지 못했습니다"; }
     };
     document.getElementById("codexCheck").onclick = () => { cs.textContent = "확인 중…"; post({ codex_recheck: true }); };
+  }
+  {   /* AI 갈래: 번역 자동으로 (2026-11-08) — 새 논문은 들어오면 번역, 옛 판은 밤에 다시. 값은 서버(설정.json 의 autotr), 상태는 /api/autotr */
+    const $a = id => document.getElementById(id), on = $a("atOn");
+    if (on) {
+      const sum = $a("atSum"), redo = $a("atRedo"), bef = $a("atBefore"), num = $a("atN"), st = $a("atState"), rs = $a("atRedoState"); let tm = null;
+      const fmtT = t => { if (!t) return ""; const d = new Date(t * 1000); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+      const act = (op, label, mode) => " <a href='#' class='act' data-atop='" + op + "'" + (mode ? " data-mode='" + mode + "'" : "") + ">" + label + "</a>";
+      const showA = v => {
+        if (!v || !v.settings) { st.textContent = v && v.error ? "⚠ " + v.error : ""; return; }
+        const s = v.settings, cur = v.cur;
+        on.checked = !!s.on; sum.checked = !!s.summary; redo.checked = !!s.redo;
+        if (document.activeElement !== bef) bef.value = s.before || "";
+        if (document.activeElement !== num) num.value = s.per_night;
+        if (v.remote) [on, sum, redo, bef, num].forEach(e => { e.disabled = true; });
+        const curTxt = cur ? uiEsc(cur.short || "") + (cur.kind === "summary" ? " 요약" : " 번역") + (cur.stage ? " — " + uiEsc(cur.stage) : "") + (cur.total && !/\d+\s*\/\s*\d+/.test(cur.stage || "") ? " (" + (cur.done || 0) + "/" + cur.total + ")" : "") : "";
+        const r = v.result || {};
+        st.innerHTML = (r.error ? "⚠ " + uiEsc(r.error) + " · " : "") + (s.on ? "켜짐" : "꺼짐") + (cur && cur.mode !== "redo" ? " — 지금 " + curTxt : "") +
+          " · 오늘 " + (v.today_ok || 0) + "편" + (v.today_fail ? " (실패 " + v.today_fail + ")" : "") + (v.new_pending ? " · 기다리는 새 논문 " + v.new_pending + "편" : "") +
+          (v.missing ? " · 번역 없는 논문 " + v.missing + "편" + (v.queued ? " (차례에 " + v.queued + "편)" : act("queue_missing", "모두 넣기")) : "") +
+          (v.paused ? " · 한도에 걸려 " + fmtT(v.pause_until) + "까지 쉽니다" : "") + (v.last && !v.last.ok ? " · 마지막 실패: " + uiEsc(v.last.short || "") + " — " + uiEsc(v.last.err || "") : "") + (v.err ? " · ⚠ " + uiEsc(v.err) : "");
+        rs.innerHTML = (v.old == null ? "옛 판을 세는 중…" : "옛 판 " + v.old + "편") + (s.redo && v.old ? " → 하룻밤 " + s.per_night + "편이면 " + Math.ceil(v.old / s.per_night) + "밤" : "") +
+          (s.redo ? " · " + (v.in_window ? "지금 밤 시간" : "밤 " + s.hours[0] + "시~" + s.hours[1] + "시에") + " · 이 밤 " + (v.night || 0) + "/" + s.per_night : "") +
+          (cur && cur.mode === "redo" ? " — 지금 " + curTxt : "") + (v.old && !cur && !v.remote ? act("run_now", "지금 한 편", "redo") : "");
+        clearTimeout(tm); if ((cur || v.old == null) && $a("uiSettings")) tm = setTimeout(loadA, 4000);
+      };
+      const loadA = () => fetch("/api/autotr").then(r => r.json()).then(showA).catch(() => {});
+      const postA = body => fetch("/api/autotr", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(showA).catch(() => { st.textContent = "저장하지 못했습니다"; });
+      loadA();
+      on.addEventListener("change", () => postA({ op: "settings", on: on.checked }));
+      sum.addEventListener("change", () => postA({ op: "settings", summary: sum.checked }));
+      redo.addEventListener("change", () => postA({ op: "settings", redo: redo.checked }));
+      bef.addEventListener("change", () => { if (bef.value) postA({ op: "settings", before: bef.value }); });
+      num.addEventListener("change", () => postA({ op: "settings", per_night: +num.value }));
+      box.addEventListener("click", e => { const a = e.target.closest("[data-atop]"); if (!a) return; e.preventDefault(); a.textContent = "…"; postA({ op: a.dataset.atop, mode: a.dataset.mode || "" }); });
+    }
   }
   {   /* AI 갈래: Claude 채팅이 보는 폴더 (2026-11-07) — 서재의 md 사본을 만들어 두고, 채팅에서 정리한 글을 연구 노트로 되가져온다 */
     const $s = id => document.getElementById(id), on = $s("shOn");

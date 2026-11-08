@@ -705,7 +705,7 @@ async function findEvidence(n) {
     doc = await api("/api/ms?id=" + encodeURIComponent(doc.id)); const nn = node(n.id); if (nn && !nn.cards.includes(c.id)) nn.cards.push(c.id); save(true); renderAll();
     document.querySelector(".tabs div[data-t=cards]").click();
   });
-  $("evidbox").querySelectorAll("[data-openh]").forEach(b => b.onclick = () => { const h = r.hits[+b.dataset.openh]; window.open("/view?file=" + encodeURIComponent(h.file) + "&kind=translation&sent=" + h.sent, "athenaeum_reader"); });
+  $("evidbox").querySelectorAll("[data-openh]").forEach(b => b.onclick = () => { const h = r.hits[+b.dataset.openh]; window.open("/view?file=" + encodeURIComponent(h.file) + "&kind=translation&sent=" + h.sent + (h.en ? "&q=" + encodeURIComponent(String(h.en).slice(0, 120)) : ""), "athenaeum_reader"); });
 }
 function cardHtml(c, attached) {
   return "<div class='card' data-cid='" + c.id + "'><div class='m'><span class='id'>" + c.id + "</span><b>" + esc(short(c.source.file)) + "</b>" + (c.source.page ? "<span>p." + c.source.page + "</span>" : "") + (c.source.sent ? "<span>" + c.source.sent + "</span>" : "") + "</div>" +
@@ -2010,7 +2010,7 @@ function renderLib() {
   if (libBusy) animateBars(el);
   if (!it) return;
   const at = b => { const [pi, si] = b.split(":").map(Number); return [it.papers[pi], it.papers[pi].sents[si]]; };
-  el.querySelectorAll("[data-lopen]").forEach(b => b.onclick = () => { const [p, st] = at(b.dataset.lopen); window.open("/view?file=" + encodeURIComponent(p.file) + (st.sent ? "&kind=translation&sent=" + st.sent : ""), "athenaeum_reader"); });
+  el.querySelectorAll("[data-lopen]").forEach(b => b.onclick = () => { const [p, st] = at(b.dataset.lopen); window.open("/view?file=" + encodeURIComponent(p.file) + (st.sent ? "&kind=translation&sent=" + st.sent + (st.en ? "&q=" + encodeURIComponent(String(st.en).slice(0, 120)) : "") : ""), "athenaeum_reader"); });
   el.querySelectorAll("[data-lcard]").forEach(b => b.onclick = async () => {
     const [p, st] = at(b.dataset.lcard), mid = doc.id; b.disabled = true;
     await saveNow();   // 서버가 원고 파일에 카드를 넣는다 → 내 글이 먼저 저장돼 있어야 하고, 받은 카드를 내 쪽에도 넣어야 다음 저장이 지우지 않는다
@@ -2035,7 +2035,8 @@ const LIB_VT = { general: "사례보다 넓게 일반화", stale: "옛 논문이
 const libTodo = x => x.verdict === "own" && x.type === "brief";
 const libBad = x => x.verdict === "over" || x.verdict === "none" || (x.verdict === "own" && x.type === "needs");
 const libAbrupt = x => !!x.abrupt && !libBad(x);
-const libEvHtml = ev => (ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + (e.sent ? "&kind=translation&sent=" + e.sent : "") + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("");
+const evQ = e => e.sent ? "&kind=translation&sent=" + e.sent + (e.en ? "&q=" + encodeURIComponent(String(e.en).slice(0, 120)) : "") : "";   /* q = 원문 머리 — 번역이 다시 만들어져 번호가 바뀌어도 읽기 창이 그 문장을 찾는다 (2026-11-08) */
+const libEvHtml = ev => (ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + evQ(e) + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("");
 function libFlowHtml(u) {   // 쓴 문단이 논문의 범위(서재의 IJMTM·JMPT 서론 문단들의 최소~최대) 안에 드는지 — 숫자는 쓰는 기준이 아니라 쓰고 난 뒤의 확인
   const f = u.flow; if (!f || !f.n) return "";
   const nm = u.norms || {}, bd = nm.band || {}, p = f.pct || {}, bad = new Set(f.out || []);
@@ -2094,7 +2095,7 @@ function libUseHtml(it) {
       h += "<div class='sec' style='padding-left:0;margin-top:8px'>원고와 대응 · " + (u.checks || []).length + "곳</div>" + meta(u) + "<div class='libsum'>" + esc(u.summary || "") + "</div>" +
         (u.checks || []).map((c, ci) => "<div class='libchk'><div class='k'><b" + (c.kind === "ok" ? "" : " class='w'") + ">" + (LIB_KIND[c.kind] || "") + "</b>" + (c.node ? " · " + esc(selHeading(c.node).slice(0, 34)) : " · 원고에서 그 글을 찾지 못함") + "</div>" +
           "<div class='q' data-cgo='" + ui + ":" + ci + "' title='원고의 그 자리로'>“" + esc(c.quote) + "”</div><div>" + esc(c.note) + "</div>" +
-          (c.ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + (e.sent ? "&kind=translation&sent=" + e.sent : "") + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("") +
+          (c.ev || []).map(e => "<div class='e'><b>" + esc(e.short) + "</b>" + (e.sent ? " " + esc(e.sent) : "") + " — " + esc(e.ko || e.en) + " <a href='/view?file=" + encodeURIComponent(e.file) + evQ(e) + "' target='athenaeum_reader' class='act' style='padding:0'>열기</a></div>").join("") +
           (c.fix ? "<div class='rvdiff' style='margin-top:4px'>" + wordDiff(c.quote, c.fix) + "</div>" + citeLegend(c) : "") +
           (c.node ? "<div class='acts' style='margin-left:-8px'><button class='btn" + (c.fix ? " pri" : "") + "' data-cmemo='" + ui + ":" + ci + "' title='이 자리에 대화 카드를 만들어 옮깁니다 — 거기서 고칠 글을 바꿔 넣거나 이어서 묻습니다'>" + (c.moved ? "대화로 옮김" : "대화로 옮기기") + "</button></div>" : "") + "</div>").join("");
     } else {

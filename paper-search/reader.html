@@ -370,11 +370,26 @@ document.addEventListener("click", e => {   // 식을 누르면 원문 그림을
 });
 function bindFigrefs(root) { root.querySelectorAll(".figref").forEach(a => a.onclick = () => jumpToCaption(a.dataset.k, a.dataset.n)); }
 
-let alignData = null, alignFor = null;   // 번역문 [s번호] → {t: 원문 문장, p: 페이지}
-async function loadAlign() {
-  if (alignFor === file) return alignData;
-  try { alignData = await (await fetch("/api/align?file=" + encodeURIComponent(file))).json(); } catch (e) { alignData = {}; }
-  alignFor = file; return alignData;
+let alignData = null, alignFor = null, alignP = null;   // 번역문 [s번호] → {t: 원문 문장, p: 페이지}
+function loadAlign() {   // 한 번만 받는다 — 두 곳이 같이 부르면 같은 약속을 돌려준다
+  if (alignFor === file) return Promise.resolve(alignData);
+  if (alignP) return alignP;
+  alignP = (async () => {
+    try { alignData = await (await fetch("/api/align?file=" + encodeURIComponent(file))).json(); } catch (e) { alignData = {}; }
+    alignFor = file; alignP = null; return alignData;
+  })();
+  return alignP;
+}
+function resolveSentByText(sid, q) {
+  // 공부·학습·단어장에서 온 링크의 ?q=(원문 문장의 머리) — 번역이 다시 만들어져 문장 번호가 바뀌었어도(자동 번역, 2026-11-08) 같은 원문 문장을 찾는다. 못 찾으면 받은 번호 그대로
+  const qn = normK(q).slice(0, 48);
+  if (qn.length < 12 || !alignData) return sid;
+  const same = id => { const a = alignData[id]; if (!a || !a.t) return false; const tn = normK(a.t); return tn.indexOf(qn) >= 0 || (tn.length >= 12 && qn.indexOf(tn.slice(0, 48)) >= 0); };
+  if (same(sid)) return sid;
+  let best = null;
+  for (const id of Object.keys(alignData)) { if (!/^\d+$/.test(id) || !same(id)) continue; if (best == null || Math.abs(id - sid) < Math.abs(best - sid)) best = id; }
+  if (best != null) { status("번역이 다시 만들어진 논문 — 같은 원문 문장으로 갑니다", 2500); return best; }
+  return sid;
 }
 function wrapSentences(root) {
   // 각 블록 안의 텍스트에서 "[s12]" 표식을 지우고, 그 뒤부터 다음 표식(또는 블록 끝)까지를 <span class="sent" data-s="12">로 감싼다
@@ -414,12 +429,18 @@ function renderMd(md) {
   markAnchors();
   if (kind === "translation") { eqTidy(read, ".sent"); eqRender(); }   // 수식 곁 부스러기 숨기기(2026-11-07) · 수식 그림 → 전사(MathML) (2026-10-30)
   // 원고 카드에서 '원문 열기'로 들어온 경우: ?sent=s12 → 그 문장으로 이동하고 잠깐 강조
-  const sentParam = new URLSearchParams(location.search).get("sent");
+  const sentParam = new URLSearchParams(location.search).get("sent"), qParam = new URLSearchParams(location.search).get("q");
   if (sentParam && kind === "translation" && !sentJumped) {
-    const sp = read.querySelector('.sent[data-s="' + sentParam.replace(/^s/, "") + '"]');
-    if (sp) { sentJumped = true; setTimeout(() => { sp.scrollIntoView({ block: "center" }); sp.style.background = "var(--sel-bg)"; sp.style.boxShadow = "inset 3px 0 0 var(--accent)"; }, 150);
-      const sid = sentParam.replace(/^s/, ""), toPdf = n => { let h = null; try { h = alignData ? sentHit(sid) : null; } catch (e) {} if (h && h.exact) { locateBySentId(sid); return; } if (n < 30) setTimeout(() => toPdf(n + 1), 400); else if (h) locateBySentId(sid); };
-      setTimeout(() => toPdf(0), 500); }   /* 원문(PDF) 쪽도 그 문장으로 — 정렬표와 PDF 쪽이 준비되면 (공부의 「논문에서 이 문장 보기」, 2026-10-09) */
+    const jump = sid => {
+      const sp = read.querySelector('.sent[data-s="' + sid + '"]');
+      if (!sp || sentJumped) return;
+      sentJumped = true; setTimeout(() => { sp.scrollIntoView({ block: "center" }); sp.style.background = "var(--sel-bg)"; sp.style.boxShadow = "inset 3px 0 0 var(--accent)"; }, 150);
+      const toPdf = n => { let h = null; try { h = alignData ? sentHit(sid) : null; } catch (e) {} if (h && h.exact) { locateBySentId(sid); return; } if (n < 30) setTimeout(() => toPdf(n + 1), 400); else if (h) locateBySentId(sid); };
+      setTimeout(() => toPdf(0), 500);   /* 원문(PDF) 쪽도 그 문장으로 — 정렬표와 PDF 쪽이 준비되면 (공부의 「논문에서 이 문장 보기」, 2026-10-09) */
+    };
+    const raw = sentParam.replace(/^s/, "");
+    if (qParam) loadAlign().then(() => jump(resolveSentByText(raw, qParam)));   /* 원문 글이 같이 왔으면 번호가 바뀌었어도 그 문장으로 (2026-11-08) */
+    else jump(raw);
   }
 }
 
