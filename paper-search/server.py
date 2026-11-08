@@ -4206,6 +4206,13 @@ import notes
 notes.init(sweep=True, BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, TAGS_PATH=TAGS_PATH, load_json=load_json, save_json=save_json, claude_run=claude_run, claude_error=claude_error, claude_cancel=claude_cancel,
            paper_line=ms._paper_line, ms_list=ms.list_ms, ms_load=ms.load_ms, ms_new=ms.new_ms, ms_save=ms.save_ms, study_list=study.list_studies, study_load=study._load, HIST_DIR=HIST_DIR, libnet_gaps=libnet_gaps, pref_abbrs=pref_file_abbrs)
 
+# ---------- 서재 문장 색인 (2026-11-09, 사용자: '데이터베이스 색인을 잘해놓으면 되는 거 아닌가. 주제 맞는 거만 찾음 되잖아') ----------
+# 서재 전체의 문장(공부가 쓰는 study._paper_sents)을 영어 토큰·한국어 두 글자 묶음으로 뒤집어 두고, 연구 노트가 물음마다 낱말이 맞는 문장 50개쯤을 물음에 붙인다(모델 호출 없음).
+# 켠 뒤 25초에 배경에서 만든다(338편·문장 10만 개에 30초쯤, 40 MB 안팎). 서재가 바뀌면 60초 안에 다시. 상태는 GET /api/libindex.
+import libindex
+libindex.init(GEN_DIR=GEN_DIR, ARCHIVE=ARCHIVE, paper_sents=study._paper_sents, readable=study._readable, is_korean=study._is_korean_doc, archive_pdfs=archive_pdfs, paper_line=ms._paper_line, pref_abbrs=pref_file_abbrs)
+notes.cfg.update(libindex=libindex)
+
 # ---------- 서재 학습 (2026-10-25, 사용자: '서재의 논문을 다 학습하고, 서론은 왜 이런 구조고 이 문장은 왜 이런 문장인지 전부') ----------
 # 논문마다 네 층 주석(논문·절·문단·문장 + 약속-이행 사슬)을 번역\주석\ 에, 저널 묶음·절마다 '이렇게 쓴다' 바탕을 번역\주석\_바탕\ 에. 원고·연구 노트·공부의 쓰기가 corpus.knowledge_text·exemplars_text 로 꺼내 쓴다.
 # 설정(설정.json 의 learn)대로 밤 시간대에 하루 상한만큼 배경으로 돈다 — 화면은 /learn.
@@ -5133,6 +5140,8 @@ class Handler(BaseHTTPRequestHandler):
             return shelf.handle_get(self, url)    # Claude 채팅이 보는 폴더
         if url.path == "/api/autotr":
             return autotr.handle_get(self, url)   # 자동 번역의 상태 (⚙ 설정 → AI)
+        if url.path == "/api/libindex":
+            return self._send(200, libindex.status())   # 서재 문장 색인의 상태 (연구 노트의 「Claude 가 아는 것」)
         if url.path == "/notes" or url.path.startswith("/api/notes/") or (url.path == "/api/notes" and "file" not in parse_qs(url.query)):
             return notes.handle_get(self, url)   # 읽기 화면의 논문 메모 /api/notes?file= 는 아래 옛 라우트로 — 접두사로 넘기다 가로채 읽기 창이 '불러오는 중'에서 멈췄다(2026-10-08~09)
         if url.path == "/api/intake":
@@ -6120,6 +6129,7 @@ def main():
     corpus.start()   # 서재 학습 — 설정의 시간대에 배경으로(편마다 한 번, 하루 상한)
     shelf.start()   # Claude 채팅이 보는 폴더 — 켜 두었으면 30초마다 바뀐 것을 맞춘다
     autotr.start()  # 자동 번역 — 새 논문은 들어오면 번역, 옛 판은 밤에 다시 (⚙ 설정 → AI 에서 켠다)
+    libindex.start()   # 서재 문장 색인 — 25초 뒤 배경에서 만든다(연구 노트의 첫 물음이 기다리지 않게)
     threading.Thread(target=backup_loop, daemon=True).start()   # 백업 폴더가 정해져 있고 「매일 자동으로」 가 켜져 있으면 새벽에 한 번
     _Server(("127.0.0.1", PORT), Handler).serve_forever()
 

@@ -14,6 +14,7 @@ import threading
 import time
 
 import manuscript as ms   # 본보기(서론 문단 구조) — 서재 논문의 절 나누기·문단 역할 (study.py 도 같은 식으로 쓴다)
+import libindex           # 서재 문장 색인 — 물음마다 낱말이 맞는 서재 문장을 찍어 붙인다 (2026-11-09); 한국어 낱말 규칙(조사·흔한 말)도 거기 한 곳에
 
 cfg = {}
 _LOCK = threading.RLock()
@@ -21,7 +22,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-10-30)"
+VERSION = "연구 노트 (2026-11-09)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
@@ -89,6 +90,9 @@ def sweep_stale():
         if nt.get("card_pending"):
             nt.pop("card_pending", None)
             nt["card_error"] = _STALE
+            ch = True
+        if nt.get("digest_pending"):   # 답 뒤의 정리 갱신(Sonnet) 도중 꺼진 것 — 다음 답에 다시 된다
+            nt.pop("digest_pending", None)
             ch = True
         if isinstance(nt.get("intro"), dict) and nt["intro"].get("writing"):
             nt["intro"].pop("writing", None)
@@ -163,7 +167,7 @@ def _brief(nt):
             "forest": bool(nt.get("forest")), "forest_pick": (nt.get("forest") or {}).get("pick") or "",
             "trees": bool(nt.get("trees")), "trees_pick": (nt.get("trees") or {}).get("pick") or "",
             "busy": any(nt.get(k + "_pending") for k in _JOBKINDS) or bool((nt.get("intro") or {}).get("writing")),
-            "dec": len(nt.get("decisions") or []),
+            "dec": len(nt.get("decisions") or []), "digest": bool((nt.get("digest") or {}).get("text")),
             "from": ((nt.get("seed") or {}).get("from") or {}).get("kind", ""), "kind": nt.get("kind") or "topic"}
 
 
@@ -611,7 +615,7 @@ _RULE = (
     "같은 양에 다른 이름을 붙이지 않습니다. 새 기호가 꼭 필요하면 처음 쓸 때 한 번 정의합니다. 묻지 않은 계산은 하지 않습니다. 계산이 답에 꼭 필요할 때만 하고, 그때는 가정을 함께 적습니다.\n\n"
     "우리 실험에 관한 사실(장비, 조건, 격자 간격, 옛 데이터가 남아 있는지 같은 것)은 [원고]나 대화에 있으면 거기서 읽습니다. 없으면 '~했다면'으로 경우를 나누어 길게 쓰지 말고, "
     "그 사실 하나에 답이 갈릴 때만 짧게 묻습니다. 답을 끝맺는 습관으로 질문을 붙이지 않습니다. 물을 필요가 없으면 묻지 않습니다.\n\n"
-    "논문은 (첫 저자 연도)로 가리킵니다. 서재에 있는 논문은 서재의 요약이나 공부 장에 적힌 만큼만 말하고, 거기 없는 세부나 수치를 덧붙이지 않습니다. 서재에 없는 논문이나 당신의 기억으로 보태는 내용은 "
+    "논문은 (첫 저자 연도)로 가리킵니다. 서재에 있는 논문은 서재의 요약, 공부 장, [서재에서 찾은 문장]에 적힌 만큼만 말하고, 거기 없는 세부나 수치를 덧붙이지 않습니다. 서재에 없는 논문이나 당신의 기억으로 보태는 내용은 "
     "'서재 밖:'으로 시작하는 문단 하나에 모아 두어 연구자가 확인할 수 있게 합니다. 수치나 인용을 지어내지 않습니다. 같은 말을 하는 논문을 여럿 나열하지 않습니다. "
     "당신이 계산하거나 어림한 값은 그 자리에서 '제 계산으로는'이라고 한 번만 밝힙니다.\n\n"
     "근거의 무게를 가립니다. 우선 저널(서재 목록에 ★로 표시된 IJMTM, JMPT, CIRP Annals, Precision Engineering, JMSE)은 이 분야의 최고 저널입니다. 거기 실린 결과와 리뷰, [분야 지형]에 적힌 대가 그룹의 결과는 "
@@ -621,6 +625,9 @@ _RULE = (
     "그런 질문이 아니면 이 틀을 꺼내지 않습니다. 토의 답에서 새 연구 주제를 먼저 제안하지도 않습니다. 연구자가 그 질문에서 분명히 요청했을 때만, [택한 큰 물음]과 [택한 작은 물음]이 있으면 그 아래에서 제안합니다.\n\n"
     "[관련 공부 장]이 있으면 서재 목록의 한 줄보다 그 장의 논지와 근거를 먼저 씁니다. 장의 논지가 실제로 근거가 된 문장 끝에만 ⟦C1.2⟧처럼 번호를 붙입니다. 화면이 그 번호를 장의 문장으로 연결합니다. "
     "장에 없는 번호를 쓰거나 번호를 채우려고 끌어오지 않고, 장이 말하지 않는 것을 장의 말처럼 쓰지 않습니다.\n\n"
+    "[서재에서 찾은 문장]이 있으면 서재 목록의 한 줄보다 그 문장을 먼저 봅니다. 물음의 낱말로 찍어 낸 문장이라 물음과 무관한 것도 섞여 있으니 맞는 것만 쓰고, 그 문장을 근거로 쓴 문장 끝에 ⟦L3 s45⟧처럼 번호를 붙입니다. "
+    "화면이 그 번호를 원문으로 연결합니다. 거기 있는 번호만 쓰고, 찾은 문장이 말하지 않는 그 논문의 세부나 수치를 보태지 않습니다. 물음이 가리킨 논문이 있으면 그 논문의 문장이 맨 앞에 있습니다.\n\n"
+    "토의가 길어지면 [지금까지의 정리]가 지난 대화의 앞부분을 대신합니다. 거기 적힌 '정한 것'과 '버린 것'을 지키고, 버린 것을 다시 꺼내지 않습니다. [연구자에 관해 기억하는 것]은 다른 주제에서 연구자가 밝힌 것이라 여기에도 적용합니다.\n\n"
     "실험이나 장비 이야기를 할 때 [우리 연구실]이 있으면 우리 장비로 되는지 가려 말합니다. 없는 장비나 측정은 '외부:'로 적고, 어디서 할 수 있는지와 그 측정 없이 가설을 가릴 방법이 있는지를 적습니다.\n\n"
     "문헌을 더 찾아야 답할 수 있을 때만 답 끝에 '탐색: 검색어' 줄을 적고, 서재의 논문을 깊이 읽어야 할 때만 '공부: 주제' 줄을 적습니다. 연구자가 그 줄을 눌러 돌립니다. 습관처럼 붙이지 않습니다.\n\n"
     "글은 사람에게 말하듯 자연스러운 한국어로 씁니다. 처음부터 한국어로 생각해서 쓰고, 영어 문장을 옮기듯 쓰지 않습니다. 영어의 관계절을 관형절로 옮기면 '실측값이 예측에서 벗어나는 구간이 곧 모델이 틀리는 구간입니다'처럼 "
@@ -637,7 +644,9 @@ _RULE_ASK = (
     "근거는 배경(서재, 공부 장, 지난 탐색)과 [출발점]의 요약입니다. 논문은 (첫 저자 연도)로 가리키고, 서재의 논문은 요약이나 공부 장에 적힌 만큼만 말합니다. 서재에 없는 논문이나 당신의 기억으로 보태는 내용은 "
     "'서재 밖:'으로 시작하는 문단 하나에 모읍니다. 수치나 인용을 지어내지 않고, 문장마다 '제 생각'이라고 달지 않습니다. 모르는 사실은 '~라면'으로 경우를 나누기보다 짧게 묻되, 답이 그 사실에 갈릴 때만 묻습니다.\n\n"
     "설명의 무게도 가립니다. 우선 저널(★)과 리뷰, [분야 지형]의 대가 그룹이 세운 것은 분야의 정설로, 그 밖 저널의 단일 논문 결과는 '한 연구에서는'으로, 독자가 어느 쪽인지 알게 씁니다.\n\n"
-    "[관련 공부 장]이 있으면 그것이 첫째 근거입니다. 장의 논지를 근거로 쓴 문장 끝에 ⟦C1.2⟧처럼 번호를 붙입니다. 장에 없는 번호는 쓰지 않습니다.\n\n"
+    "[관련 공부 장]이 있으면 그것이 첫째 근거입니다. 장의 논지를 근거로 쓴 문장 끝에 ⟦C1.2⟧처럼 번호를 붙입니다. 장에 없는 번호는 쓰지 않습니다. "
+    "[서재에서 찾은 문장]이 있으면 그것이 가장 구체적인 근거입니다 — 물음의 낱말로 찍어 낸 문장이라 무관한 것도 섞여 있으니 맞는 것만 쓰고, 그 문장을 근거로 쓴 문장 끝에 ⟦L3 s45⟧처럼 번호를 붙입니다. 거기 있는 번호만 씁니다. "
+    "토의가 길면 [지금까지의 정리]가 지난 대화의 앞부분을 대신하고, [연구자에 관해 기억하는 것]은 다른 주제에서 연구자가 밝힌 선호와 제약입니다.\n\n"
     "서재의 논문을 깊이 읽어야 제대로 답할 수 있으면 답 끝에 '공부: 주제' 줄을, 세상의 문헌을 더 봐야 하면 '탐색: 검색어' 줄을 적습니다. 필요할 때만 적습니다. 이 질문이 연구 주제로 자랄 만하면 마지막에 한 문장으로 그렇게 말해 줍니다.\n\n"
     "글은 자연스러운 한국어 문단으로 씁니다. 처음부터 한국어로 생각해서 쓰고, 영어 문장을 옮기듯 쓰지 않습니다. 관계절을 관형절로 옮겨 한 문장에 주어가 둘셋 겹치는 문장은 조건과 결론으로 풀거나 두 문장으로 나눕니다. 한 문장에는 주어를 하나만 둡니다. "
     "마크다운 제목이나 굵게 표시, 인사말, 칭찬은 쓰지 않습니다. 번호 목록은 정말 나란한 항목이 여럿일 때만, 항목마다 줄을 바꿔 '① 머리말: 내용'처럼 적습니다. "
@@ -688,7 +697,7 @@ def _card_text(card):
     return "\n".join(out)
 
 
-def _prompt(nt, question, lib, others, studies="", mstext=""):
+def _prompt(nt, question, lib, others, studies="", mstext="", libtext=""):
     seed = nt.get("seed") or {}
     fr = seed.get("from") or {}
     isask = (nt.get("kind") or "topic") == "ask"   # 물음 — 분야를 배우려는 대화 (2026-10-27)
@@ -701,12 +710,18 @@ def _prompt(nt, question, lib, others, studies="", mstext=""):
     ct = _card_text(nt.get("card"))
     if ct:
         out += "\n[지금까지 정리한 주제 카드]\n" + ct + "\n"
+    dg = (nt.get("digest") or {}).get("text") or ""   # 답마다 Sonnet 이 갱신한 요지 — 긴 토의의 기억 (2026-11-09)
+    if dg:
+        out += "\n[지금까지의 정리 — 프로그램이 답마다 갱신한 요지입니다. 지난 대화의 앞부분은 여기 요약돼 있습니다]\n" + str(dg)[:2600] + "\n"
     dt = _decisions_text(nt)   # 연구자가 정한 것 — 토의 중의 결정이 다음 물음에 늘 따라가게 (2026-10-30)
     if dt:
         out += "\n" + dt
+    mt = _memory_text(nt)      # 다른 주제에서도 연구자가 밝힌 선호·거절·제약 (2026-11-09)
+    if mt:
+        out += "\n" + mt
     th = [m for m in nt.get("thread") or [] if m.get("text")]
     if len(th) > 1:
-        past_items = th[-11:-1]
+        past_items = th[-(7 if dg else 11):-1]   # 정리가 있으면 지난 대화는 마지막 여섯 턴만 — 앞부분은 정리가 대신한다
         full = set([i for i, m in enumerate(past_items) if m.get("role") != "user"][-2:])   # 옛 Claude 답은 줄여 넣는다(마지막 둘만 그대로) — 제 긴 답을 본보기 삼아 답이 길어지는 것을 끊는다 (2026-10-29)
 
         def _cut(i, m):
@@ -739,6 +754,8 @@ def _prompt(nt, question, lib, others, studies="", mstext=""):
         out += "\n[아직 답하지 않은 반론]\n" + "\n".join("- [%s] %s" % (REVIEWER_KO.get(o.get("who"), o.get("who")), o.get("t")) for o in opens[:10]) + "\n"
     if others:
         out += "\n[연구 노트의 다른 주제] " + " · ".join("%s(%s)" % (o["title"][:50], STATUS_KO.get(o["status"], "")) for o in others[:30]) + "\n"
+    if libtext:   # 서재 문장 색인이 찍어 낸 문장들 — 물음 바로 앞에 (2026-11-09)
+        out += "\n" + libtext + "\n"
     short = len(question) < 60 and not re.search(r"자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐가|무엇", question)   # 확인·정정 같은 짧은 말에 긴 답이 오던 것 (2026-10-30: '9119A가 맞음' 에 848자)
     out += "\n[물음]\n" + question + "\n" + ("(짧은 말입니다. 확인이나 정정이면 한두 문장으로 받고 멈춥니다. 새 제안이나 계산, 확인 요청을 덧붙이지 않습니다.)\n" if short else "") + "\n" + (_RULE_ASK if isask else _RULE)
     if lib:
@@ -816,11 +833,17 @@ def _ask_job(nid):
         mstext, msinfo = _ms_text((nt.get("opts") or {}).get("ms"))
     except Exception:
         mstext, msinfo = "", None
+    libtext, librefs, libinfo = "", {}, None
+    try:   # 서재 문장 색인 (2026-11-09) — 물음의 낱말이 맞는 서재 문장 50개쯤을 물음에 붙인다(모델 호출 없음, 0.1초)
+        prevq = next((m.get("text") or "" for m in reversed((nt.get("thread") or [])[:-1]) if m.get("role") == "user"), "")
+        libtext, librefs, libinfo = _lib_hits(nt, question, prevq)
+    except Exception as e:
+        libtext, librefs, libinfo = "", {}, {"n": 0, "err": str(e)[:120]}
     try:
         others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
-        res = run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
+        res = run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
                   add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt)) if run else None
         cancelled = bool((res or {}).get("cancelled"))
         if not cancelled and (not res or not (res.get("text") or "").strip()):
@@ -839,11 +862,12 @@ def _ask_job(nid):
             nt.pop("error", None)
             _save(nt)
             return
+        ok = False
         if err:
             nt["error"] = err
         else:
             nt.pop("error", None)
-            text = _study_mark(res["text"].strip())
+            text = _lib_mark(_study_mark(res["text"].strip()))
             turn = {"role": "claude", "text": text, "t": time.time(), "sec": round(time.time() - t0),
                     "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib}
             if msinfo:   # 어느 원고를 봤나 (2026-10-29)
@@ -853,8 +877,31 @@ def _ask_job(nid):
                 used = _study_anchors(anchors, text)
                 if used:
                     turn["anchors"] = used
+            if libinfo and libinfo.get("n"):   # 서재 문장 색인이 붙인 문장 + 답이 가리킨 것(⟦L3 s45⟧) → 원문 (2026-11-09)
+                turn["libhits"] = libinfo
+                used_l = _lib_anchors(librefs, text)
+                if used_l:
+                    turn["lib_refs"] = used_l
+            cites = _answer_cites(text)        # 답 속의 (저자 연도) → 서재 파일 — 화면이 ✓·?·★ 로 보인다
+            if cites:
+                turn["cites"] = cites
             nt.setdefault("thread", []).append(turn)
+            nt["digest_pending"] = time.time()   # 답 뒤에 정리를 갱신한다(Sonnet, 10~20초) — 화면은 답을 먼저 보인다
+            ok = True
         _save(nt)
+    if ok:
+        try:
+            _digest_run(nid)
+        except Exception as e:
+            try:
+                print("notes digest:", e, flush=True)
+            except Exception:
+                pass
+            with _LOCK:
+                nt = _load(nid)
+                if nt and nt.get("digest_pending"):
+                    nt.pop("digest_pending", None)
+                    _save(nt)
 
 
 # ---------- 고른 원고 — 노트의 물음에 원고의 글을 붙인다 (2026-10-29, 사용자: '너무 멍청해 대답이') ----------
@@ -1152,6 +1199,236 @@ def _study_anchors(anchors, text):
             if cid in anchors:
                 used[cid] = anchors[cid]
     return used
+
+
+# ---------- 서재 문장 색인 — 물음마다 낱말이 맞는 서재 문장을 붙인다 (2026-11-09, 사용자: '색인을 잘해놓으면 되는 거 아닌가. 주제 맞는 거만 찾음 되잖아') ----------
+# 전에는 배경(시스템 프롬프트)의 논문마다 한 줄 요약이 Claude 가 서재를 아는 전부였고, 특정 논문의 조건·수치는 「서재 찾아보기」(5~15분·수십만 토큰)를 켜야 했다.
+# 이제 물음(과 주제 제목)의 낱말로 libindex 가 서재 전체의 문장을 찍어 50문장쯤(논문 14편까지, 1만 2천 자 ≈ 토큰 4천)을 물음에 붙인다 — 모델 호출 없이 0.1초.
+# 답은 그 문장을 ⟦L3 s45⟧ 로 가리키고(_lib_mark 가 꼴을 맞춘다), 화면이 원문·번역·읽기 창으로 연결한다(turn.lib_refs). 물음에 낱말이 없는 짧은 이어 묻기는 바로 앞 물음의 낱말로 찾는다.
+_L_RX = re.compile(r"[⟦\[(]\s*(L\d{1,2}(?:\s*[,·]?\s*s\d{1,4})?(?:\s*[,·;]\s*L\d{1,2}(?:\s*[,·]?\s*s\d{1,4})?)*)\s*[⟧\])]")
+_LIB_HEAD = ("[서재에서 찾은 문장 — 물음의 낱말로 서재의 문장 %d개를 찍어 논문 %d편에서 %d문장을 꺼낸 것입니다. 모델이 고른 것이 아니라 낱말이 맞은 문장이라 물음과 무관한 것도 섞여 있습니다 — 맞는 것만 씁니다. "
+             "논문은 L번호, 문장은 그 논문의 s번호입니다(원문 영어). 이 문장을 근거로 쓴 문장 끝에 ⟦L3 s45⟧처럼 번호를 붙이면 화면이 그 원문과 번역으로 연결합니다. 여기 있는 번호만 쓰고, 여기 없는 세부·수치를 그 논문의 말처럼 보태지 않습니다. ★ 는 우선 저널]")
+
+
+def _lib_hits(nt, question, prev=""):
+    """→ (물음에 붙일 글, {'L3 s45': ref}, 통계). 색인이 아직 없으면(서버를 켠 직후) 이번 물음은 색인 없이 간다."""
+    li = cfg.get("libindex")
+    if not li:
+        return "", {}, None
+    title = nt.get("title") or ""
+    res = li.search(question, context=title, wait=False)
+    used_prev = False
+    if res.get("ready") and not res.get("n") and prev:   # '그래서 설계가 어떻게 되는 거지' 같은 짧은 이어 묻기 — 바로 앞 물음의 낱말로
+        r2 = li.search(prev, context=title, wait=False)
+        if r2.get("n"):
+            res, used_prev = r2, True
+    if not res.get("n"):
+        return "", {}, {"n": 0, "ready": bool(res.get("ready"))}
+    text, refs = li.format_hits(res)
+    info = {"n": res["n"], "papers": len(res["papers"]), "terms": [t["t"] for t in res["terms"] if t["src"] == "q" and not t["common"]][:12], "sec": res.get("sec"), "prev": used_prev,
+            "mention": [p["short"] for p in res["papers"] if p.get("mention")]}
+    head = _LIB_HEAD % (res.get("nsent") or 0, len(res["papers"]), res["n"]) + (" (물음에 찾을 낱말이 없어 바로 앞 물음의 낱말로 찾았습니다)" if used_prev else "")
+    return head + "\n" + text, refs, info
+
+
+def _lib_mark(text):
+    """답의 [L3 s45]·(L3 s45)·⟦L3, s45⟧·⟦L3 s45; L4 s12⟧ 꼴을 ⟦L3 s45, L4 s12⟧ 로(화면이 한 꼴만 보게)"""
+    def fix(m):
+        items = []
+        for it in re.split(r"\s*[,·;]\s*(?=L\d)", m.group(1)):
+            mm = re.match(r"L(\d{1,2})(?:\s*[,·]?\s*s(\d{1,4}))?", it.strip())
+            if mm:
+                items.append("L" + mm.group(1) + ((" s" + mm.group(2)) if mm.group(2) else ""))
+        return ("⟦" + ", ".join(items) + "⟧") if items else m.group(0)
+    return _L_RX.sub(fix, text or "")
+
+
+def _lib_anchors(refs, text):
+    """답에 실제로 든 번호만 → {'L3 s45': {file, sid, en, ko, page, sec, short, star, year, journal, tr}}; 논문만 가리킨 'L3' 은 그 논문의 머리"""
+    used = {}
+    for m in _L_RX.finditer(text or ""):
+        for it in re.split(r"\s*[,·;]\s*(?=L\d)", m.group(1)):
+            k = re.sub(r"\s+", " ", it.strip())
+            if k in refs:
+                used[k] = refs[k]
+            elif re.fullmatch(r"L\d{1,2}", k):
+                r = next((v for kk, v in refs.items() if kk.startswith(k + " ")), None)
+                if r:
+                    used[k] = {"file": r["file"], "short": r["short"], "star": r["star"], "year": r["year"], "journal": r["journal"], "paper": True}
+    return used
+
+
+_CITE_SKIP = {"fig", "figure", "table", "eq", "in", "the", "at", "by", "on", "for", "from", "since", "after", "before", "until", "during", "around", "about", "over", "under", "between", "and", "or", "of", "to", "with",
+              "vol", "no", "pp", "jmpt", "ijmtm", "cirp", "amt", "jmp", "pe", "jmse", "ijms", "ijem", "nature", "science", "elsevier", "springer", "wiley", "ieee", "asme", "doi", "isbn", "may", "june", "july", "march", "april"}
+
+
+def _is_star(f):
+    try:
+        tops = {str(x).upper() for x in (cfg["pref_abbrs"]() if cfg.get("pref_abbrs") else ())}
+    except Exception:
+        tops = set()
+    m = re.match(r"^\d{4}_([A-Za-z0-9&-]+)_", f or "")
+    return bool(m and m.group(1).upper() in tops)
+
+
+def _answer_cites(text):
+    """답 속의 '(저자 연도)' → {'Zan 2026': {file, star}} — 서재에 있으면 파일(화면이 ✓·★ 와 열기), 없으면 None(화면이 ?: Claude 의 기억). 'Fig. 3 (2026)'·'2026년' 같은 것은 뺀다"""
+    out = {}
+    for m in re.finditer(r"([A-Z][A-Za-zÀ-ž'\-]{1,30}(?:\s+(?:et\s+al\.?|and\s+[A-Z][A-Za-zÀ-ž'\-]+|&\s+[A-Z][A-Za-zÀ-ž'\-]+))?)\s*,?\s*\(?((?:19|20)\d{2})[a-c]?(?!\d)", text or ""):
+        first = re.sub(r"[^a-z]", "", m.group(1).split()[0].lower())
+        if len(first) < 3 or first in _CITE_SKIP:
+            continue
+        if text[m.end():m.end() + 1] == "년":
+            continue
+        surf = m.group(0).strip()
+        if surf in out:
+            continue
+        f = _cite_file(m.group(1) + " " + m.group(2))
+        out[surf] = {"file": f, "star": _is_star(f) if f else False}
+    return out
+
+
+# ---------- 지금까지의 정리 · 연구자에 관해 기억하는 것 (2026-11-09, 사용자: '이것도 기억을 잘 못하더라') ----------
+# 지난 대화 열 턴만 물음에 들어가고 정한 것은 손으로 적어야 했다 — 40턴 넘는 토의에서 버린 제안을 다시 꺼내거나 정한 방향을 잊었다.
+# 이제 답이 올 때마다 Sonnet 이(10~20초, 5천 토큰쯤) 「지금까지의 정리」(지금의 물음·정한 것·버린 것·열린 것·세운 사실)를 갱신하고, 다른 주제에도 적용될 연구자의 선호·거절·제약은
+# 연구노트\_기억.json 에 모아 모든 주제의 물음에 붙인다. 정리는 물음에 [지금까지의 정리] 로 들어가고 지난 대화는 여섯 턴으로 줄인다.
+_DIGEST_RULE = (
+    "아래는 연구자와 Claude 가 한 연구 주제를 놓고 나눈 토의의 지금까지의 정리(있으면)와 가장 새 문답입니다. 정리를 새 문답에 맞게 고쳐 주세요 — 전체를 다시 쓰되 2,200자 안에.\n"
+    "다섯 머리말로 적습니다(없는 머리말은 뺍니다). 줄마다 하나씩, 머리말 뒤에 쌍점.\n"
+    "지금의 물음: 이 토의가 지금 붙들고 있는 물음 한두 문장\n정한 것: 연구자가 분명히 정한 방향·조건·장비·용어\n버린 것: 연구자가 거절했거나 틀렸다고 한 제안과 그 까닭(다시 꺼내지 않게)\n열린 것: 아직 정하지 못한 것, 확인하기로 한 것\n세운 사실: 토의에서 확인된 사실과 수치 — 출처(논문·원고·연구자의 말)와 함께\n"
+    "지난 정리에서 아직 참인 것은 남기고 뒤집힌 것은 고치거나 뺍니다. 토의에 없는 것을 넣지 않고, 수치는 출처가 있는 것만 적습니다. 보통 한국어 문장으로, 마크다운 제목·굵게 없이.\n"
+    "그리고 이 문답에서 연구자가 밝힌 것 가운데 다른 주제의 토의에도 그대로 적용될 만한 것 — 어떤 종류의 제안이나 답을 싫어하는가(reject), 글과 답의 꼴·방향에 관한 바람(prefer), 연구실·장비·시간의 제약(constraint) — 이 있으면 0~3개를 한 문장씩 적습니다. 이 주제에만 해당하는 것은 넣지 않습니다. 없으면 빈 목록.\n"
+    "JSON 으로만 답합니다: {\"digest\": \"정리 글\", \"memory\": [{\"kind\": \"reject|prefer|constraint\", \"text\": \"한 문장\"}]}")
+_MEM_KO = {"reject": "거절", "prefer": "선호", "constraint": "제약"}
+MEM_FILE = "_기억.json"
+
+
+def _mem_path():
+    return os.path.join(cfg["DIR"], MEM_FILE)
+
+
+def memory_list():
+    d = cfg["load_json"](_mem_path(), None)
+    items = d.get("items") if isinstance(d, dict) else None
+    return [x for x in (items or []) if isinstance(x, dict) and x.get("text")]
+
+
+def _mnorm(t):
+    return re.sub(r"[^0-9a-z가-힣]", "", str(t or "").lower())
+
+
+def memory_add(items, nt):
+    """정리 호출이 낸 것을 _기억.json 에 — 같은 말(글자가 같거나 한쪽이 다른 쪽에 통째로 든 것)은 다시 넣지 않는다. 300개까지."""
+    with _LOCK:
+        cur = memory_list()
+        have = [_mnorm(x["text"]) for x in cur]
+        n = 0
+        for it in items or []:
+            if not isinstance(it, dict):
+                continue
+            t = re.sub(r"\s+", " ", str(it.get("text") or "")).strip()[:240]
+            k = it.get("kind") if it.get("kind") in _MEM_KO else "prefer"
+            tn = _mnorm(t)
+            if len(tn) < 6 or any(tn == h or tn in h or h in tn for h in have):
+                continue
+            cur.append({"id": "m%d" % (int(time.time() * 1000) % 1000000000 + n), "t": time.time(), "note": nt.get("id"), "title": (nt.get("title") or "")[:60], "kind": k, "text": t})
+            have.append(tn)
+            n += 1
+        if n:
+            cfg["save_json"](_mem_path(), {"items": cur[-300:]})
+    return n
+
+
+def memory_del(mid):
+    with _LOCK:
+        cur = memory_list()
+        new = [x for x in cur if x.get("id") != mid]
+        if len(new) != len(cur):
+            cfg["save_json"](_mem_path(), {"items": new})
+    return {"ok": True, "items": new}
+
+
+def _memory_text(nt, cap=1800):
+    """[연구자에 관해 기억하는 것] — 최근 40개 안에서 1,800자까지, 다른 주제에서 온 것은 그 주제 이름과 함께"""
+    items = memory_list()
+    if not items:
+        return ""
+    L = []
+    for x in reversed(items[-40:]):
+        other = x.get("note") != nt.get("id")
+        L.append("- (%s) %s%s" % (_MEM_KO.get(x.get("kind"), "선호"), x["text"], (" — 주제 「%s」 에서" % x["title"]) if other and x.get("title") else ""))
+    text = "\n".join(L)
+    if len(text) > cap:
+        text = text[:cap].rsplit("\n", 1)[0]
+    return "[연구자에 관해 기억하는 것 — 이 주제와 다른 주제의 토의에서 연구자가 거절한 것·밝힌 선호·제약입니다(답마다 프로그램이 모은 것). 같은 종류의 제안을 다시 내지 않고, 답의 꼴도 이에 맞춥니다]\n" + text + "\n"
+
+
+def _digest_run(nid):
+    """답 하나가 끝난 뒤 — Sonnet 이 지금까지의 정리를 고치고, 다른 주제에도 적용될 연구자의 말을 _기억.json 에 더한다. 끝나면 digest_pending 을 뗀다."""
+    t0 = time.time()
+    nt = _load(nid)
+    if not nt:
+        return
+    th = [m for m in nt.get("thread") or [] if m.get("text")]
+    if len(th) < 2 or th[-1].get("role") != "claude":
+        with _LOCK:
+            nt = _load(nid)
+            if nt:
+                nt.pop("digest_pending", None)
+                _save(nt)
+        return
+    old = (nt.get("digest") or {}).get("text") or ""
+    cut = lambda m, n: "%s: %s" % (_who(m), (m.get("text") or "")[:n])
+    prompt = (_DIGEST_RULE + "\n\n[주제] %s (%s)\n" % (nt.get("title") or "", "분야에 관한 물음" if (nt.get("kind") or "topic") == "ask" else "연구 주제") +
+              (("[지금까지의 정리]\n" + old[:3000] + "\n\n") if old else "") + (_decisions_text(nt) + "\n" if nt.get("decisions") else "") +
+              (("[바로 앞 문답]\n" + "\n\n".join(cut(m, 1500) for m in th[-4:-2]) + "\n\n") if len(th) >= 4 else "") +
+              "[새 문답]\n" + "\n\n".join(cut(m, 6000) for m in th[-2:]))
+    res, d = None, None
+    try:
+        run = cfg.get("claude_run")
+        res = run(prompt, timeout=240, model="sonnet", effort=None, tools="") if run else None
+        d = _json_of((res or {}).get("text")) if res else None
+    except Exception as e:
+        res, d = None, None
+        try:
+            print("notes digest 호출:", e, flush=True)
+        except Exception:
+            pass
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return
+        nt.pop("digest_pending", None)
+        text = str((d or {}).get("digest") or "").strip() if isinstance(d, dict) else ""
+        if text:
+            nadd = 0
+            try:
+                nadd = memory_add((d or {}).get("memory") or [], nt)
+            except Exception:
+                nadd = 0
+            nt["digest"] = {"text": text[:3000], "t": time.time(), "n": sum(1 for m in th if m.get("role") == "claude"), "model": (res or {}).get("model", ""),
+                            "sec": round(time.time() - t0), "tok": (res or {}).get("tok"), "mem_added": nadd}
+            nt.pop("digest_error", None)
+        else:
+            nt["digest_error"] = "정리를 갱신하지 못했습니다" + _why()
+        _save(nt)
+
+
+def digest_start(nid):
+    """「다시 정리」 — 마지막 문답으로 정리를 다시 갱신한다(배경, Sonnet)"""
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return {"error": "주제를 찾지 못했습니다"}
+        if nt.get("digest_pending"):
+            return {"error": "정리를 갱신하는 중입니다"}
+        if not any(m.get("role") == "claude" for m in nt.get("thread") or []):
+            return {"error": "아직 답이 없습니다"}
+        nt["digest_pending"] = time.time()
+        nt.pop("digest_error", None)
+        _save(nt)
+    threading.Thread(target=_digest_run, args=(nid,), name="notes-digest", daemon=True).start()
+    return {"ok": True}
 
 
 # ---------- 주제 카드: 대화에서 정리 ----------
@@ -1459,8 +1736,8 @@ _INTRO_RULE = (
 _DESIGNS = {}   # 주제 id → 설계서를 만들 때 같이 본 유사 연구(stem·이름) — _apply_plan 이 plan.similar 에 옮긴다 (2026-10-26)
 
 
-_KO_STOP = {"연구", "논문", "결과", "실험", "분석", "가능", "경우", "대한", "통해", "있다", "없다", "때문", "그리고", "하지만", "영향", "특성", "조건", "방법", "과정", "기존", "제안", "확인", "비교", "관찰", "측정", "모델", "설계", "가설", "물음", "수준", "변수", "우리", "연구실", "논의", "정리", "다음", "지금", "이런", "어떤", "무엇", "것은", "것이", "것을", "하나", "둘째", "첫째", "서재", "탐색", "공부", "주제", "카드", "토의"}
-_KO_TAIL = re.compile(r"(으로써|으로는|에서는|에서도|으로|에서|부터|까지|에게|처럼|보다|이라|이다|들의|들이|들을|들은|들|을|를|이|가|은|는|의|에|로|과|와|도|만|나|고|며|서|면|적인|적)$")
+_KO_STOP = libindex._KO_STOP   # 한국어 낱말 규칙(조사 떼기·토의의 흔한 말)은 서재 문장 색인(libindex)에 한 곳 — 2026-11-09 에 옮김
+_KO_TAIL = libindex._KO_TAIL
 
 
 def _ko_topic(nt, n=14):
@@ -3329,6 +3606,9 @@ def _md_card(nt):
     seed = nt.get("seed") or {}
     if seed.get("text"):
         out += ["## 출발점", seed["text"], ""]
+    dg = nt.get("digest") or {}
+    if dg.get("text"):   # 답마다 갱신되는 요지 (2026-11-09) — md·Claude 채팅 폴더의 요지.md 에도
+        out += ["## 지금까지의 정리 (답마다 자동으로 갱신 · %s)" % time.strftime("%Y-%m-%d %H:%M", time.localtime(dg.get("t") or 0)), str(dg["text"]), ""]
     if nt.get("card"):
         out += ["## 주제 카드"]
         for k in CARD_KEYS:
@@ -3469,6 +3749,12 @@ def handle_get(h, url):
         return h._send(200, d)
     if p == "/api/notes/wanted":             # 받을 논문 대기열 (2026-10-28); ?sync=1 은 서재에 들어왔는지 다시 봄
         return h._send(200, {"items": wanted_list(sync=_q(url, "sync") == "1")})
+    if p == "/api/notes/memory":             # 연구자에 관해 기억하는 것 (2026-11-09)
+        return h._send(200, {"items": memory_list(), "kind_ko": _MEM_KO})
+    if p == "/api/notes/libhits":            # 이 물음에 서재 문장 색인이 무엇을 찾나 — 진단 (2026-11-09): ?id=&q=
+        nt = _load(_q(url, "id")) or {}
+        text, refs, info = _lib_hits(nt, _q(url, "q") or "")
+        return h._send(200, {"info": info, "refs": refs, "text": text})
     if p == "/api/notes/bg":
         full = _q(url, "text") == "1"
         d = background_view(full)
@@ -3515,6 +3801,10 @@ def handle_post(h, body):
             return h._send(200, lab_fetch())
         if op == "decision":                      # 연구자가 정한 것 (2026-10-30)
             return h._send(200, decision_op(nid, body))
+        if op == "digest":                        # 지금까지의 정리 다시 (2026-11-09)
+            return h._send(200, digest_start(nid))
+        if op == "memory":                        # 연구자에 관해 기억하는 것 — 지우기
+            return h._send(200, memory_del(str(body.get("mid") or "")))
         if op == "save":
             return h._send(200, save_fields(nid, body))
         if op == "delete":

@@ -175,6 +175,8 @@
   .doc aside { background: var(--amber-bg); border-radius: 16px; padding: 14px 16px 15px; margin: 1.8em -4px; font-size: .93em; }
   .doc aside .hd { color: var(--amber); font-weight: 700; font-size: .9em; } .doc aside h4 { margin: .9em 0 .2em; font-size: 1em; }
   .doc .anc { font-size: .72em; font-weight: 700; color: var(--accent); background: var(--accent-bg); border-radius: 6px; padding: 1px 5px; margin: 0 1px; white-space: nowrap; text-decoration: none; vertical-align: 1px; }
+  .doc .anc.lr { color: var(--text-2); background: var(--card); }   /* 서재 문장 번호(L3 s45) — 누르면 원문·번역 (2026-11-09) */
+  .doc .ck { font-size: .7em; font-weight: 700; vertical-align: super; margin-left: 1px; text-decoration: none; line-height: 0; } .doc .ck.ok { color: var(--accent); } .doc .ck.no { color: var(--amber); }   /* (저자 연도) 뒤의 ✓·★·? */
   .secnav { display: flex; gap: 10px; padding: 8px 16px 0; } .secnav .pill { flex: 1; min-width: 0; height: 48px; border-radius: 14px; }
 
   /* 아래에서 올라오는 칸 (원문·근거) · 창 · 그림 크게 · 알림 */
@@ -434,7 +436,8 @@ function inline(s, o) {
   s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' data-name='" + esc(n) + "' src='/eq?file=" + enc(o.file || "") + "&name=" + enc(n) + "'>");
   if (o.math) s = s.replace(/\$([^$\n]{1,300})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
   s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
-  if (o.anchors) s = s.replace(/⟦([A-Z]\d+\.\d+)⟧/g, (m, k) => o.anchors[k] ? "<a class='anc' href='#' data-anc='" + k + "'>" + k + "</a>" : "");
+  if (o.anchors || o.lrefs) s = s.replace(/⟦\s*((?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?)(?:\s*[,·]\s*(?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?))*)\s*⟧/g, (m, ids) => ids.split(/\s*[,·]\s*/).map(k =>   /* 공부 장의 논지(C1.2) · 서재 문장(L3 s45, 2026-11-09) */
+    /^L/.test(k) ? ((o.lrefs || {})[k] ? "<a class='anc lr' href='#' data-lref='" + k + "'>" + k + "</a>" : "") : ((o.anchors || {})[k] ? "<a class='anc' href='#' data-anc='" + k + "'>" + k + "</a>" : "")).join(" "));
   if (!o.sent) return s.replace(/\[s\d+\]\s*/g, "");
   const parts = s.split(/\[s(\d+)\]\s*/); let h = parts[0];      /* 번역: 문장마다 누를 수 있게 */
   for (let i = 1; i < parts.length; i += 2) h += "<span class='s' data-s='" + parts[i] + "'>" + parts[i + 1] + "</span>";
@@ -974,6 +977,17 @@ function eqPollM(doc, file, my) {      /* 전사가 끝나면 다시 그린다 (
 const bubble = t => "<div class='mu'><div" + (String(t).length > 380 ? " class='long'" : "") + ">" + esc(t) + "</div></div>";
 const quoteHtml = t => t ? "<div class='mq cl3'>" + esc(t) + "</div>" : "";
 const answer = (t, o) => "<div class='mc doc'>" + md(t, Object.assign({ math: true, minH: 3 }, o || {})) + "</div>";
+function markCites(html, cites) {   /* 답 속의 (저자 연도) 뒤에 ✓·★(서재에 있음 — 누르면 그 논문)·?(서재에 없음 — Claude 의 기억); 글 조각에만 (2026-11-09) */
+  const keys = Object.keys(cites || {}).sort((a, b) => b.length - a.length); if (!keys.length) return html;
+  return html.split(/(<[^>]+>)/).map(seg => {
+    if (seg.startsWith("<")) return seg;
+    let s = seg;
+    keys.forEach(k => { const c = cites[k], ek = esc(k); if (!c || s.indexOf(ek) < 0) return;
+      const mark = c.file ? "<a class='ck ok' href='" + pUrl(c.file, "summary") + "'>" + (c.star ? "★" : "✓") + "</a>" : "<span class='ck no' title='서재에 없는 논문'>?</span>";
+      s = s.split(ek).join(ek + mark); });
+    return s;
+  }).join("");
+}
 const waitHtml = (label, t0, cancel) => "<div class='mw'><span class='dots'><i></i><i></i><i></i></span><span>" + label + " · <span id='waitT' data-t0='" + t0 + "'>" + fmtDur(Math.max(0, Math.round((Date.now() - t0) / 1000))) + "</span></span>" + (cancel ? "<button id='waitX'>취소</button>" : "") + "</div>";
 setInterval(() => { const w = $("waitT"); if (w) w.textContent = fmtDur(Math.max(0, Math.round((Date.now() - (+w.dataset.t0)) / 1000))); }, 1000);
 function composerHtml(ph, alt) {
@@ -1224,17 +1238,17 @@ function newNoteSheet() {
 async function viewNote(id, my) {
   shell({ parent: "#/notes", title: "노트", fade: true, chat: true });
   app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'><div class='sk' style='height:80px;margin:14px 0'></div><div class='sk' style='height:200px;margin:0'></div></div>" + composerHtml("이어서 묻기") + "</div>";
-  let nt = null, now0 = Date.now() / 1000, got = Date.now(), ancs = {};
+  let nt = null, now0 = Date.now() / 1000, got = Date.now(), ancs = {}, lrefs = {};
   const draw = () => {
     if (!nt) return;
-    const th = nt.thread || []; ancs = {};
+    const th = nt.thread || []; ancs = {}; lrefs = {};
     nav.querySelector(".nt").textContent = nt.title || "노트";
     $("msgs").innerHTML = "<div class='ch2' style='margin-top:6px'>" + (nt.kind === "ask" ? "물음" : "연구 주제 · " + (NSTAT[nt.status] || "")) + "</div><div class='ch1'>" + esc(nt.title || "") + "</div>" +
       (nt.seed && nt.seed.text ? "<div class='doc' style='padding:0;font-size:14px'><details><summary>출발점</summary><p style='white-space:pre-wrap'>" + esc(nt.seed.text) + "</p></details></div>" : "") +
       th.map(m => { if (m.role === "user") return bubble(m.text || "");
         if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
-        Object.assign(ancs, m.anchors || {});
-        return answer(m.text || "", { anchors: m.anchors || {} }) + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + "</span></div>"; }).join("") +
+        Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
+        return markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {} }), m.cites) + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + "</span></div>"; }).join("") +
       (nt.pending ? waitHtml("Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel", id }); } catch (e) {} pull(); };
@@ -1242,6 +1256,13 @@ async function viewNote(id, my) {
       e.preventDefault(); const k = a.dataset.anc, v = ancs[k]; if (!v) return;
       openPeek("<div class='pkl'>공부 장의 논지 " + esc(k) + "</div><div class='pkk' style='margin-top:0;color:var(--text)'>" + mtext(v.claim || v.t || "") + "</div><div class='pka'><a class='pill pri' href='#/s/" + esc(enc(v.sid)) + "/" + (+v.si || 0) + "/" + esc(v.key || "") + "'>공부 장에서 보기</a></div>");
       renderMath(peek);
+    });
+    $("msgs").querySelectorAll("[data-lref]").forEach(a => a.onclick = e => {   /* 서재 문장 번호 → 원문·번역, 거기서 그 논문의 그 문장으로 (2026-11-09) */
+      e.preventDefault(); const k = a.dataset.lref, v = lrefs[k]; if (!v) return;
+      const whole = v.paper || v.tr === false, where = [(v.star ? "★ " : "") + (v.short || ""), v.journal, v.page != null ? "p." + (v.page + 1) : ""].filter(Boolean).join(" · ");
+      const ss = t => esc(t).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");   /* 번역문의 h<sub>C</sub> 첨자는 살린다 */
+      openPeek("<div class='pkl'>" + esc(k) + " · " + esc(where) + "</div>" + (v.paper ? "" : "<div class='pkk' style='margin-top:0;color:var(--text)'>" + ss(v.en || "") + "</div>" + (v.ko ? "<div class='pkk' style='color:var(--text-2)'>" + ss(v.ko) + "</div>" : "")) +
+        "<div class='pka'><a class='pill pri' href='" + (whole ? pUrl(v.file, "summary") : pUrl(v.file, "translation", v.sid, (v.en || "").slice(0, 120))) + "'>" + (whole ? "논문 열기" : "논문에서 이 문장 보기") + "</a></div>");
     });
     renderMath($("msgs"));
   };
