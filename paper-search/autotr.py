@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """자동 번역 — 새로 들어온 논문은 알아서 전문 번역을 만들고, 옛 판 번역은 밤에 차례로 다시 만든다.
 (2026-11-08, 사용자: '내가 안 보는 동안에도 새로 논문 있으면 알아서 전문 번역 만들고, 너무 옛 번역 있으면 알아서 다시 생성하게 해 줘')
+(2026-11-09, 사용자: '새로 다운받는 논문들은 바로바로 요약이랑 번역 만들어' — 새 논문은 들어온 지 20초 뒤부터, 요약(summary 를 켰을 때)은 번역을 기다리지 않고
+ 그 옆에서 나란히 만든다: 번역 칸 cur · 요약 칸 cur_sum. 번역은 있는데 요약이 없는 새 논문도 요약을 만든다.)
 
 설정 — 설정.json 의 autotr: on(새 논문) · summary(새 논문은 요약도) · redo(옛 판 다시) · before('이 날 이전에 만든 번역 = 옛 판', YYYY-MM-DD)
        · per_night(하룻밤에 다시 만들 편수) · per_day_new(하루에 번역할 새 논문 편수) · hours([22, 8] — 옛 판은 이 시간대에만)
 상태 — 번역\\_자동번역.json: since(켠 때 − 하루: 그 뒤 들어온 논문이 '새 논문') · seen{파일: 처음 본 때} · queue[](「모두 넣기」 로 넣은 옛 미번역 논문)
        · cur(지금 도는 것) · done[](최근 200) · fails{stem: {n, t, err}} · night{key, n} · day{key, n}
-원칙 — 한 번에 하나만 돌리고, 사용자가 시킨 요약·번역이 둘 넘게 돌거나 학습·공부가 도는 밤에는 기다린다. Claude 호출에 문제가 있으면(로그인·한도) 쉰다.
+원칙 — 번역은 한 번에 하나(요약은 그 옆에서 하나), 사용자가 시킨 요약·번역이 둘 넘게 돌거나 학습·공부가 도는 밤(옛 판)에는 기다린다. Claude 호출에 문제가 있으면(로그인·한도) 쉰다.
        옛 판을 다시 만들 때는 옛 파일을 번역\\_옛판\\<stem>\\ 에 두고 생성은 끝에서만 파일을 쓰므로, 실패하면 옛 번역이 그대로 남는다.
        끝나면 옛→새 문장 번호 대응표(.번역.옛번호.json)를 적고 서버의 on_retranslated 로 주석(학습)·바탕의 본보기·수식 색인·캐시를 맞춘다.
        공부·학습·단어장이 가리키는 문장(?sent=)은 번호가 바뀌어도 원문 글(?q=)로 다시 찾는다(reader.html · m.html).
@@ -23,13 +25,14 @@ import time
 cfg = {}
 STATE_NAME = "_자동번역.json"
 OLD_DIR = "_옛판"
-EVERY = int(os.environ.get("ATHENAEUM_AUTOTR_EVERY") or 45)       # 초 — 살피는 간격 (환경 변수는 시험용)
+EVERY = int(os.environ.get("ATHENAEUM_AUTOTR_EVERY") or 20)       # 초 — 살피는 간격 (환경 변수는 시험용; 2026-11-09 45 → 20: 새 논문은 바로바로)
 _DEFAULT = {"on": False, "summary": False, "redo": False, "before": "2026-10-24", "per_night": 8, "per_day_new": 12, "hours": [22, 8]}
 _LOCK = threading.RLock()
 _ST = {"thread": None, "err": "", "pause_until": 0.0, "redo_cache": None, "counting": False, "started": 0}
 _LIMIT_RX = re.compile(r"한도|limit|usage|rate|429|too many|quota|overloaded", re.I)
 _PERM_RX = re.compile(r"스캔본|글자를 추출할 수 없|설치되어 있지|찾을 수 없습니다", re.I)     # 다시 해도 같은 결과인 실패 — 더 시도하지 않는다
-_SETTLE = 120          # 초 — 서재에 들어온 뒤 이만큼은 기다린다 (수집이 이름을 바꾸고 라벨을 붙이는 동안)
+_SETTLE = 20           # 초 — 서재에 들어온 뒤 이만큼은 기다린다 (수집이 파일을 옮겨 놓는 동안; 2026-11-09 120 → 20)
+_SETTLE_SUM = 150      # 초 — 요약은 라벨이 붙을 때까지 기다리되(리뷰/연구 요약이 라벨로 갈린다) 길어도 이만큼만
 
 
 def init(**kw):
@@ -139,6 +142,7 @@ def _state():
     d.setdefault("seen", {})
     d.setdefault("queue", [])
     d.setdefault("cur", None)
+    d.setdefault("cur_sum", None)        # 새 논문의 요약 — 번역(cur) 옆에서 나란히 돈다
     d.setdefault("done", [])
     d.setdefault("fails", {})
     d.setdefault("night", {"key": "", "n": 0})
@@ -212,6 +216,11 @@ def _mark_fail(st, stem, err, perm=False):
     st.setdefault("fails", {})[stem] = fl
 
 
+def _fkey(f, kind="translation"):
+    """실패 기록의 열쇠 — 번역은 stem, 요약은 stem|요약 (요약의 실패가 번역을 막지 않게)"""
+    return _stem(f) + ("|요약" if kind == "summary" else "")
+
+
 # ---------- 후보 ----------
 def _track_seen(st, now):
     """서재의 파일마다 처음 본 때 — 처음 돌 때는 파일의 시각으로(옛 논문이 모두 '새 논문' 이 되지 않게), 그 뒤 들어온 것은 지금으로"""
@@ -229,25 +238,35 @@ def _track_seen(st, now):
     return pdfs
 
 
-def _new_candidates(st, s, now, pdfs=None, check=True):
-    """새로 번역할 논문 — since 뒤에 들어온 것(들어온 뒤 2분이 지난 것, 새것부터) + 「모두 넣기」 로 넣어 둔 것(차례대로)"""
+def _new_candidates(st, s, now, pdfs=None, check=True, kind="translation"):
+    """새로 만들 논문 — since 뒤에 들어온 것(들어온 뒤 _SETTLE 이 지난 것, 새것부터) + (번역만) 「모두 넣기」 로 넣어 둔 것(차례대로).
+    kind="summary" 면 요약이 없는 새 논문 — 라벨이 붙었거나 들어온 지 _SETTLE_SUM 이 지난 것(번역이 이미 있어도 든다)."""
     pdfs = pdfs if pdfs is not None else _pdfs()
     since = st.get("since") or 1e18
     fresh, queued = [], []
-    qset = set(st.get("queue") or [])
+    qset = set(st.get("queue") or []) if kind == "translation" else set()
+    fails = st.get("fails") or {}
+    labeled = cfg.get("labeled")
     for f in pdfs:
-        if os.path.isfile(cfg["gen_path"](f, "translation")):
+        if os.path.isfile(cfg["gen_path"](f, kind)):
             continue
         stem = _stem(f)
-        if not _fail_ok(st, stem, now):
+        if not _fail_ok(st, _fkey(f, kind), now):
             continue
+        if kind == "summary" and (fails.get(stem) or {}).get("n", 0) >= 90:
+            continue                                       # 번역할 수 없는 논문(스캔본·한국어 원문)은 요약도 하지 않는다
         t = (st.get("seen") or {}).get(f) or 0
         if f in qset:
             queued.append(f)
-        elif t >= since and now - t >= _SETTLE:
-            fresh.append((t, f))
         elif t >= since:
-            fresh.append((t, f)) if not check else None    # 아직 가라앉지 않은 것 — 세는 데는 넣고 고르는 데는 안 넣는다
+            settled = now - t >= _SETTLE
+            if settled and kind == "summary" and now - t < _SETTLE_SUM and labeled:
+                try:
+                    settled = bool(labeled(f))             # 라벨이 아직이면 조금 더 기다린다
+                except Exception:
+                    settled = True
+            if settled or not check:
+                fresh.append((t, f))                       # 아직 가라앉지 않은 것 — 세는 데는 넣고 고르는 데는 안 넣는다
     fresh.sort(key=lambda x: -x[0])
     out = [f for _, f in fresh] + [f for f in (st.get("queue") or []) if f in set(queued)]
     if check:
@@ -336,29 +355,32 @@ def _start(st, f, mode, now, kind="translation"):
             return False
     r = cfg["gen_start"](f, kind, force=(mode == "redo"), by="auto-" + mode)
     if r not in ("started", "running"):
-        _mark_fail(st, stem, "시작하지 못함(%s)" % r)
+        _mark_fail(st, _fkey(f, kind), "시작하지 못함(%s)" % r)
         return False
-    st["cur"] = cur
+    st["cur_sum" if kind == "summary" else "cur"] = cur
     if kind == "translation":
         if mode == "redo":
             st["night"]["n"] = st["night"].get("n", 0) + 1
         else:
             st["day"]["n"] = st["day"].get("n", 0) + 1
+    else:
+        st["day"]["ns"] = st["day"].get("ns", 0) + 1
     if _ST["redo_cache"]:
         _ST["redo_cache"] = (_ST["redo_cache"][0], _ST["redo_cache"][1], [x for x in _ST["redo_cache"][2] if x != f])
     _log("%s 시작: %s" % ({"redo": "옛 판 다시", "new": "새 논문 번역", "summary": "새 논문 요약"}.get(mode if kind == "translation" else "summary", mode), f[:70]))
     return True
 
 
-def _finalize(st, s, now):
-    """도는 것이 끝났나 — 끝났으면 기록하고(옛 판이면 문장 번호 대응표 + 서버 훅), 새 논문이면 요약을 이어서"""
-    cur = st.get("cur") or {}
+def _finalize(st, s, now, slot="cur"):
+    """그 칸(cur 번역 · cur_sum 요약)에서 도는 것이 끝났나 — 끝났으면 기록한다(옛 판이면 문장 번호 대응표 + 서버 훅).
+    요약은 번역 뒤에 잇지 않는다 — _tick 이 요약 칸을 따로 채운다(2026-11-09)."""
+    cur = st.get(slot) or {}
     f, kind, mode = cur.get("file", ""), cur.get("kind", "translation"), cur.get("mode", "new")
     js = cfg["job_state"](f, kind) or {}
     if js.get("status") == "running":
         if now - (cur.get("t0") or now) > 4 * 3600:       # 생성은 40분 상한이 있다 — 여기까지 왔으면 작업이 사라진 것
             _log("네 시간이 지나도 끝나지 않아 접음: %s" % f[:60])
-            st["cur"] = None
+            st[slot] = None
         return
     path = cfg["gen_path"](f, kind)
     ok = js.get("status") != "error" and os.path.isfile(path) and _mtime(path) >= (cur.get("t0") or 0) - 2
@@ -382,11 +404,7 @@ def _finalize(st, s, now):
                 _ST["err"] = ("되맞춤: %s" % e)[:200]
         _log("%s 끝 (%d분): %s%s" % ("옛 판 다시" if mode == "redo" else ("새 논문 요약" if kind == "summary" else "새 논문 번역"), rec["sec"] // 60, f[:70],
                                    (" — 문장 %d개 가운데 %d개가 새 번호로 이어짐" % (rec.get("mapped", 0) + rec.get("lost", 0), rec.get("mapped", 0))) if mode == "redo" and kind == "translation" else ""))
-        st["cur"] = None
-        if kind == "translation" and mode == "new" and s.get("summary") and not os.path.isfile(cfg["gen_path"](f, "summary")) and cfg["engine_ok"]():
-            st["done"] = ([rec] + (st.get("done") or []))[:200]
-            _start(st, f, "new", now, kind="summary")
-            return
+        st[slot] = None
     else:
         err = str(js.get("error") or "결과 파일이 없습니다")[:200]
         rec["err"] = err
@@ -394,9 +412,9 @@ def _finalize(st, s, now):
             _ST["pause_until"] = now + 1800                 # 한도 — 30분 쉬고, 그 논문 탓은 아니다
             _log("한도에 걸려 30분 쉼: %s — %s" % (f[:60], err))
         else:
-            _mark_fail(st, _stem(f), err, perm=bool(_PERM_RX.search(err)))
-            _log("실패: %s — %s" % (f[:60], err))
-        st["cur"] = None
+            _mark_fail(st, _fkey(f, kind), err, perm=bool(_PERM_RX.search(err)))
+            _log("%s 실패: %s — %s" % ("요약" if kind == "summary" else "번역", f[:60], err))
+        st[slot] = None
     st["done"] = ([rec] + (st.get("done") or []))[:200]
 
 
@@ -446,11 +464,14 @@ def _tick():
         pdfs = _track_seen(st, now)
         _rollover(st, now)
         if st.get("cur"):
-            _finalize(st, s, now)
+            _finalize(st, s, now, "cur")
+        if st.get("cur_sum"):
+            _finalize(st, s, now, "cur_sum")
         if s["on"] and not st.get("since"):
             st["since"] = now - 86400
-        if (s["on"] or s["redo"]) and not st.get("cur") and now >= _ST["pause_until"] and not cfg["claude_error"]() and cfg["engine_ok"]() \
-                and cfg["jobs_running"](auto=True) == 0 and cfg["jobs_running"](auto=False) <= 1:
+        # 쉬는 중(한도)·Claude 문제·사람이 시킨 작업이 둘 넘게 도는 동안은 새로 시작하지 않는다
+        free = now >= _ST["pause_until"] and not cfg["claude_error"]() and cfg["engine_ok"]() and cfg["jobs_running"](auto=False) <= 1
+        if free and (s["on"] or s["redo"]) and not st.get("cur"):
             f, mode = None, None
             if s["on"] and st["day"].get("n", 0) < s["per_day_new"]:
                 c = _new_candidates(st, s, now, pdfs)
@@ -462,6 +483,12 @@ def _tick():
                     f, mode = c[0], "redo"
             if f:
                 _start(st, f, mode, now)
+        # 새 논문의 요약 — 번역을 기다리지 않고 그 옆에서 (지금 번역하는 논문의 요약부터)
+        if free and s["on"] and s["summary"] and not st.get("cur_sum") and st["day"].get("ns", 0) < s["per_day_new"]:
+            c = _new_candidates(st, s, now, pdfs, kind="summary")
+            if c:
+                curf = (st.get("cur") or {}).get("file")
+                _start(st, curf if curf in c else c[0], "new", now, kind="summary")
         _save_state(st)
 
 
@@ -490,15 +517,21 @@ def view():
         old = len(c[2]) if c and c[1] == s["before"] and now - c[0] < 600 else None
         if old is None:
             _count_redo_bg()
-        cur = None
-        if st.get("cur"):
-            js = cfg["job_state"](st["cur"].get("file", ""), st["cur"].get("kind", "translation")) or {}
-            cur = dict(st["cur"], short=_short(st["cur"].get("file")), stage=js.get("stage", ""), elapsed=js.get("elapsed"), done=js.get("done"), total=js.get("total"), status=js.get("status"))
+        def slot(name):
+            c0 = st.get(name)
+            if not c0:
+                return None
+            js = cfg["job_state"](c0.get("file", ""), c0.get("kind", "translation")) or {}
+            return dict(c0, short=_short(c0.get("file")), stage=js.get("stage", ""), elapsed=js.get("elapsed"), done=js.get("done"), total=js.get("total"), status=js.get("status"))
+        cur, cur_sum = slot("cur"), slot("cur_sum")
         last = (st.get("done") or [None])[0]
         if last:
             last = dict(last, short=_short(last.get("file")))
-        today = [x for x in (st.get("done") or []) if _daykey(x.get("t") or 0) == _daykey(now) and x.get("kind") == "translation"]
-        return {"settings": s, "in_window": _in_window(s["hours"]), "cur": cur, "last": last,
+        today_all = [x for x in (st.get("done") or []) if _daykey(x.get("t") or 0) == _daykey(now)]
+        today = [x for x in today_all if x.get("kind") == "translation"]
+        new_pending_sum = len(_new_candidates(st, s, now, pdfs, check=False, kind="summary")) if s["on"] and s["summary"] else 0
+        return {"settings": s, "in_window": _in_window(s["hours"]), "cur": cur, "cur_sum": cur_sum, "last": last,
+                "new_pending_sum": new_pending_sum, "today_sum_ok": sum(1 for x in today_all if x.get("kind") == "summary" and x.get("ok")),
                 "missing": len([f for f in missing if (fails.get(_stem(f)) or {}).get("n", 0) < 90]), "queued": len(st.get("queue") or []), "new_pending": new_pending,
                 "old": old, "night": st["night"].get("n", 0) if st["night"].get("key") == _nightkey(now) else 0, "day": st["day"].get("n", 0) if st["day"].get("key") == _daykey(now) else 0,
                 "today_ok": sum(1 for x in today if x.get("ok")), "today_fail": sum(1 for x in today if not x.get("ok")),

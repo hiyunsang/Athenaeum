@@ -426,6 +426,7 @@ def build_prompt(kind, header):
             "- 답변 길이에 제한을 두지 말고 최대한 상세하고 풍부하게 작성하라.\n"
             "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성, "
             "thermoplastic instability(금속) → 열소성 불안정, hard turning → 하드 터닝, uncut chip thickness → 미절삭 칩 두께, flank face → 여유면, deflection → 편향), "
+            "원문이 구별해 쓴 용어는 한국어도 구별하라(orthogonal cutting → 직교 절삭, 2D·two-dimensional cutting → 2차원 절삭; work hardening → 가공 경화, strain hardening → 변형 경화). "
             "중요 용어는 첫 등장 시 영어를 병기하라 (예: 구성인선(built-up edge, BUE)).\n"
             "- 단순 직역이 아니라 논문의 논리를 파악한 자연스럽고 격식 있는 학술 문체로 쓰라.\n"
             "- 요약 외 다른 말(인사말, 마무리 질문)은 절대 하지 마라.\n\n=== 논문 전문 ===\n"
@@ -441,6 +442,7 @@ def build_prompt(kind, header):
         "- 섹션 제목은 마크다운 제목(##)으로, 수식과 그림/표 번호는 원문 그대로 유지하라.\n"
         "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성, "
         "thermoplastic instability(금속) → 열소성 불안정, hard turning → 하드 터닝, uncut chip thickness → 미절삭 칩 두께, flank face → 여유면, deflection → 편향), "
+        "원문이 구별해 쓴 용어는 한국어도 구별하라(orthogonal cutting → 직교 절삭, 2D·two-dimensional cutting → 2차원 절삭; work hardening → 가공 경화, strain hardening → 변형 경화). "
         "전문용어는 첫 등장 시 영어를 병기하라 (예: 구성인선(built-up edge, BUE)).\n"
         "- 단순 직역이 아니라 문장 간 논리적 흐름이 자연스러운 격식 있는 학술 문체로 쓰라.\n"
         "- 그림/표 캡션도 빠짐없이 번역하라. 추출된 본문 중간에 섞여 있는 캡션은 "
@@ -3316,6 +3318,11 @@ GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 �
                  "hard turning → 하드 터닝, hard machining → 경질 가공 — '경면 선삭' 이 아니다; "
                  "uncut chip thickness → 미절삭 칩 두께, undeformed chip thickness → 미변형 칩 두께 — '비절삭' 은 specific cutting 에만; "
                  "rake face → 경사면, flank face → 여유면, flank wear → 여유면 마모; chip deflection → 편향 — '굴절' 이 아니다), "
+                 "원문이 구별해 쓴 용어는 한국어도 구별해 옮긴다 — 영문을 살린다(orthogonal cutting → 직교 절삭, two-dimensional·2D cutting → 2차원 절삭; "
+                 "work hardening → 가공 경화, strain hardening → 변형 경화; yield strength → 항복 강도, yield stress → 항복 응력; "
+                 "Young's modulus → 영률, elastic modulus → 탄성 계수; equivalent → 등가, effective → 유효; ductile regime → 연성 영역, ductile mode → 연성 모드; "
+                 "phase transformation → 상변태, phase transition → 상전이, phase change → 상변화; nose radius → 노즈 반경, edge radius → 날끝 반경; "
+                 "ductile-to-brittle 과 brittle-to-ductile 의 차례도 원문대로). "
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
@@ -4272,6 +4279,7 @@ autotr.init(ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=sav
             gen_path=gen_path, align_path=align_path, info_path=tr_info_path, oldnum_path=oldnum_path, gen_start=gen_start, job_state=job_state, job_clear=job_clear, jobs_running=jobs_running,
             claude_error=claude_error, engine_ok=lambda: bool(engine_exe()), load_stars=load_stars, load_readlog=load_readlog, archive_pdfs=archive_pdfs,
             paper_sents=study._paper_sents, is_korean=study._is_korean_doc, on_retranslated=on_retranslated,
+            labeled=lambda f: bool(((load_json(TAGS_PATH, {}) or {}).get(f) or {}).get("labels") or ((load_json(TAGS_PATH, {}) or {}).get(f) or {}).get("suggested")),   # 새 논문의 요약은 라벨이 붙은 뒤에(리뷰/연구 요약이 라벨로 갈린다 — 길어도 150초만 기다린다)
             others_busy=lambda: bool(corpus._STATE.get("batch_on")) or bool(study._JOBS))   # 밤의 옛 판 다시 만들기는 학습 배치·공부가 도는 동안 기다린다 (Opus 호출이 겹쳐 한도에 걸리지 않게)
 
 

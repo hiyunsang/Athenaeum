@@ -157,8 +157,8 @@ function openSettings(cat) {
         row("도식 코드 모델", sel("fig_model", [["opus", "Opus (꼼꼼함, 5~7분)"], ["sonnet", "Sonnet (빠름, 약 2분)"]]), "말로 만드는 도식의 그리기 코드를 쓰는 모델")] },
       { title: "번역 자동으로", rows: [
         row("새 논문은 들어오면 번역", "<label class='usw'><input type='checkbox' id='atOn'><i></i></label><span class='uout' id='atState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
-            "서재에 새로 들어온 논문의 전문 번역을 알아서 만듭니다 — 한 번에 한 편, 하루 12편까지. 편마다 번역 한 번 값(5만~15만 토큰)이 듭니다. 전에 들어온 번역 없는 논문은 「모두 넣기」 로 차례에 넣습니다", true),
-        row("요약도 함께", "<label class='usw'><input type='checkbox' id='atSum'><i></i></label>", "새 논문은 요약도 같이 만듭니다 (편마다 요약 한 번 값)"),
+            "서재에 새로 들어온 논문의 전문 번역을 들어오자마자(20초쯤 뒤) 만듭니다 — 한 번에 한 편, 하루 상한까지. 편마다 번역 한 번 값(5만~15만 토큰)이 듭니다. 전에 들어온 번역 없는 논문은 「모두 넣기」 로 차례에 넣습니다", true),
+        row("요약도 함께", "<label class='usw'><input type='checkbox' id='atSum'><i></i></label>", "새 논문은 요약도 만듭니다 — 번역을 기다리지 않고 나란히 (편마다 요약 한 번 값)"),
         row("옛 판 번역 다시 만들기", "<label class='usw'><input type='checkbox' id='atRedo'><i></i></label> <input type='date' id='atBefore' style='width:138px'> 이전 · 하룻밤 <input type='number' id='atN' min='1' max='40' style='width:52px'> 편<span class='uout' id='atRedoState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
             "이 날 이전에 만든 번역을 밤(22시~아침 8시)에 차례로 다시 만듭니다 — 읽을 논문(★)과 최근에 읽은 것부터. 옛 번역은 번역 폴더의 _옛판 에 남고, 공부·학습이 가리키는 문장은 번호가 바뀌어도 원문 글로 다시 찾습니다. 기본 날짜 2026-10-24 는 단위(μm)·쪽 맞춤이 번역에 들어가기 전입니다", true)] },
       { title: "Claude 채팅이 보는 폴더", rows: [
@@ -339,7 +339,7 @@ function openSettings(cat) {
       const act = (op, label, mode) => " <a href='#' class='act' data-atop='" + op + "'" + (mode ? " data-mode='" + mode + "'" : "") + ">" + label + "</a>";
       const showA = v => {
         if (!v || !v.settings) { st.textContent = v && v.error ? "⚠ " + v.error : ""; return; }
-        const s = v.settings, cur = v.cur;
+        const s = v.settings, cur = v.cur, cs = v.cur_sum;
         on.checked = !!s.on; sum.checked = !!s.summary; redo.checked = !!s.redo;
         if (document.activeElement !== bef) bef.value = s.before || "";
         if (document.activeElement !== num) num.value = s.per_night;
@@ -347,13 +347,15 @@ function openSettings(cat) {
         const curTxt = cur ? uiEsc(cur.short || "") + (cur.kind === "summary" ? " 요약" : " 번역") + (cur.stage ? " — " + uiEsc(cur.stage) : "") + (cur.total && !/\d+\s*\/\s*\d+/.test(cur.stage || "") ? " (" + (cur.done || 0) + "/" + cur.total + ")" : "") : "";
         const r = v.result || {};
         st.innerHTML = (r.error ? "⚠ " + uiEsc(r.error) + " · " : "") + (s.on ? "켜짐" : "꺼짐") + (cur && cur.mode !== "redo" ? " — 지금 " + curTxt : "") +
-          " · 오늘 " + (v.today_ok || 0) + "편" + (v.today_fail ? " (실패 " + v.today_fail + ")" : "") + (v.new_pending ? " · 기다리는 새 논문 " + v.new_pending + "편" : "") +
+          (cs ? (cur && cur.mode !== "redo" ? " · " : " — 지금 ") + uiEsc(cs.short || "") + " 요약" + (cs.stage ? " — " + uiEsc(cs.stage) : "") : "") +
+          " · 오늘 번역 " + (v.today_ok || 0) + "/" + s.per_day_new + "편" + (v.today_fail ? " (실패 " + v.today_fail + ")" : "") + (s.summary ? " · 요약 " + (v.today_sum_ok || 0) + "편" : "") +
+          (v.new_pending || v.new_pending_sum ? " · 기다리는 새 논문: 번역 " + (v.new_pending || 0) + (s.summary ? " · 요약 " + (v.new_pending_sum || 0) : "") + "편" : "") +
           (v.missing ? " · 번역 없는 논문 " + v.missing + "편" + (v.queued ? " (차례에 " + v.queued + "편)" : act("queue_missing", "모두 넣기")) : "") +
           (v.paused ? " · 한도에 걸려 " + fmtT(v.pause_until) + "까지 쉽니다" : "") + (v.last && !v.last.ok ? " · 마지막 실패: " + uiEsc(v.last.short || "") + " — " + uiEsc(v.last.err || "") : "") + (v.err ? " · ⚠ " + uiEsc(v.err) : "");
         rs.innerHTML = (v.old == null ? "옛 판을 세는 중…" : "옛 판 " + v.old + "편") + (s.redo && v.old ? " → 하룻밤 " + s.per_night + "편이면 " + Math.ceil(v.old / s.per_night) + "밤" : "") +
           (s.redo ? " · " + (v.in_window ? "지금 밤 시간" : "밤 " + s.hours[0] + "시~" + s.hours[1] + "시에") + " · 이 밤 " + (v.night || 0) + "/" + s.per_night : "") +
           (cur && cur.mode === "redo" ? " — 지금 " + curTxt : "") + (v.old && !cur && !v.remote ? act("run_now", "지금 한 편", "redo") : "");
-        clearTimeout(tm); if ((cur || v.old == null) && $a("uiSettings")) tm = setTimeout(loadA, 4000);
+        clearTimeout(tm); if ((cur || cs || v.old == null) && $a("uiSettings")) tm = setTimeout(loadA, 4000);
       };
       const loadA = () => fetch("/api/autotr").then(r => r.json()).then(showA).catch(() => {});
       const postA = body => fetch("/api/autotr", { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(showA).catch(() => { st.textContent = "저장하지 못했습니다"; });
