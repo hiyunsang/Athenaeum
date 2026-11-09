@@ -424,7 +424,8 @@ def build_prompt(kind, header):
             "(형식: **Fig. 1** - 번역된 캡션). 원문 PDF를 옆에 두고 대조하는 용도이므로 하나도 빠뜨리지 마라.\n\n"
             "규칙:\n"
             "- 답변 길이에 제한을 두지 말고 최대한 상세하고 풍부하게 작성하라.\n"
-            "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성), "
+            "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성, "
+            "thermoplastic instability(금속) → 열소성 불안정, hard turning → 하드 터닝, uncut chip thickness → 미절삭 칩 두께, flank face → 여유면, deflection → 편향), "
             "중요 용어는 첫 등장 시 영어를 병기하라 (예: 구성인선(built-up edge, BUE)).\n"
             "- 단순 직역이 아니라 논문의 논리를 파악한 자연스럽고 격식 있는 학술 문체로 쓰라.\n"
             "- 요약 외 다른 말(인사말, 마무리 질문)은 절대 하지 마라.\n\n=== 논문 전문 ===\n"
@@ -438,7 +439,8 @@ def build_prompt(kind, header):
         "- 초록(Abstract)부터 결론(Conclusion)까지 단 한 문장도 누락하거나 요약하지 말고 "
         "전체를 순서대로 번역하라. 이것이 최우선 과제다.\n"
         "- 섹션 제목은 마크다운 제목(##)으로, 수식과 그림/표 번호는 원문 그대로 유지하라.\n"
-        "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성), "
+        "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성, "
+        "thermoplastic instability(금속) → 열소성 불안정, hard turning → 하드 터닝, uncut chip thickness → 미절삭 칩 두께, flank face → 여유면, deflection → 편향), "
         "전문용어는 첫 등장 시 영어를 병기하라 (예: 구성인선(built-up edge, BUE)).\n"
         "- 단순 직역이 아니라 문장 간 논리적 흐름이 자연스러운 격식 있는 학술 문체로 쓰라.\n"
         "- 그림/표 캡션도 빠짐없이 번역하라. 추출된 본문 중간에 섞여 있는 캡션은 "
@@ -3309,7 +3311,11 @@ def oldnum_path(name):
 
 
 GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선, "
-                 "surface integrity → 표면 무결성 — '표면 집적도'·'표면 완전성' 이 아니다), "
+                 "surface integrity → 표면 무결성 — '표면 집적도'·'표면 완전성' 이 아니다; "
+                 "금속의 thermoplastic/thermo-plastic instability → 열소성 불안정 — 고분자의 '열가소성' 이 아니다; "
+                 "hard turning → 하드 터닝, hard machining → 경질 가공 — '경면 선삭' 이 아니다; "
+                 "uncut chip thickness → 미절삭 칩 두께, undeformed chip thickness → 미변형 칩 두께 — '비절삭' 은 specific cutting 에만; "
+                 "rake face → 경사면, flank face → 여유면, flank wear → 여유면 마모; chip deflection → 편향 — '굴절' 이 아니다), "
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
