@@ -424,7 +424,7 @@ def build_prompt(kind, header):
             "(형식: **Fig. 1** - 번역된 캡션). 원문 PDF를 옆에 두고 대조하는 용도이므로 하나도 빠뜨리지 마라.\n\n"
             "규칙:\n"
             "- 답변 길이에 제한을 두지 말고 최대한 상세하고 풍부하게 작성하라.\n"
-            "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직), "
+            "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성), "
             "중요 용어는 첫 등장 시 영어를 병기하라 (예: 구성인선(built-up edge, BUE)).\n"
             "- 단순 직역이 아니라 논문의 논리를 파악한 자연스럽고 격식 있는 학술 문체로 쓰라.\n"
             "- 요약 외 다른 말(인사말, 마무리 질문)은 절대 하지 마라.\n\n=== 논문 전문 ===\n"
@@ -438,7 +438,7 @@ def build_prompt(kind, header):
         "- 초록(Abstract)부터 결론(Conclusion)까지 단 한 문장도 누락하거나 요약하지 말고 "
         "전체를 순서대로 번역하라. 이것이 최우선 과제다.\n"
         "- 섹션 제목은 마크다운 제목(##)으로, 수식과 그림/표 번호는 원문 그대로 유지하라.\n"
-        "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직), "
+        "- 표준 한국어 기술 용어를 사용하고(예: feed rate → 이송 속도, microstructure → 미세 조직, surface integrity → 표면 무결성), "
         "전문용어는 첫 등장 시 영어를 병기하라 (예: 구성인선(built-up edge, BUE)).\n"
         "- 단순 직역이 아니라 문장 간 논리적 흐름이 자연스러운 격식 있는 학술 문체로 쓰라.\n"
         "- 그림/표 캡션도 빠짐없이 번역하라. 추출된 본문 중간에 섞여 있는 캡션은 "
@@ -3308,7 +3308,8 @@ def oldnum_path(name):
     return os.path.join(GEN_DIR, os.path.splitext(name)[0] + ".번역.옛번호.json")
 
 
-GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선), "
+GLOSSARY_RULE =("표준 한국어 기술 용어를 쓰고(feed rate → 이송 속도, microstructure → 미세 조직, built-up edge → 구성인선, "
+                 "surface integrity → 표면 무결성 — '표면 집적도'·'표면 완전성' 이 아니다), "
                  "중요 용어는 첫 등장 시 영어 병기. 직역투가 아닌 자연스러운 학술 문체.")
 
 
@@ -4034,7 +4035,7 @@ study.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sav
 # 캡션 번역은 .캡션.json 이 있을 때만 붙인다(Claude 를 부르지 않는다 — 토큰 0). 그림을 가리키는 문장 번호(refs)는 정렬표에서 'Fig. n'·'Table n' 을 말한 문장(번호 순 4개까지) — 화면이 그 첫 문장의 문단 아래에 그림을 둔다.
 import figcrop
 
-FIGS_V = 2      # 2: figcrop 의 그림 영역 규칙을 고친 뒤(2026-11-07) 목록을 다시 — 잘라 둔 PNG 는 그대로, 못 잘랐던 것만 다시 시도한다
+FIGS_V = 3      # 2: figcrop 의 그림 영역 규칙을 고친 뒤(2026-11-07) 목록을 다시 — 잘라 둔 PNG 는 그대로, 못 잘랐던 것만 다시 시도한다 · 3: 서재의 PNG 를 고친 규칙(다른 캡션은 경계)으로 다시 자르고 글만 잘라 온 것은 지운 뒤(2026-11-09)
 _FIG_BUILDING, _FIG_LOCK = {}, threading.Lock()      # 논문 이름 → {"t", "items"} (자르는 중)
 _FIG_REF_RX = re.compile(r"(?i)\b(fig(?:ure|s)?\.?|tables?)\s*(\d{1,3}(?:\s*(?:,|and|&|to|\u2013|\u2014|-)\s*\d{1,3})*)(?!\d|\.\d)")   # 'Fig. 3', 'Figs. 3 and 4', 'Table 2', 'Figs. 3\u20135' — 뒤에 숫자·'.숫자'(3.2절) 만 막는다, 문장 끝 마침표는 둔다
 _FIG_RANGE_RX = re.compile(r"(\d+)\s*(?:to|\u2013|\u2014|-)\s*(\d+)")
@@ -4190,11 +4191,16 @@ def paper_figs(name):
             sz = _png_size(os.path.join(dd, o["img"]))
             if sz:
                 o["w"], o["h"] = sz
-        if it.get("kind") == "fig" and what.get(it.get("n")):
-            o["what"] = what[it["n"]]["what"]
-            o["type"] = what[it["n"]].get("type")
-            if what[it["n"]].get("q") == "poor" and o["img"] and os.path.getmtime(os.path.join(dd, o["img"])) <= idx_mt + 1:
-                o["poor"] = True      # 그림 색인이 '잘렸거나 흐리다' 고 본 그림(그 색인이 본 바로 그 PNG 일 때만) — 화면이 싣지 않는다
+        if it.get("kind") == "fig" and what.get(it.get("n")) and o["img"]:
+            try:
+                seen = os.path.getmtime(os.path.join(dd, o["img"])) <= idx_mt + 1      # 색인이 본 바로 그 PNG 인가 — 그 뒤 다시 자른 그림에는 옛 '그림 읽기'·poor 판정을 붙이지 않는다 (2026-11-09)
+            except OSError:
+                seen = False
+            if seen:
+                o["what"] = what[it["n"]]["what"]
+                o["type"] = what[it["n"]].get("type")
+                if what[it["n"]].get("q") == "poor":
+                    o["poor"] = True      # 그림 색인이 '잘렸거나 흐리다' 고 본 그림 — 화면이 싣지 않는다
         if it.get("err"):
             o["err"] = it["err"]
         out.append(o)

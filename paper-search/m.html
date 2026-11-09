@@ -304,23 +304,62 @@ let papers = null, papersT = 0, studies = null, studiesT = 0, notesList = null, 
 let view = 0, curHash = location.hash, lastRoot = lsGet("m_root", "#/"), refresh = null, pollT = null, pingT = null, prevDepth = -1;
 let animT = null, pingLast = null, askCtx = {}, peekCtx = null;              /* 묻는 칸에 붙일 인용·이어 묻기 · 지금 올라와 있는 칸이 가리키는 것 */
 const stack = [], studyCache = {}, alignCache = {}, pos = jGet("m_pos", {});
+let posLock = 0, posDirty = false;      /* 프로그램이 굴리는 동안(화면 바꿀 때 맨 위로 · 읽던 자리로)은 자리로 적지 않는다(그때까지의 시각) · 적을 것이 생겼나 */
 function applyLook() {
   const de = document.documentElement, th = lsGet("m_theme", "");
   de.style.setProperty("--mfs", (+lsGet("m_fs", "17") || 17) + "px");
   if (th) de.dataset.theme = th; else de.removeAttribute("data-theme");
 }
 
-/* ---------- 굴리기: 읽던 자리 · 위 막대 숨기기 · 읽은 만큼 줄 ---------- */
-let lastY = 0, acc = 0, posT = null, posPend = null, lastTouch = Date.now();
+/* ---------- 굴리기: 읽던 자리 · 위 막대 숨기기 · 읽은 만큼 줄 ----------
+   읽던 자리(2026-11-09, 사용자: '다시 들어갔을 때 위치 기억이 안 됨'): 전에는 ① 화면을 바꿀 때 맨 위로 굴리는 프로그램 스크롤이 '새 화면의 자리 = 0' 으로 적혀 글이 늦게 오면 그것을 읽었고
+   ② 픽셀 y 만 적어 그림·수식이 아직 안 들어온 짧은 글에서 scrollTo 가 잘려 그 잘린 값이 다시 적혔고 ③ 주소에 문장 번호가 붙은 채 들어오면 열쇠가 달라 못 찾았고
+   ④ 열쇠 80개가 넘으면 오래전에 처음 적은(자주 읽는) 것부터 지워졌다. 이제 프로그램이 굴리는 동안은 적지 않고, 보던 문장(.s)·단위(.u)·블록을 앵커로 같이 적어 그 요소로 돌아가며,
+   열쇠는 글 단위(논문 파일·탭, 공부 장·절)로 하고, 적을 때마다 맨 뒤로 보내 오래 안 쓴 것부터 밀려 나간다(300개). */
+let lastY = 0, acc = 0, posT = null, lastTouch = Date.now();
 const setBars = show => document.body.classList.toggle("hidebars", !show);
 const peekOpen = () => peek.classList.contains("on");
-function flushPos() {
-  clearTimeout(posT); posT = null;
-  if (!posPend) return;
-  pos[posPend[0]] = [posPend[1], Date.now()]; posPend = null;
-  const ks = Object.keys(pos); if (ks.length > 80) delete pos[ks[0]];
+function posKey(h) {      /* 같은 글이면 같은 열쇠 — 논문은 파일·탭까지(문장 번호·q 는 뺌), 공부는 장·절까지(문장 키는 뺌); 주소의 인코딩이 달라도 같게 */
+  const parts = String(h || "").replace(/^#\/?/, "").split("/").map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } });
+  if (parts[0] === "p" && parts[1]) return "p|" + parts[1] + "|" + (parts[2] || "");
+  if (parts[0] === "s" && parts[1]) return "s|" + parts[1] + "|" + (parts[2] === "c" ? "c|" + (parts[3] || "") : (parts[2] || ""));
+  return parts.join("|") || "root";
+}
+Object.keys(pos).forEach(k => { if (k.charAt(0) === "#") { const nk = posKey(k); if (!pos[nk]) pos[nk] = pos[k]; delete pos[k]; } });      /* 옛 열쇠(주소 그대로)는 한 번 옮긴다 */
+const BLK = "p, h2, h3, h4, li, figure, table, blockquote, details, pre";
+function posAnchor() {      /* 보던 줄을 글의 요소로 — 문장 .s · 공부 단위 .u · 그 밖은 블록 차례, 그리고 그 요소가 화면 위에서 몇 px 에 있었나(o) */
+  const doc = $("doc"); if (!doc) return null;
+  const top = 60, x = Math.round(window.innerWidth / 2);
+  let t = null;
+  for (const yy of [top + 4, top + 40, top + 100]) {
+    const e = document.elementFromPoint(x, yy); if (!e || !doc.contains(e)) continue;
+    t = e.closest(".s[data-s], .u[data-k]") || e.closest(BLK); if (t) break;
+  }
+  if (!t) for (const el of doc.querySelectorAll(BLK)) { const r = el.getBoundingClientRect(); if (r.height > 0 && r.bottom > top) { t = el; break; } }
+  if (!t) return null;
+  if (!t.matches(".s[data-s], .u[data-k]")) { const s = t.querySelector(".s[data-s], .u[data-k]"); if (s) t = s; }      /* 블록 안에 문장 표식이 있으면 첫 문장으로 — 그림이 끼어 블록 차례가 밀려도 안 어긋나게 */
+  const a = { o: Math.round(t.getBoundingClientRect().top) };
+  if (t.matches(".s[data-s]")) a.s = t.dataset.s;
+  else if (t.matches(".u[data-k]")) a.u = t.dataset.k;
+  else { a.b = [...doc.querySelectorAll(BLK)].indexOf(t); if (a.b < 0) return null; }
+  return a;
+}
+function anchorY(a) {      /* 앵커가 가리키는 요소의 지금 자리 → 굴릴 y (요소가 없으면 null) */
+  const doc = $("doc"); if (!doc || !a) return null;
+  let t = null;
+  if (a.s != null) t = doc.querySelector(".s[data-s='" + String(a.s).replace(/\D/g, "") + "']");
+  else if (a.u != null) t = doc.querySelector(".u[data-k='" + String(a.u).replace(/[^\d.]/g, "") + "']");
+  else if (a.b != null) t = doc.querySelectorAll(BLK)[a.b] || null;
+  if (!t) return null;
+  return Math.max(0, Math.round(t.getBoundingClientRect().top + window.scrollY - (a.o != null ? a.o : 60)));
+}
+function recordPos() {      /* 지금 보는 자리를 이 화면의 열쇠로 적는다 — 픽셀 y · 때 · 앵커 */
+  const k = posKey(curHash), y = Math.max(0, Math.round(window.scrollY));
+  delete pos[k]; pos[k] = [y, Date.now(), posAnchor()];      /* 다시 넣어 맨 뒤로 — 오래 안 쓴 것부터 밀려 나간다 */
+  const ks = Object.keys(pos); while (ks.length > 300) delete pos[ks.shift()];
   lsSet("m_pos", JSON.stringify(pos));
 }
+function flushPos() { clearTimeout(posT); posT = null; if (!posDirty) return; posDirty = false; recordPos(); }
 window.addEventListener("scroll", () => {
   const y = Math.max(0, Math.round(window.scrollY)), b = document.body;
   lastTouch = Date.now();
@@ -332,12 +371,20 @@ window.addEventListener("scroll", () => {
     else if (dy < 0) { acc = acc < 0 ? acc + dy : dy; if (acc < -30) setBars(true); }
     rp.style.width = (max > 0 ? Math.min(100, y / max * 100) : 0) + "%";
   }
-  lastY = y; posPend = [curHash, y];
-  clearTimeout(posT); posT = setTimeout(flushPos, 350);
+  lastY = y;
+  if (posLock && Date.now() < posLock) return;      /* 프로그램이 굴린 것(화면 바꿀 때 맨 위로 · 읽던 자리로)은 자리로 적지 않는다 */
+  posDirty = true; clearTimeout(posT); posT = setTimeout(flushPos, 350);
 }, { passive: true });
-document.addEventListener("touchstart", () => { lastTouch = Date.now(); }, { passive: true });
-function savedY(h) { const v = pos[h]; return Array.isArray(v) ? v : [+v || 0, 0]; }
-function restorePos(y) { if (y == null) y = savedY(curHash)[0]; lastY = y; acc = 0; window.scrollTo(0, y); setTimeout(() => { if (Math.abs(window.scrollY - y) > 4) window.scrollTo(0, y); }, 60); }
+const userMove = () => { lastTouch = Date.now(); posLock = 0; };      /* 사람이 만지면 되돌리기는 거기서 멈추고 그 뒤의 굴림은 적힌다 */
+document.addEventListener("touchstart", userMove, { passive: true });
+document.addEventListener("wheel", userMove, { passive: true });
+function savedY(h) { const v = pos[posKey(h)]; return Array.isArray(v) ? v : [+v || 0, 0]; }
+function restorePos(y, a) {      /* y 가 없으면 적어 둔 자리로(앵커가 있으면 그 요소로). 그림·수식이 늦게 들어와 높이가 바뀌어도 1.2초까지 다시 맞춘다 — 사람이 만지면 그만 */
+  if (y == null) { const v = savedY(curHash); y = v[0]; if (a === undefined) a = v[2]; }
+  posLock = Date.now() + 1500; acc = 0;
+  const go = () => { const ay = a ? anchorY(a) : null, yy = ay != null ? ay : (typeof y === "function" ? y() : y); if (Math.abs(window.scrollY - yy) > 4) window.scrollTo(0, yy); lastY = window.scrollY; };
+  go(); [60, 400, 1200].forEach(ms => setTimeout(() => { if (posLock && Date.now() <= posLock) go(); }, ms));
+}
 if (window.visualViewport) {   /* 자판이 올라오면 묻는 칸을 그 위로 */
   const vv = window.visualViewport, f = () => document.documentElement.style.setProperty("--kb", Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + "px");
   vv.addEventListener("resize", f); vv.addEventListener("scroll", f);
@@ -599,11 +646,12 @@ function homeHtml() {
 async function viewHome(my) {
   shell({ root: "home", left: "<div class='brand'><img src='/logo/mark.svg' alt=''><b>Athenaeum</b></div>", right: "<button class='nb' id='more' aria-label='더 보기'>" + IC.more + "</button>" });
   $("more").onclick = moreSheet;
+  const loc0 = savedY(curHash);
   refresh = () => { if (my !== view) return; const y = window.scrollY; app.innerHTML = homeHtml(); window.scrollTo(0, y); };
   if (!papers && !jGet("m_papers", null)) app.innerHTML = "<div style='height:50px'></div>" + skeleton();
   try { await Promise.all([loadPapers(), loadStudies().catch(() => null)]); } catch (e) { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
   if (my !== view) return;
-  app.innerHTML = homeHtml(); restorePos();
+  app.innerHTML = homeHtml(); restorePos(loc0[0]);
 }
 
 /* ---------- 서재 ---------- */
@@ -644,6 +692,7 @@ function libDraw() {
 }
 async function viewLib(my) {
   shell({ root: "lib", title: "서재", fade: true });
+  const loc0 = savedY(curHash);
   app.innerHTML = "<div class='lt'>서재</div><div class='search'>" + IC.search + "<input type='search' id='q' placeholder='제목 · 저자 · 저널 · 요약의 낱말' autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' enterkeyhint='search' value='" + esc(q) + "'></div>" +
     "<div class='fbar' id='fbar'></div><div class='fbar' id='fbar2' hidden></div><div class='cnt'><span id='cnt'></span><button id='sortb'></button></div><div class='plain' id='liblist'></div><div id='libend' style='height:1px'></div>";
   const qi = $("q"); let t = null;
@@ -657,7 +706,7 @@ async function viewLib(my) {
   try { await loadPapers(); } catch (e) { if (my === view && String(e && e.message) !== "login") $("liblist").innerHTML = failHtml(); return; }
   if (my !== view) return;
   libDraw();
-  const y = savedY(curHash)[0]; while (document.documentElement.scrollHeight < y + window.innerHeight + 400 && libMore()) {}
+  const y = loc0[0]; while (document.documentElement.scrollHeight < y + window.innerHeight + 400 && libMore()) {}
   restorePos(y);
   if (libIO) libIO.disconnect();
   if (window.IntersectionObserver) { libIO = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) libMore(); }, { rootMargin: "900px" }); libIO.observe($("libend")); }
@@ -693,6 +742,7 @@ function startPing(file, kind) {   /* 읽기 기록 — PC 의 읽기 화면과 
   const t0 = Date.now();
   const frac = () => { const h = document.documentElement.scrollHeight - window.innerHeight; return h > 0 ? Math.min(1, Math.max(0, window.scrollY / h)) : 0; };
   const send = sec => {
+    recordPos();      /* 이 휴대폰의 자리 기록도 같은 때로 — 서버의 자리(PC)는 다른 기기가 그 뒤에 읽었을 때만 쓰인다 */
     const f = Math.round(frac() * 1000) / 1000, p = (papers || []).find(x => x.file === file);
     if (p) { p.read = p.read || {}; p.read.last = Date.now() / 1000; p.read.kind = kind; (p.read.pos = p.read.pos || {})[kind] = f; }      /* 첫 화면의 「이어 읽기」 가 곧바로 맞게 */
     fetch("/api/read_ping", { method: "POST", keepalive: true, body: JSON.stringify({ file, kind, pos: f, sec }) }).catch(() => {});
@@ -706,6 +756,7 @@ async function viewPaper(file, tab, sent, my, q) {
   if (tab === "notes") tab = "ask";
   tab = PTABS.some(t => t[0] === tab) ? tab : lsGet("m_tab", "summary");
   if (tab !== "ask") lsSet("m_tab", tab);
+  const loc0 = savedY(curHash);      /* 읽던 자리는 들어올 때 바로 읽어 둔다 — 불러오는 동안의 굴림이 덮어쓰지 않게 */
   let p = (papers || []).find(x => x.file === file);
   const bar = () => {
     shell({ parent: lastRoot, center: segHtml(PTABS, tab), right: tab === "ask" ? "" : "<button class='nb' id='look' aria-label='글씨와 화면'>가</button>", reading: tab !== "ask", chat: tab === "ask" });
@@ -742,9 +793,9 @@ async function viewPaper(file, tab, sent, my, q) {
     if (s.classList.contains("on")) return closePeek();
     peekSent(file, s);
   };
-  /* 읽던 자리: 이 휴대폰의 자리와 PC 의 자리 가운데 더 나중 것 */
-  const loc = savedY(curHash), rd = p.read || {}, srv = +((rd.pos || {})[tab]) || 0, srvT = (rd.last || 0) * 1000;
-  let y = loc[0];
+  /* 읽던 자리: 이 휴대폰의 자리(보던 문장 앵커)와 PC 의 자리 가운데 더 나중 것 */
+  const loc = loc0, rd = p.read || {}, srv = +((rd.pos || {})[tab]) || 0, srvT = (rd.last || 0) * 1000;
+  let y = loc[0], anc = loc[2] || null;
   if (sent) {
     let sid = String(sent).replace(/\D/g, "");
     if (q && tab === "translation") {      /* 원문 글이 같이 왔으면(공부의 근거) 번역이 다시 만들어져 번호가 바뀌었어도 그 문장으로 */
@@ -752,10 +803,10 @@ async function viewPaper(file, tab, sent, my, q) {
       if (my !== view) return;
       sid = resolveSid(alignCache[file], sid, q);
     }
-    const el = doc.querySelector(".s[data-s='" + sid + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); }
+    const el = doc.querySelector(".s[data-s='" + sid + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); anc = null; }
   }
-  else if (srv > .01 && srvT > loc[1] + 90000) y = Math.round(srv * (document.documentElement.scrollHeight - window.innerHeight));
-  restorePos(y); startPing(file, tab);
+  else if (srv > .01 && srvT > loc[1] + 90000) { y = () => Math.round(srv * (document.documentElement.scrollHeight - window.innerHeight)); anc = null; }      /* PC 의 자리는 비율 — 그림이 늦게 들어와 높이가 바뀌어도 되맞추게 함수로 */
+  restorePos(y, anc); startPing(file, tab);
 }
 async function viewMissing(file, p, kind, my) {
   const ko = KIND_KO[kind];
@@ -1056,6 +1107,7 @@ async function viewAsk(file, p, my) {
 /* ---------- 공부 ---------- */
 async function viewStudies(my) {
   shell({ root: "study", title: "공부", fade: true });
+  const loc0 = savedY(curHash);
   const draw = () => {
     const done = (studies || []).filter(s => s.status === "done"), busy = (studies || []).filter(s => s.status === "running"), ls = lastStudy();
     app.innerHTML = "<div class='lt'>공부</div>" + (done.length ? "<div class='grp'>" + done.map(s => rowStudy(s, ls && ls.id === s.id ? ls : null)).join("") + "</div>" : "") +
@@ -1066,7 +1118,7 @@ async function viewStudies(my) {
   if (!studies && !jGet("m_studies", null)) app.innerHTML = "<div class='lt'>공부</div>" + skeleton();
   try { await loadStudies(); } catch (e) { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
   if (my !== view) return;
-  draw(); restorePos();
+  draw(); restorePos(loc0[0]);
 }
 async function loadStudy(id) {
   if (studyCache[id]) return studyCache[id];
@@ -1134,6 +1186,7 @@ function studyAskSheet(st, quote, keys) {
   };
 }
 async function viewStudy(id, rest, my) {
+  const loc0 = savedY(curHash);      /* 읽던 자리는 들어올 때 바로 읽어 둔다 */
   let st = studyCache[id];
   if (!st) {
     shell({ parent: "#/study", title: "공부" }); app.innerHTML = skeleton();
@@ -1153,7 +1206,7 @@ async function viewStudy(id, rest, my) {
       ((ch.gaps || []).length ? "<div class='sh'><h2>이 서재로는 답하지 못한 것</h2></div><div class='doc' style='padding-top:0;padding-bottom:0;font-size:15px'><ul>" + ch.gaps.map(g => "<li>" + esc(g) + "</li>").join("") + "</ul></div>" : "") +
       (refs.length ? "<div class='doc' style='padding-top:8px;font-size:14.5px'><details><summary>참고문헌 " + refs.length + "편</summary><ol>" + refs.map(p => "<li value='" + p.n + "'>" + esc(p.ref || p.title || p.file) + "</li>").join("") + "</ol></details></div>" : "");
     $("stask").onclick = () => studyAskSheet(st, "", []);
-    restorePos(); return;
+    restorePos(loc0[0]); return;
   }
   shell({ parent: "#/s/" + enc(id), title: (si + 1) + " / " + secs.length, right: "<button class='nb' id='look' aria-label='글씨와 화면'>가</button>", reading: true });
   $("look").onclick = lookSheet;
@@ -1171,9 +1224,9 @@ async function viewStudy(id, rest, my) {
   };
   lsSet("m_lastst", JSON.stringify({ id, si, n: secs.length, t: Date.now() }));
   renderMath(doc);
-  let y = savedY(curHash)[0];
-  if (rest[1]) { const el = doc.querySelector(".u[data-k='" + String(rest[1]).replace(/[^\d.]/g, "") + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); } }
-  restorePos(y);
+  let y = loc0[0], anc = loc0[2] || null;
+  if (rest[1]) { const el = doc.querySelector(".u[data-k='" + String(rest[1]).replace(/[^\d.]/g, "") + "']"); if (el) { y = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 150); el.classList.add("flash"); anc = null; } }
+  restorePos(y, anc);
 }
 async function viewStudyChat(st, cid, my) {
   shell({ parent: "#/s/" + enc(st.id), title: "이 장에 묻기", chat: true });
@@ -1210,6 +1263,7 @@ const NSTAT = { idea: "아이디어", review: "검토 중", adopt: "채택", hol
 async function viewNotes(my) {
   shell({ root: "notes", title: "노트", fade: true, right: "<button class='nb' id='nnew' aria-label='새 물음'>" + IC.plus + "</button>" });
   $("nnew").onclick = newNoteSheet;
+  const loc0 = savedY(curHash);
   const draw = () => {
     const row = n => "<a class='row' href='#/n/" + esc(enc(n.id)) + "'><div class='t ko cl2'>" + esc(n.title) + "</div>" + (n.last ? "<div class='g cl1'>" + esc(n.last) + "</div>" : "") + "<div class='m'>" +
       (n.pending ? "<span class='tg hi'>답하는 중</span>" : "") + "<span>" + (n.kind === "ask" ? "물음" : (NSTAT[n.status] || "주제")) + " · 답 " + (n.answers || 0) + " · " + ago(n.updated || n.t) + "</span></div></a>";
@@ -1219,7 +1273,7 @@ async function viewNotes(my) {
   if (notesList) draw(); else app.innerHTML = "<div class='lt'>노트</div>" + skeleton();
   try { notesList = (await api("/api/notes")).items || []; } catch (e) { if (my === view && !notesList && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
   if (my !== view) return;
-  draw(); restorePos();
+  draw(); restorePos(loc0[0]);
 }
 function newNoteSheet() {
   openSheet("<h3>새 물음</h3><textarea id='nta' placeholder='무엇이 궁금한가요? 분야나 연구 주제에 관해 물어보세요'></textarea><div style='height:12px'></div><button class='pill pri big' id='nsend'>묻기</button><div style='font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.5'>Claude 가 서재의 논문·공부 장을 배경으로 답합니다. 보통 1~3분 걸립니다.</div>");
@@ -1429,7 +1483,7 @@ function onRoute() {
   app.classList.remove("push", "fade"); void app.offsetWidth;
   if (prevDepth >= 0) { if (depth > prevDepth) app.classList.add("push"); else if (depth === 0 && prevDepth === 0) app.classList.add("fade"); }
   clearTimeout(animT); animT = setTimeout(() => app.classList.remove("push", "fade"), 450);      /* 화면이 가려져 애니메이션이 멈춰도 내용은 보이게 */
-  prevDepth = depth; lastY = 0; acc = 0; window.scrollTo(0, 0);
+  prevDepth = depth; lastY = 0; acc = 0; posLock = Date.now() + 400; window.scrollTo(0, 0);      /* 맨 위로 굴리는 것은 새 화면의 자리로 적지 않는다 */
   const done = p => p && p.catch && p.catch(e => { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); });
   if (r === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], parts[3], my, parts[4]));
   if (r === "s" && parts[1]) return done(viewStudy(parts[1], parts.slice(2), my));
@@ -1440,7 +1494,8 @@ function onRoute() {
   return done(viewHome(my));
 }
 window.addEventListener("hashchange", onRoute);
-document.addEventListener("visibilitychange", () => { if (!document.hidden && refresh && document.body.classList.contains("root")) { loadPapers().catch(() => {}); } });   /* 다시 열면 읽던 자리·새 논문을 새로 받는다 */
+document.addEventListener("visibilitychange", () => { if (document.hidden) { flushPos(); return; } if (refresh && document.body.classList.contains("root")) { loadPapers().catch(() => {}); } });   /* 떠날 때 자리를 적고, 다시 열면 읽던 자리·새 논문을 새로 받는다 */
+window.addEventListener("pagehide", flushPos);
 applyLook();
 if (!location.hash && lastRoot !== "#/" && /^#\/(lib|study|notes)$/.test(lastRoot)) lastRoot = "#/";      /* 앱을 새로 열면 늘 「읽기」 부터 */
 (async () => { try { isRemote = !!(await api("/api/version")).remote; } catch (e) {} })();   /* 다른 기기에서 열었는가 — 「로그아웃」 을 보일지 */
