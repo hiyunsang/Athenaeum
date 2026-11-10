@@ -1496,6 +1496,7 @@ function onRoute() {
 window.addEventListener("hashchange", onRoute);
 document.addEventListener("visibilitychange", () => { if (document.hidden) { flushPos(); return; } if (refresh && document.body.classList.contains("root")) { loadPapers().catch(() => {}); } });   /* 떠날 때 자리를 적고, 다시 열면 읽던 자리·새 논문을 새로 받는다 */
 window.addEventListener("pagehide", flushPos);
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";      /* 읽던 자리는 이 화면이 스스로 되돌린다 — 브라우저가 뒤로 가기 때 따로 굴리면 그 굴림이 엉뚱한 화면의 자리로 적힌다 */
 applyLook();
 if (!location.hash && lastRoot !== "#/" && /^#\/(lib|study|notes)$/.test(lastRoot)) lastRoot = "#/";      /* 앱을 새로 열면 늘 「읽기」 부터 */
 (async () => { try { isRemote = !!(await api("/api/version")).remote; } catch (e) {} })();   /* 다른 기기에서 열었는가 — 「로그아웃」 을 보일지 */
