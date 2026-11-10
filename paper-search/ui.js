@@ -351,6 +351,7 @@ function openSettings(cat) {
           " · 오늘 번역 " + (v.today_ok || 0) + "/" + s.per_day_new + "편" + (v.today_fail ? " (실패 " + v.today_fail + ")" : "") + (s.summary ? " · 요약 " + (v.today_sum_ok || 0) + "편" : "") +
           (v.new_pending || v.new_pending_sum ? " · 기다리는 새 논문: 번역 " + (v.new_pending || 0) + (s.summary ? " · 요약 " + (v.new_pending_sum || 0) : "") + "편" : "") +
           (v.missing ? " · 번역 없는 논문 " + v.missing + "편" + (v.queued ? " (차례에 " + v.queued + "편)" : act("queue_missing", "모두 넣기")) : "") +
+          (s.on && (v.day || 0) >= s.per_day_new && ((v.new_pending || 0) + (v.queued || 0)) ? " · 하루 상한 " + s.per_day_new + "편을 채워 남은 " + ((v.new_pending || 0) + (v.queued || 0)) + "편은 새벽 4시부터 이어집니다" : "") +
           (v.paused ? " · 한도에 걸려 " + fmtT(v.pause_until) + "까지 쉽니다" : "") + (v.last && !v.last.ok ? " · 마지막 실패: " + uiEsc(v.last.short || "") + " — " + uiEsc(v.last.err || "") : "") + (v.err ? " · ⚠ " + uiEsc(v.err) : "");
         rs.innerHTML = (v.old == null ? "옛 판을 세는 중…" : "옛 판 " + v.old + "편") + (s.redo && v.old ? " → 하룻밤 " + s.per_night + "편이면 " + Math.ceil(v.old / s.per_night) + "밤" : "") +
           (s.redo ? " · " + (v.in_window ? "지금 밤 시간" : "밤 " + s.hours[0] + "시~" + s.hours[1] + "시에") + " · 이 밤 " + (v.night || 0) + "/" + s.per_night : "") +

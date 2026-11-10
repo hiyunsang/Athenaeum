@@ -234,7 +234,8 @@ def _track_seen(st, now):
     for f in list(seen):
         if f not in have:
             seen.pop(f, None)
-    st["queue"] = [f for f in (st.get("queue") or []) if f in have]
+    # 번역이 끝난 것은 차례에서 뺀다 — 안 빼면 「모두 넣기」 뒤 끝난 40편이 '차례에 58편' 으로 계속 세어진다(2026-11-10)
+    st["queue"] = [f for f in (st.get("queue") or []) if f in have and not os.path.isfile(cfg["gen_path"](f, "translation"))]
     return pdfs
 
 
@@ -512,7 +513,9 @@ def view():
         pdfs = _pdfs()
         missing = [f for f in pdfs if not os.path.isfile(cfg["gen_path"](f, "translation"))]
         fails = st.get("fails") or {}
-        new_pending = len(_new_candidates(st, s, now, pdfs, check=False)) if s["on"] else 0
+        miss_ok = [f for f in missing if (fails.get(_stem(f)) or {}).get("n", 0) < 90]
+        qleft = set(st.get("queue") or []) & set(miss_ok)          # 차례에 남은 것 — 번역이 끝난 것은 세지 않는다
+        new_pending = len([f for f in _new_candidates(st, s, now, pdfs, check=False) if f not in qleft]) if s["on"] else 0      # 새로 들어온 것만 — 「모두 넣기」 로 넣어 둔 것은 queued 가 센다
         c = _ST["redo_cache"]
         old = len(c[2]) if c and c[1] == s["before"] and now - c[0] < 600 else None
         if old is None:
@@ -528,11 +531,11 @@ def view():
         if last:
             last = dict(last, short=_short(last.get("file")))
         today_all = [x for x in (st.get("done") or []) if _daykey(x.get("t") or 0) == _daykey(now)]
-        today = [x for x in today_all if x.get("kind") == "translation"]
+        today = [x for x in today_all if x.get("kind") == "translation" and x.get("mode") != "redo"]      # 옛 판 다시 만들기는 밤의 편수로 따로 센다 — 섞어 세어 '오늘 번역 48/40편' 이 됐다
         new_pending_sum = len(_new_candidates(st, s, now, pdfs, check=False, kind="summary")) if s["on"] and s["summary"] else 0
         return {"settings": s, "in_window": _in_window(s["hours"]), "cur": cur, "cur_sum": cur_sum, "last": last,
                 "new_pending_sum": new_pending_sum, "today_sum_ok": sum(1 for x in today_all if x.get("kind") == "summary" and x.get("ok")),
-                "missing": len([f for f in missing if (fails.get(_stem(f)) or {}).get("n", 0) < 90]), "queued": len(st.get("queue") or []), "new_pending": new_pending,
+                "missing": len(miss_ok), "queued": len(qleft), "new_pending": new_pending,
                 "old": old, "night": st["night"].get("n", 0) if st["night"].get("key") == _nightkey(now) else 0, "day": st["day"].get("n", 0) if st["day"].get("key") == _daykey(now) else 0,
                 "today_ok": sum(1 for x in today if x.get("ok")), "today_fail": sum(1 for x in today if not x.get("ok")),
                 "fails": sum(1 for v in fails.values() if v.get("n", 0) >= 3), "paused": now < _ST["pause_until"], "pause_until": _ST["pause_until"], "err": _ST["err"],
