@@ -2586,6 +2586,12 @@ def _wkey(t):
     return re.sub(r"[^a-z0-9]", "", str(t or "").lower())[:60]
 
 
+def _wanted_out(items):
+    """화면에 주는 꼴 — mine: 연구자가 직접 담은 것(폰·받을 논문 창·공부·탐색에서 — from 에 kind 가 있다). 큰 물음이 저절로 적어 둔 것뿐이면 False.
+    한 번에 받기 · 홈의 '받을 논문 n' · 폰의 목록은 mine 만 센다 (2026-11-11: 대기열 46편이 모두 큰 물음이 적어 둔 것이었다 — 다른 분야의 통계·지질 논문까지)"""
+    return [dict(x, mine=any(isinstance(f, dict) and f.get("kind") for f in x.get("from") or [])) for x in items]
+
+
 def wanted_list(sync=False):
     """받을 논문 대기열. sync 면 아직 안 들어온 것을 서재와 다시 대조한다"""
     with _LOCK:
@@ -2603,7 +2609,7 @@ def wanted_list(sync=False):
                     x["got"], x["got_t"], ch = om[k], time.time(), True
             if ch:
                 cfg["save_json"](_wanted_path(), {"items": items})
-        return items
+        return _wanted_out(items)
 
 
 def wanted_add(nt):
@@ -2645,12 +2651,22 @@ def wanted_add(nt):
             cfg["save_json"](_wanted_path(), {"items": items[-200:]})
 
 
-def wanted_del(key):
+def wanted_del(key, mine_only=False):
+    """대기열에서 뺀다. mine_only 면 연구자가 담은 표시(from 의 kind)만 떼고, 큰 물음이 적어 둔 기록이 남아 있으면 그 줄은 둔다"""
     with _LOCK:
         d = cfg["load_json"](_wanted_path(), None) or {}
-        items = [x for x in (d.get("items") or []) if isinstance(x, dict) and x.get("title") and (x.get("key") or _wkey(x["title"])) != key]
+        items = []
+        for x in d.get("items") or []:
+            if not isinstance(x, dict) or not x.get("title"):
+                continue
+            if (x.get("key") or _wkey(x["title"])) == key:
+                rest = [f for f in x.get("from") or [] if isinstance(f, dict) and not f.get("kind")] if mine_only else []
+                if not rest:
+                    continue
+                x["from"] = rest
+            items.append(x)
         cfg["save_json"](_wanted_path(), {"items": items})
-        return {"items": items}
+        return {"items": _wanted_out(items)}
 
 
 def wanted_put(items, src=None):
@@ -2696,7 +2712,7 @@ def wanted_put(items, src=None):
                     x["oa"], ch = {f: g["oa"].get(f) for f in ("pdf", "pdfs", "url", "status", "ver")}, True
         if ch:
             cfg["save_json"](_wanted_path(), {"items": cur[-300:]})
-        return cur
+        return _wanted_out(cur)
 
 
 

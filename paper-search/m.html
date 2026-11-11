@@ -92,6 +92,9 @@
   .starb { position: absolute; right: 4px; top: 5px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--text-3); cursor: pointer; }
   .starb svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
   .starb.on { color: var(--gold); } .starb.on svg { fill: currentColor; }
+  .qadd { position: absolute; right: 4px; top: 5px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--text-3); cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* 탐색 결과 줄의 담기 — 받을 논문에 넣는다 (2026-11-11) */
+  .qadd svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .qadd.on { color: var(--accent); }
   .starb, .pill.star { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }   /* 길게 눌러도 링크 미리보기가 뜨지 않게 (길게 누르기 = 주제 창) */
   .starb svg, .pill.star svg { transition: transform .15s; } .starb.lp svg, .pill.star.lp svg { transform: scale(1.3); }
   .pill.star svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
@@ -1398,10 +1401,25 @@ async function syncOa(list) {      /* list 의 논문 가운데 oa 를 모르는
   ask.forEach(x => { const k = oaKey(x), v = (r.oa || {})[k]; oaMemo[k] = v || null; x.oa = v || null; });
   return true;
 }
-function rowFound(it, i) {
-  return "<a class='row' href='#' data-fi='" + i + "'><div class='t cl3'>" + esc(it.title || "") + "</div><div class='m'>" + (it.owned ? "<span class='tg hi'>서재에 있음</span>" : "") +
+const QA_OFF = "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 4.5v10M7.8 10.6L12 14.8l4.2-4.2M5 19.5h14'/></svg>", QA_ON = "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 12.8l4.4 4.4L19 7.6'/></svg>";
+const isQueued = it => (findWant || []).some(x => !x.got && x.mine !== false && (x.key || wkOf(x.title)) === wkOf(it.title));      /* 내가 담은 것만 — 연구 노트의 큰 물음이 적어 둔 것은 아직 담은 것이 아니다 */
+const keepItem = (it, q) => ({ id: it.id || "", doi: it.doi || "", title: it.title, year: it.year || 0, venue: it.venue || "", author: it.author || "", oa: hasOa(it) ? it.oa : undefined });
+function rowFound(it, i, o) {      /* o.add = 줄 오른쪽에 담기 단추(받을 논문에 넣고 빼기) — 서재에 없는 논문에만 */
+  const add = o && o.add && !it.owned, q = add && isQueued(it);
+  return "<a class='row" + (add ? " pr" : "") + "' href='#' data-fi='" + i + "'><div class='t cl3'>" + esc(it.title || "") + "</div><div class='m'>" + (it.owned ? "<span class='tg hi'>서재에 있음</span>" : "") +
     "<span>" + esc([jName(it), it.year || "", it.author || ""].filter(x => x && x !== "★").join(" · ")) + (it.cit ? " · 피인용 " + it.cit : "") + "</span>" +
-    (it.review ? "<span class='tg'>리뷰</span>" : "") + (!it.owned && hasOa(it) ? "<span class='tg ok'>열린 접근</span>" : "") + "</div></a>";
+    (it.review ? "<span class='tg'>리뷰</span>" : "") + (!it.owned && hasOa(it) ? "<span class='tg ok'>열린 접근</span>" : "") + "</div>" +
+    (add ? "<span class='qadd" + (q ? " on" : "") + "' data-qa='" + i + "' role='button' aria-label='" + (q ? "담아 둠 — 누르면 뺍니다" : "받을 논문에 담기") + "'>" + (q ? QA_ON : QA_OFF) + "</span>" : "") + "</a>";
+}
+async function quickKeep(it, el, src) {      /* 결과 줄의 담기 단추 — 한 번 누르면 담고, 다시 누르면 뺀다 */
+  if (el.dataset.busy) return; el.dataset.busy = "1";
+  const was = isQueued(it);
+  let r; try { r = await api("/api/wanted", was ? { op: "del", key: wkOf(it.title), mine: true } : { op: "add", items: [keepItem(it)], src: { kind: "phone", title: String(src || "").slice(0, 80) } }); } catch (e) { delete el.dataset.busy; return toast(was ? "빼지 못했습니다" : "담지 못했습니다"); }
+  delete el.dataset.busy;
+  if (r.items) findWant = r.items;
+  const on = isQueued(it); el.classList.toggle("on", on); el.innerHTML = on ? QA_ON : QA_OFF; el.setAttribute("aria-label", on ? "담아 둠 — 누르면 뺍니다" : "받을 논문에 담기");
+  const n = (findWant || []).filter(x => !x.got && x.mine !== false).length;
+  toast(on ? "담았습니다 · 받을 논문 " + n + "편 — PC 에서 한 번에 받습니다" : "뺐습니다");
 }
 async function viewFind(my) {
   shell({ root: "find", title: "탐색", fade: true });
@@ -1413,7 +1431,7 @@ async function viewFind(my) {
   $("ff").onsubmit = e => { e.preventDefault(); const v = fq.value.trim().replace(/\s+/g, " "); if (v.length < 2) { fq.focus(); return; } fq.blur(); location.hash = fUrl(v, ""); };
   const draw = () => {
     if (my !== view) return;
-    const run = jGet("m_frun", null), hs = (findHist || []).filter(x => x.n), ws = (findWant || []).filter(x => !x.got);      /* 한 편도 못 찾은 옛 탐색은 목록에서 뺀다 */
+    const run = jGet("m_frun", null), hs = (findHist || []).filter(x => x.n), ws = (findWant || []).filter(x => !x.got && x.mine !== false);      /* 한 편도 못 찾은 옛 탐색은 목록에서 뺀다 */
     let h = "";
     if (run && run.q && Date.now() - run.t < 20 * 60000) h += "<a class='frun' href='" + esc(fUrl(run.q, run.year)) + "'><div class='fk'><span class='dots'><i></i><i></i><i></i></span>찾는 중<em>" + ago(run.t / 1000) + " 시작</em></div><div class='fs2'>" + esc(run.q) + "</div></a>";
     if (hs.length) h += "<div class='sh'><h2>지난 탐색</h2></div><div class='grp'>" + hs.slice(0, findShown).map(x => "<a class='row chev' href='#/f/h/" + esc(enc(x.id)) + "'><div class='t ko cl2'>" + esc(x.q || "") + "</div>" +
@@ -1448,22 +1466,27 @@ function wantItem(x) {
 async function viewWanted(my) {
   shell({ parent: "#/find", title: "받을 논문", fade: true });
   const loc0 = savedY(curHash);
-  app.innerHTML = "<div class='lt'>받을 논문</div><div class='fint'>담아 둔 논문입니다. PC 의 「받을 논문」 과 같은 목록이고, 서재에 들어온 것은 아래로 내려갑니다.</div><div id='fbody'>" + skeleton() + "</div>";
-  let items = [];
+  app.innerHTML = "<div class='lt'>받을 논문</div><div class='fint'>담아 둔 논문입니다. PC 에서 Athenaeum 을 열면 위쪽에 「받을 논문」 이 보이고, 거기서 「한 번에 받기」 를 누르면 한꺼번에 받습니다. 서재에 들어온 것은 아래로 내려갑니다.</div><div id='fbody'>" + skeleton() + "</div>";
+  let items = [], nMine = 0;
   const draw = () => {
     if (my !== view) return;
-    const all = (findWant || []).map(wantItem), todo = all.filter(x => !x.owned).reverse(), got = all.filter(x => x.owned).reverse();
-    items = todo.concat(got);
-    $("fbody").innerHTML = items.length ? (todo.length ? "<div class='grp'>" + todo.map((it, i) => rowFound(it, i)).join("") + "</div>" : "") +
-      (got.length ? "<div class='gh'><b>서재에 들어온 것<i>" + got.length + "</i></b></div><div class='grp'>" + got.map((it, i) => rowFound(it, todo.length + i)).join("") + "</div>" : "")
-      : "<div class='empty'><b>담아 둔 논문이 없습니다</b>탐색 결과에서 논문을 눌러 「담아 두기」 를 누르면 여기에 모입니다.</div>";
+    const mineW = (findWant || []).filter(x => x.mine !== false), suggW = (findWant || []).filter(x => x.mine === false && !x.got);      /* 내가 담은 것 / 연구 노트의 큰 물음이 적어 둔 것 */
+    const all = mineW.map(wantItem), todo = all.filter(x => !x.owned).reverse(), got = all.filter(x => x.owned).reverse(), sugg = suggW.map(wantItem).reverse();
+    items = todo.concat(got, sugg); nMine = todo.length + got.length;
+    $("fbody").innerHTML = (todo.length ? "<div class='grp'>" + todo.map((it, i) => rowFound(it, i)).join("") + "</div>" : "<div class='empty'><b>담아 둔 논문이 없습니다</b>탐색 결과에서 줄 오른쪽의 ↓ 를 누르면 여기에 모입니다.</div>") +
+      (got.length ? "<div class='gh'><b>서재에 들어온 것<i>" + got.length + "</i></b></div><div class='grp'>" + got.map((it, i) => rowFound(it, todo.length + i)).join("") + "</div>" : "") +
+      (sugg.length ? "<div class='gh'><b>연구 노트가 적어 둔 것<i>" + sugg.length + "</i></b><span>큰 물음이 받아 보라고 적은 논문입니다. ↓ 를 누른 것만 한 번에 받기에 듭니다.</span></div><div class='grp'>" + sugg.map((it, i) => rowFound(it, nMine + i, { add: true })).join("") + "</div>" : "");
   };
   const load = async sync => {
     let r; try { r = await api("/api/wanted" + (sync ? "?sync=1" : "")); } catch (e) { if (my === view && !findWant && String(e && e.message) !== "login") $("fbody").innerHTML = failHtml(); return false; }
     findWant = r.items || []; setCaps(r.caps); return true;
   };
   const again = async () => { await load(true); if (my !== view) return; const y = window.scrollY; draw(); window.scrollTo(0, y); };
-  $("fbody").onclick = e => { const a = e.target.closest("[data-fi]"); if (!a) return; e.preventDefault(); const it = items[+a.dataset.fi]; if (it) foundSheet(it, { queue: true, onChange: again }); };
+  $("fbody").onclick = e => {
+    const qa = e.target.closest("[data-qa]");      /* 연구 노트가 적어 둔 논문의 ↓ — 내가 담은 것으로 올린다 */
+    if (qa) { e.preventDefault(); const it = items[+qa.dataset.qa]; if (it) quickKeep(it, qa, "받을 논문").then(() => { if (my === view) { const y = window.scrollY; draw(); window.scrollTo(0, y); } }); return; }
+    const a = e.target.closest("[data-fi]"); if (!a) return; e.preventDefault(); const i = +a.dataset.fi, it = items[i]; if (it) foundSheet(it, { queue: i < nMine, onChange: again });
+  };
   if (findWant) draw();
   if (!(await load(true)) || my !== view) return;
   draw(); restorePos(loc0[0]);
@@ -1502,14 +1525,14 @@ async function viewFound(mode, a1, a2, my) {
       if (all.length) hd += "<div class='fbar' id='ffl'>" + FL.map(f => { const n = all.filter(it => passF(it, f[0])).length; return n || f[0] === "all" ? "<button class='fc" + (f[0] === S.flt ? " on" : "") + "' data-f='" + f[0] + "'>" + f[1] + " " + n + "</button>" : ""; }).join("") + "</div>";
       (r.groups || []).forEach(g => {
         const its = (g.items || []).filter(it => passF(it, S.flt)); if (!its.length) return;
-        body += "<div class='gh'><b>" + esc(g.name || "") + "<i>" + its.length + "</i></b>" + (g.why ? "<span>" + esc(g.why) + "</span>" : "") + "</div><div class='grp'>" + its.map(it => { items.push(it); return rowFound(it, items.length - 1); }).join("") + "</div>";
+        body += "<div class='gh'><b>" + esc(g.name || "") + "<i>" + its.length + "</i></b>" + (g.why ? "<span>" + esc(g.why) + "</span>" : "") + "</div><div class='grp'>" + its.map(it => { items.push(it); return rowFound(it, items.length - 1, { add: true }); }).join("") + "</div>";
       });
-      if (fb) body += "<div class='gh'><b>낱말 그대로 찾은 것<i>" + S.plain.length + "</i></b></div><div class='grp'>" + S.plain.map(it => { items.push(it); return rowFound(it, items.length - 1); }).join("") + "</div>";
+      if (fb) body += "<div class='gh'><b>낱말 그대로 찾은 것<i>" + S.plain.length + "</i></b></div><div class='grp'>" + S.plain.map(it => { items.push(it); return rowFound(it, items.length - 1, { add: true }); }).join("") + "</div>";
       else if (!items.length) body += "<div class='empty'>" + (all.length ? "이 조건에 맞는 논문이 없습니다." : "<b>찾은 논문이 없습니다</b>낱말을 바꿔 다시 찾아보세요.") + "</div>";
       body += "<div class='ffoot'>" + (S.t ? fmtDay(S.t) + "에 찾은 결과입니다. " : "") + (r.excluded ? "주제와 멀다고 본 " + r.excluded + "편은 뺐습니다. " : "") + "<button id='fredo'>다시 찾기</button></div>";
     } else if (S.plain && S.plain.length) {
       body += "<div class='gh'><b>" + (S.doi ? "이 DOI 의 논문" : "먼저 찾은 것<i>" + S.plain.length + "</i>") + "</b>" + (S.doi ? "" : "<span>낱말 그대로 찾은 결과입니다. Claude 가 고른 결과가 오면 바뀝니다.</span>") + "</div><div class='grp'>" +
-        S.plain.map(it => { items.push(it); return rowFound(it, items.length - 1); }).join("") + "</div>";
+        S.plain.map(it => { items.push(it); return rowFound(it, items.length - 1, { add: true }); }).join("") + "</div>";
     } else if (!S.run && !S.err) body += S.loaded ? "<div class='empty'><b>찾은 논문이 없습니다</b>" + (S.doi ? "DOI 를 다시 확인해 주세요." : "") + "</div>" : skeleton();
     $("fhd").innerHTML = hd; $("fbody").innerHTML = body;
     const bar = $("ffl"), on = bar && bar.querySelector(".on"); if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - 16);
@@ -1558,8 +1581,11 @@ async function viewFound(mode, a1, a2, my) {
     keepDraw(); syncOwned();
     if (byDoi && S.plain.length === 1) foundSheet(S.plain[0], { q: S.q, onChange: keepDraw });
   };
+  if (!findWant) api("/api/wanted").then(r => { if (my !== view) return; findWant = r.items || []; setCaps(r.caps); keepDraw(); }).catch(() => {});      /* 이미 담아 둔 논문을 줄의 담기 단추에 표시하려고 */
   $("fhd").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; S.flt = b.dataset.f; draw(); };
   $("fbody").onclick = e => {
+    const qa = e.target.closest("[data-qa]");      /* 줄의 담기 단추 — 논문 창을 열지 않고 바로 담는다 */
+    if (qa) { e.preventDefault(); const it = items[+qa.dataset.qa]; if (it) quickKeep(it, qa, S.q); return; }
     const a = e.target.closest("[data-fi]");
     if (a) { e.preventDefault(); const it = items[+a.dataset.fi]; if (it) foundSheet(it, { q: S.q, onChange: keepDraw }); return; }
     if (e.target.closest("#fredo")) {
@@ -1596,8 +1622,16 @@ async function viewFound(mode, a1, a2, my) {
 function foundSheet(it, o) {      /* 논문 창: 서지 · 초록(한국어로) · 받기. 열린 접근은 연구실 PC 가 받고, 구독 논문은 출판사에서 받은 PDF 를 여기서 올린다 */
   o = o || {};
   const me = ++fsSeq, doi = doiOf(it), link = doi ? "https://doi.org/" + doi : ((it.oa || {}).url || ""), els = /^10\.1016\//i.test(doi);
-  const st = { busy: "", note: "", cls: "", open: false, ko: "", koOn: false, koBusy: false, absBusy: false, absNone: false, queued: (findWant || []).some(x => (x.key || wkOf(x.title)) === wkOf(it.title)) };
+  const st = { busy: "", note: "", cls: "", open: false, ko: "", koOn: false, koBusy: false, absBusy: false, absNone: false, queued: isQueued(it) };
   const MANUAL = "「출판사에서 열기」 로 PDF 를 받아 '파일에 저장' 한 뒤, 「받은 PDF 올리기」 에서 그 파일을 고르면 서재에 들어갑니다.";
+  const LATER = "PC 에서 Athenaeum 의 「받을 논문」 을 열어 「한 번에 받기」 를 누르면 받아집니다.";
+  const keep = async quiet => {      /* 받을 논문에 담는다 — 단추로도, 「받기」 가 안 됐을 때 저절로도 */
+    if (st.queued || o.queue) return true;
+    let r; try { r = await api("/api/wanted", { op: "add", items: [keepItem(it)], src: { kind: "phone", title: String(o.q || "").slice(0, 80) } }); } catch (err) { if (!quiet) toast("담지 못했습니다"); return false; }
+    if (r.items) findWant = r.items; st.queued = true; if (o.onChange) o.onChange();
+    if (!quiet) toast("담아 두었습니다 — PC 에서 한 번에 받습니다");
+    return true;
+  };
   const live = () => fsSeq === me && sheet.classList.contains("on") && !!sheet.querySelector(".fact");
   const landed = (file, dup) => {
     it.owned = file; st.note = dup ? "이미 서재에 있는 논문입니다." : "서재에 넣었습니다."; st.cls = "good";
@@ -1628,13 +1662,15 @@ function foundSheet(it, o) {      /* 논문 창: 서지 · 초록(한국어로) 
       "<div class='fact'>";
     if (it.owned) h += "<a class='pill pri big' href='" + esc(pUrl(it.owned)) + "'>서재에서 읽기</a>";
     else {
+      /* 큰 단추: 받을 수 있으면 「받기」, 아니면 「담아 두기」(PC 에서 한 번에) — 지금 받는 길(출판사 · 올리기)은 그 아래에 */
       if (st.busy) h += "<button class='pill pri big' disabled>" + esc(st.busy) + "</button>";
       else if (auto) h += "<button class='pill pri big' data-a='get'>" + (hasOa(it) ? "받기 · 열린 접근" : "받기") + "</button>";
-      if (link) h += "<a class='pill big" + (auto || st.busy ? "" : " pri") + "' href='" + esc(link) + "' target='_blank' rel='noopener' data-a='pub'>출판사에서 열기 ↗</a>";
-      h += "<div class='frow2'><button class='pill big' data-a='up'" + (st.busy ? " disabled" : "") + ">받은 PDF 올리기</button>" +
-        (o.queue ? "<button class='pill big' data-a='del'>목록에서 빼기</button>" : "<button class='pill big' data-a='keep'" + (st.queued ? " disabled" : "") + ">" + (st.queued ? "담아 두었습니다" : "담아 두기") + "</button>") + "</div>";
+      else if (!o.queue) h += "<button class='pill pri big' data-a='keep'" + (st.queued ? " disabled" : "") + ">" + (st.queued ? "담아 두었습니다 · PC 에서 한 번에 받기" : "담아 두기 · PC 에서 한 번에 받기") + "</button>";
+      h += "<div class='frow2'>" + (link ? "<a class='pill big' href='" + esc(link) + "' target='_blank' rel='noopener' data-a='pub'>출판사에서 열기 ↗</a>" : "") + "<button class='pill big' data-a='up'" + (st.busy ? " disabled" : "") + ">받은 PDF 올리기</button></div>";
+      if (o.queue) h += "<div class='frow2'><button class='pill big' data-a='del'>목록에서 빼기</button></div>";
+      else if (auto || st.busy) h += "<div class='frow2'><button class='pill big' data-a='keep'" + (st.queued ? " disabled" : "") + ">" + (st.queued ? "담아 두었습니다" : "담아 두기") + "</button></div>";
     }
-    h += "</div><div class='fnote" + (st.cls ? " " + st.cls : "") + "'>" + (st.note || (it.owned ? "" : esc(hasOa(it) ? "열린 접근 논문은 연구실 PC 가 받아 서재에 넣습니다." : "구독 논문은 " + MANUAL))) + "</div><input type='file' id='fup' accept='application/pdf,.pdf' hidden>";
+    h += "</div><div class='fnote" + (st.cls ? " " + st.cls : "") + "'>" + (st.note || (it.owned ? "" : esc(hasOa(it) ? "열린 접근 논문은 연구실 PC 가 받아 서재에 넣습니다." : o.queue || st.queued ? LATER + " 지금 받으려면 " + MANUAL : "구독 논문은 담아 두면 PC 에서 한 번에 받을 수 있습니다. 지금 받으려면 " + MANUAL))) + "</div><input type='file' id='fup' accept='application/pdf,.pdf' hidden>";
     sheet.innerHTML = h;
     const up = $("fup"); if (up) up.onchange = onUp;
   };
@@ -1647,13 +1683,12 @@ function foundSheet(it, o) {      /* 논문 창: 서지 · 초록(한국어로) 
     if (a === "pub") { if (!st.busy) { st.note = "출판사 화면에서 PDF 를 받아 '파일에 저장' 한 뒤, 돌아와서 「받은 PDF 올리기」 를 누르세요."; st.cls = ""; setTimeout(() => { if (live()) draw(); }, 400); } return; }      /* 링크는 그대로 열린다 */
     if (a === "keep") {
       b.disabled = true;
-      let r; try { r = await api("/api/wanted", { op: "add", items: [{ id: it.id || "", doi: it.doi || "", title: it.title, year: it.year || 0, venue: it.venue || "", author: it.author || "", oa: hasOa(it) ? it.oa : undefined }], src: { kind: "phone", title: String(o.q || "").slice(0, 80) } }); }
-      catch (err) { b.disabled = false; return toast("담지 못했습니다"); }
-      if (r.items) findWant = r.items; st.queued = true; toast("담아 두었습니다 — PC 의 「받을 논문」 에도 보입니다"); if (live()) draw();
+      if (!(await keep(false))) b.disabled = false;
+      if (live()) draw();
       return;
     }
     if (a === "del") {
-      let r; try { r = await api("/api/wanted", { op: "del", key: it.wkey || wkOf(it.title) }); } catch (err) { return toast("빼지 못했습니다"); }
+      let r; try { r = await api("/api/wanted", { op: "del", key: it.wkey || wkOf(it.title), mine: true }); } catch (err) { return toast("빼지 못했습니다"); }
       if (r.items) findWant = r.items; closeSheet(); if (o.onChange) o.onChange();
       return;
     }
@@ -1679,8 +1714,11 @@ function foundSheet(it, o) {      /* 논문 창: 서지 · 초록(한국어로) 
       let r; try { r = await api("/api/wanted", { op: "fetch", id: /^W\d+$/.test(it.id || "") ? it.id : "", doi: it.doi || "", title: it.title || "", oa: hasOa(it) ? it.oa : null }); } catch (err) { r = { error: "서버에 닿지 못했습니다" }; }
       st.busy = ""; setCaps(r.caps);
       if (r.ok) landed(r.file, r.dup);
-      else if (r.oa === false) { it.oa = null; st.note = esc(r.why ? "구독 논문이라 연구실 PC 가 대신 받지 못했습니다. " : "열린 접근 판이 없습니다. ") + esc(MANUAL); st.cls = ""; }
-      else { const pdf = (it.oa || {}).pdf; st.note = esc(r.error || "받지 못했습니다") + (pdf ? " <a href='" + esc(pdf) + "' target='_blank' rel='noopener'>열린 접근 PDF 열기 ↗</a> 로 받아 올리거나, " : " ") + "「출판사에서 열기」 로 받아 올려 주세요."; st.cls = "err"; }
+      else {      /* 못 받았다 — 저절로 담아 둔다(PC 에서 한 번에 받게) */
+        const kept = await keep(true), tail = kept ? " 받을 논문에 담아 두었습니다. " + LATER : "";
+        if (r.oa === false) { it.oa = null; st.note = esc((r.why ? "구독 논문이라 연구실 PC 가 대신 받지 못했습니다." : "열린 접근 판이 없습니다.") + tail + (kept ? "" : " " + MANUAL)); st.cls = ""; }
+        else { const pdf = (it.oa || {}).pdf; st.note = esc((r.error || "받지 못했습니다") + "." + tail) + (kept ? "" : (pdf ? " <a href='" + esc(pdf) + "' target='_blank' rel='noopener'>열린 접근 PDF 열기 ↗</a> 로 받아 올리거나, " : " ") + "「출판사에서 열기」 로 받아 올려 주세요."); st.cls = kept ? "" : "err"; }
+      }
       if (live()) draw();
     }
   };

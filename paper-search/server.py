@@ -1674,6 +1674,139 @@ def elsevier_pdf(doi, dest):
         r.close()
 
 
+# ---------- PC 에서 한 번에 받기 (2026-11-11 밤, 사용자: '논문탐색에서 폰으로 다운 안되면 다운받을 논문으로 모아놓고, 내가 나중 컴터로 가면 한방에 받게끔') ----------
+# 구독 논문은 서버가 받을 수 없다(출판사가 스크립트를 막고, 공식 API 는 이 PC 를 구독자로 인정하지 않는다). 받을 수 있는 것은 연구자의 브라우저다 —
+# 그래서 담아 둔 논문마다 'PDF 가 바로 받아지는 주소' 를 이 PC 의 기본 브라우저에 몇 초 간격으로 새 탭으로 연다. 받아진 PDF 는 다운로드 폴더에 떨어지고 수집이 서재로 옮긴다.
+# 그 주소는 출판사가 자기 화면의 내려받기 단추에 쓰는 것이다 — 기관 접속 같은 권한이 없으면 로그인·구매 화면이 뜰 뿐이고, 돌아가는 길이 아니다.
+# 탭은 사람이 누르듯 띄엄띄엄(WOPEN_EVERY), 한 번에 WOPEN_MAX 편까지만 연다(한꺼번에 수십 편을 열면 출판사가 로봇으로 볼 수 있다).
+_DL_PATH = os.path.join(FETCH_DIR, "_주소.json")
+_DL_LOCK = threading.Lock()
+_WOPEN = {"running": False, "t": 0, "total": 0, "done": 0, "items": [], "stop": False}
+WOPEN_EVERY = 4.0
+WOPEN_MAX = 15
+
+
+def doi_landing(doi):
+    """doi.org 가 넘겨 주는 출판사 주소(응답의 머리만 본다) — 못 받으면 ''"""
+    import requests
+    try:
+        r = requests.head("https://doi.org/" + doi, allow_redirects=False, timeout=10, headers={"User-Agent": "Athenaeum/1.1"})
+        return (r.headers.get("Location") or "") if r.status_code in (301, 302, 303, 307, 308) else ""
+    except Exception:
+        return ""
+
+
+def dl_link(doi):
+    """DOI → {url, auto, pub} — 브라우저로 열 주소. auto: 'yes'(열면 PDF 가 저절로 받아지는 주소) · 'view'(PDF 가 화면에 열린다 — 저장을 눌러야 한다) · 'no'(출판사의 논문 화면).
+    Elsevier 는 doi.org 가 넘겨 주는 주소에서 PII 를 얻어 ScienceDirect 의 PDF 주소로. 30일 기억(수집\받기\_주소.json)."""
+    from urllib.parse import quote
+    doi = _doi_plain(doi)
+    if not doi:
+        return None
+    d = doi.lower()
+    with _DL_LOCK:
+        cache = load_json(_DL_PATH, None) or {}
+    c = cache.get(d)
+    if isinstance(c, dict) and c.get("url") and time.time() - (c.get("t") or 0) < 30 * 86400:
+        return {"url": c["url"], "auto": c.get("auto") or "no", "pub": c.get("pub") or ""}
+    q = quote(doi, safe="/:()")
+    keep = True
+    if d.startswith("10.1016/"):
+        m = re.search(r"/pii/([A-Z0-9]{10,})", doi_landing(doi) or "", re.I)
+        if m:
+            out = {"url": "https://www.sciencedirect.com/science/article/pii/%s/pdfft?isDTMRedir=true&download=true" % m.group(1).upper(), "auto": "yes", "pub": "Elsevier"}
+        else:      # 주소를 못 풀었다(연결 문제일 수 있다) — 논문 화면으로 열고, 기억하지 않는다
+            out, keep = {"url": "https://doi.org/" + q, "auto": "no", "pub": "Elsevier"}, False
+    elif d.startswith("10.1007/"):
+        out = {"url": "https://link.springer.com/content/pdf/%s.pdf" % q, "auto": "view", "pub": "Springer"}
+    elif d.startswith(("10.1002/", "10.1111/")):
+        out = {"url": "https://onlinelibrary.wiley.com/doi/pdfdirect/%s?download=true" % q, "auto": "yes", "pub": "Wiley"}
+    elif d.startswith("10.1080/"):
+        out = {"url": "https://www.tandfonline.com/doi/pdf/%s?download=true" % q, "auto": "yes", "pub": "Taylor & Francis"}
+    elif d.startswith("10.1177/"):
+        out = {"url": "https://journals.sagepub.com/doi/pdf/%s?download=true" % q, "auto": "yes", "pub": "SAGE"}
+    elif d.startswith("10.1088/"):
+        out = {"url": "https://iopscience.iop.org/article/%s/pdf" % q, "auto": "view", "pub": "IOP"}
+    else:
+        out = {"url": "https://doi.org/" + q, "auto": "no", "pub": ""}
+    if keep:
+        with _DL_LOCK:
+            cache = load_json(_DL_PATH, None) or {}
+            cache[d] = dict(out, t=time.time())
+            if len(cache) > 3000:
+                for k in sorted(cache, key=lambda k: (cache[k] or {}).get("t") or 0)[:500]:
+                    cache.pop(k, None)
+            try:
+                os.makedirs(FETCH_DIR, exist_ok=True)
+                save_json(_DL_PATH, cache)
+            except Exception:
+                pass
+    return out
+
+
+def wopen_view():
+    return {"running": _WOPEN["running"], "t": _WOPEN["t"], "total": _WOPEN["total"], "done": _WOPEN["done"], "every": WOPEN_EVERY,
+            "items": [{k: it.get(k) for k in ("key", "doi", "title", "url", "auto", "pub", "opened", "err")} for it in _WOPEN["items"]]}
+
+
+def _wopen_run():
+    import webbrowser
+    dry = os.environ.get("ATHENAEUM_NO_OPEN") == "1"      # 시험 — 실제로 브라우저를 띄우지 않는다
+    try:
+        for i, it in enumerate(_WOPEN["items"]):
+            if i:
+                t_end = time.time() + WOPEN_EVERY
+                while time.time() < t_end and not _WOPEN["stop"]:
+                    time.sleep(0.2)
+            if _WOPEN["stop"]:
+                break
+            try:
+                if not dry:
+                    webbrowser.open_new_tab(it["url"])      # 윈도우에서는 os.startfile — 기본 브라우저의 새 탭
+                it["opened"] = time.time()
+            except Exception as e:
+                it["err"] = str(e)[:120]
+            _WOPEN["done"] = i + 1
+    finally:
+        _WOPEN["running"] = False
+
+
+def wanted_open(body):
+    """담아 둔 논문(또는 준 목록)의 PDF 주소를 이 PC 의 기본 브라우저에 새 탭으로 연다 — WOPEN_EVERY 초 간격, 한 번에 WOPEN_MAX 편까지. 여는 일은 배경에서 하고 바로 돌려준다.
+    → {items[{key, doi, title, url, auto, pub}], total, left(이번에 못 연 편수 — 다시 누르면 이어서), nodoi(DOI 가 없어 못 여는 편수), every}"""
+    if _WOPEN["running"]:
+        return dict(wopen_view(), error="이미 여는 중입니다")
+    want = body.get("items")
+    if not isinstance(want, list) or not want:
+        want = [x for x in notes.wanted_list(sync=True) if not x.get("got") and x.get("mine")]      # 연구자가 담은 것만 — 큰 물음이 적어 둔 것은 「담기」 를 눌러야 든다
+    cand, seen, nodoi = [], set(), 0
+    for x in want:
+        if not isinstance(x, dict):
+            continue
+        doi = _doi_plain(x.get("doi"))
+        if not doi:
+            nodoi += 1
+            continue
+        if doi.lower() in seen:
+            continue
+        seen.add(doi.lower())
+        cand.append({"key": str(x.get("key") or "")[:80], "doi": doi, "title": str(x.get("title") or "")[:200]})
+    left = max(0, len(cand) - WOPEN_MAX)
+    cand = cand[:WOPEN_MAX]
+    if not cand:
+        return {"items": [], "total": 0, "left": 0, "nodoi": nodoi, "every": WOPEN_EVERY}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        links = list(ex.map(lambda c: dl_link(c["doi"]), cand))
+    items = []
+    for c, l in zip(cand, links):
+        l = l or {"url": "https://doi.org/" + c["doi"], "auto": "no", "pub": ""}
+        items.append(dict(c, url=l["url"], auto=l["auto"], pub=l["pub"], opened=0))
+    _WOPEN.update(running=True, t=time.time(), total=len(items), done=0, items=items, stop=False)
+    threading.Thread(target=_wopen_run, daemon=True).start()
+    return dict(wopen_view(), left=left, nodoi=nodoi)
+
+
 def wanted_fetch(body):
     """받을 논문 페이지·폰의 「받기」: 열린 접근 PDF 를 받아 보관소에 넣는다. {ok, file, dup} · {oa: False, url, why}(받을 수 있는 판이 없음 — 화면이 출판사 링크를 연다) · {error, url}
     Elsevier 논문(10.1016/)은 키가 있으면 공식 기사 API 부터 — 열린 접근이면 전문이 오고, 구독 논문은 Elsevier 가 이 PC 를 구독자로 인정할 때만 온다(인정하지 않으면 30일 동안 구독 논문에는 다시 묻지 않는다)"""
@@ -5783,7 +5916,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(BASE, "wanted.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
         elif url.path == "/api/wanted":   # 담아 둔 받을 논문 (연구노트\_받을논문.json — 연구 노트의 큰 물음과 같은 대기열); ?sync=1 은 서재에 들어왔는지 다시 봄
-            self._send(200, {"items": notes.wanted_list(sync=parse_qs(url.query).get("sync", [""])[0] == "1"), "fetch_dir": FETCH_DIR, "caps": fetch_caps()})
+            self._send(200, {"items": notes.wanted_list(sync=parse_qs(url.query).get("sync", [""])[0] == "1"), "fetch_dir": FETCH_DIR, "caps": fetch_caps(), "open": wopen_view()})
         elif url.path == "/start":   # 처음 설정 — Claude Code · 수집 폴더 · 라벨 체계 · 학습 같은 처음 할 일을 한눈에 (paper-search\start.html). 사용법의 「시작하기」 가 처음 한 번 보내고, ⚙ 일반에서 다시 연다
             with open(os.path.join(BASE, "start.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -6276,18 +6409,25 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 return self._send(200, {"error": "창을 열지 못했습니다: " + str(e)[:200]})
             self._send(200, {"ok": True, "dir": d})
-        elif self.path == "/api/wanted":   # 받을 논문: add(담기) · del · sync · oa(열린 접근 주소) · fetch(받아서 보관소에) (2026-11-04)
+        elif self.path == "/api/wanted":   # 받을 논문: add(담기) · del · sync · oa(열린 접근 주소) · fetch(받아서 보관소에) (2026-11-04) · open(PC 의 브라우저로 한 번에 받기 — 이 PC 에서만, 2026-11-11)
             op = body.get("op")
             if op == "add":
                 self._send(200, {"items": notes.wanted_put(body.get("items") or [], body.get("src") or {})})
             elif op == "del":
-                self._send(200, notes.wanted_del(str(body.get("key") or "")))
+                self._send(200, notes.wanted_del(str(body.get("key") or ""), mine_only=bool(body.get("mine"))))
             elif op == "sync":
                 self._send(200, {"items": notes.wanted_list(sync=True)})
             elif op == "oa":
                 self._send(200, {"oa": oa_lookup(body.get("items") or [])})
             elif op == "fetch":
                 self._send(200, wanted_fetch(body))
+            elif op in ("open", "open_stop"):      # 한 번에 받기 — 이 PC 의 브라우저에 탭을 여는 일이라 이 PC 에서만
+                if self._remote:
+                    return self._send(403, {"error": _LOCAL_ONLY_MSG})
+                if op == "open_stop":
+                    _WOPEN["stop"] = True
+                    return self._send(200, wopen_view())
+                self._send(200, wanted_open(body))
             else:
                 self._send(400, {"error": "bad op"})
         elif self.path == "/api/owned_check":   # 탐색 결과의 논문들이 지금 서재에 있나 → {id: 파일} (owned_map — 연구 노트의 공백 검증도 같은 함수를 쓴다, 2026-10-26)
