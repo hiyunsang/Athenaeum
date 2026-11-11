@@ -37,7 +37,7 @@
   .prog { padding: var(--s4) 12px; font-size: 12px; color: var(--text-2); line-height: 1.6; border-bottom: 1px solid var(--line); }
   .prog b { color: var(--text); }
   details.sugg { border-top: 1px solid var(--line); } details.sugg > summary { padding: 9px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; } details.sugg > summary:hover { color: var(--text); }
-  html:not([data-remote]) .ronly { display: none !important; }   /* 다른 기기에서 열었을 때만 보이는 단추(한 번에 받기 대신) */
+  html:not([data-remote]) .ronly { display: none !important; }   /* 다른 기기에서 열었을 때만 보이는 단추(링크 모두 열기 대신) */
   .getbar { padding: 9px 12px; font-size: 12px; color: var(--text-2); line-height: 1.65; border-bottom: 1px solid var(--line); border-left: 3px solid var(--accent); }
   .getbar b { color: var(--text); } .getbar.err { border-left-color: var(--amber); }
 </style>
@@ -78,7 +78,7 @@ const oaMap = {};          /* 열쇠 → oa | null (서버에 물어 받은 것)
 const status = {};         /* 열쇠 → {cls, text} */
 const opened = {};         /* 출판사 페이지를 연 것 */
 let searching = null, pollT = null, archStamp = "", fetching = false;
-let getting = null;        /* 한 번에 받기의 진행 — {running, phase, open(서버의 여는 중 상태), oaN, oaDone, left, nodoi, err, t0} */
+let getting = null;        /* 링크 모두 열기의 진행 — {running, open(서버의 여는 중 상태), items, left, nodoi, err} */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function oaOf(it) { if (it.oa !== undefined) return it.oa; const k = keyOf(it); return k in oaMap ? oaMap[k] : undefined; }
@@ -103,7 +103,7 @@ function rowHtml(it, inQueue) {
     (oa ? "<button class='act' data-fetch='" + esc(k) + "' title='열린 접근 PDF 를 받아 서재(논문모음)에 넣습니다 — 10초~1분'>받기</button>" : "") +
     (link ? "<a class='act' href='" + esc(link) + "' target='_blank' rel='noopener' data-open='" + esc(k) + "' title='출판사 페이지 — 기관 접속으로 PDF 를 내려받으면 수집이 다운로드 폴더에서 서재로 옮깁니다'>출판사 ↗</a>" : "") +
     (!link ? "<a class='act' href='https://scholar.google.com/scholar?q=" + encodeURIComponent(it.title || "") + "' target='_blank' rel='noopener' title='DOI 가 없는 기록 — 제목으로 Google Scholar 에서 찾습니다'>제목으로 찾기 ↗</a>" : "") +
-    (inQueue && it.mine === false ? "<button class='act' data-add='" + esc(k) + "' title='「담아 둔 논문」 으로 올립니다 — 「한 번에 받기」 에 듭니다'>담기</button>" : "") +
+    (inQueue && it.mine === false ? "<button class='act' data-add='" + esc(k) + "' title='「담아 둔 논문」 으로 올립니다 — 「링크 모두 열기」 에 듭니다'>담기</button>" : "") +
     (inQueue ? "<button class='act' data-del='" + esc(k) + "'" + (it.mine === false ? "" : " data-mine='1'") + " title='목록에서 지웁니다'>지우기</button>" : "<button class='act' data-add='" + esc(k) + "' title='아래 「담아 둔 논문」 에 담아 둡니다 (나중에 받기)'>담기</button>");
   const stl = got ? "<div class='st ok'>★ 서재에 있음 — " + esc(got) + "</div>" : (st.text ? "<div class='st " + (st.cls || "") + "'>" + st.text + "</div>" : "");
   return "<div class='row" + (got ? " got" : "") + "' data-k='" + esc(k) + "'><div><div class='t'>" + (link ? "<a href='" + esc(link) + "' target='_blank' rel='noopener' data-open='" + esc(k) + "'>" + esc(it.title) + "</a>" : esc(it.title)) + "</div><div class='m'>" + meta.join(" · ") + "</div></div><div class='acts'>" + acts + "</div>" + stl + "</div>";
@@ -149,11 +149,11 @@ function renderQueue() {
   const mineQ = queue.filter(x => x.mine !== false), sugg = queue.filter(x => x.mine === false);      /* 내가 담은 것 / 연구 노트의 큰 물음이 적어 둔 것 */
   const left = mineQ.filter(x => !x.got && !x.owned), got = mineQ.length - left.length, oaN = left.filter(x => oaOf(x)).length;
   const rest = left.filter(x => !oaOf(x) && doiUrl(x.doi) && !opened[keyOf(x)]).length;
-  const canGet = left.filter(x => oaOf(x) || doiPlain(x.doi)).length, busy = getting && getting.running;
+  const canGet = left.filter(x => doiPlain(x.doi)).length, busy = getting && getting.running;
   let h = "<div class='bar'><span class='h'>담아 둔 논문</span><span class='hint'>" + left.length + "편" + (got ? " · 서재에 들어옴 " + got : "") + (oaN ? " · 열린 접근 " + oaN + "편" : "") + "</span><span class='right'>" +
-    (canGet ? "<button class='primary' id='qGetAll' data-local" + (busy ? " disabled" : "") + " title='담아 둔 논문을 한 번에 받습니다. 열린 접근 논문은 서버가 받아 서재에 넣고, 나머지는 PDF 주소를 이 PC 의 기본 브라우저에 4초 간격으로 새 탭으로 엽니다(한 번에 15편까지). 학교 접속으로 받아진 PDF 는 수집이 다운로드 폴더에서 서재로 옮깁니다'>" + (busy ? "받는 중…" : "한 번에 받기 (" + canGet + "편)") + "</button>" : "") +
+    (canGet ? "<button class='primary' id='qGetAll' data-local" + (busy ? " disabled" : "") + " title='담아 둔 논문의 출판사 화면을 이 PC 의 기본 브라우저에 새 탭으로 모두 엽니다(한 번에 20편까지). 탭마다 PDF 를 받으면 수집이 다운로드 폴더에서 서재로 옮기고, 여기서 ★ 로 바뀝니다'>" + (busy ? "여는 중…" : "링크 모두 열기 (" + canGet + "편)") + "</button>" : "") +
     (busy && getting.open && getting.open.running ? "<button class='act' id='qGetStop' data-local title='남은 탭을 더 열지 않습니다'>멈춤</button>" : "") +
-    (oaN ? "<button class='primary ronly' id='qFetchAll' title='열린 접근 논문을 차례로 받아 서재에 넣습니다'>열린 접근 " + oaN + "편 모두 받기</button>" : "") +
+    (oaN ? "<button class='act' id='qFetchAll' title='열린 접근 논문은 서버가 차례로 받아 서재에 넣습니다 (링크를 열지 않아도 됩니다)'>열린 접근 " + oaN + "편 받기</button>" : "") +
     (rest ? "<button class='act ronly' id='qOpenNext' title='출판사 페이지를 하나 엽니다 — 누를 때마다 다음 논문'>출판사에서 열기 (남은 " + rest + "편)</button>" : "") +
     "<button class='act' id='qSync' title='서재에 들어왔는지 다시 봅니다 (제목 대조)'>서재 확인</button></span></div>";
   h += getHtml();
@@ -162,7 +162,7 @@ function renderQueue() {
   if (!mineQ.length) h += "<div class='empty'>담아 둔 논문이 없습니다 — 휴대폰의 탐색에서 줄의 ↓ 를 누르거나, 위에서 찾은 논문의 「담기」 를 누르면 여기에 모입니다.</div>";
   if (sugg.length) {
     const sl = sugg.filter(x => !x.got && !x.owned).length;
-    h += "<details class='sugg'" + (suggOpen ? " open" : "") + "><summary>연구 노트의 큰 물음이 적어 둔 논문 " + sl + "편 — 여기 것은 「한 번에 받기」 에 들지 않습니다. 받고 싶은 것은 「담기」 를 누르세요</summary>" + sugg.slice().sort(byNew).map(x => rowHtml(x, true)).join("") + "</details>";
+    h += "<details class='sugg'" + (suggOpen ? " open" : "") + "><summary>연구 노트의 큰 물음이 적어 둔 논문 " + sl + "편 — 여기 것은 「링크 모두 열기」 에 들지 않습니다. 받고 싶은 것은 「담기」 를 누르세요</summary>" + sugg.slice().sort(byNew).map(x => rowHtml(x, true)).join("") + "</details>";
   }
   el.innerHTML = h; bindRows(el);
   const sg = el.querySelector("details.sugg"); if (sg) sg.addEventListener("toggle", () => { suggOpen = sg.open; });
@@ -173,58 +173,38 @@ function renderQueue() {
   const gs = $("qGetStop"); if (gs) gs.onclick = async () => { gs.disabled = true; try { await api("/api/wanted", { op: "open_stop" }); } catch (e) {} };
 }
 
-/* 한 번에 받기 (2026-11-11, 사용자: '폰으로 다운 안 되면 다운받을 논문으로 모아놓고, 내가 나중 컴터로 가면 한방에 받게끔').
-   열린 접근은 서버가 받는다. 구독 논문은 서버가 받을 수 없어(출판사가 스크립트를 막는다) PDF 가 받아지는 주소를 이 PC 의 기본 브라우저에 차례로 연다 —
-   학교 접속이 되는 브라우저가 PDF 를 받아 다운로드 폴더에 두면 수집이 서재로 옮기고, 여기서는 5초마다 서재와 대조해 ★ 로 바꾼다. */
+/* 링크 모두 열기 (2026-11-11 · 11-12 에 줄임 — 사용자: '그냥 링크만 다 띄워주면 내가 일일이 받는걸로 할게').
+   담아 둔 논문의 출판사 화면을 이 PC 의 기본 브라우저에 새 탭으로 연다(서버가 연다 — 화면에서 여러 창을 열면 브라우저가 첫 창만 남기고 막는다).
+   받는 것은 탭마다 직접 한다. 받은 PDF 는 수집이 서재로 옮기고, 이 화면이 10초마다 서재와 대조해 ★ 로 바꾼다(ownedSync). */
 function getHtml() {
   const g = getting; if (!g) return "";
   if (g.err) return "<div class='getbar err'>" + esc(g.err) + "</div>";
-  const o = g.open || {}, its = g.items || [], arrived = its.filter(x => { const it = itemOf(x.key); return it && (it.got || it.owned); }).length + (g.oaOk || 0);   /* its = 지금까지 브라우저로 연 것 전부(두 번에 나눠 열 수 있다) */
-  const nAuto = its.filter(x => x.auto === "yes").length, nView = its.filter(x => x.auto === "view").length, nPage = its.length - nAuto - nView;
-  let h = "<div class='getbar'>";
-  if (g.running) h += "<b>한 번에 받는 중</b> — " + [o.total ? "브라우저 탭 " + (o.done || 0) + " / " + o.total + " 여는 중 (" + (o.every || 4) + "초 간격)" : (g.phase || ""), g.oaN ? "열린 접근 " + g.oaDone + " / " + g.oaN + " 받는 중" : ""].filter(Boolean).join(" · ");
-  else h += "<b>" + (its.length ? "브라우저 탭 " + its.length + "개를 열었습니다" : "끝났습니다") + "</b>" + (g.oaOk ? " · 열린 접근 " + g.oaOk + "편은 서버가 받아 서재에 넣었습니다" : "") + " — 지금까지 서재에 들어온 것 " + arrived + "편.";
-  if (its.length) h += "<br>" + [nAuto ? "PDF 가 저절로 받아지는 주소 " + nAuto + "편" : "", nView ? "탭에 PDF 가 열리는 것 " + nView + "편(그 탭에서 저장)" : "", nPage ? "출판사 화면이 열리는 것 " + nPage + "편(거기서 PDF 받기)" : ""].filter(Boolean).join(" · ") +
-    ". 받아진 PDF 는 수집이 다운로드 폴더에서 서재로 옮기고 아래에서 ★ 로 바뀝니다. 로그인이나 로봇 확인 화면이 뜬 탭은 거기서 직접 받아 주세요.";
-  if (g.left) h += "<br>한 번에 15편까지 엽니다 — 남은 " + g.left + "편은 이것들이 들어온 뒤 다시 눌러 주세요.";
-  if (g.nodoi) h += "<br>DOI 가 없는 " + g.nodoi + "편은 「제목으로 찾기 ↗」 로 받아야 합니다.";
+  const o = g.open || {}, n = (g.items || []).length;
+  let h = "<div class='getbar'>" + (g.running ? "<b>링크를 여는 중</b> — " + (o.total ? (o.done || 0) + " / " + o.total : "준비 중…") : "<b>브라우저에 링크 " + n + "개를 열었습니다.</b>") +
+    " 탭마다 PDF 를 받으면 수집이 다운로드 폴더에서 서재로 옮기고, 아래에서 ★ 로 바뀝니다.";
+  if (g.left) h += "<br>한 번에 20편까지 엽니다 — 남은 " + g.left + "편은 이것들을 받은 뒤 다시 눌러 주세요.";
+  if (g.nodoi) h += "<br>DOI 가 없는 " + g.nodoi + "편은 열 링크가 없습니다 — 줄의 「제목으로 찾기 ↗」 로 찾아야 합니다.";
   return h + "</div>";
-}
-async function openInBrowser(items) {
-  let r; try { r = await api("/api/wanted", { op: "open", items: items.map(x => ({ key: keyOf(x), doi: doiPlain(x.doi), title: x.title || "" })) }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
-  if (r.error && !(r.items || []).length) { getting.err = r.error === "bad op" ? "서버가 아직 옛 판입니다 — 서버를 다시 켠 뒤에 쓸 수 있습니다." : r.error; return false; }
-  getting.open = r; getting.items = (getting.items || []).concat(r.items || []); getting.left = (getting.left || 0) + (r.left || 0); getting.nodoi = (getting.nodoi || 0) + (r.nodoi || 0);
-  (r.items || []).forEach(x => { status[x.key] = { text: x.auto === "yes" ? "브라우저가 PDF 를 받습니다 — 받아지면 서재로 옮겨져 ★ 로 바뀝니다" : x.auto === "view" ? "브라우저 탭에 PDF 가 열립니다 — 그 탭에서 저장을 눌러 주세요" : "브라우저 탭에 출판사 화면이 열립니다 — 거기서 PDF 를 받아 주세요" }; opened[x.key] = true; });
-  renderAll();
-  for (let i = 0; i < 120; i++) {      /* 다 열 때까지 진행을 보인다 */
-    await sleep(1500);
-    let s; try { s = await api("/api/wanted"); } catch (e) { continue; }
-    if (s.open) { const keep = getting.open; getting.open = Object.assign({}, keep, s.open); }
-    queue = s.items || queue; renderAll();
-    if (!s.open || !s.open.running) break;
-  }
-  return true;
 }
 async function getAll() {
   if (getting && getting.running) return;
   const left = queue.filter(x => x.mine !== false && !x.got && !x.owned);      /* 내가 담은 것만 */
-  const oa = left.filter(x => oaOf(x)), rest = left.filter(x => !oaOf(x) && doiPlain(x.doi));
-  getting = { running: true, t0: Date.now(), phase: "주소를 확인하는 중…", open: null, items: [], oaN: oa.length, oaDone: 0, oaOk: 0, left: 0, nodoi: left.filter(x => !oaOf(x) && !doiPlain(x.doi)).length };
+  const withDoi = left.filter(x => doiPlain(x.doi));
+  getting = { running: true, open: null, items: [], left: 0, nodoi: left.length - withDoi.length };
   renderAll();
-  const failed = [];
-  const oaJob = (async () => {      /* 열린 접근 — 서버가 차례로 받는다. 못 받은 것은 브라우저로 */
-    for (const it of oa) { const k = keyOf(it); status[k] = { text: "받는 중…" }; renderAll(); const r = await fetchOne(k, true); getting.oaDone++; if (r && r.ok) getting.oaOk++; else if (doiPlain(it.doi)) failed.push(it); renderAll(); }
-  })();
-  if (rest.length) { const ok = await openInBrowser(rest); if (!ok && !oa.length) { getting.running = false; renderAll(); return; } }
-  await oaJob;
-  if (failed.length && !getting.err) await openInBrowser(failed);
-  getting.running = false; renderAll();
-  for (let i = 0; i < 48 && getting && !getting.running; i++) {      /* 들어오는 것을 4분 동안 5초마다 살핀다 */
-    await sleep(5000);
-    await loadQueue(true);
-    const its = getting.items || [];
-    if (its.length && its.every(x => { const it = itemOf(x.key); return !it || it.got || it.owned; })) break;
+  let r; try { r = await api("/api/wanted", { op: "open", items: withDoi.map(x => ({ key: keyOf(x), doi: doiPlain(x.doi), title: x.title || "" })) }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+  if (r.error && !(r.items || []).length) { getting.running = false; getting.err = r.error === "bad op" ? "서버가 아직 옛 판입니다 — 서버를 다시 켠 뒤에 쓸 수 있습니다." : r.error; renderAll(); return; }
+  getting.open = r; getting.items = r.items || []; getting.left = r.left || 0;
+  getting.items.forEach(x => { opened[x.key] = true; status[x.key] = { text: "브라우저에 출판사 화면을 열었습니다 — 거기서 PDF 를 받으면 서재로 옮겨져 ★ 로 바뀝니다" }; });
+  renderAll();
+  for (let i = 0; i < 80; i++) {      /* 다 열 때까지 진행을 보인다 */
+    await sleep(1000);
+    let s; try { s = await api("/api/wanted"); } catch (e) { continue; }
+    if (s.open) getting.open = Object.assign({}, getting.open, s.open);
+    renderAll();
+    if (!s.open || !s.open.running) break;
   }
+  getting.running = false; renderAll();
 }
 
 function bindRows(el) {
