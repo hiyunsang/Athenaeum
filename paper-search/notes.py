@@ -8,6 +8,7 @@
 """
 import io
 import json
+import math
 import os
 import re
 import threading
@@ -22,7 +23,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-11-09)"
+VERSION = "연구 노트 (2026-11-11)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
@@ -629,7 +630,11 @@ _RULE = (
     "화면이 그 번호를 원문으로 연결합니다. 거기 있는 번호만 쓰고, 찾은 문장이 말하지 않는 그 논문의 세부나 수치를 보태지 않습니다. 물음이 가리킨 논문이 있으면 그 논문의 문장이 맨 앞에 있습니다.\n\n"
     "토의가 길어지면 [지금까지의 정리]가 지난 대화의 앞부분을 대신합니다. 거기 적힌 '정한 것'과 '버린 것'을 지키고, 버린 것을 다시 꺼내지 않습니다. [연구자에 관해 기억하는 것]은 다른 주제에서 연구자가 밝힌 것이라 여기에도 적용합니다.\n\n"
     "실험이나 장비 이야기를 할 때 [우리 연구실]이 있으면 우리 장비로 되는지 가려 말합니다. 없는 장비나 측정은 '외부:'로 적고, 어디서 할 수 있는지와 그 측정 없이 가설을 가릴 방법이 있는지를 적습니다.\n\n"
-    "문헌을 더 찾아야 답할 수 있을 때만 답 끝에 '탐색: 검색어' 줄을 적고, 서재의 논문을 깊이 읽어야 할 때만 '공부: 주제' 줄을 적습니다. 연구자가 그 줄을 눌러 돌립니다. 습관처럼 붙이지 않습니다.\n\n"
+    "문헌을 더 찾아야 답할 수 있을 때만 답 끝에 '탐색: 검색어' 줄을 적고, 서재의 논문을 깊이 읽어야 할 때만 '공부: 주제' 줄을 적습니다. 연구자가 그 줄을 눌러 돌립니다. 습관처럼 붙이지 않고, 검색어나 주제만 적습니다(논문 이름을 덧붙이지 않습니다).\n\n"
+    "답을 마쳤을 때 이야기가 이어질 방향이 둘 이상 보이면, 답의 맨 끝에 '선택: '으로 시작하는 줄을 두 개에서 네 개 적습니다. 한 줄에 하나씩 적고, '선택: ' 뒤에는 연구자가 직접 말하듯이 한 줄로 짧게 씁니다(마흔 자 안쪽). "
+    "화면이 이 줄을 단추로 보여 주고, 연구자가 하나를 누르면 그 말이 그대로 다음 물음이 됩니다. 방금 답에서 덜 다룬 것, 결론이 엇갈린 채 남은 것, 연구자가 어느 쪽인지 정해야 다음이 정해지는 갈림길이 좋은 선택지입니다. "
+    "선택지끼리는 서로 다른 방향이어야 하고, '더 자세히'처럼 막연한 것이나 방금 한 답을 다시 하게 되는 것은 넣지 않습니다. 연구자가 무엇을 원하는지 되묻고 싶을 때도 질문 문장 대신 이 줄로 고를 것을 줍니다. "
+    "선택지는 이 토의를 잇는 말이지 새 연구 주제의 제안이 아닙니다. 확인이나 정정에 짧게 답했을 때, 이어질 방향이 하나뿐일 때는 적지 않습니다. 본문에서는 선택지를 소개하거나 되풀이하지 않습니다.\n\n"
     "글은 사람에게 말하듯 자연스러운 한국어로 씁니다. 처음부터 한국어로 생각해서 쓰고, 영어 문장을 옮기듯 쓰지 않습니다. 영어의 관계절을 관형절로 옮기면 '실측값이 예측에서 벗어나는 구간이 곧 모델이 틀리는 구간입니다'처럼 "
     "한 문장에 주어가 둘셋 겹쳐 읽기 어려워집니다. 그런 생각은 '실측값이 예측에서 벗어나면, 그 구간에서는 모델이 맞지 않는 것입니다'처럼 조건과 결론으로 풀거나 두 문장으로 나눕니다. 한 문장에는 주어를 하나만 둡니다. "
     "마크다운 제목, 굵게 표시, 인사말, 칭찬은 쓰지 않습니다. 번호 목록은 정말 나란한 항목이 여럿일 때만 쓰고, 그때는 항목마다 줄을 바꿔 '① 머리말: 내용'처럼 적습니다. "
@@ -647,7 +652,12 @@ _RULE_ASK = (
     "[관련 공부 장]이 있으면 그것이 첫째 근거입니다. 장의 논지를 근거로 쓴 문장 끝에 ⟦C1.2⟧처럼 번호를 붙입니다. 장에 없는 번호는 쓰지 않습니다. "
     "[서재에서 찾은 문장]이 있으면 그것이 가장 구체적인 근거입니다 — 물음의 낱말로 찍어 낸 문장이라 무관한 것도 섞여 있으니 맞는 것만 쓰고, 그 문장을 근거로 쓴 문장 끝에 ⟦L3 s45⟧처럼 번호를 붙입니다. 거기 있는 번호만 씁니다. "
     "토의가 길면 [지금까지의 정리]가 지난 대화의 앞부분을 대신하고, [연구자에 관해 기억하는 것]은 다른 주제에서 연구자가 밝힌 선호와 제약입니다.\n\n"
-    "서재의 논문을 깊이 읽어야 제대로 답할 수 있으면 답 끝에 '공부: 주제' 줄을, 세상의 문헌을 더 봐야 하면 '탐색: 검색어' 줄을 적습니다. 필요할 때만 적습니다. 이 질문이 연구 주제로 자랄 만하면 마지막에 한 문장으로 그렇게 말해 줍니다.\n\n"
+    "서재의 논문을 깊이 읽어야 제대로 답할 수 있으면 답 끝에 '공부: 주제' 줄을, 세상의 문헌을 더 봐야 하면 '탐색: 검색어' 줄을 적습니다. 필요할 때만 적고, 주제나 검색어만 적습니다(논문 이름을 덧붙이지 않습니다). "
+    "이 질문이 연구 주제로 자랄 만하면 본문의 마지막에 한 문장으로 그렇게 말해 줍니다. 앞 답에서 이미 그렇게 말했으면 다시 말하지 않습니다.\n\n"
+    "답을 마쳤을 때 이야기가 이어질 방향이 둘 이상 보이면, 답의 맨 끝에 '선택: '으로 시작하는 줄을 두 개에서 네 개 적습니다. 한 줄에 하나씩 적고, '선택: ' 뒤에는 연구자가 직접 말하듯이 한 줄로 짧게 씁니다(마흔 자 안쪽). "
+    "화면이 이 줄을 단추로 보여 주고, 연구자가 하나를 누르면 그 말이 그대로 다음 물음이 됩니다. 방금 설명에서 깊이 들어가지 못한 부분, 설명이 서로 겨루는 지점, 우리 연구실의 일과 이어지는 지점처럼 서로 다른 방향을 줍니다. "
+    "'더 자세히'처럼 막연한 것이나 방금 한 설명을 다시 하게 되는 것은 넣지 않습니다. 연구자가 무엇을 알고 싶은지 되묻고 싶을 때도 질문 문장 대신 이 줄로 고를 것을 줍니다. "
+    "확인이나 정정에 짧게 답했을 때, 이어질 방향이 하나뿐일 때는 적지 않습니다. 본문에서는 선택지를 소개하거나 되풀이하지 않습니다.\n\n"
     "글은 자연스러운 한국어 문단으로 씁니다. 처음부터 한국어로 생각해서 쓰고, 영어 문장을 옮기듯 쓰지 않습니다. 관계절을 관형절로 옮겨 한 문장에 주어가 둘셋 겹치는 문장은 조건과 결론으로 풀거나 두 문장으로 나눕니다. 한 문장에는 주어를 하나만 둡니다. "
     "마크다운 제목이나 굵게 표시, 인사말, 칭찬은 쓰지 않습니다. 번호 목록은 정말 나란한 항목이 여럿일 때만, 항목마다 줄을 바꿔 '① 머리말: 내용'처럼 적습니다. "
     "내부 표시나 규칙 이름은 쓰지 않습니다.\n")
@@ -697,7 +707,63 @@ def _card_text(card):
     return "\n".join(out)
 
 
-def _prompt(nt, question, lib, others, studies="", mstext="", libtext=""):
+_PICK_RX = re.compile(r"^\s*(?:[-•·*]\s*)?(?:\*\*)?선택(?:지)?\s*\d{0,2}\s*(?:\*\*)?\s*[:：]\s*(.*?)\s*$")
+_PICK_GO = re.compile(r"^\s*(?:탐색|공부)\s*[:：]")
+_PICK_BULLET = re.compile(r"^\s*(?:[-•·*]|\d{1,2}[.)]|[①-⑳])\s*(\S.*?)\s*$")
+
+
+def _split_choices(text):
+    """답 끝의 '선택: …' 줄을 떼어 낸다 → (본문, [선택지 넷까지]). 화면이 선택지를 단추로 보이고, 누르면 그 말이 다음 물음이 된다 (2026-11-11, 사용자: '묻기 말고 그래도 선택 몇 개 중에 하나 선택할 자유는 있었음 좋겠는데').
+    답의 꼬리(빈 줄, '선택:' 줄, '탐색:'·'공부:' 줄이 섞여 있어도 된다)에서만 찾는다 — 본문 가운데의 '선택:' 은 건드리지 않는다. '선택:' 한 줄 아래에 글머리표로 늘어놓은 꼴도 받는다.
+    '탐색:'·'공부:' 줄은 본문에 남긴다. 선택지가 없으면 글을 그대로 돌려준다."""
+    src = str(text or "").rstrip()
+    lines = src.split("\n")
+    i = len(lines)
+    while i > 0:
+        ln = lines[i - 1]
+        if ln.strip() and not (_PICK_RX.match(ln) or _PICK_GO.match(ln) or _PICK_BULLET.match(ln)):
+            break
+        i -= 1
+    start, hdr, picks, gos = i, False, [], []
+    for j in range(i, len(lines)):
+        ln = lines[j]
+        if not ln.strip():
+            continue
+        m = _PICK_RX.match(ln)
+        if m:
+            if m.group(1):
+                picks.append(m.group(1))
+                hdr = False
+            else:
+                hdr = True          # '선택:' 만 있는 줄 — 아래의 글머리표가 선택지
+            continue
+        if _PICK_GO.match(ln):
+            gos.append(ln.strip())
+            hdr = False
+            continue
+        b = _PICK_BULLET.match(ln)
+        if b and hdr:
+            picks.append(b.group(1))
+            continue
+        start, hdr, picks, gos = j + 1, False, [], []   # 머리 없는 글머리표 — 본문의 목록이다. 여기까지는 본문
+    out, seen = [], set()
+    for p in picks:
+        p = re.sub(r"⟦[^⟧]*⟧", "", p)
+        p = re.sub(r"\s+", " ", p).strip().strip("*").strip()
+        p = re.sub(r"^[\"'“”‘’「『\[(]+|[\"'“”‘’」』\])]+$", "", p).strip()
+        k = re.sub(r"[^0-9a-z가-힣]", "", p.lower())
+        if len(k) < 4 or len(p) > 90 or k in seen:
+            continue
+        seen.add(k)
+        out.append(p)
+    out = out[:4]
+    body = "\n".join(lines[:start]).rstrip()
+    if not out or not body.strip():
+        return src, []
+    return body + (("\n\n" + "\n".join(gos)) if gos else ""), out
+
+
+def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False):
     seed = nt.get("seed") or {}
     fr = seed.get("from") or {}
     isask = (nt.get("kind") or "topic") == "ask"   # 물음 — 분야를 배우려는 대화 (2026-10-27)
@@ -733,6 +799,9 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext=""):
             return t[:900].rstrip() + ("…(줄임)" if len(t) > 900 else "")
         past = "\n\n".join("%s: %s" % (_who(m), _cut(i, m)) for i, m in enumerate(past_items))
         out += "\n[지난 대화]\n" + past + "\n"
+        last = past_items[-1] if past_items else {}
+        if last.get("role") == "claude" and last.get("choices"):   # 바로 앞 답 끝에 낸 선택지 — 같은 것을 다시 내지 않게, 고른 것이 무엇이었는지 알게 (2026-11-11)
+            out += "(바로 앞 답의 끝에 낸 선택지: " + " / ".join(str(c) for c in last["choices"][:4]) + ")\n"
         if any(m.get("role") == "chat" for m in past_items):
             out += "(「Claude 채팅에서 가져온 글」 은 연구자가 다른 창의 Claude 와 나눈 이야기를 정리해 이 노트에 넣은 것입니다. 연구자가 이미 읽은 내용이니 되풀이하지 않고 그 위에서 답합니다.)\n"
     if nt.get("plan"):
@@ -756,8 +825,10 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext=""):
         out += "\n[연구 노트의 다른 주제] " + " · ".join("%s(%s)" % (o["title"][:50], STATUS_KO.get(o["status"], "")) for o in others[:30]) + "\n"
     if libtext:   # 서재 문장 색인이 찍어 낸 문장들 — 물음 바로 앞에 (2026-11-09)
         out += "\n" + libtext + "\n"
-    short = len(question) < 60 and not re.search(r"자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐가|무엇", question)   # 확인·정정 같은 짧은 말에 긴 답이 오던 것 (2026-10-30: '9119A가 맞음' 에 848자)
-    out += "\n[물음]\n" + question + "\n" + ("(짧은 말입니다. 확인이나 정정이면 한두 문장으로 받고 멈춥니다. 새 제안이나 계산, 확인 요청을 덧붙이지 않습니다.)\n" if short else "") + "\n" + (_RULE_ASK if isask else _RULE)
+    short = (not picked) and len(question) < 60 and not re.search(r"자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐가|무엇", question)   # 확인·정정 같은 짧은 말에 긴 답이 오던 것 (2026-10-30: '9119A가 맞음' 에 848자)
+    note = ("(연구자가 바로 앞 답 끝의 선택지 가운데 이것을 골랐습니다. 이 방향으로 이어서 답합니다.)\n" if picked else      # 선택지는 짧은 구절이라 '짧은 말' 로 보면 한두 문장으로 끊긴다 (2026-11-11)
+            "(짧은 말입니다. 확인이나 정정이면 한두 문장으로 받고 멈춥니다. 새 제안이나 계산, 확인 요청, 선택 줄을 덧붙이지 않습니다.)\n" if short else "")
+    out += "\n[물음]\n" + question + "\n" + note + "\n" + (_RULE_ASK if isask else _RULE)
     if lib:
         out += ("\n[서재를 찾아볼 수 있다]\n연구자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
                 "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(이름은 서재 목록의 '연도_저널_저자_제목' 꼴 — Glob 으로 찾는다).\n"
@@ -780,10 +851,14 @@ def ask(nid, body):
         if nt.get("pending"):
             return {"error": "아직 답을 기다리고 있습니다"}
         th = nt.setdefault("thread", [])
+        turn = {"role": "user", "text": question, "t": time.time()}
+        offered = [c for m in th[-2:] if m.get("role") == "claude" for c in (m.get("choices") or [])]
+        if offered and (body.get("pick") or question in offered):   # 답 끝의 선택지를 눌러 보낸 물음 (2026-11-11) — 취소했다가 묻는 칸에서 그대로 다시 보낸 것도 같은 글이면 고른 것으로 본다
+            turn["pick"] = True
         if th and th[-1].get("role") == "user" and nt.get("error"):
-            th[-1] = {"role": "user", "text": question, "t": time.time()}
+            th[-1] = turn
         else:
-            th.append({"role": "user", "text": question, "t": time.time()})
+            th.append(turn)
         nt["pending"] = time.time()
         nt.pop("error", None)
         nt["opts"] = {"effort": effort, "lib": bool(body.get("lib")), "study": _study_mode(body.get("study")), "ms": _ms_mode(body.get("ms"))}
@@ -843,7 +918,7 @@ def _ask_job(nid):
         others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
-        res = run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
+        res = run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick"))), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
                   add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt)) if run else None
         cancelled = bool((res or {}).get("cancelled"))
         if not cancelled and (not res or not (res.get("text") or "").strip()):
@@ -867,9 +942,11 @@ def _ask_job(nid):
             nt["error"] = err
         else:
             nt.pop("error", None)
-            text = _lib_mark(_study_mark(res["text"].strip()))
+            text, choices = _split_choices(_lib_mark(_study_mark(res["text"].strip())))
             turn = {"role": "claude", "text": text, "t": time.time(), "sec": round(time.time() - t0),
                     "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib}
+            if choices:   # 답 끝의 '선택:' 줄 — 화면이 단추로 보이고 누르면 그 말이 다음 물음 (2026-11-11)
+                turn["choices"] = choices
             if msinfo:   # 어느 원고를 봤나 (2026-10-29)
                 turn["ms"] = msinfo
             if picked:   # 어느 장을 봤나 + 답이 든 논지 번호 → 장의 문장(key) (2026-10-29)
@@ -959,7 +1036,8 @@ _STUDY_PROF = {}   # 장 파일 → (mtime, 맞추기 재료)
 _STUDY_REL_KO = {"agree": "일치", "cond": "조건부", "conflict": "엇갈림", "extend": "확장", "single": "한 연구"}
 _C_RX = re.compile(r"[⟦\[(]\s*([A-D]\d{1,2}\.\d{1,2}(?:\s*[,·]\s*[A-D]\d{1,2}\.\d{1,2})*)\s*[⟧\])]")
 _STUDY_CAP = 13500     # 장마다 글자 상한 — 두 장이면 2만 7천 자 ≈ 토큰 1만 3천쯤(물음마다; 서재 찾아보기 한 번의 1/30). 첫 시험에서 11,000 은 34개 논지 가운데 뒤의 것을 잘라 Claude 가 '뒤는 잘렸다' 고 적었다
-_STUDY_MIN = 4.0       # 알아서 고를 때의 점수 문턱
+_STUDY_MIN = 8.0       # 알아서 고를 때의 점수 문턱 (2026-11-11 점수의 뜻이 바뀌어 다시 잡음 — 제목의 낱말 하나가 그 장에 뚜렷이 몰려 있으면 9~12)
+_STUDY_MIN2 = 6.0      # 둘째 장의 문턱 — 첫째가 붙었을 때만
 
 
 def _study_mode(v):
@@ -983,7 +1061,7 @@ def _study_choices():
 
 
 def _study_profile(sid):
-    """장의 맞추기 재료(제목·주제·물음·용어·절 제목·범위·답하지 못한 것) — 파일이 바뀔 때만 다시 읽는다"""
+    """장의 맞추기 재료(제목·주제·용어·장의 글 전체) — 파일이 바뀔 때만 다시 읽는다"""
     fp = os.path.join(os.path.dirname(cfg["ARCHIVE"]), "공부", os.path.basename(str(sid)) + ".json")
     try:
         mt = os.path.getmtime(fp)
@@ -997,44 +1075,86 @@ def _study_profile(sid):
     if isinstance(st, dict) and st.get("chapter"):
         ch, ol, plan = st["chapter"], st.get("outline") or {}, st.get("plan") or {}
         terms = ch.get("terms") or ol.get("terms") or []
-        prof = {"id": st["id"], "title": ch.get("title") or st.get("topic") or "",
-                "head": " ".join([str(ch.get("title") or ""), str(st.get("topic") or "")]).lower(),
-                "terms": " ".join(str(t.get("en") or "") + " " + str(t.get("ko") or "") for t in terms if isinstance(t, dict)).lower(),
-                "body": " ".join([str(ch.get("scope") or "")] + [str(x) for x in plan.get("ask") or []] + [str(x.get("title") or "") for x in ch.get("sections") or []] + [str(g) for g in ch.get("gaps") or []]).lower()}
+        head = " ".join([str(ch.get("title") or ""), str(st.get("topic") or "")]).lower()
+        tt = " ".join(str(t.get("en") or "") + " " + str(t.get("ko") or "") for t in terms if isinstance(t, dict)).lower()
+        parts = [head, tt, str(ch.get("scope") or "")] + [str(x) for x in plan.get("ask") or []] + [str(g) for g in ch.get("gaps") or []]
+        for sec in ch.get("sections") or []:
+            parts.append(str(sec.get("title") or ""))
+            for b in sec.get("blocks") or []:
+                parts += [str(u.get("t") or "") for u in b.get("units") or [] if isinstance(u, dict)]
+        full = " ".join(parts).lower()
+        prof = {"id": st["id"], "title": ch.get("title") or st.get("topic") or "", "head": head, "terms": tt, "full": full, "len": max(1, len(full)), "cnt": {}}
     _STUDY_PROF[fp] = (mt, prof)
     return prof
 
 
+# 한글 낱말 뒤에 조사(와 그 뒤 한두 글자)까지만 받아 준다 — '알루미' 가 '알루미늄' 에, '결정립' 이 '결정립계' 에 걸리지 않게
+_KO_AFTER = r"(?=(?:[은는이가을를의에와과로도만으인일임한된하적들까부보처마란라며고지][가-힣]{0,2})?(?![가-힣]))"
+
+
+def _word_count(text, w, memo=None):
+    """글에서 낱말이 몇 번 나오나 — 영어는 낱말 경계(끝의 s·es 는 받음), 한글은 뒤가 조사이거나 낱말이 끝날 때만 센다"""
+    if memo is not None and w in memo:
+        return memo[w]
+    if re.match(r"^[가-힣]+$", w):
+        n = len(re.findall(re.escape(w) + _KO_AFTER, text))
+    else:
+        n = len(re.findall(r"(?<![a-z0-9])" + re.escape(w) + r"(?:es|s)?(?![a-z0-9])", text))
+    if memo is not None:
+        memo[w] = n
+    return n
+
+
 def _study_match(nt, k=2, min_score=_STUDY_MIN):
-    """주제 낱말(제목의 영어·한국어 낱말 ×3, 카드·설계서의 낱말)로 다 쓴 장을 점수 매긴다 → [(점수, id, 제목)] 상위 k(문턱 이상, 둘째는 첫째의 절반 이상). 공부에서 온 주제는 그 장이 맨 앞."""
+    """주제 낱말(제목의 영어·한국어 낱말 ×3, 카드·설계서의 낱말 ×1)로 다 쓴 장을 점수 매긴다 → [(점수, id, 제목)] 상위 k(문턱 이상, 둘째는 첫째의 절반 이상). 공부에서 온 주제는 그 장이 맨 앞.
+    점수는 '그 낱말이 다른 장보다 이 장의 글에 얼마나 자주 나오나'(2026-11-11): 낱말마다 장의 글 1만 자당 횟수를 재고, 장들의 평균보다 몇 배인지의 log2(많아야 3)를 무게에 곱한다 —
+    '절삭'·'칩' 처럼 어느 장에나 고르게 나오는 낱말은 0 에 가깝고 'DIC'·'탄탈럼'·'취성재' 처럼 한두 장에 몰린 낱말이 장을 가른다. 제목에 그 낱말이 있는 장(그런 장이 절반 이하일 때)은 무게만큼 더.
+    어느 장의 제목·용어표에도 없는 낱말(말투·서술어 조각일 때가 많다)은 0.4 배. 전에는 제목·용어·절 제목에 '있다/없다' 만 봐서 '절삭' 하나로 알루미나 물음에 퀵스탑 장이 붙었고,
+    '전단대 찾기 (DIC)' 는 네 장이 같은 점수라 DIC 장이 아니라 목록의 앞 두 장이 붙었다."""
     title = str(nt.get("title") or "")
-    t_ko = [w for w in (_KO_TAIL.sub("", x) for x in re.findall(r"[가-힣]{2,}", title)) if len(w) >= 2 and w not in _KO_STOP]
-    t_en = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z\-]+", title) if len(w) >= 2 and w.lower() not in ms._STOP]
+    bad_end = ("다", "요", "데", "게", "까", "니", "면", "서", "지만", "는지", "라서", "하게", "히", "들")
+    t_ko = []
+    for raw in re.findall(r"[가-힣]{2,}", title):
+        w = _KO_TAIL.sub("", raw)
+        if len(w) >= 2 and w not in _KO_STOP and not w.endswith(bad_end) and w not in t_ko:
+            t_ko.append(w)
+    t_en = list(dict.fromkeys(w.lower() for w in re.findall(r"[A-Za-z][A-Za-z\-]+", title) if len(w) >= 2 and w.lower() not in ms._STOP))
     ko = [w for w in _ko_topic(nt)[:12] if w not in t_ko]
     en = [w for w in _intro_topic(nt)[:10] if w not in t_en]
     fr = (nt.get("seed") or {}).get("from") or {}
     from_id = str(fr.get("id") or "") if fr.get("kind") == "study" else ""
-    out = []
-    for ch in _study_choices():
-        p = _study_profile(ch["id"])
-        if not p:
+    profs = [(ch, p) for ch, p in ((ch, _study_profile(ch["id"])) for ch in _study_choices()) if p]
+    n_ch = len(profs)
+    words = [(w, 3.0) for w in t_ko + t_en] + [(w, 1.0) for w in list(dict.fromkeys(ko + en))]
+    score = dict((ch["id"], 0.0) for ch, _p in profs)
+    for w, wt in words:
+        cnts = [_word_count(p["full"], w, p["cnt"]) for _ch, p in profs]
+        if not any(cnts):
             continue
-        sc = 0.0
-        for w, wt in [(w, 3.0) for w in set(t_ko) | set(t_en)] + [(w, 1.0) for w in set(ko) | set(en)]:
-            ws = [w] + ([w[:-1]] if re.match(r"^[가-힣]{3,}$", w) else [])   # '모델링' 은 '모델' 로도('모델:' 이 든 제목에 맞게)
-            if any(x in p["head"] for x in ws):
-                sc += wt * 1.5
-            elif any(x in p["terms"] for x in ws):
-                sc += wt
-            elif any(x in p["body"] for x in ws):
-                sc += wt * 0.6
-        if from_id and from_id == ch["id"]:
-            sc += 100
-        if sc >= min_score:
+        heads = [bool(_word_count(p["head"], w)) for _ch, p in profs]
+        anchored = any(heads) or any(_word_count(p["terms"], w) for _ch, p in profs)
+        wgt = wt * (1.0 if anchored else 0.4)
+        tfs = [n * 10000.0 / p["len"] for n, (_ch, p) in zip(cnts, profs)]
+        mean = sum(tfs) / n_ch
+        for (ch, p), n, tf, inhead in zip(profs, cnts, tfs, heads):
+            pts = 0.0
+            if n >= 2:
+                lift = (tf / mean) if n_ch >= 4 else (1.0 + n / 4.0)   # 장이 서넛뿐이면 평균과 견주는 것이 뜻이 없다 — 횟수 그대로
+                if lift > 1:
+                    pts = wgt * min(3.0, math.log(lift, 2))
+            if inhead and sum(heads) <= max(1, n_ch / 2.0):
+                pts += wgt
+            score[ch["id"]] += pts
+    out = []
+    for ch, p in profs:
+        sc = score[ch["id"]] + (100 if from_id and from_id == ch["id"] else 0)
+        if sc >= min(min_score, _STUDY_MIN2):
             out.append((round(sc, 1), ch["id"], p["title"]))
     out.sort(key=lambda x: -x[0])
+    if not out or out[0][0] < min_score:   # 첫째가 문턱을 못 넘으면 아무 장도 붙이지 않는다
+        return []
     out = out[:k]
-    if len(out) > 1:
+    if len(out) > 1:   # 둘째부터는 첫째의 절반 이상이면 조금 낮은 문턱으로 받는다
         out = [out[0]] + [x for x in out[1:] if x[0] >= out[0][0] * 0.5]
     return out
 

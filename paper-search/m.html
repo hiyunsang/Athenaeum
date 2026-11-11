@@ -236,6 +236,11 @@
   .dots { display: inline-flex; gap: 4px; } .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--text-3); animation: dot 1s infinite ease-in-out; } .dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
   @keyframes dot { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
   .merr { color: var(--red); font-size: 14px; margin: 10px 0; }
+  /* 답 끝의 선택지 — 누르면 그 말이 다음 물음 (2026-11-11) */
+  .pks { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 12px 0 18px; }
+  .pks .pkh { font-size: 12.5px; color: var(--text-3); }
+  .pks button { text-align: left; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 14px; background: var(--fill); color: var(--text); font-family: inherit; font-size: 15px; line-height: 1.4; word-break: keep-all; cursor: pointer; }
+  .pks button:active { opacity: .7; } .pks button:disabled { opacity: .5; }
   .composer { position: -webkit-sticky; position: sticky; bottom: var(--kb); z-index: 5; background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); border-top: 1px solid var(--line);
     padding: 8px 12px calc(8px + max(0px, var(--sab) - var(--kb))); }
   .composer .ctx { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; color: var(--text-2); background: var(--fill); border-radius: 12px; padding: 8px 10px; margin-bottom: 8px; }
@@ -1295,7 +1300,7 @@ async function viewNote(id, my) {
   let nt = null, now0 = Date.now() / 1000, got = Date.now(), ancs = {}, lrefs = {};
   const draw = () => {
     if (!nt) return;
-    const th = nt.thread || []; ancs = {}; lrefs = {};
+    const th = nt.thread || [], lastC = th.length && th[th.length - 1].role === "claude" ? th[th.length - 1] : null; ancs = {}; lrefs = {};
     nav.querySelector(".nt").textContent = nt.title || "노트";
     $("msgs").innerHTML = "<div class='ch2' style='margin-top:6px'>" + (nt.kind === "ask" ? "물음" : "연구 주제 · " + (NSTAT[nt.status] || "")) + "</div><div class='ch1'>" + esc(nt.title || "") + "</div>" +
       (nt.seed && nt.seed.text ? "<div class='doc' style='padding:0;font-size:14px'><details><summary>출발점</summary><p style='white-space:pre-wrap'>" + esc(nt.seed.text) + "</p></details></div>" : "") +
@@ -1303,8 +1308,10 @@ async function viewNote(id, my) {
         if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
         Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
         return markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {} }), m.cites) + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + "</span></div>"; }).join("") +
+      (lastC && !nt.pending && !nt.error && (lastC.choices || []).length ? "<div class='pks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" + lastC.choices.map((c, i) => "<button data-pk='" + i + "'>" + esc(c) + "</button>").join("") + "</div>" : "") +   /* 답 끝의 선택지 — 마지막 답 아래에만 (2026-11-11) */
       (nt.pending ? waitHtml("Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
+    $("msgs").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => { const c = ((lastC || {}).choices || [])[+b.dataset.pk]; if (!c) return; $("msgs").querySelectorAll("[data-pk]").forEach(x => x.disabled = true); ask(c, true); });
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel", id }); } catch (e) {} pull(); };
     $("msgs").querySelectorAll("[data-anc]").forEach(a => a.onclick = e => {
       e.preventDefault(); const k = a.dataset.anc, v = ancs[k]; if (!v) return;
@@ -1329,13 +1336,14 @@ async function viewNote(id, my) {
     if (n0 < 0 || (was && !nt.pending) || (nt.thread || []).length !== n0) toBottom();
     clearInterval(pollT); pollT = nt.pending ? setInterval(pull, 4000) : null;
   };
-  bindComposer(async v => {
+  const ask = async (v, pick) => {      /* pick = 답 끝의 선택지를 눌러 보낸 것 — 묻는 칸에 쓰던 글은 건드리지 않는다 */
     const o = (nt && nt.opts) || {};
-    let r; try { r = await api("/api/notes", { op: "ask", id, question: v, effort: o.effort && o.effort !== "max" ? o.effort : "xhigh", lib: false, study: o.study == null ? "auto" : o.study, ms: o.ms || "" }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    let r; try { r = await api("/api/notes", { op: "ask", id, question: v, effort: o.effort && o.effort !== "max" ? o.effort : "xhigh", lib: false, study: o.study == null ? "auto" : o.study, ms: o.ms || "", pick: pick || undefined }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
     if (my !== view) return;
-    if (r.error) { toast(r.error); putBack(v); return; }
+    if (r.error) { toast(r.error); if (pick) draw(); else putBack(v); return; }
     await pull(); toBottom();
-  });
+  };
+  bindComposer(v => ask(v, false));
   await pull();
 }
 

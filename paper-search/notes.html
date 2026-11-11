@@ -71,6 +71,13 @@
   .fv .items { margin: .1em 0 .45em; } .fv .items li { margin-bottom: .3em; } .fv .ph { color: var(--text-3); }
   .msg .go { display: block; margin: 2px 0; padding: 3px 0; color: var(--accent); text-align: left; }
   .msg .go::before { content: "↗ "; color: var(--text-3); }
+  /* 답 끝의 선택지 — 마지막 답 아래에만. 누르면 그 말이 다음 물음이 된다 (2026-11-11, 사용자: '묻기 말고 그래도 선택 몇 개 중에 하나 선택할 자유는 있었음 좋겠는데') */
+  .picks { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: var(--s3) 0 var(--s2); }
+  .picks .pkh { font-size: 11px; color: var(--text-3); }
+  .pick { font-size: 13px; line-height: 1.45; text-align: left; color: var(--text); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); padding: 5px 11px 5px 9px; cursor: pointer; word-break: keep-all; max-width: 100%; }
+  .pick::before { content: "→ "; color: var(--accent); }
+  .pick:hover { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+  .pick:disabled { opacity: .5; cursor: default; }
   .stc { color: var(--accent); cursor: pointer; font-size: 10.5px; font-weight: 600; border: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; margin-left: 2px; text-decoration: none; white-space: nowrap; } .stc:hover { background: var(--accent-bg); }   /* 답 속의 공부 장 논지 번호 — 누르면 공부 창의 그 문장 (2026-10-29) */
   .lref { color: var(--text-2); cursor: pointer; font-size: 10.5px; font-weight: 600; border: 1px solid var(--line-2); border-radius: 3px; padding: 0 3px; margin-left: 2px; text-decoration: none; white-space: nowrap; } .lref:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }   /* 답 속의 서재 문장 번호(L3 s45) — 누르면 원문과 번역 (2026-11-09) */
   .ck { font-size: 9.5px; font-weight: 700; margin-left: 1px; text-decoration: none; vertical-align: super; line-height: 0; } .ck.ok { color: var(--accent); } .ck.no { color: var(--amber); cursor: help; }   /* (저자 연도) 뒤의 ✓·★(서재에 있음)·?(서재에 없음 — Claude 의 기억) */
@@ -299,7 +306,9 @@ function lineHtml(p) {
   if (m && p.length < 200) {
     const q = m[2].trim();
     if (m[1] === "탐색") return "<a class='act go' data-q=\"" + esc(q) + "\" title='이 주제로 논문 탐색 창을 엽니다'>탐색: " + esc(q) + "</a>";
-    return "<a class='act go' data-study=\"" + esc(q) + "\" title='이 주제로 공부 창을 엽니다'>공부: " + esc(q) + "</a>";
+    const pm = q.match(/^(.{4,}?)\s*[(（]([^()（）]*(?:19|20)\d{2}[^()（）]*)[)）]\s*$/);   /* '주제 (Yin 2005, Tan 2008 …)' — 공부 창에는 주제만 보내고, Claude 가 든 논문은 툴팁에 (2026-11-11) */
+    const topic = pm ? pm[1].trim() : q;
+    return "<a class='act go' data-study=\"" + esc(topic) + "\" title='이 주제로 공부 창을 엽니다" + (pm ? " — Claude 가 든 논문: " + esc(pm[2].trim()) : "") + "'>공부: " + esc(topic) + "</a>";
   }
   return null;
 }
@@ -389,8 +398,10 @@ function bindFields(el, sel, onInput) {
 /* 답 속의 (저자 연도) 뒤에 ✓·★(서재에 있음 — 누르면 읽기 창)·?(서재에 없는 논문 — Claude 의 기억) — 글 조각에만 붙이고 태그 안은 건드리지 않는다 (2026-11-09) */
 function citeMark(html, cites) {
   const keys = Object.keys(cites || {}).sort((a, b) => b.length - a.length); if (!keys.length) return html;
+  let inA = 0;   /* 링크 안의 글에는 붙이지 않는다 — '공부: 주제 (Yin 2005, …)' 단추 안에 ★ 링크가 끼면 링크 속의 링크가 돼 단추가 'Yin 2005' 에서 끊겼다 (2026-11-11) */
   return html.split(/(<[^>]+>)/).map(seg => {
-    if (seg.startsWith("<")) return seg;
+    if (seg.startsWith("<")) { if (/^<a[\s>]/i.test(seg)) inA++; else if (/^<\/a>/i.test(seg)) inA = Math.max(0, inA - 1); return seg; }
+    if (inA) return seg;
     let s = seg;
     keys.forEach(k => { const c = cites[k], ek = esc(k); if (!c || s.indexOf(ek) < 0) return;
       const mark = c.file ? "<a class='ck ok' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(c.file) + "&kind=summary' title='서재에 있음 — " + esc(c.file.replace(/\.pdf$/i, "")) + " · 누르면 읽기 창'>" + (c.star ? "★" : "✓") + "</a>"
@@ -411,7 +422,15 @@ function msgHtml(m, i) {
   const lh = m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개(" + m.libhits.papers + "편)를 봄" : "";   /* 물음의 낱말로 색인에서 찍어 붙인 문장 — 머리줄은 flex 라 span 을 끼우면 줄이 갈린다 */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
     (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + lh +
-    ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc((x.title || "").slice(0, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc((m.ms.title || "").slice(0, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + "</div>";
+    ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + "</div>";
+}
+function clip(t, n) { t = String(t || ""); return t.length > n ? t.slice(0, n).trim() + "…" : t; }   /* 잘린 제목은 잘렸다고 보이게 */
+/* 답 끝의 선택지 — 마지막 답이 Claude 의 것이고 기다리는 물음이 없을 때만 (2026-11-11) */
+function picksHtml() {
+  const th = cur.thread || [], last = th[th.length - 1];
+  if (!last || last.role !== "claude" || cur.pending || cur.error || !(last.choices || []).length) return "";
+  return "<div class='picks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" +
+    last.choices.map((c, i) => "<button class='pick' data-pi='" + i + "' title='누르면 이 말이 다음 물음으로 갑니다 (잘못 눌렀으면 「이 물음 취소」). Shift 를 누른 채 누르면 묻는 칸에 넣어 고칠 수 있습니다'>" + esc(c) + "</button>").join("") + "</div>";
 }
 /* 답 속의 서재 문장 번호(L3 s45)를 누르면 — 그 원문·번역·논문을 이 창에 띄우고, 거기서 읽기 창의 그 문장으로 (2026-11-09) */
 const subsup = t => esc(t).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");   /* 번역문의 h<sub>C</sub> 같은 첨자는 살린다 */
@@ -494,9 +513,16 @@ function renderThread() {
   stcClose();
   let h = (cur.thread || []).map((m, i) => msgHtml(m, i)).join("");
   if (!(cur.thread || []).length) h += "<div class='hint' style='padding:var(--s4) 0;line-height:1.7'>아래에 첫 물음을 적으세요 — '이 주제가 설 만한가', '서재에 이미 한 연구가 있나', '어떤 실험으로 보일 수 있나' 같은 것. 답의 길이는 물음의 길이를 따릅니다 — 길게 받으려면 '자세히' 라고 적으세요.</div>";
+  h += picksHtml();
   if (cur.pending) h += "<div class='waitbox'><div class='prog'><span class='pbar wide live'><i id='askBar' style='width:2%'></i></span><span class='eta' id='askEta'>Claude 생각 중</span></div><div class='hint'>창을 닫아도 답은 이 주제에 남습니다. <button class='act' id='askCancel' title='잘못 물었으면 — 돌고 있는 호출을 끊고 이 물음을 입력 칸에 되돌립니다'>이 물음 취소</button></div></div>";
   if (cur.error) h += "<div class='warnbox'>" + esc(cur.error) + " — 아래에서 다시 물으세요.</div>";
   el.innerHTML = h;
+  el.querySelectorAll(".pick").forEach(b => b.onclick = e => {   /* 선택지 — 그 말로 바로 묻는다. Shift 는 묻는 칸에 넣기만 */
+    const th = cur.thread || [], c = ((th[th.length - 1] || {}).choices || [])[+b.dataset.pi]; if (!c) return;
+    if (e.shiftKey) { draft = c; renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } return; }
+    el.querySelectorAll(".pick").forEach(x => x.disabled = true);
+    send(c, true);
+  });
   const cc = $("askCancel"); if (cc) cc.onclick = async () => {   /* 취소 (사용자 2026-10-09) — 서버가 호출을 끊고 그 물음을 빼면, 물음은 입력 칸에 되돌린다 */
     cc.disabled = true; cc.textContent = "끊는 중…";
     const lastQ = ((cur.thread || []).filter(m => m.role === "user").slice(-1)[0] || {}).text || "";
@@ -551,14 +577,16 @@ function renderAsk() {
   if (first && !draft && URLP.get("ask") === "1" && cur.seed && cur.seed.text && cur.kind !== "ask") { t.value = draft = cur.seed.text.length > 300 ? "이것을 연구 주제로 세울 수 있을까? 서재에 이미 한 연구가 있는지, 새로움이 어디에 있는지, 어떤 실험으로 보일 수 있는지 따져 줘." : cur.seed.text; }
 }
 function applyFont() { $("thwrap").style.fontSize = (+lsGet("ui_chat_font", "13") || 13) + "px"; }
-async function send() {
-  const t = $("askIn"), q = (t ? t.value : "").trim(); if (!q) { if (t) t.focus(); return; }
+async function send(pickText, pick) {   /* pick = 답 끝의 선택지를 눌러 보낸 것 — 묻는 칸에 쓰던 글은 그대로 둔다 */
+  pick = pick === true && typeof pickText === "string";
+  const t = $("askIn"), q = (pick ? pickText : (t ? t.value : "")).trim(); if (!q) { if (t) t.focus(); return; }
   const eff = $("askEff").value, lib = $("askLib").checked, study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none";
   lsSet("notes_effort", eff === "max" ? "xhigh" : eff); lsSet("notes_study", study);   /* 최대·서재 찾아보기는 기억하지 않는다 (2026-10-30) */
   $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
-  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv }); } catch (e) { r = { error: "서버 연결 실패" }; }
-  if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; return; }
-  draft = ""; cur = r.note; renderThread(); renderAsk(); renderListSoon(); schedulePoll();
+  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv, pick: pick || undefined }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; document.querySelectorAll("#thread .pick").forEach(x => x.disabled = false); return; }
+  if (!pick) draft = "";
+  cur = r.note; renderThread(); renderAsk(); renderListSoon(); schedulePoll();
   const w = $("thwrap"); w.scrollTop = w.scrollHeight;
 }
 
