@@ -24,6 +24,7 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)   # pypdf 의 글꼴 인코�
 import rules
 import intake   # 논문 수집 (다운로드 폴더 감시 → Crossref → 보관). 예전 paper-organizer 를 이 폴더로 합친 것
 import pagealign   # 번역 정렬표의 문장 → PDF 쪽 (number_chunks · tools/realign_pages.py 공용, 2026-11-08)
+import qrmin       # QR 그리기 — 다른 기기 연결 도우미(/connect)가 휴대폰에 줄 주소 (2026-11-11)
 
 ARCHIVE = os.path.join(os.path.dirname(BASE), "논문모음")   # 저장소 루트\논문모음 (배포용: 어느 폴더에 두어도 동작)
 PORT = int(os.environ.get("ATHENAEUM_PORT", "8770"))   # 시험용으로 다른 포트에 띄울 때: set ATHENAEUM_PORT=8790
@@ -4332,7 +4333,18 @@ def start_view():
             "intake": {"watch": iv.get("watch") or "", "target": iv.get("target") or "", "enabled": iv.get("enabled")},
             "journals": sv["preferred_journals"], "journals_custom": sv["preferred_journals_custom"],
             "openalex_key": sv["openalex_api_key_set"], "elsevier_key": sv["elsevier_api_key_set"],
-            "learn": learn_on}
+            "learn": learn_on,
+            "other_devices": _other_devices_brief()}
+
+
+def _other_devices_brief():
+    """「처음 설정」 의 '다른 기기' 줄 — 켜져 있는지와 로그인해 둔 기기 수만 (파일만 읽는다; 자세한 것은 연결 도우미 /connect)"""
+    try:
+        rc = remote_cfg()
+        ss = rc.get("sessions") if isinstance(rc.get("sessions"), dict) else {}
+        return {"on": bool(rc.get("on") and rc.get("hash")), "n": len(ss)}
+    except Exception:
+        return {"on": False, "n": 0}
 
 
 _UPDATE = {"t": 0.0, "data": None}
@@ -4925,6 +4937,7 @@ _GZIP_TYPES = {"application/json", "text/html", "text/plain", "text/css", "appli
 
 class _Server(ThreadingHTTPServer):
     request_queue_size = 64      # 기본 5 — 요청이 한꺼번에 몰리면(여러 기기·여러 창) 일부가 응답 없이 끊겼다
+    allow_reuse_address = False  # HTTPServer 의 기본은 켬인데, 윈도우에서는 그러면 두 프로세스가 같은 포트에 함께 묶인다(서버가 둘 뜬다). 끄면 둘째는 묶지 못하고(10048), 죽인 뒤 다시 켜는 데는 지장이 없다 (2026-11-11 시험)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -4969,7 +4982,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         rc = remote_cfg()
         if not rc.get("on") or not rc.get("hash"):
-            self._deny(403, "이 Athenaeum 은 다른 기기에서 여는 것이 꺼져 있습니다. Athenaeum 이 깔린 PC 의 ⚙ 설정 → 기기 에서 켭니다.", path)
+            self._deny(403, "이 Athenaeum 은 다른 기기에서 여는 것이 꺼져 있습니다. Athenaeum 이 깔린 PC 의 ⚙ 설정 → 기기 → 연결 도우미 에서 켭니다.", path)
             return False
         if path in _REMOTE_OPEN or path.startswith(("/logo/", "/fonts/")):
             self._preauth = True
@@ -5026,6 +5039,15 @@ class Handler(BaseHTTPRequestHandler):
             if self._remote:
                 return self._send(403, {"error": _LOCAL_ONLY_MSG})
             return self._send(200, backup_view())
+        if url.path == "/connect":    # 다른 기기 연결 도우미 — Tailscale 깔기부터 휴대폰에서 열기까지 차례로 (paper-search\connect.html, 2026-11-11). 설정은 있던 /api/remote 그대로
+            with open(os.path.join(BASE, "connect.html"), "rb") as f:
+                return self._send(200, f.read(), "text/html; charset=utf-8")
+        if url.path == "/api/qr":     # 주소 한 줄을 QR 그림(SVG)으로 — 연결 도우미가 휴대폰에 줄 주소. 그림만 만들고 어디에도 적지 않는다
+            t = (parse_qs(url.query).get("text") or [""])[0][:200]
+            svg = qrmin.svg(t) if t.strip() else None
+            if not svg:
+                return self._send(404, {"error": "QR 로 그릴 수 없습니다 (비었거나 너무 깁니다)"})
+            return self._send(200, svg.encode("utf-8"), "image/svg+xml")
 
     def _remote_post(self, body):
         p = self.path
@@ -5143,7 +5165,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._gate("GET"):
             return
         url = urlparse(self.path)
-        if url.path in ("/login", "/m", "/manifest.webmanifest", "/api/remote", "/api/backup"):
+        if url.path in ("/login", "/m", "/manifest.webmanifest", "/api/remote", "/api/backup", "/connect", "/api/qr"):
             return self._remote_get(url)
         if url.path in ("/", "/index.html") and "desktop" not in url.query and re.search(r"Mobi|Android|iPhone", self.headers.get("User-Agent") or ""):
             self.send_response(302); self.send_header("Location", "/m"); self.send_header("Content-Length", "0"); self.end_headers()   # 휴대폰은 폰용 화면으로 (PC 화면은 /?desktop=1)
@@ -6135,14 +6157,35 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
 
-def main():
+def _port_answers():
+    """이 포트에 이미 서버가 답하고 있는가"""
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    if probe.connect_ex(("127.0.0.1", PORT)) == 0:
+    try:
+        return probe.connect_ex(("127.0.0.1", PORT)) == 0
+    finally:
         probe.close()
+
+
+def main():
+    if _port_answers():
         return  # 이미 실행 중
-    probe.close()
     for d in (ARCHIVE, GEN_DIR, MAPS_DIR, NOTES_DIR):   # 처음 실행(새 컴퓨터)이면 데이터 폴더를 만들어 둔다
         os.makedirs(d, exist_ok=True)
+    # 포트를 먼저 잡는다 — 잡은 프로세스만 배경 작업(자동 번역·학습·사본 맞추기 …)을 돌린다 (2026-11-11).
+    # 위의 확인만으로는 같은 순간에 켜진 두 서버(부팅 뒤의 자동 시작과 서버 지킴이, 바로가기를 연달아 누름)가 서로를 못 보고 둘 다 지나갈 수 있고,
+    # 주소 재사용이 켜져 있으면 윈도우는 둘을 같은 포트에 함께 묶어 준다(작은 서버 둘로 시험해 확인 — 요청은 먼저 묶인 쪽만 받고 배경 작업은 둘 다 돈다).
+    # 실제로 둘이 뜬 것을 본 적은 없다 — 미리 막아 두는 것이다. _Server 가 주소 재사용을 끄므로 둘째는 여기서 묶지 못한다.
+    srv = None
+    for _ in range(20):
+        try:
+            srv = _Server(("127.0.0.1", PORT), Handler)
+            break
+        except OSError:
+            if _port_answers():
+                return          # 같은 순간에 켜진 다른 서버가 먼저 잡았다 — 그쪽에 맡기고 끝낸다
+            time.sleep(0.5)     # 막 꺼진 서버의 포트가 아직 풀리지 않았다 — 잠깐 뒤 다시
+    if srv is None:
+        return
     threading.Thread(target=refresh_new_papers, daemon=True).start()
     threading.Thread(target=libnet_build, daemon=True).start()   # 서재 인용 이웃 색인 (새 논문만, 배경)
     threading.Thread(target=eq_backfill, daemon=True).start()    # 수식 전사 밀린 것 — 90초 뒤부터 2편씩 (사용자 2026-11-07: '전사는 무조건')
@@ -6151,7 +6194,7 @@ def main():
     autotr.start()  # 자동 번역 — 새 논문은 들어오면 번역, 옛 판은 밤에 다시 (⚙ 설정 → AI 에서 켠다)
     libindex.start()   # 서재 문장 색인 — 25초 뒤 배경에서 만든다(연구 노트의 첫 물음이 기다리지 않게)
     threading.Thread(target=backup_loop, daemon=True).start()   # 백업 폴더가 정해져 있고 「매일 자동으로」 가 켜져 있으면 새벽에 한 번
-    _Server(("127.0.0.1", PORT), Handler).serve_forever()
+    srv.serve_forever()
 
 
 if __name__ == "__main__":

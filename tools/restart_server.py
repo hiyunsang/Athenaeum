@@ -148,13 +148,26 @@ def server_pids():
         return set()
 
 
+def _is_python(pid):
+    """그 pid 가 파이썬 프로세스인가 — 포트 주인이라고 해서 아무 프로그램이나 끄지 않으려고"""
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Process -Filter 'ProcessId=%d').Name" % int(pid)],
+                           capture_output=True, creationflags=NO_WINDOW, timeout=60)
+        return r.stdout.decode("utf-8", "replace").strip().lower().startswith("python")
+    except Exception:
+        return False
+
+
 def pids_on_port():
-    r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, creationflags=NO_WINDOW)
+    r = subprocess.run(["netstat", "-ano"], capture_output=True, creationflags=NO_WINDOW)      # 바이트로 받는다 — text=True 는 -X utf8 로 불렸을 때 cp949 머리글에서 죽는다
     pids = set()
-    for line in r.stdout.splitlines():
+    for line in r.stdout.decode("cp949", "replace").splitlines():
         parts = line.split()
-        if len(parts) >= 5 and parts[1].endswith(":%d" % PORT) and parts[3] == "LISTENING" and parts[4] != "0":
+        # 이 PC 의 주소(127.0.0.1)에 묶인 것만 본다 — 「다른 기기에서 열기」 를 켜 두면 Tailscale(tailscaled.exe)이 같은 포트 번호를 제 주소(100.x.y.z:8770)로
+        # 듣고 있어, 포트 번호만 보면 그 프로세스까지 끄려 든다(2026-11-11: '서버 종료 (pid …)' 가 두 줄 찍혀 알아챘다 — 서비스라 꺼지지는 않았다).
+        if len(parts) >= 5 and parts[1] in ("127.0.0.1:%d" % PORT, "0.0.0.0:%d" % PORT) and parts[3] == "LISTENING" and parts[4] != "0":
             pids.add(parts[4])
+    pids = {p for p in pids if _is_python(p)}       # 파이썬 프로세스만 — 그 포트를 다른 프로그램이 쓰고 있으면 건드리지 않는다
     if not pids:
         # 2026-10-29: Claude 의 샌드박스 안에서는 netstat 이 주인 pid 를 0 으로 보여 '서버 종료 (pid 0)' 만 찍고
         # 옛 서버가 그대로 남았다(옛 코드가 계속 돌아 다시 쓰기가 옛 옵션으로 시작됐다). 그때는 명령줄로 찾는다.

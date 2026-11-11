@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Athenaeum — 다른 기기 연결</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  /* 다른 기기 연결 도우미 (2026-11-11) — Tailscale 깔기부터 휴대폰·다른 컴퓨터에서 열기까지 차례로 안내한다.
+     상태는 있던 GET /api/remote 에서 읽고, 바꾸는 것도 있던 POST /api/remote(op: password · on · serve · keeper) 그대로다 — ⚙ 설정 → 기기 와 같은 길.
+     QR 은 GET /api/qr?text=주소 (qrmin.py). 다른 기기에서 열면 설정 단계는 감추고 '기기를 더 연결하는 법' 만 보인다 */
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13.5px/1.6 var(--font); }
+  header { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font: 600 15px var(--font); letter-spacing: .6px; }
+  header h1 a { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  header .brand-mark { width: 22px; height: 22px; }
+  header .ttl { color: var(--text-2); }
+  header .right { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+  #wrap { max-width: 820px; margin: 0 auto; padding: var(--s6) var(--s4) var(--s8); }
+  .lead { color: var(--text-2); margin: 0 0 var(--s2); }
+  #status { margin: 0 0 var(--s2); }
+  h2.sec { margin-top: var(--s6); }
+  .ok { color: var(--green); } .no { color: var(--amber); } .bad { color: var(--red); }
+  .hint { display: block; margin-top: 3px; line-height: 1.55; }
+  .hint.in { display: inline; margin: 0 0 0 6px; }
+  .hint a, .help a, .dev a { color: var(--accent); }
+  a.primary, a.ghostbtn { text-decoration: none; display: inline-block; }
+  .primary:disabled, .ghostbtn:disabled { opacity: .45; cursor: default; }
+  code { font: 12px Consolas, monospace; background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+
+  /* 단계 줄 */
+  .st { display: flex; align-items: flex-start; gap: var(--s3); padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .st .n { width: 24px; height: 24px; flex: none; box-sizing: border-box; border: 1px solid var(--line-2); border-radius: 50%; color: var(--text-3); font: 600 12px/22px var(--font); text-align: center; }
+  .st.cur .n { border-color: var(--accent); color: var(--accent); }
+  .st.done .n { border-color: var(--green); color: var(--green); }
+  .st .b { flex: 1; min-width: 0; }
+  .st .t { font-weight: 600; }
+  .st.wait .t { color: var(--text-3); }
+  .st .a { flex: none; display: flex; align-items: center; gap: var(--s1); padding-top: 1px; }
+  .edit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+  .edit input[type=password], .edit input[type=text] { width: 220px; padding: 5px 8px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--text); font: inherit; }
+  .edit label { color: var(--text-2); font-size: 12px; cursor: pointer; }
+  .sw { position: relative; display: inline-block; width: 34px; height: 20px; cursor: pointer; vertical-align: middle; }
+  .sw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .sw i { position: absolute; inset: 0; background: var(--line-2); border-radius: 10px; transition: background .15s; }
+  .sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); transition: left .15s; }
+  .sw input:checked + i { background: var(--accent); }
+  .sw input:checked + i::after { left: 16px; }
+
+  /* 쓸 기기에서 — 왼쪽 QR 과 주소, 오른쪽 차례 */
+  .dev { display: flex; gap: var(--s6); align-items: flex-start; padding-top: var(--s2); }
+  .dev .left { flex: none; width: 216px; }
+  .dev .right { flex: 1; min-width: 0; }
+  .qrbox { width: 216px; height: 216px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--line-2); border-radius: var(--r); }
+  .qrbox img { display: block; width: 196px; height: 196px; }
+  .qrbox.empty { background: var(--panel); color: var(--text-3); font-size: 12px; text-align: center; line-height: 1.6; }
+  .addr { margin-top: var(--s2); word-break: break-all; }
+  .addr b { font-weight: 600; }
+  .addr .ghostbtn { margin-top: 6px; }
+  .dev .t { font-weight: 600; margin: 0 0 2px; }
+  .dev ol { margin: 0 0 var(--s4); padding-left: 20px; }
+  .dev li { margin: 4px 0; }
+
+  /* 연결된 기기 */
+  .dvr { display: flex; align-items: baseline; gap: var(--s2); padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .dvr .dn { min-width: 150px; }
+  .dvr.new .dn { font-weight: 600; }
+
+  details.help { margin-top: var(--s6); }
+  details.help summary { cursor: pointer; font-weight: 700; font-size: 12px; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
+  details.help ul { margin: var(--s2) 0 0; padding-left: 20px; }
+  details.help li { margin: 5px 0; }
+  .foot { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s6); }
+
+  @media (max-width: 640px) {
+    .dev { flex-direction: column; gap: var(--s4); }
+    .dev .left { width: auto; }
+    .st { flex-wrap: wrap; }
+    .st .a { width: 100%; padding-left: 36px; box-sizing: border-box; }
+    .dvr { flex-wrap: wrap; }
+  }
+</style>
+<script src="/ui.js"></script>
+</head>
+<body>
+<header>
+  <h1><a href="/" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
+  <span class="ttl">다른 기기 연결</span>
+  <span class="right"><span id="uiCtlHost"></span></span>
+</header>
+<div id="wrap">
+  <p class="lead" id="lead">불러오는 중…</p>
+  <p id="status"></p>
+  <div id="pc"></div>
+  <div id="dev"></div>
+  <div id="sess"></div>
+  <div id="help"></div>
+  <div class="foot"><a class="ghostbtn" href="/">홈으로</a></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => "<a href='" + u + "' target='_blank' rel='noopener'>" + u + "</a>");
+const T0 = Date.now() / 1000;      // 이 화면을 연 때 — 그 뒤에 로그인한 기기를 '방금 연결됨' 으로 보인다
+let d = null, busy = "", err = {}, pwEdit = false, pwDraft = "", pwMsg = "", tick = 0, gen = 0;
+if (typeof mountUiControls === "function") mountUiControls("#uiCtlHost");
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  return r.json();
+}
+function take(v) { if (v && typeof v === "object" && "has_password" in v) d = v; }
+/* 바꾸는 요청의 답에서 실패한 까닭을 꺼낸다 (없으면 빈 글) */
+const fail = v => !v ? "설정하지 못했습니다 — 잠시 뒤 다시 해 주세요" : (v.result && v.result.error) || (!("has_password" in v) && v.error) || "";
+async function load(fresh) {
+  const g = gen;
+  let v = null;
+  try { v = await api("/api/remote" + (fresh ? "?check=1" : "")); } catch (e) {}
+  if (g !== gen || busy) return;      // 기다리는 사이에 설정을 바꿨으면 이 답은 옛 상태다 — 버린다
+  if (!v || !("has_password" in v)) { if (!d) $("lead").textContent = "서버에서 상태를 받지 못했습니다. Athenaeum 이 켜져 있는지 봐 주세요."; return; }
+  d = v; render();
+}
+
+function state() {
+  const t = d.tailscale || {};
+  const s1 = !!t.found, s2 = s1 && !!t.running, s3 = !!d.has_password, s4 = s2 && s3 && !!d.on && !!t.serving;
+  return { t, s1, s2, s3, s4, ready: s4, cur: !s1 ? 1 : !s2 ? 2 : !s3 ? 3 : !s4 ? 4 : 0 };
+}
+/* 주소 — QR 에는 긴 이름(…ts.net)을 싣는다: 짧은 이름이 풀리지 않는 기기에서도 열린다. 손으로 칠 때는 짧은 이름이 편하다.
+   다른 기기에서 연 화면은 지금 연 주소가 곧 통하는 주소다 */
+function addrs() {
+  if (d.remote) return { main: location.origin, type: location.origin, short: "" };
+  const u = (d.tailscale || {}).urls || [];
+  return { main: u[1] || u[0] || "", type: u[0] || "", short: u[1] ? u[0] : "" };
+}
+const TS_STATE = { NeedsLogin: "아직 로그인되어 있지 않습니다", Stopped: "Tailscale 이 꺼져 있습니다", NeedsMachineAuth: "관리자의 승인을 기다리고 있습니다", Starting: "Tailscale 이 켜지는 중입니다" };
+const fmtT = t => { if (!t) return ""; const x = new Date(t * 1000); return (x.getMonth() + 1) + "/" + x.getDate() + " " + String(x.getHours()).padStart(2, "0") + ":" + String(x.getMinutes()).padStart(2, "0"); };
+const ago = t => { const s = Date.now() / 1000 - t; return s < 90 ? "방금" : s < 3600 ? Math.round(s / 60) + "분 전" : s < 86400 ? Math.round(s / 3600) + "시간 전" : fmtT(t); };
+
+function step(n, done, cur, title, body, action) {
+  return "<div class='st " + (done ? "done" : cur ? "cur" : "wait") + "'><div class='n'>" + (done ? "✓" : n) + "</div><div class='b'><div class='t'>" + title + "</div>" + body + "</div><div class='a'>" + (action || "") + "</div></div>";
+}
+
+function pwForm(s) {
+  return "<span class='hint'>다른 기기에서 처음 열 때 넣는 비밀번호입니다. 8자 이상으로 직접 정해 주세요." + (s.s3 ? " 바꾸면 로그인해 둔 기기가 모두 풀려 다시 로그인해야 합니다." : "") + "</span>" +
+    "<div class='edit'><input type='password' id='pw' placeholder='8자 이상' autocomplete='new-password'>" +
+    "<button class='primary' id='pwSet'" + (busy ? " disabled" : "") + ">" + (busy === "pw" ? "정하는 중…" : "정하기") + "</button>" +
+    (s.s3 ? "<button class='ghostbtn' id='pwNo'>취소</button>" : "") +
+    "<label><input type='checkbox' id='pwShow'> 글자 보기</label></div>" +
+    (pwMsg ? "<span class='hint no'>" + esc(pwMsg) + "</span>" : "");
+}
+
+function pcHtml() {
+  if (d.remote) return "";
+  const s = state(), t = s.t, a = addrs(), kp = d.keeper || {};
+  let h = "<h2 class='sec'>이 PC 에서 — 처음 한 번</h2>";
+  h += step(1, s.s1, s.cur === 1, "Tailscale 깔기",
+    s.s1 ? "<span class='ok'>깔려 있습니다</span>"
+         : "<span class='hint'>Tailscale 은 내 기기끼리만 통하는 사설망입니다(개인은 무료). 인터넷에 공개하지 않고도 밖에서 이 PC 에 닿게 해 줍니다. 내려받아 깔면 이 줄이 저절로 바뀝니다.</span>",
+    s.s1 ? "" : "<a class='primary' href='https://tailscale.com/download/windows' target='_blank' rel='noopener'>내려받기 ↗</a>");
+  h += step(2, s.s2, s.cur === 2, "Tailscale 에 로그인",
+    s.s2 ? "<span class='ok'>로그인되어 있습니다</span>" + (t.name ? "<span class='hint in'>이 PC 의 이름 " + esc(t.name) + "</span>" : "")
+    : !s.s1 ? "<span class='hint'>Tailscale 을 깐 뒤에 합니다.</span>"
+    : "<span class='no'>" + esc(TS_STATE[t.state] || "Tailscale 이 아직 연결되어 있지 않습니다") + "</span><span class='hint'>" +
+      (t.state === "Stopped" ? "화면 오른쪽 아래(시계 옆)의 Tailscale 아이콘을 눌러 「Connect」 를 누릅니다."
+        : "화면 오른쪽 아래(시계 옆)의 Tailscale 아이콘을 눌러 로그인합니다. 아이콘이 안 보이면 시작 메뉴에서 Tailscale 을 실행합니다. 구글·마이크로소프트·애플 계정으로 바로 만들 수 있습니다. 휴대폰과 다른 컴퓨터에서도 <b>같은 계정</b>으로 로그인해야 하니 어느 계정인지 기억해 두세요.") +
+      " 끝나면 이 줄이 저절로 바뀝니다.</span>", "");
+  const pwDone = s.s3 && !pwEdit;
+  h += step(3, s.s3, s.cur === 3, "비밀번호 정하기",
+    pwDone ? "<span class='ok'>정해져 있습니다</span>" : (s.s3 || s.cur === 3) ? pwForm(s) : "<span class='hint'>앞의 두 가지를 마친 뒤에 합니다.</span>",
+    pwDone ? "<button class='ghostbtn' id='pwEditBtn'>바꾸기</button>" : "");
+  h += step(4, s.s4, s.cur === 4, "다른 기기에 열기",
+    s.s4 ? "<span class='ok'>열려 있습니다</span>" + (a.type ? "<span class='hint in'>주소 " + esc(a.type) + "</span>" : "")
+    : s.cur !== 4 ? "<span class='hint'>위의 세 가지를 마친 뒤에 합니다.</span>"
+    : "<span class='hint'>누르면 Athenaeum 이 밖에서 오는 요청을 받기 시작하고(비밀번호 로그인을 거칩니다), Tailscale 이 내 기기들에게만 이 PC 의 주소를 열어 줍니다. 인터넷에 공개되는 것이 아닙니다.</span>" +
+      (busy === "open" ? "<span class='hint'>설정하는 중입니다 — 길면 40초쯤 걸립니다.</span>" : "") +
+      (err.open ? "<span class='hint bad'>" + linkify(err.open) + "</span>" : ""),
+    s.s4 || s.cur !== 4 ? "" : "<button class='primary' id='openUp'" + (busy ? " disabled" : "") + ">" + (busy === "open" ? "여는 중…" : "열기") + "</button>");
+  h += "<div class='st " + (kp.on ? "done" : "wait") + "'><div class='n'>" + (kp.on ? "✓" : "+") + "</div><div class='b'><div class='t' style='color:var(--text)'>서버 지킴이<span class='hint in'>권장</span></div>" +
+    "<span class='hint'>Athenaeum 서버가 어쩌다 꺼져도 5분 안에 다시 켭니다. 밖에서는 꺼진 서버를 켤 길이 없으니 켜 두는 편이 좋습니다." +
+    (kp.on && !kp.mine ? " <span class='no'>지금은 다른 폴더의 Athenaeum 을 지키고 있습니다 — 껐다 켜면 이 폴더로 바뀝니다.</span>" : "") + "</span>" +
+    (err.keeper ? "<span class='hint bad'>" + esc(err.keeper) + "</span>" : "") + "</div>" +
+    "<div class='a'><label class='sw'><input type='checkbox' id='kp'" + (kp.on ? " checked" : "") + (busy ? " disabled" : "") + "><i></i></label></div></div>";
+  return h;
+}
+
+function devHtml() {
+  const s = d.remote ? null : state(), a = addrs(), ready = d.remote || s.ready, pc = d.remote ? "Athenaeum 이 깔린 PC" : "이 PC";
+  const left = ready && a.main
+    ? "<div class='qrbox'><img src='/api/qr?text=" + esc(encodeURIComponent(a.main)) + "' width='196' height='196' alt='주소 QR'></div>" +
+      "<div class='addr'><b>" + esc(a.main) + "</b><br><button class='ghostbtn' id='copy' data-a='" + esc(a.main) + "'>주소 복사</button></div>" +
+      (a.short ? "<span class='hint'>짧게 <b>" + esc(a.short) + "</b> 로도 열립니다.</span>" : "")
+    : "<div class='qrbox empty'><span>위의 네 가지를 마치면<br>여기에 QR 과 주소가 나옵니다</span></div>";
+  return "<h2 class='sec'>" + (d.remote ? "기기를 더 연결하려면" : "쓸 기기에서") + "</h2><div class='dev'><div class='left'>" + left + "</div><div class='right'>" +
+    "<div class='t'>휴대폰 · 태블릿</div><ol>" +
+    "<li>앱 스토어(아이폰은 App Store, 안드로이드는 Play 스토어)에서 <b>Tailscale</b> 을 찾아 깔고, " + pc + " 와 <b>같은 계정</b>으로 로그인합니다. VPN 구성을 허용하겠느냐고 물으면 허용합니다.</li>" +
+    "<li>카메라로 QR 을 비추면 주소가 열립니다. 브라우저 주소 칸에 주소를 직접 쳐도 됩니다.</li>" +
+    "<li>비밀번호를 넣습니다. 한 번 로그인하면 " + (d.session_days || 60) + "일 동안 다시 묻지 않습니다.</li>" +
+    "<li>홈 화면에 두면 앱처럼 열립니다 — 아이폰은 사파리의 공유 단추 → 「홈 화면에 추가」, 안드로이드는 크롬의 ⋮ → 「홈 화면에 추가」.</li></ol>" +
+    "<div class='t'>다른 컴퓨터</div><ol>" +
+    "<li><a href='https://tailscale.com/download' target='_blank' rel='noopener'>tailscale.com/download</a> 에서 Tailscale 을 깔고 같은 계정으로 로그인합니다.</li>" +
+    "<li>브라우저 주소 칸에 " + (ready && a.type ? "<b>" + esc(a.type) + "</b> 를" : "주소를") + " 칩니다. 즐겨찾기에 넣어 두면 편합니다.</li>" +
+    "<li>비밀번호를 넣습니다.</li></ol></div></div>";
+}
+
+function sessHtml() {
+  if (d.remote) return "";
+  const list = d.sessions || [];
+  let h = "<h2 class='sec'>연결된 기기</h2>";
+  if (!list.length) return h + "<p class='hint'>아직 없습니다. 다른 기기에서 로그인하면 여기에 바로 나타납니다.</p>";
+  h += list.slice(0, 6).map(x => { const nw = (x.t || 0) > T0;
+    return "<div class='dvr" + (nw ? " new" : "") + "'><span class='dn'>" + esc(x.dev || "기기") + "</span><span class='hint in' style='margin:0'>" + fmtT(x.t) + " 로그인" + (x.seen ? " · " + ago(x.seen) + " 사용" : "") + "</span>" + (nw ? "<span class='ok'>방금 연결됐습니다</span>" : "") + "</div>"; }).join("");
+  if (list.length > 6) h += "<p class='hint'>외 " + (list.length - 6) + "대</p>";
+  return h + "<p class='hint'>모르는 기기가 있으면 ⚙ 설정 → 기기 → 「모두 로그아웃」 을 누르고 비밀번호를 바꿉니다.</p>";
+}
+
+function helpHtml() {
+  const pc = d.remote ? "Athenaeum 이 깔린 PC" : "이 PC";
+  return "<details class='help'><summary>안 될 때</summary><ul>" +
+    "<li><b>주소가 열리지 않는다</b> — 그 기기의 Tailscale 이 켜져 있고(Connected) " + pc + " 와 같은 계정인지 봅니다. 짧은 주소가 안 열리면 <code>ts.net</code> 으로 끝나는 긴 주소로 열어 봅니다.</li>" +
+    "<li><b>숫자로 된 주소</b>(100.…)로는 열리지 않습니다. 이름으로 된 주소를 씁니다. 이름 주소는 Tailscale 의 MagicDNS 가 켜져 있어야 통합니다(보통은 켜져 있습니다).</li>" +
+    "<li><b>어제는 됐는데 오늘은 안 된다</b> — " + pc + " 가 꺼졌거나 절전에 들어갔는지 봅니다. 윈도우 설정 → 시스템 → 전원 에서 절전을 '안 함' 으로 두면 됩니다. 서버 지킴이를 켜 두면 Athenaeum 이 꺼져도 다시 켜집니다.</li>" +
+    "<li><b>비밀번호를 잊었다</b> — " + (d.remote ? pc + " 에서 이 화면을 열어 「비밀번호 정하기」 의 「바꾸기」 로" : "위 3번의 「바꾸기」 로") + " 새로 정합니다. 로그인해 둔 기기는 다시 로그인합니다.</li>" +
+    "<li><b>그만 쓰려면</b> — " + pc + " 의 ⚙ 설정 → 기기 → 「다른 기기에서 열기」 를 끕니다.</li></ul></details>";
+}
+
+function put(id, html) { const el = $(id); if (el._h === html) return false; el._h = html; el.innerHTML = html; return true; }
+
+function render() {
+  if (!d) return;
+  const old = $("pw"), had = !!old && document.activeElement === old, sel = had ? [old.selectionStart, old.selectionEnd] : null, shown = !!($("pwShow") && $("pwShow").checked);
+  if (old) pwDraft = old.value;
+  $("lead").textContent = d.remote
+    ? "이 기기는 이미 연결되어 있습니다. 휴대폰이나 다른 컴퓨터를 더 연결하려면 아래대로 합니다. 비밀번호와 연결 설정은 Athenaeum 이 깔린 PC 에서 바꿉니다."
+    : "휴대폰이나 다른 컴퓨터의 브라우저에서 이 PC 의 Athenaeum 을 엽니다. 논문과 기록은 이 PC 에만 두고 다른 기기는 화면만 빌려 쓰므로, 쓰는 동안 이 PC 가 켜져 있어야 합니다.";
+  if (d.remote) put("status", "");
+  else { const s = state(), left = [s.s1, s.s2, s.s3, s.s4].filter(x => !x).length;
+    put("status", s.ready ? "<span class='ok'>준비가 끝났습니다.</span> 아래 「쓸 기기에서」 대로 다른 기기에서 엽니다." : "남은 일 " + left + "가지 — 번호 순서대로 하면 됩니다. 이 화면은 저절로 바뀝니다."); }
+  const changed = put("pc", pcHtml());
+  put("dev", devHtml()); put("sess", sessHtml()); put("help", helpHtml());
+  bind();
+  const pw = $("pw");
+  if (pw && changed) { pw.value = pwDraft; if (shown) { pw.type = "text"; $("pwShow").checked = true; } if (had) { pw.focus(); try { pw.setSelectionRange(sel[0], sel[1]); } catch (e) {} } }
+}
+
+function bind() {
+  const pe = $("pwEditBtn"); if (pe) pe.onclick = () => { pwEdit = true; pwMsg = ""; render(); const x = $("pw"); if (x) x.focus(); };
+  const pn = $("pwNo"); if (pn) pn.onclick = () => { pwEdit = false; pwDraft = ""; pwMsg = ""; const x = $("pw"); if (x) x.value = ""; render(); };
+  const ps = $("pwSet"); if (ps) ps.onclick = setPw;
+  const pw = $("pw"); if (pw) pw.onkeydown = e => { if (e.key === "Enter") setPw(); };
+  const sh = $("pwShow"); if (sh) sh.onchange = () => { const x = $("pw"); if (x) x.type = sh.checked ? "text" : "password"; };
+  const ou = $("openUp"); if (ou) ou.onclick = openUp;
+  const kp = $("kp"); if (kp) kp.onchange = () => keeper(kp.checked);
+  const cp = $("copy"); if (cp) cp.onclick = () => copyAddr(cp.dataset.a, cp);
+}
+
+async function setPw() {
+  const el = $("pw"), v = el ? el.value : "";
+  if (busy) return;
+  if (v.length < 8) { pwMsg = "8자 이상으로 적어 주세요"; render(); const x = $("pw"); if (x) x.focus(); return; }
+  busy = "pw"; pwMsg = ""; gen++; render();
+  let r = null;
+  try { r = await api("/api/remote", { op: "password", password: v }); } catch (e) {}
+  busy = ""; gen++;
+  const why = fail(r);
+  if (!why) { take(r); pwEdit = false; pwDraft = ""; const x = $("pw"); if (x) x.value = ""; }
+  else pwMsg = why;
+  render();
+}
+
+async function openUp() {
+  if (busy) return;
+  busy = "open"; err.open = ""; gen++; render();
+  try {
+    for (const op of ["on", "serve"]) {      // Athenaeum 이 밖의 요청을 받게 하고 → Tailscale 이 내 기기들에게 주소를 열게 한다 (이미 된 것은 건너뛴다)
+      if (op === "on" ? d.on : (d.tailscale || {}).serving) continue;
+      let v = null;
+      try { v = await api("/api/remote", { op: op, on: true }); } catch (e) {}
+      take(v);
+      const why = fail(v);
+      if (why) throw new Error(why);
+    }
+  } catch (e) { err.open = (e && e.message) || "설정하지 못했습니다"; }
+  busy = ""; gen++; render();
+}
+
+async function keeper(on) {
+  if (busy) return;
+  busy = "keeper"; err.keeper = ""; gen++; render();
+  let v = null;
+  try { v = await api("/api/remote", { op: "keeper", on: on }); } catch (e) {}
+  take(v);
+  err.keeper = fail(v);
+  busy = ""; gen++; render();
+}
+
+async function copyAddr(text, btn) {
+  let ok = false;
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (e) {}
+  if (!ok) { const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); }
+  btn.textContent = ok ? "복사했습니다" : "복사하지 못했습니다";
+  setTimeout(() => { btn.textContent = "주소 복사"; }, 1800);
+}
+
+window.onUiClose = () => load(true);    // ⚙ 설정에서 바꾼 것을 다시 읽는다
+load(true);
+/* 할 일이 남아 있는 동안은 5초마다 새로 확인하고(Tailscale 을 깔거나 로그인하면 저절로 바뀌게), 끝난 뒤에는 10초마다 가볍게 — 새로 로그인한 기기가 보이게 */
+setInterval(() => {
+  if (!d || busy || document.hidden || d.remote) return;
+  tick++;
+  if (!state().ready) load(true); else if (tick % 2 === 0) load(false);
+}, 5000);
+</script>
+</body>
+</html>

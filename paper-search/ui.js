@@ -180,6 +180,7 @@ function openSettings(cat) {
         "<div class='urow'><div class='uhint' id='fontState'>추가한 글꼴은 읽기·원고의 「글꼴 모양」 목록에 나옵니다</div></div>"] }] },
     { id: "devices", name: "기기", groups: [
       { title: "다른 기기에서 쓰기", rows: [
+        row("연결 도우미", "<a class='act ready' href='/connect'>열기</a>", "처음 연결할 때는 여기부터 — Tailscale 깔기에서 휴대폰으로 여는 것까지 차례로 안내하고, 휴대폰에 줄 주소를 QR 로 보여 줍니다"),
         row("다른 기기에서 열기", "<label class='usw'><input type='checkbox' id='rmOn'><i></i></label><span class='uout' id='rmState' style='min-width:0;white-space:normal;text-align:left;flex:1'></span>",
             "집 PC·노트북·휴대폰의 브라우저에서 이 PC 의 Athenaeum 을 엽니다. 이 PC 밖에서 온 요청은 비밀번호 로그인을 거치고, 꺼 두면 밖에서는 열리지 않습니다", true),
         row("비밀번호", "<input type='password' id='rmPw' placeholder='8자 이상' autocomplete='new-password'><button class='ureset' id='rmPwSet'>정하기</button><span class='uout' id='rmPwState' style='min-width:0'></span>",

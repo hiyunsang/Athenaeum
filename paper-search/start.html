@@ -146,8 +146,15 @@ function keysRow() {
   return row("연결 (선택)", v, "<button class='ghostbtn' id='kEdit'>설정</button>");
 }
 
+function devicesRow() {
+  const o = d.other_devices || {};
+  const v = (o.on ? "<span class='ok'>켜짐</span>" + (o.n ? " · 로그인해 둔 기기 " + o.n + "대" : "") : "꺼짐") +
+    "<span class='hint'>휴대폰이나 집 컴퓨터의 브라우저에서 이 PC 의 Athenaeum 을 엽니다. 연결 도우미가 Tailscale 깔기부터 휴대폰으로 여는 것까지 차례로 안내합니다.</span>";
+  return row("다른 기기 (선택)", v, "<a class='act ready' href='/connect' target='athenaeum_connect'>연결 도우미 ↗</a>");
+}
+
 function render() {
-  $("rows").innerHTML = engineRow() + (d.engine === "codex" ? codexRow() : claudeRow()) + intakeRow() + labelsRow() + journalsRow() + learnRow() + libraryRow() + keysRow();
+  $("rows").innerHTML = engineRow() + (d.engine === "codex" ? codexRow() : claudeRow()) + intakeRow() + labelsRow() + journalsRow() + learnRow() + libraryRow() + keysRow() + devicesRow();
   document.querySelectorAll("input[name=eng]").forEach(r => r.onchange = () => { api("/api/settings", { engine: r.value }).then(load); });
   const xi = $("xInstall"); if (xi) xi.onclick = () => { xi.disabled = true; api("/api/claude_install", { engine: "codex" }).then(r => { if (r && r.error) alert(r.error); setTimeout(load, 2000); }); };
   const xl = $("xLogin"); if (xl) xl.onclick = () => { xl.disabled = true; api("/api/claude_login", { engine: "codex", default: true }).then(r => { if (r && r.error) alert(r.error); setTimeout(load, 2000); }); };
