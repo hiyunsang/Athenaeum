@@ -602,13 +602,33 @@ _CRAFT = (
     "양 극단에서 어떻게 되는지를 봅니다. 값을 무차원 수나 척도 관계로 묶어 다른 사람의 자료와 한 그림에 올립니다. 재료를 하나 더해 그 재료만의 일이 아님을 보입니다. "
     "작은 연구실은 넓게 훑는 연구로 큰 연구실을 이기기 어렵습니다. 남이 못 보는 것을 보게 하는 장치 하나와, 결과가 어느 쪽으로 나와도 답이 되는 날카로운 물음 하나로 이깁니다.\n\n"
     "어느 저널에 낼 수 있는가도 같은 기준으로 갈립니다. 결과가 얼마나 좋은가보다, 주장이 재료와 조건을 넘어 얼마나 통하는지와 다른 설명을 얼마나 떨어뜨렸는지가 정합니다. "
-    "IJMTM 과 CIRP Annals 는 재료나 공정이 바뀌어도 통하는 원리와 기전을, JMPT 는 공정과 재료 거동을 잇는 기전을, Precision Engineering 은 초정밀 가공과 계측의 엄밀함을 요구합니다. "
-    "한 재료의 가공 조건을 훑어 결과를 보고한 글은 그 아래 저널의 글입니다. 저널에 관해 연구자가 [분야 지형]에 적어 둔 것이 있으면 그것이 먼저입니다.\n")
+    "{JOURNALS}"
+    "한 재료의 조건을 훑어 결과를 보고한 글은 그 아래 저널의 글입니다. 저널에 관해 연구자가 [분야 지형]에 적어 둔 것이 있으면 그것이 먼저입니다.\n")
+
+
+def _craft_journals():
+    """저널이 무엇을 요구하는가 한 문장 — 그 저널이 우선 저널로 잡혀 있을 때만 이름을 들어 말한다.
+    배포판은 다른 분야의 연구실도 쓴다: 우선 저널을 바꾼 서재의 배경에 기계 가공 저널 이야기가 들어가지 않게 (2026-11-12)"""
+    try:
+        tops = {str(x).upper() for x in (cfg["pref_abbrs"]() if cfg.get("pref_abbrs") else ())}
+    except Exception:
+        tops = set()
+    parts = []
+    a = [n for k, n in (("IJMTM", "IJMTM"), ("CIRPA", "CIRP Annals")) if k in tops]
+    if a:
+        parts.append(" 과 ".join(a) + " 는 재료나 공정이 바뀌어도 통하는 원리와 기전을")
+    if "JMPT" in tops:
+        parts.append("JMPT 는 공정과 재료 거동을 잇는 기전을")
+    if "PE" in tops:
+        parts.append("Precision Engineering 은 초정밀 가공과 계측의 엄밀함을")
+    if not parts:
+        return "우선 저널(★)일수록 재료나 조건이 바뀌어도 통하는 원리와 기전을 요구합니다. "
+    return ", ".join(parts) + " 요구합니다. "
 
 
 def _craft_block():
     """배경의 '연구를 보는 눈' — 원리(위 글) + 서재에서 숲으로 가른 논문의 출발점. 글은 _갈래.json 이 바뀔 때만 달라진다(캐시)"""
-    text = _CRAFT
+    text = _CRAFT.replace("{JOURNALS}", _craft_journals())
     ex = []
     try:
         ex = (cfg.get("forest_examples") or (lambda k=12: []))(12) or []
