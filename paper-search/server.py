@@ -1747,9 +1747,52 @@ def plan_search(q, model="opus", hint=""):
 
 # ---------- 세상의 문헌을 대화 안에서 (2026-11-11, 사용자: '연구노트 성능을 더 강화 — 정말 연구가 괜찮은지 논의도 하고 … 선행연구도 잘 알고') ----------
 # 연구 노트의 답은 서재 밖의 선행연구를 Claude 의 기억으로 말했다('…로 기억합니다. 먼저 확인해야 합니다' + '탐색:' 줄). 새로움을 묻는 물음에서 가장 중요한 것이 확인되지 않은 채였다.
+# (같은 날 밤, 사용자: '세상문헌 말고 내 서재만 봐도 충분한거 아닌가' → 기본은 서재만. 세상의 문헌은 물음이 청하거나 그 주제의 옵션을 '물음마다' 로 둘 때만 찾고, 그 밖에는 world_terms 로 검색 계획만 세워 서재 문장을 찾는 데 쓴다.)
 # 이제 물음마다(선행연구·새로움·연구가 되는가를 물을 때) 탐색의 앞 절반 — 검색 계획 → 불리언 사다리 → 우선 저널 안 · 최신 · Scopus → 초록 보강 → 서재 대조 — 을 돌려 20편쯤을 물음에 붙인다.
 # Claude 의 선별·분류(탐색의 3단계)는 하지 않는다: 고르는 것은 그 목록을 받은 답이 한다. 검색 계획만 가벼운 모델(sonnet)로 한 번.
 _WORLD_CACHE = {}
+_WORLD_PLANS = {}      # 글의 해시 → (때, 검색 계획) — 서재만 찾을 때 세운 계획을, 곧이어 세상 문헌을 청하면 그대로 쓴다
+_WORLD_PLAN_HINT = ("개념은 중요한 차례로 적는다. 첫 개념은 이 연구가 다루는 대상(현상·재료·공정의 이름)이고 필수다. 방법·조건·척도는 그 뒤에 적는다. 필수 개념은 셋을 넘기지 않는다. "
+                    "한 개념에는 같은 것을 가리키는 말만 넣는다 — 재료와 성질(탄탈럼과 이방성), 대상과 방법처럼 서로 다른 것은 개념을 나눈다. 첫 개념의 검색어는 그 재료나 현상의 이름과 그것의 다른 이름뿐이다.")
+# 재료와 성질을 한 개념에 OR 로 묶으면('tantalum OR anisotropy') 지진파 이방성 논문까지 걸렸다
+
+
+def _world_plan(text, model="sonnet"):
+    """말로 적은 물음 → 검색 계획(개념마다 영어 검색어). 못 받으면 None. 같은 글은 30분 동안 다시 세우지 않는다"""
+    key = hashlib.md5(text.encode("utf-8")).hexdigest()
+    c = _WORLD_PLANS.get(key)
+    if c and time.time() - c[0] < 1800:
+        return json.loads(json.dumps(c[1]))
+    plan = plan_search(text, model=model, hint=_WORLD_PLAN_HINT)
+    if len(plan["concepts"]) == 1 and plan["concepts"][0]["terms"] and plan["concepts"][0]["terms"][0].startswith(text[:40]):
+        return None
+    for x in plan["concepts"]:     # 원소 기호 같은 두 글자 검색어('Ta'·'Cu')는 뺀다 — 제목·초록 검색에서는 지질학 논문의 Ta 까지 걸려 '모든 개념을 담은 논문' 맨 앞에 엉뚱한 것이 왔다
+        long_t = [t for t in x["terms"] if len(t.strip()) > 2]
+        if long_t:
+            x["terms"] = long_t
+    _WORLD_PLANS[key] = (time.time(), plan)
+    if len(_WORLD_PLANS) > 80:
+        for k in sorted(_WORLD_PLANS, key=lambda k: _WORLD_PLANS[k][0])[:30]:
+            _WORLD_PLANS.pop(k, None)
+    return json.loads(json.dumps(plan))
+
+
+def world_terms(text, model="sonnet"):
+    """물음을 영어 검색어로만 푼다 — 세상의 문헌은 찾지 않는다. 연구 노트가 서재 문장을 찾을 때 쓴다(libindex.search 의 extra):
+    한국어 물음의 낱말만으로는 같은 것을 다른 말로 적은 서재 논문이 안 걸린다. → {terms[필수 개념부터, 개념마다 여섯], concepts, intent, sec, err}"""
+    t0 = time.time()
+    plan = _world_plan(text, model)
+    if not plan:
+        return {"terms": [], "err": "검색 계획을 받지 못했습니다" + ((" — " + claude_error()) if claude_error() else ""), "sec": round(time.time() - t0, 1)}
+    seen, terms = set(), []
+    for x in sorted(plan["concepts"], key=lambda x: 0 if x["required"] else 1):
+        for t in x["terms"][:6]:
+            if t and t.lower() not in seen:
+                seen.add(t.lower())
+                terms.append(t)
+    subj = next((x["terms"][:6] for x in plan["concepts"] if x["required"]), [])      # 대상(첫 필수 개념)의 낱말 — 서재에서 그 대상을 다룬 논문을 따로 찾는 데
+    return {"terms": terms[:30], "subject": subj, "concepts": [{"name": x["name"], "terms": x["terms"][:6], "required": x["required"]} for x in plan["concepts"]],
+            "intent": plan.get("intent", ""), "sec": round(time.time() - t0, 1), "err": ""}
 
 
 def world_search(text, limit=22, model="sonnet"):
@@ -1764,14 +1807,9 @@ def world_search(text, limit=22, model="sonnet"):
     c = _WORLD_CACHE.get(key)
     if c and time.time() - c[0] < 1800:
         return dict(c[1], cached=True)
-    plan = plan_search(text, model=model, hint="개념은 중요한 차례로 적는다. 첫 개념은 이 연구가 다루는 대상(현상·재료·공정의 이름)이고 필수다. 방법·조건·척도는 그 뒤에 적는다. 필수 개념은 셋을 넘기지 않는다. "
-                            "한 개념에는 같은 것을 가리키는 말만 넣는다 — 재료와 성질(탄탈럼과 이방성), 대상과 방법처럼 서로 다른 것은 개념을 나눈다. 첫 개념의 검색어는 그 재료나 현상의 이름과 그것의 다른 이름뿐이다.")   # 재료와 성질을 한 개념에 OR 로 묶으면('tantalum OR anisotropy') 지진파 이방성 논문까지 걸렸다
-    if len(plan["concepts"]) == 1 and plan["concepts"][0]["terms"] and plan["concepts"][0]["terms"][0].startswith(text[:40]):
+    plan = _world_plan(text, model)
+    if not plan:
         return {"papers": [], "total": 0, "expr": "", "err": "검색 계획을 받지 못했습니다" + ((" — " + claude_error()) if claude_error() else ""), "sec": round(time.time() - t0, 1)}
-    for x in plan["concepts"]:     # 원소 기호 같은 두 글자 검색어('Ta'·'Cu')는 뺀다 — 제목·초록 검색에서는 지질학 논문의 Ta 까지 걸려 '모든 개념을 담은 논문' 맨 앞에 엉뚱한 것이 왔다
-        long_t = [t for t in x["terms"] if len(t.strip()) > 2]
-        if long_t:
-            x["terms"] = long_t
     req = [x for x in plan["concepts"] if x["required"]]
     opt = [x for x in plan["concepts"] if not x["required"]]
     subj, rest = req[0], req[1:]
@@ -4519,7 +4557,7 @@ corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sa
 ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for, pref_abbrs=pref_file_abbrs, field_text=notes.field_text)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
 notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text,
                  plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map, forest_material=corpus.forest_material,   # 큰 물음의 재료 (2026-10-28)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
-                 world_search=world_search, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
+                 world_search=world_search, world_terms=world_terms, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
 
 
 # ---------- Claude 채팅이 보는 폴더 (2026-11-07, 사용자: '데이터베이스를 폴더째 공유해서 클로드 chat 에서도 쓸 수 있게 … 라이브러리식으로 필요한 정보만 쏙쏙') ----------

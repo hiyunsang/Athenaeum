@@ -395,8 +395,14 @@ def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, 
         have = {x["t"] for x in terms}
         terms += [t for t in terms_of(idx, context, 0.45, "ctx") if t["t"] not in have]
     if extra:
-        have = {x["t"] for x in terms}
-        terms += [t for t in terms_of(idx, extra, 0.6, "x") if t["t"] not in have]
+        by = {x["t"]: x for x in terms}
+        for t in terms_of(idx, extra, 0.6, "x"):
+            o = by.get(t["t"])
+            if o is None:
+                terms.append(t)
+                by[t["t"]] = t
+            elif o["src"] == "ctx":      # 주제 이름에도 든 낱말('Burr at Micromachining' 의 burr) — 버리지 않고 물음의 낱말로 올린다
+                o["src"], o["w"] = "x", max(o["w"], 0.6)
     QS = ("q", "x")
     q_strong = [i for i, t in enumerate(terms) if t["src"] in QS and t["df"] <= N * STRONG]
     need = 2 if len(q_strong) >= 2 else 1
@@ -418,7 +424,7 @@ def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, 
         qs = [i for i in h if terms[i]["src"] in QS]
         if not qs:
             continue
-        ns = sum(1 for i in qs if terms[i]["df"] <= N * STRONG)
+        ns = sum(1 for i in h if terms[i]["df"] <= N * STRONG)   # 주제 이름의 뚜렷한 낱말(ctx)도 센다 — '단결정에서 결정방향별 버?' 처럼 물음의 대상이 한 글자('버')뿐이면 주제 이름의 burr 가 문장을 고른다. 물음의 낱말이 하나는 맞아야 한다(위)
         if ns >= need or any(terms[i]["df"] <= N * RARE for i in qs):
             cands.append((sc, code))
     cands.sort(reverse=True)
@@ -482,6 +488,73 @@ def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, 
             "papers": out, "n": total, "cand": len(cands), "nsent": N, "sec": round(time.time() - t0, 3), "ready": True}
 
 
+def merge_subject(res, subject, max_add=4, per_paper=3, min_sents=3):
+    """대상(연구가 다루는 재료·현상)을 다룬 서재 논문을 따로 가려 res 의 앞에 더한다 → {"added": 더한 편수, "about": 그 대상을 다룬 서재 논문의 편수}
+    subject = 대상의 검색어들(쉼표로 가름 — 'burr formation, micro burr, burr types'). 검색어마다 그 낱말이 모두 든 문장을 세고,
+    그런 문장이 min_sents 개 넘는 논문을 '그 대상을 다룬 논문' 으로 본다(about). 문장이 많은 차례로, 제목·한 줄 요약에 그 말이 있으면 두 배로 쳐서
+    res 에 없는 것을 max_add 편까지 앞에 넣는다(논문마다 그 말이 처음 나오는 문장 per_paper 개 — 대개 초록·서론이라 그 논문이 대상을 어떻게 다루는지 보인다).
+    물음의 다른 낱말(방법·조건)이 맞은 논문들에 밀려 정작 그 대상을 다룬 서재 논문이 빠지던 것을 막는다 — 버 물음에서 in-SEM 논문 일곱 편만 걸리고,
+    제목에 burr 가 든 서재 논문 열두 편은 한 편도 안 걸렸다(2026-11-11: 한국어 한 글자 낱말 '버' 는 두 글자 묶음 색인에 없다)."""
+    idx = ensure(wait=False)
+    if not idx or not subject or not res.get("ready"):
+        return {"added": 0, "about": None}
+    per, titled = {}, set()
+    for term in [t.strip() for t in re.split(r"[,;\n]+", subject) if t.strip()][:8]:
+        toks = en_words(term)
+        codes, exps = None, []
+        if toks:
+            for tok in toks:
+                exp = _expand(idx, tok)
+                exps.append(exp)
+                c = _codes_en(idx, exp)
+                codes = set(c) if codes is None else (codes & c)
+                if not codes:
+                    break
+        else:
+            bg = {}
+            for w in ko_words(term):
+                c = _codes_ko(idx, w, bg)
+                codes = set(c) if codes is None else (codes & c)
+                if not codes:
+                    break
+        if not codes:
+            continue
+        for code in codes:
+            per.setdefault(code >> 16, set()).add(code & 0xffff)
+        if toks:
+            for pi in per:
+                pen = idx["ptok"][pi][0]
+                if all(any(w in pen for w in exp) for exp in exps):
+                    titled.add(pi)
+    cand = sorted(((len(v) * (2.0 if pi in titled else 1.0), pi) for pi, v in per.items() if len(v) >= min_sents), reverse=True)
+    have = {p["file"] for p in res.get("papers") or []}
+    new = []
+    for sc, pi in cand:
+        if len(new) >= max_add:
+            break
+        p = idx["papers"][pi]
+        if p["file"] in have or _key(p["file"]) != p["key"]:
+            continue
+        try:
+            sents = cfg["paper_sents"](p["file"])
+        except Exception:
+            continue
+        picked = []
+        for pos in sorted(per[pi])[:per_paper]:
+            if pos < len(sents):
+                x = sents[pos]
+                picked.append({"pos": pos, "sid": x.get("sid") or "", "en": x.get("en") or "", "ko": x.get("ko") or "", "page": x.get("page"), "sec": x.get("sec") or "", "score": 0, "hit": []})
+        if not picked:
+            continue
+        new.append({"file": p["file"], "stem": p["stem"], "short": ("%s %s" % (p["author"], p["year"])).strip(), "author": p["author"], "star": p["star"], "year": p["year"], "journal": p["journal"],
+                    "title": p["title"], "line": p["line"], "tr": p["tr"], "score": round(sc, 2), "mention": False, "subj": True, "nsubj": len(per[pi]), "sents": picked})
+        have.add(p["file"])
+    if new:
+        res["papers"] = new + (res.get("papers") or [])
+        res["n"] = res.get("n", 0) + sum(len(p["sents"]) for p in new)
+    return {"added": len(new), "about": len(cand)}
+
+
 def format_hits(res, label="L", line_chars=110, card=None, full=0):
     """search 의 결과 → (글, {"L1 s45": {file, sid, en, ko, page, sec, short, star, year, journal}}). 글은 논문마다 머리줄 + 문장 줄.
     card(stem) 을 주면(서재 학습의 논문 카드 — corpus.paper_card) 머리줄 아래에 그 논문이 무엇을 묻고 무엇을 보였는지를 붙인다. 앞의 full 편은 한 것·주장 둘·저자가 적은 한계까지,
@@ -490,7 +563,7 @@ def format_hits(res, label="L", line_chars=110, card=None, full=0):
     for i, p in enumerate(res.get("papers") or []):
         lab = "%s%d" % (label, i + 1)
         head = "%s %s%s%s %s — %s%s" % (lab, "★" if p.get("star") else "", p.get("year") or "", (" " + p["journal"]) if p.get("journal") else "", p.get("author") or p.get("short", "").split(" ")[0], (p.get("title") or "")[:90],
-                                        " (물음이 가리킨 논문)" if p.get("mention") else "")
+                                        " (물음이 가리킨 논문)" if p.get("mention") else (" (이 물음의 대상을 다룬 서재 논문 — 그 말이 든 문장 %d개)" % p.get("nsubj", 0)) if p.get("subj") else "")
         c = None
         if card:
             try:
@@ -498,7 +571,7 @@ def format_hits(res, label="L", line_chars=110, card=None, full=0):
             except Exception:
                 c = None
         if c:      # 논문 카드가 있으면 한 줄 요약 대신 카드를 (같은 말이 두 번 가지 않게)
-            rich = i < full or p.get("mention")
+            rich = i < full or p.get("mention") or (full and p.get("subj"))
             lines.append(head + (" [리뷰]" if c.get("type") == "review" else ""))
             if c.get("question"):
                 lines.append("  · 물은 것: " + c["question"][:200])

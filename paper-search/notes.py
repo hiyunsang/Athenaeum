@@ -828,7 +828,7 @@ def _split_choices(text):
 _QK_JUDGE = re.compile(r"연구가\s*(?:될|되|괜찮)|논문이\s*(?:될|되)|연구\s*주제|주제(?:를|로)?\s*(?:잡|세우|삼)|괜찮은\s*연구|의미\s*(?:가\s*)?있|의미\s*없|새로[운울움]|새롭|차별|설\s*만|할\s*만[한할]|승산|가치가|어느\s*저널|어디에?\s*(?:내|던)|저널에\s*(?:내|던)|novel", re.I)
 _QK_PRIOR = re.compile(r"선행|세상\s*문헌|문헌에서\s*(?:확인|찾)|논문(?:이|을|들)?\s*(?:있는지|있나|찾아)|이미\s*(?:다\s*)?(?:했|한|된|있|나온|밝혀)|누가\s*(?:했|한|먼저)|한\s*(?:연구|논문|사람|그룹)(?:이|가|은|는|들)?\s*있|다\s*한\s*거|한\s*적\s*있|있었[나음]|보고된|알려[진져]|연구\s*동향|최근\s*연구|어떻게\s*(?:했|쟀|정의)|방법\s*있었", re.I)
 _QK_GROW = re.compile(r"발전|더\s*(?:좋|세|강|낫)|추가로|키우|보강|어떻게\s*하면|뭘\s*더|무엇을\s*더|개선|급으로|수준으로|끌어올|올리려면", re.I)
-_QK_IDEA = re.compile(r"(?:있을까|없을까|없나|어떨까|해\s*볼까|볼\s*수\s*있을까|될까|되려나|되겠지|되지\s*않을까|하면\s*어때|어떨지)\s*[?.!…~]*\s*$")   # 생각을 던져 보는 말 — 틀은 씌우지 않고 세상의 문헌만 같이 본다
+_QK_IDEA = re.compile(r"(?:있을까|없을까|없나|어떨까|해\s*볼까|볼\s*수\s*있을까|될까|되려나|되겠지|되지\s*않을까|하면\s*어때|어떨지)\s*[?.!…~]*\s*$")   # 생각을 던져 보는 말 — 틀은 씌우지 않고, 물음을 영어 낱말로 풀어 서재를 더 잘 찾는 것만 한다
 
 
 def _qkind(question):
@@ -845,8 +845,13 @@ def _qkind(question):
     return ""
 
 
+# 세상의 문헌을 청하는 말 — 물음에 이런 말이 있으면(답 끝의 '세상 문헌에서 확인해 주세요' 같은 선택지를 누른 것도) 그 물음에서 학술 데이터베이스를 찾는다
+_QK_WORLD = re.compile(r"세상(?:의)?\s*문헌|서재\s*밖[^.?!\n:：]{0,40}?(?:찾아|찾는|찾을|확인|있는지|있나|살펴|봐\s*줘)|밖에서(?:도)?\s*(?:찾|확인)|데이터베이스에서\s*(?:찾|확인)|(?:OpenAlex|Scopus|스코퍼스)", re.I)   # '서재 밖에 … 있는지 찾아 주세요' 처럼 모델이 바꿔 적은 선택지도 받는다. '서재 밖: 이라고 한 건 뭐야' 는 아니다
+
+
 def _world_mode(v):
-    return v if v in ("auto", "on", "off") else "auto"
+    """auto = 청할 때만(기본) · on = 연구가 될 만한지·선행연구를 묻는 물음마다. 예전의 off 는 auto 와 같다(청하면 찾는다)"""
+    return "on" if v == "on" else "auto"
 
 
 _W_TIER = {0: "핵심 개념 모두", 1: "대상과 조건 하나", 2: "이 대상의 주요 논문"}
@@ -892,6 +897,7 @@ def _world_hits(nt, question, prev=""):
                 seen_t.add(t.lower())
                 terms.append(t)
     info["terms"] = terms[:30]
+    info["subject"] = next(((c.get("terms") or [])[:6] for c in res.get("concepts") or [] if c.get("required")), [])   # 대상(첫 필수 개념)의 낱말 — 서재에서 그 대상을 다룬 논문을 따로 찾는 데
     if not ps:
         return "", {}, info
     L, refs = [], {}
@@ -1019,13 +1025,16 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
     if qkind in ("judge", "prior", "grow") and not (short and not asking) and not isask:
         size = "1,200자 안쪽" if len(question) < 60 else "2,000자 안쪽"   # 문단 수로 적었더니 2,200~2,900자가 왔다(2026-11-11) — 글자 수로
         seen = "[서재에서 찾은 문장]" + ("과 [세상의 문헌에서 찾은 것]" if worldtext else "")
+        # 서재만 보고 답할 때 — '서재에 없다' 와 '아무도 안 했다' 를 가르고, 밖을 볼지는 연구자가 고르게 선택지로 남긴다
+        outside = "" if worldtext else (" 이번 답은 서재만 보고 하는 것이니, 이미 한 연구가 있는지는 '서재 안에서는'이라고 밝혀 말합니다(서재에 없다는 것이 아무도 하지 않았다는 뜻은 아닙니다). "
+                                        "서재가 이 주제를 얇게 덮고 있거나 서재 밖에 이미 한 연구가 있을 법하면, 선택지 하나를 '세상 문헌에서 이미 한 연구가 있는지 찾아 주세요'로 둡니다.")
         if qkind == "judge":
             note = ("(이 연구가 될 만한지를 묻는 물음입니다. 판단을 먼저 한두 문장으로 말합니다. 이어서 근거를 말합니다: 이 연구가 끝나면 내세울 주장이 무엇인지, 가장 가까운 선행연구 한두 편이 무엇을 이미 했고 이 연구와 어디가 다른지, "
-                    "이 연구가 틀리거나 약해질 수 있는 지점이 어디인지입니다. 끝으로 이 생각을 더 서게 만드는 방법을 한두 가지 말합니다. 선행연구는 %s에서 확인한 것으로 말하고, 확인하지 못한 것을 기억으로 채우지 않습니다. "
-                    "길이는 %s입니다. 다 담으려 하지 말고 판단을 바꿀 만한 것만 말하며, 더 따져 볼 것은 선택지로 남깁니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % (seen, size)
+                    "이 연구가 틀리거나 약해질 수 있는 지점이 어디인지입니다. 끝으로 이 생각을 더 서게 만드는 방법을 한두 가지 말합니다. 선행연구는 %s에서 확인한 것으로 말하고, 확인하지 못한 것을 기억으로 채우지 않습니다.%s "
+                    "길이는 %s입니다. 다 담으려 하지 말고 판단을 바꿀 만한 것만 말하며, 더 따져 볼 것은 선택지로 남깁니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % (seen, outside, size)
         elif qkind == "prior":
-            note = ("(선행연구를 묻는 물음입니다. 누가 무엇을 어떻게 했고 어디까지 보였는지를 %s에서 확인한 만큼만 말합니다. 같은 말을 하는 논문은 묶어서 하나로 말하고, 찾은 범위에 없으면 '찾은 범위에서는 보이지 않습니다'라고 말합니다. "
-                    "길이는 %s입니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % (seen, size)
+            note = ("(선행연구를 묻는 물음입니다. 누가 무엇을 어떻게 했고 어디까지 보였는지를 %s에서 확인한 만큼만 말합니다. 같은 말을 하는 논문은 묶어서 하나로 말하고, 찾은 범위에 없으면 '찾은 범위에서는 보이지 않습니다'라고 말합니다.%s "
+                    "길이는 %s입니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % (seen, outside, size)
         else:
             note = ("(연구를 더 낫게 만드는 방법을 묻는 물음입니다. 지금 계획에서 주장을 가장 약하게 만드는 것이 무엇인지 먼저 말하고, 그것을 메우는 방법을 우리 연구실에서 할 수 있는 것 위주로 두세 가지 말합니다. "
                     "방법마다 그것을 더하면 무엇을 더 말할 수 있게 되는지를 붙입니다. 길이는 %s입니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % size
@@ -1065,7 +1074,7 @@ def ask(nid, body):
         nt["pending"] = time.time()
         nt.pop("error", None)
         nt["opts"] = {"effort": effort, "lib": bool(body.get("lib")), "study": _study_mode(body.get("study")), "ms": _ms_mode(body.get("ms")),
-                      "world": _world_mode(body.get("world") if body.get("world") is not None else (nt.get("opts") or {}).get("world"))}   # 세상의 문헌: auto(선행연구·새로움을 물을 때) · on · off — 안 보내면 지난 값(폰)
+                      "world": _world_mode(body.get("world") if body.get("world") is not None else (nt.get("opts") or {}).get("world"))}   # 세상의 문헌: auto(청할 때만 — 기본) · on(연구가 될 만한지·선행연구 물음마다) — 안 보내면 지난 값(폰)
         _save(nt)
     threading.Thread(target=_ask_job, args=(nid,), name="notes-ask", daemon=True).start()
     return {"ok": True, "note": nt}
@@ -1117,23 +1126,48 @@ def _ask_job(nid):
     prevq = next((m.get("text") or "" for m in reversed((nt.get("thread") or [])[:-1]) if m.get("role") == "user"), "")
     worldtext, worldrefs, worldinfo = "", {}, None
     wmode = _world_mode((nt.get("opts") or {}).get("world"))
-    if wmode == "on" or (wmode == "auto" and qkind in ("judge", "prior", "idea")):   # 세상의 문헌 — 새로움·선행연구를 묻거나 생각을 던져 보는 물음에서(옵션으로 늘 켜거나 끌 수 있다). 검색 계획(가벼운 모델) + 학술 DB, 15~30초
+    # 서재가 먼저다(2026-11-11 밤, 사용자: '세상문헌 말고 내 서재만 봐도 충분한거 아닌가') — 세상의 문헌은 연구자가 청할 때만 찾는다:
+    # 물음에 '세상 문헌에서 찾아 줘' 같은 말이 있거나(답 끝의 그런 선택지를 누른 것도), 그 주제의 옵션을 '물음마다' 로 둔 경우.
+    # 그 밖의 연구가 될 만한지·선행연구 물음에서는 물음을 영어 검색어로 푸는 일(가벼운 모델 한 번, 10초쯤)만 해서 서재 문장을 찾는 데 쓴다 —
+    # 시험에서 근거의 대부분은 서재에서 나왔고, 서재의 맞는 논문을 찾게 한 것이 이 영어 낱말이었다.
+    go_world = bool(_QK_WORLD.search(question)) or (wmode == "on" and qkind in ("judge", "prior", "idea"))
+    terms, subject, planinfo = [], [], None
+
+    def _stage(v):
+        with _LOCK:
+            cur = _load(nid)
+            if cur and (cur.get("pending") if v else cur.get("stage")):
+                if v:
+                    cur["stage"] = v
+                else:
+                    cur.pop("stage", None)
+                _save(cur)
+
+    if go_world:   # 검색 계획(가벼운 모델) + 학술 DB, 15~45초
         try:
-            with _LOCK:
-                cur = _load(nid)
-                if cur and cur.get("pending"):
-                    cur["stage"] = "world"
-                    _save(cur)
+            _stage("world")
             worldtext, worldrefs, worldinfo = _world_hits(nt, question, prevq)
         except Exception as e:
             worldtext, worldrefs, worldinfo = "", {}, {"n": 0, "err": str(e)[:160]}
-        with _LOCK:
-            cur = _load(nid)
-            if cur and cur.get("stage"):
-                cur.pop("stage", None)
-                _save(cur)
-    try:   # 서재 문장 색인 (2026-11-09) — 물음의 낱말이 맞는 서재 문장 50개쯤을 물음에 붙인다(모델 호출 없음, 0.1초). 세상 문헌을 찾았으면 그 검색 계획의 영어 낱말도 같이 쓴다
-        libtext, librefs, libinfo = _lib_hits(nt, question, prevq, full=6 if qkind else 0, extra=", ".join((worldinfo or {}).get("terms") or []))
+        terms, subject = (worldinfo or {}).get("terms") or [], (worldinfo or {}).get("subject") or []
+        _stage("")
+    elif qkind in ("judge", "prior", "idea") and cfg.get("world_terms") and cfg.get("libindex"):
+        try:
+            _stage("lib")
+            r = cfg["world_terms"](_world_query(nt, question, prevq)) or {}
+            terms, subject = r.get("terms") or [], r.get("subject") or []
+            planinfo = {"sec": r.get("sec"), "n": len(terms), "err": r.get("err") or ""}
+        except Exception as e:
+            planinfo = {"n": 0, "err": str(e)[:160]}
+        _stage("")
+    if subject:
+        new_subject = list(subject)[:6]
+    else:      # 검색 계획을 세우지 않은 물음 — 이 주제에서 지난번에 세운 대상의 낱말을 쓴다(그 대상을 다룬 서재 논문이 늘 같이 가게)
+        new_subject, subject = None, list(nt.get("subj_terms") or [])
+    try:   # 서재 문장 색인 (2026-11-09) — 물음의 낱말이 맞는 서재 문장 50개쯤을 물음에 붙인다(모델 호출 없음, 0.1초). 물음을 푼 영어 낱말이 있으면 같이 쓴다
+        libtext, librefs, libinfo = _lib_hits(nt, question, prevq, full=6 if qkind else 0, extra=", ".join(terms), subject=", ".join(subject))
+        if planinfo and isinstance(libinfo, dict):
+            libinfo["plan"] = planinfo
     except Exception as e:
         libtext, librefs, libinfo = "", {}, {"n": 0, "err": str(e)[:120]}
     try:
@@ -1169,6 +1203,8 @@ def _ask_job(nid):
                     "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib}
             if qkind:
                 turn["qkind"] = qkind
+            if new_subject:   # 이 주제의 대상(영어 검색어) — 다음 물음의 서재 찾기에 쓴다
+                nt["subj_terms"] = new_subject
             if worldinfo:   # 세상의 문헌에서 찾아 붙인 것 + 답이 가리킨 논문(⟦W3⟧) (2026-11-11)
                 turn["world"] = worldinfo
                 used_w = _w_anchors(worldrefs, text)
@@ -1560,8 +1596,9 @@ _LIB_HEAD = ("[서재에서 찾은 문장 — 물음의 낱말로 서재의 문�
              "논문 머리 아래의 '물은 것 · 한 것 · 보인 것 · 저자가 적은 한계' 는 서재 학습이 그 논문 전체를 읽고 적어 둔 것입니다(그 논문이 어떤 연구인지는 이것으로 말하고, 근거 번호는 문장에만 붙입니다). ★ 는 우선 저널]")
 
 
-def _lib_hits(nt, question, prev="", full=0, extra=""):
+def _lib_hits(nt, question, prev="", full=0, extra="", subject=""):
     """→ (물음에 붙일 글, {'L3 s45': ref}, 통계). 색인이 아직 없으면(서버를 켠 직후) 이번 물음은 색인 없이 간다.
+    subject: 대상(연구가 다루는 재료·현상)의 영어 낱말 — 그 대상을 다룬 서재 논문이 앞의 결과에 없으면 넷까지 더한다(libindex.merge_subject)
     extra: 물음을 영어 검색어로 푼 것(세상 문헌 검색의 계획) — 같은 것을 다른 말로 적은 서재 논문도 걸리게
     full: 앞의 몇 편에 논문 카드(물은 것·한 것·보인 것·저자가 적은 한계)를 자세히 붙일까 — 연구가 되는가·선행연구를 묻는 물음에서 6, 그 밖에는 0(물은 것과 주장 하나만)"""
     li = cfg.get("libindex")
@@ -1577,15 +1614,23 @@ def _lib_hits(nt, question, prev="", full=0, extra=""):
         r2 = li.search(prev, context=title, wait=False)
         if r2.get("n"):
             res, used_prev = r2, True
+    sub = {"added": 0, "about": None}
+    if subject and hasattr(li, "merge_subject"):
+        try:
+            sub = li.merge_subject(res, subject) or sub
+        except Exception:
+            sub = {"added": 0, "about": None}
     if not res.get("n"):
         return "", {}, {"n": 0, "ready": bool(res.get("ready"))}
     try:
         text, refs = li.format_hits(res, card=cfg.get("paper_card"), full=full)   # 논문 카드(서재 학습의 주석) — 논문을 제목이 아니라 '무엇을 묻고 보였나' 로 알게 (2026-11-11)
     except TypeError:      # 시험 틀의 옛 libindex
         text, refs = li.format_hits(res)
-    info = {"n": res["n"], "papers": len(res["papers"]), "terms": [t["t"] for t in res["terms"] if t["src"] == "q" and not t["common"]][:12], "sec": res.get("sec"), "prev": used_prev, "extra": bool(extra),
+    info = {"n": res["n"], "papers": len(res["papers"]), "terms": [t["t"] for t in res["terms"] if t["src"] == "q" and not t["common"]][:12], "sec": res.get("sec"), "prev": used_prev, "extra": bool(extra), "subj": sub.get("added") or 0, "about": sub.get("about"),
             "mention": [p["short"] for p in res["papers"] if p.get("mention")], "cards": text.count("· 물은 것:")}
     head = _LIB_HEAD % (res.get("nsent") or 0, len(res["papers"]), res["n"]) + (" (물음에 찾을 낱말이 없어 바로 앞 물음의 낱말로 찾았습니다)" if used_prev else "")
+    if sub.get("about") is not None:   # 서재가 이 대상을 얼마나 두껍게 덮는가 — 답이 '서재만으로 충분한가' 를 가늠하는 숫자
+        head += " (이 물음의 대상을 세 문장 넘게 다룬 서재 논문은 모두 %d편입니다%s.)" % (sub["about"], (" — 그 가운데 위에 없던 %d편을 맨 앞에 두었습니다" % sub["added"]) if sub.get("added") else "")
     return head + "\n" + text, refs, info
 
 
@@ -4113,7 +4158,7 @@ def handle_get(h, url):
         return h._send(200, {"items": memory_list(), "kind_ko": _MEM_KO})
     if p == "/api/notes/libhits":            # 이 물음에 서재 문장 색인이 무엇을 찾나 — 진단 (2026-11-09): ?id=&q=
         nt = _load(_q(url, "id")) or {}
-        text, refs, info = _lib_hits(nt, _q(url, "q") or "", full=6 if _qkind(_q(url, "q") or "") else 0, extra=_q(url, "x") or "")
+        text, refs, info = _lib_hits(nt, _q(url, "q") or "", full=6 if _qkind(_q(url, "q") or "") else 0, extra=_q(url, "x") or "", subject=_q(url, "s") or "")   # x = 보탤 영어 낱말, s = 대상의 낱말
         return h._send(200, {"info": info, "refs": refs, "text": text})
     if p == "/api/notes/worldraw":           # 시험 틀용 — 서버의 world_search 를 글 그대로 불러 날것을 준다: ?text=
         fn = cfg.get("world_search")
