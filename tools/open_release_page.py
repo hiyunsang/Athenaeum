@@ -109,10 +109,16 @@ def main():
         {"tag": tag, "title": "Athenaeum v" + ver}, quote_via=urllib.parse.quote))
 
     print("판 %s · 태그 %s: 로컬 %s · 원격 %s · HEAD %s" % (ver, tag, local, remote, head))
-    if local != remote:
-        print("  ! 원격 태그가 로컬과 다르다 — 올리기 전에: git push --force origin refs/tags/%s" % tag)
-    if local != head:
-        print("  ! 로컬 태그가 HEAD 가 아니다 — HEAD 로 옮기려면: git tag -f %s && git push --force origin refs/tags/%s" % (tag, tag))
+    if local == "없음" and remote == "없음":
+        # 새 판 — 태그를 미리 만들 필요가 없다. 릴리스 페이지에서 Publish 를 누를 때 GitHub 가 main 의 맨 끝 커밋에 만든다
+        pushed = git("rev-parse", "--short", "origin/main")
+        print("  태그는 아직 없다 — Publish 를 누를 때 GitHub 가 main 의 맨 끝 커밋에 만든다" +
+              ("" if pushed == head else "  ! 그런데 HEAD(%s)가 아직 푸시되지 않았다(origin/main %s) — 먼저 git push origin main" % (head, pushed or "?")))
+    else:
+        if local != remote:
+            print("  ! 원격 태그가 로컬과 다르다 — 올리기 전에: git push --force origin refs/tags/%s" % tag)
+        if local != head:
+            print("  ! 로컬 태그가 HEAD 가 아니다 — HEAD 로 옮기려면: git tag -f %s && git push --force origin refs/tags/%s" % (tag, tag))
     print("릴리스 노트: %s%s" % (notes_path, "" if body else " (없음 — 본문은 비어 간다)"))
     print("ZIP: %s" % (zip_path or "없음 — dist 에 이 판의 포터블 ZIP 이 없다 (python tools\\make_release.py)"))
     if zip_path:
