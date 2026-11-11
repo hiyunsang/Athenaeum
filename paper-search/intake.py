@@ -588,9 +588,20 @@ def _park(pdf_path):
         pass
 
 
-def ingest(pdf_path, doi="", title=""):
+def title_in_text(title, page_text):
+    """제목 전체가 PDF 앞쪽 글에 이어진 그대로 있는가(글자·숫자만 남겨 견줌) — 본문에서 찾은 것이 아닌 DOI 실마리를 받아들일 때의 엄격한 대조.
+    title_matches(낱말의 절반)는 같은 분야의 다른 논문도 통과할 수 있어, 사람이 고른 파일에는 쓰지 않는다"""
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", str(s or "")).lower())
+    k, t = norm(title), norm(page_text)
+    if len(k) < 20:
+        return False
+    return k in t or (len(k) >= 60 and k[:40] in t and k[-25:] in t)   # 긴 제목은 가운데가 줄바꿈·기호로 달라도 머리와 꼬리가 다 있으면
+
+
+def ingest(pdf_path, doi="", title="", strict=False):
     """프로그램이 받아 온 PDF(받을 논문 페이지, 2026-11-04)를 보관소에 넣는다. DOI 를 알고 있으므로 Crossref 조회 → 제목 대조(PDF 앞쪽 글, 또는 받을 때 알던 제목) →
-    수집과 같은 이름 규칙으로 옮긴다. 돌려주는 값 {"file": 이름, "dup": bool} 또는 {"error": 까닭} — 그때 파일은 _확인필요\ 로 옮겨 두고 지우지 않는다"""
+    수집과 같은 이름 규칙으로 옮긴다. 돌려주는 값 {"file": 이름, "dup": bool} 또는 {"error": 까닭} — 그때 파일은 _확인필요\ 로 옮겨 두고 지우지 않는다.
+    strict: 사람이 고른 파일(폰의 「받은 PDF 올리기」)에 화면이 붙여 준 DOI 실마리 — 그 제목 전체가 PDF 앞쪽 글에 있을 때만 받아들이고, 아니면 PDF 자신의 DOI 로 판정한다"""
     cfg = _cfg or Config()
     name = os.path.basename(pdf_path)
     try:
@@ -604,7 +615,7 @@ def ingest(pdf_path, doi="", title=""):
             m = fetch_metadata(doi)
         except Exception:
             m = None
-        if m and m.get("title") and is_article_record(m) and (title_matches(m["title"], page_text) or _same_title(m["title"], title)):
+        if m and m.get("title") and is_article_record(m) and (title_in_text(m["title"], page_text) if strict else (title_matches(m["title"], page_text) or _same_title(m["title"], title))):
             meta = m
     if meta is None:
         try:

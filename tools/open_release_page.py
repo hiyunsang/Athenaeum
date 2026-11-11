@@ -4,6 +4,7 @@
     python tools\\open_release_page.py            판은 paper-search\\VERSION 에서 읽는다
     python tools\\open_release_page.py 1.1.0      판을 직접 적는다
     python tools\\open_release_page.py --dry      아무것도 열지 않고 무엇을 할지만 적는다
+    python tools\\open_release_page.py --force    ZIP 이 지금 코드보다 옛것이어도 연다 (보통은 열지 않고 알려 준다)
 
 하는 일
   ① dist\\릴리스노트_v<판>.md 를 릴리스 본문 꼴로 다듬어 클립보드에 복사한다
@@ -55,6 +56,32 @@ def newest_zip(ver):
     if not cands:
         return None
     return max(cands, key=os.path.getmtime)
+
+
+def zip_stale(zip_path):
+    """ZIP 안의 프로그램 파일(paper-search 의 .py·.html·.js·.css)이 지금 작업 폴더의 것과 다른가 — ZIP 을 만든 뒤에 코드를 고치고 그대로 올리면
+    태그(main 의 끝)와 ZIP 이 어긋난다(2026-11-11: ZIP 을 만들어 둔 뒤 폰의 탐색을 더 넣었다). 다른 파일 이름의 목록을 돌려준다"""
+    import zipfile
+    diff = []
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            for n in z.namelist():
+                parts = n.replace("\\", "/").split("/")
+                if "paper-search" not in parts or n.endswith("/"):
+                    continue
+                rel = parts[parts.index("paper-search") + 1:]
+                if not rel or rel[0] in ("python", "__pycache__") or not rel[-1].lower().endswith((".py", ".html", ".js", ".css")):
+                    continue
+                local = os.path.join(ROOT, "paper-search", *rel)
+                try:
+                    same = os.path.isfile(local) and open(local, "rb").read() == z.read(n)
+                except OSError:
+                    same = False
+                if not same:
+                    diff.append("/".join(rel))
+    except Exception as e:
+        return ["(ZIP 을 읽지 못함: %s)" % e]
+    return diff
 
 
 def git(*args):
@@ -121,9 +148,17 @@ def main():
             print("  ! 로컬 태그가 HEAD 가 아니다 — HEAD 로 옮기려면: git tag -f %s && git push --force origin refs/tags/%s" % (tag, tag))
     print("릴리스 노트: %s%s" % (notes_path, "" if body else " (없음 — 본문은 비어 간다)"))
     print("ZIP: %s" % (zip_path or "없음 — dist 에 이 판의 포터블 ZIP 이 없다 (python tools\\make_release.py)"))
+    stale = []
     if zip_path:
         print("  크기 %.1f MB" % (os.path.getsize(zip_path) / 1e6))
+        stale = zip_stale(zip_path)
+        if stale:
+            print("  ! 이 ZIP 은 지금 코드와 다르다 — 만든 뒤에 고친 파일 %d개: %s%s" % (len(stale), ", ".join(stale[:6]), " …" if len(stale) > 6 else ""))
+            print("    그대로 올리면 태그(main 의 끝)와 ZIP 이 어긋난다. 먼저 python tools\\make_release.py 로 다시 만들고 풀어서 시험할 것 (그래도 열려면 --force)")
     print("릴리스 페이지: %s" % url)
+    if stale and not dry and "--force" not in sys.argv:
+        print("(ZIP 이 옛것이라 클립보드·탐색기·브라우저는 건드리지 않았다)")
+        return 1
     if dry:
         print("(--dry: 클립보드·탐색기·브라우저는 건드리지 않았다)")
         return 0

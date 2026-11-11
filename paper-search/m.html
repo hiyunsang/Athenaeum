@@ -251,6 +251,25 @@
   .composer .send { flex: none; width: 40px; height: 40px; border-radius: 20px; border: 0; padding: 0; background: var(--accent); color: var(--surface); display: flex; align-items: center; justify-content: center; }
   .composer .send svg { width: 22px; height: 22px; } .composer .send:disabled { background: var(--fill-2); color: var(--text-3); }
   .composer .alt { flex: none; height: 40px; padding: 0 13px; border: 0; border-radius: 20px; background: var(--fill); font-size: 14px; color: var(--text); }
+  /* 탐색 (2026-11-11) — 세상의 논문 찾기: 찾는 중 카드 · 소주제 머리 · 논문 창(초록 · 받기) */
+  .tg.ok { background: none; box-shadow: inset 0 0 0 1px var(--green); color: var(--green); }
+  .fint { padding: 0 20px 12px; font-size: 14px; line-height: 1.55; color: var(--text-2); }
+  .gh { padding: 22px 20px 9px; } .gh b { display: block; font-size: 17px; font-weight: 700; letter-spacing: -.01em; line-height: 1.35; } .gh b i { font-style: normal; font-weight: 400; color: var(--text-3); margin-left: 4px; }
+  .gh span { display: block; font-size: 13px; line-height: 1.5; color: var(--text-3); margin-top: 3px; }
+  .frun { display: block; margin: 4px 16px 6px; padding: 15px 18px 16px; border-radius: 18px; background: var(--accent-bg); color: var(--text); text-decoration: none; }
+  .frun .fk { display: flex; align-items: center; gap: 9px; font-size: 14.5px; font-weight: 600; } .frun .fk em { font-style: normal; font-weight: 400; color: var(--text-2); margin-left: auto; font-size: 13px; }
+  .frun .fs2 { font-size: 13px; color: var(--text-2); margin-top: 7px; line-height: 1.5; }
+  .frun .hp { height: 5px; border-radius: 3px; background: var(--fill-2); margin-top: 12px; overflow: hidden; } .frun .hp i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width .8s; }
+  .fwarn { margin: 0 16px 12px; padding: 10px 14px 11px; border-radius: 14px; background: var(--amber-bg); color: var(--amber); font-size: 13.5px; line-height: 1.55; }
+  .ffoot { padding: 20px 20px 6px; font-size: 13px; color: var(--text-3); line-height: 1.6; } .ffoot button { background: none; border: 0; color: var(--accent); font-size: 13.5px; padding: 6px 0; }
+  #sheet .fsm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--text-2); }
+  #sheet .fst { font-family: var(--font-serif); font-size: 19px; line-height: 1.32; margin: 9px 0 6px; overflow-wrap: anywhere; }
+  #sheet .fsv { font-size: 13px; color: var(--text-3); line-height: 1.5; }
+  #sheet .fab { font-size: 14.5px; line-height: 1.6; color: var(--text-2); margin-top: 12px; overflow-wrap: anywhere; word-break: normal; } #sheet .fab.ko { color: var(--text); word-break: keep-all; }
+  .cl5 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; -webkit-line-clamp: 5; }
+  #sheet .fabx { display: flex; gap: 18px; } #sheet .fabx button { background: none; border: 0; color: var(--accent); font-size: 13.5px; padding: 7px 0; } #sheet .fabx button:disabled { color: var(--text-3); }
+  #sheet .fact { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; } #sheet .fact .frow2 { display: flex; gap: 8px; } #sheet .fact .frow2 > * { flex: 1; min-width: 0; }
+  #sheet .fnote { font-size: 13px; line-height: 1.55; color: var(--text-2); margin-top: 11px; } #sheet .fnote.err { color: var(--red); } #sheet .fnote.good { color: var(--green); } #sheet .fnote a { color: var(--accent); }
 </style>
 </head>
 <body class="root">
@@ -266,7 +285,7 @@
 /* 휴대폰용 Athenaeum — 다시 만든 판 (2026-11-06, 사용자: '폰 UI는 누가 만든겨? 다시 같이 만들어볼래?' → 첫 화면·읽는 화면·누르고 오가기가 별로, 이어 읽기가 먼저, 아이폰 앱처럼).
    화면: 읽기(이어 읽기 · 공부 · 새로 들어온 논문) · 서재 · 공부 · 노트(연구 노트) 가 아래 탭, 논문·장·대화는 그 위에 쌓이는 화면(위 막대의 ‹ 로 돌아간다).
    읽는 화면은 굴리면 위 막대가 숨고, 번역의 문장을 누르면 원문이, 공부의 문장을 누르면 근거 원문이 아래에서 올라온다.
-   주소: #/ 읽기 · #/lib 서재 · #/study 공부 · #/notes 노트 · #/p/<파일>/<summary|translation|ask>[/s번호] 논문 · #/s/<장>[/<절>|/c/<대화>] 공부 · #/n/<노트>
+   주소: #/ 읽기 · #/lib 서재 · #/find 탐색(#/f/q/<검색어> · #/f/h/<기록> · #/f/w 받을 논문) · #/study 공부 · #/notes 노트 · #/p/<파일>/<summary|translation|ask>[/s번호] 논문 · #/s/<장>[/<절>|/c/<대화>] 공부 · #/n/<노트>
    서버에는 PC 화면이 쓰는 길을 그대로 부른다 (/api/data?lines=1 · /api/gentext · /api/figs · /api/eqindex · /api/align · /api/notes · /api/ask · /api/study · /api/ms/math). 시험은 /m?nolog=1 (읽기 기록을 남기지 않는다). */
 "use strict";
 const $ = id => document.getElementById(id);
@@ -298,6 +317,7 @@ const IC = {
   lib: svg("<rect x='3.2' y='4' width='4.3' height='16' rx='1.1'/><rect x='9.4' y='4' width='4.3' height='16' rx='1.1'/><path d='M16.3 7.2l2.6-.7a1.1 1.1 0 0 1 1.3.8l2.5 9.6a1.1 1.1 0 0 1-.8 1.3l-2.6.7a1.1 1.1 0 0 1-1.3-.8L15.5 8.5a1.1 1.1 0 0 1 .8-1.3z'/>"),
   study: svg("<path d='M12 4.6L2.6 9.2 12 13.8l9.4-4.6z'/><path d='M6.3 11.2v4.2c0 1.5 2.6 3 5.7 3s5.7-1.5 5.7-3v-4.2'/><path d='M21.4 9.2v5.2'/>"),
   note: svg("<path d='M5.5 5h13A2.5 2.5 0 0 1 21 7.5v7a2.5 2.5 0 0 1-2.5 2.5h-6l-4.7 3.6V17H5.5A2.5 2.5 0 0 1 3 14.5v-7A2.5 2.5 0 0 1 5.5 5z'/>"),
+  find: svg("<circle cx='12' cy='12' r='8.6'/><path d='M15.6 8.4l-2 5.2-5.2 2 2-5.2z'/>"),
   back: svg("<path d='M15 5l-7 7 7 7'/>", 2.3), search: svg("<circle cx='11' cy='11' r='6.5'/><path d='M16 16l4.5 4.5'/>", 2),
   more: "<svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><circle cx='5.5' cy='12' r='1.8'/><circle cx='12' cy='12' r='1.8'/><circle cx='18.5' cy='12' r='1.8'/></svg>",
   plus: svg("<path d='M12 5v14M5 12h14'/>", 2.2), send: svg("<path d='M12 19V6M6.2 11.6L12 5.8l5.8 5.8'/>", 2.4), close: svg("<path d='M6 6l12 12M18 6L6 18'/>", 2.4),
@@ -543,7 +563,7 @@ async function renderMath(root) {
 }
 
 /* ---------- 틀: 위 막대 · 아래 탭 · 뒤로 ---------- */
-const TABS = [["home", "#/", "읽기", IC.read], ["lib", "#/lib", "서재", IC.lib], ["study", "#/study", "공부", IC.study], ["notes", "#/notes", "노트", IC.note]];
+const TABS = [["home", "#/", "읽기", IC.read], ["lib", "#/lib", "서재", IC.lib], ["find", "#/find", "탐색", IC.find], ["study", "#/study", "공부", IC.study], ["notes", "#/notes", "노트", IC.note]];
 function shell(o) {
   document.body.className = (o.root ? "root" : "inner") + (o.reading ? " reading" : "") + (o.chat ? " chatp" : "");
   nav.className = (o.root ? "rootnav " : "") + "top";
@@ -1347,6 +1367,320 @@ async function viewNote(id, my) {
   await pull();
 }
 
+/* ---------- 탐색 — 세상의 논문에서 찾기 · 받기 (2026-11-11, 사용자: '논문탐색도 모바일에서 할 수 있게 해 줘. 다운로드도') ----------
+   PC 의 탐색과 같은 길을 부른다: POST /api/smart → /api/smart_status (Claude 가 검색어를 짜고 결과를 골라 소주제로 묶는다, 1~2분). 연구실 PC 에서 돌므로 휴대폰을 꺼도 계속되고, 끝난 것은 /api/smart_history 에 남는다.
+   영어 낱말로 적으면 기다리는 동안 낱말 그대로 찾은 결과(/api/explore)를 먼저 보이고, DOI 를 적으면 그 논문 하나만 바로 찾는다.
+   주소: #/find 탐색 · #/f/q/<검색어>[/<연도>] 검색 · #/f/h/<기록 id> 지난 탐색 · #/f/w 받을 논문.
+   받기: 열린 접근은 연구실 PC 가 받아 서재에 넣고(/api/wanted fetch), 그 밖은 출판사 화면에서 받은 PDF 를 논문 창에서 올린다(/api/upload?doi=). */
+const findCache = {};      /* 화면 열쇠 → {q, year, r(결과), plain, doi, hid, t, flt, run, err} — 논문을 열었다 돌아와도 다시 받지 않게 */
+let findHist = null, findWant = null, findCaps = jGet("m_fcaps", {}), findShown = 8, fsSeq = 0;
+const doiOf = it => String((it && it.doi) || "").replace(/^https?:\/\/(dx\.)?doi\.org\//i, "").trim();
+const hasOa = it => !!(it && it.oa && (it.oa.pdf || it.oa.url));
+const isDoiQ = s => /(^|[\s/:])10\.\d{4,9}\/\S+/.test(s);
+const fmtDay = t => { const d = new Date(t * 1000); return (d.getFullYear() !== new Date().getFullYear() ? d.getFullYear() + "년 " : "") + (d.getMonth() + 1) + "월 " + d.getDate() + "일"; };
+const setCaps = c => { if (c && c.els) { findCaps = c; lsSet("m_fcaps", JSON.stringify(c)); } };
+const smartKey = (q, year) => "smart:" + q + "|" + (year || "");
+const fUrl = (q, year) => "#/f/q/" + enc(q) + (year ? "/" + enc(year) : "");
+const jName = it => ((it.top ? "★ " : "") + (it.abbr || it.venue || "")).trim();
+const wkOf = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);      /* 받을 논문의 열쇠(서버의 _wkey 와 같은 꼴) */
+const oaMemo = {};      /* 열린 접근을 모르는 논문(옛 탐색 기록 · 담아 둔 논문)은 한 번 물어 둔다 — 열쇠는 OpenAlex id(W…)나 DOI */
+const oaKey = it => /^W\d+$/.test(it.id || "") ? it.id : doiOf(it).toLowerCase();
+async function syncOa(list) {      /* list 의 논문 가운데 oa 를 모르는 것(undefined)을 채운다. 바뀐 것이 있으면 true */
+  const need = list.filter(x => x.oa === undefined && !x.owned && oaKey(x));
+  need.forEach(x => { if (oaKey(x) in oaMemo) x.oa = oaMemo[oaKey(x)]; });
+  const ask = need.filter(x => x.oa === undefined); if (!ask.length) return need.length > 0;
+  let r; try { r = await api("/api/wanted", { op: "oa", items: ask.map(x => ({ id: /^W\d+$/.test(x.id || "") ? x.id : "", doi: x.doi || "" })) }); } catch (e) { return false; }
+  ask.forEach(x => { const k = oaKey(x), v = (r.oa || {})[k]; oaMemo[k] = v || null; x.oa = v || null; });
+  return true;
+}
+function rowFound(it, i) {
+  return "<a class='row' href='#' data-fi='" + i + "'><div class='t cl3'>" + esc(it.title || "") + "</div><div class='m'>" + (it.owned ? "<span class='tg hi'>서재에 있음</span>" : "") +
+    "<span>" + esc([jName(it), it.year || "", it.author || ""].filter(x => x && x !== "★").join(" · ")) + (it.cit ? " · 피인용 " + it.cit : "") + "</span>" +
+    (it.review ? "<span class='tg'>리뷰</span>" : "") + (!it.owned && hasOa(it) ? "<span class='tg ok'>열린 접근</span>" : "") + "</div></a>";
+}
+async function viewFind(my) {
+  shell({ root: "find", title: "탐색", fade: true });
+  const loc0 = savedY(curHash);
+  app.innerHTML = "<div class='lt'>탐색</div><form class='search' id='ff' action='#'>" + IC.search + "<input type='search' id='fq' placeholder='주제를 말로 적어도 됩니다 · DOI 도 됩니다' autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' enterkeyhint='search' value='" + esc(lsGet("m_fq", "")) + "'></form>" +
+    "<div class='fint'>세상의 논문에서 찾습니다. Claude 가 검색어를 짜고 결과를 골라 묶는 데 1~2분 걸리고, 찾은 논문은 그 자리에서 서재로 받을 수 있습니다.</div><div id='fbox'></div>";
+  const fq = $("fq");
+  fq.oninput = () => lsSet("m_fq", fq.value);
+  $("ff").onsubmit = e => { e.preventDefault(); const v = fq.value.trim().replace(/\s+/g, " "); if (v.length < 2) { fq.focus(); return; } fq.blur(); location.hash = fUrl(v, ""); };
+  const draw = () => {
+    if (my !== view) return;
+    const run = jGet("m_frun", null), hs = (findHist || []).filter(x => x.n), ws = (findWant || []).filter(x => !x.got);      /* 한 편도 못 찾은 옛 탐색은 목록에서 뺀다 */
+    let h = "";
+    if (run && run.q && Date.now() - run.t < 20 * 60000) h += "<a class='frun' href='" + esc(fUrl(run.q, run.year)) + "'><div class='fk'><span class='dots'><i></i><i></i><i></i></span>찾는 중<em>" + ago(run.t / 1000) + " 시작</em></div><div class='fs2'>" + esc(run.q) + "</div></a>";
+    if (hs.length) h += "<div class='sh'><h2>지난 탐색</h2></div><div class='grp'>" + hs.slice(0, findShown).map(x => "<a class='row chev' href='#/f/h/" + esc(enc(x.id)) + "'><div class='t ko cl2'>" + esc(x.q || "") + "</div>" +
+      ((x.groups || []).length ? "<div class='g cl2'>" + esc(x.groups.join(" · ")) + "</div>" : "") + "<div class='m'><span>" + (x.n || 0) + "편 · 서재에 " + (x.owned || 0) + "편 · " + ago(x.t) + "</span></div></a>").join("") + "</div>" +
+      (hs.length > findShown ? "<div class='cnt'><span></span><button id='fhmore'>더 보기 " + (hs.length - findShown) + "</button></div>" : "");
+    if (ws.length) h += "<div class='sh'><h2>받을 논문</h2><a href='#/f/w'>모두 보기 " + ws.length + "</a></div><div class='grp'>" + ws.slice(-3).reverse().map(x => "<a class='row chev' href='#/f/w'><div class='t cl2'>" + esc(x.title || "") + "</div><div class='m'><span>" +
+      esc([x.venue, x.year || "", x.authors].filter(Boolean).join(" · ")) + "</span></div></a>").join("") + "</div>";
+    if (!h && findHist) h = "<div class='empty'><b>아직 찾아본 것이 없습니다</b>위 칸에 궁금한 주제를 적어 보세요. 한국어로 적어도 되고, 논문의 DOI 를 붙여 넣으면 그 논문을 바로 찾습니다.</div>";
+    $("fbox").innerHTML = h || skeleton();
+    const mb = $("fhmore"); if (mb) mb.onclick = () => { findShown += 20; const y = window.scrollY; draw(); window.scrollTo(0, y); };
+  };
+  const load = async () => {
+    try { const d = await api("/api/smart_history"); findHist = d.items || []; setCaps(d.caps); }
+    catch (e) { if (my === view && !findHist && String(e && e.message) !== "login") $("fbox").innerHTML = failHtml(); return false; }
+    try { findWant = (await api("/api/wanted")).items || []; } catch (e) {}
+    return true;
+  };
+  draw();
+  if (!(await load()) || my !== view) return;
+  draw(); restorePos(loc0[0]);
+  const run = jGet("m_frun", null);      /* 이 휴대폰에서 시작한 검색이 끝났으면 '찾는 중' 을 거두고 목록을 새로 받는다 */
+  if (run && run.q) api("/api/smart_status?key=" + enc(smartKey(run.q, run.year)) + "&brief=1").then(async s => {
+    if (s.status === "running") return;
+    lsSet("m_frun", "null"); if (s.status === "done") await load(); if (my === view) { const y = window.scrollY; draw(); window.scrollTo(0, y); }
+  }).catch(() => {});
+}
+function wantItem(x) {
+  const it = { id: x.id || "", wkey: x.key || wkOf(x.title), doi: x.doi ? (/^https?:/i.test(x.doi) ? x.doi : "https://doi.org/" + x.doi) : "", title: x.title, year: x.year || "", venue: x.venue || "", author: x.authors || "", owned: x.got || "", oa: x.oa, from: x.from || [] };
+  if (it.oa === undefined && oaKey(it) in oaMemo) it.oa = oaMemo[oaKey(it)];
+  return it;
+}
+async function viewWanted(my) {
+  shell({ parent: "#/find", title: "받을 논문", fade: true });
+  const loc0 = savedY(curHash);
+  app.innerHTML = "<div class='lt'>받을 논문</div><div class='fint'>담아 둔 논문입니다. PC 의 「받을 논문」 과 같은 목록이고, 서재에 들어온 것은 아래로 내려갑니다.</div><div id='fbody'>" + skeleton() + "</div>";
+  let items = [];
+  const draw = () => {
+    if (my !== view) return;
+    const all = (findWant || []).map(wantItem), todo = all.filter(x => !x.owned).reverse(), got = all.filter(x => x.owned).reverse();
+    items = todo.concat(got);
+    $("fbody").innerHTML = items.length ? (todo.length ? "<div class='grp'>" + todo.map((it, i) => rowFound(it, i)).join("") + "</div>" : "") +
+      (got.length ? "<div class='gh'><b>서재에 들어온 것<i>" + got.length + "</i></b></div><div class='grp'>" + got.map((it, i) => rowFound(it, todo.length + i)).join("") + "</div>" : "")
+      : "<div class='empty'><b>담아 둔 논문이 없습니다</b>탐색 결과에서 논문을 눌러 「담아 두기」 를 누르면 여기에 모입니다.</div>";
+  };
+  const load = async sync => {
+    let r; try { r = await api("/api/wanted" + (sync ? "?sync=1" : "")); } catch (e) { if (my === view && !findWant && String(e && e.message) !== "login") $("fbody").innerHTML = failHtml(); return false; }
+    findWant = r.items || []; setCaps(r.caps); return true;
+  };
+  const again = async () => { await load(true); if (my !== view) return; const y = window.scrollY; draw(); window.scrollTo(0, y); };
+  $("fbody").onclick = e => { const a = e.target.closest("[data-fi]"); if (!a) return; e.preventDefault(); const it = items[+a.dataset.fi]; if (it) foundSheet(it, { queue: true, onChange: again }); };
+  if (findWant) draw();
+  if (!(await load(true)) || my !== view) return;
+  draw(); restorePos(loc0[0]);
+  if (await syncOa(items) && my === view) { const y = window.scrollY; draw(); window.scrollTo(0, y); }      /* 어느 것이 열린 접근인지 (한 번 물어 둔다) */
+}
+async function viewFound(mode, a1, a2, my) {
+  if (mode === "w") return viewWanted(my);
+  const isH = mode === "h", q0 = isH ? "" : String(a1 || ""), year = isH ? "" : String(a2 || ""), ck = isH ? "h:" + a1 : "q:" + q0 + "|" + year, key = smartKey(q0, year);
+  const S = findCache[ck] || (findCache[ck] = { q: q0, year });
+  if (!S.flt) S.flt = "all";
+  shell({ parent: "#/find", title: S.q || "탐색", fade: true });
+  const loc0 = savedY(curHash);
+  app.innerHTML = "<div id='fhd'></div><div id='fbody'>" + skeleton() + "</div>";
+  let items = [];
+  const FL = [["all", "전체"], ["new", "없는 것"], ["own", "있는 것"], ["top", "★ 우선 저널"], ["rev", "리뷰"], ["oa", "열린 접근"]];
+  const passF = (it, f) => f === "new" ? !it.owned : f === "own" ? !!it.owned : f === "top" ? !!it.top : f === "rev" ? !!it.review : f === "oa" ? (!it.owned && hasOa(it)) : true;
+  const allOf = () => { const a = []; ((S.r || {}).groups || []).forEach(g => (g.items || []).forEach(it => a.push(it))); return a; };
+  const runHtml = () => {      /* 찾는 중: 단계 '1/3 · 2/3 (k/n) · 3/3' 을 채움 비율로 (1·3단계는 시간으로 어림) */
+    const R = S.run, m = /^(\d)\/3/.exec(R.stage || ""), a = m ? +m[1] : (/마무리/.test(R.stage || "") ? 3 : 1), m2 = /\((\d+)\/(\d+)\)/.exec(R.stage || "");
+    if (R.pa !== a) { R.pa = a; R.pt = Date.now(); }
+    const inner = m2 && a === 2 ? +m2[1] / +m2[2] : Math.min(.9, (Date.now() - R.pt) / 1000 / 45), frac = R.fr = Math.max(R.fr || 0, Math.min(.96, (a - 1) / 3 + inner / 3));      /* 막대는 뒤로 가지 않는다 (단계 글이 'k/n' 에서 다른 말로 바뀔 때) */
+    return "<div class='fk'><span class='dots'><i></i><i></i><i></i></span>찾는 중<em>" + fmtDur(Math.max(0, Math.round((Date.now() - R.t) / 1000))) + "</em></div><div class='fs2'>" + esc(R.stage || "시작") + "</div><div class='hp'><i style='width:" + Math.round(Math.max(.03, frac) * 100) + "%'></i></div>" +
+      "<div class='fs2'>연구실 PC 가 찾고 있습니다. 보통 1~2분 걸리고, 휴대폰을 꺼도 계속됩니다. 끝난 것은 탐색의 「지난 탐색」 에 남습니다.</div>";
+  };
+  const draw = () => {
+    if (my !== view) return;
+    const r = S.r, nt = nav.querySelector(".nt"); if (nt) nt.textContent = S.q || "탐색";
+    items = [];
+    let hd = "<div class='ch2' style='padding:6px 20px 0;margin:0'>" + (S.doi ? "DOI 로 찾기" : "탐색" + (S.t && r ? " · " + fmtDay(S.t) : "") + (S.year ? " · " + esc(S.year) + "년부터" : "")) + "</div><div class='ch1' style='padding:2px 20px 8px;margin:0;overflow-wrap:anywhere'>" + esc(S.q || "") + "</div>", body = "";
+    if (S.run) hd += "<div class='frun' id='frun'>" + runHtml() + "</div>";
+    if (S.err) body += "<div class='empty'><b>찾지 못했습니다</b>" + esc(S.err) + "<br><button class='pill' id='fretry'>다시 시도</button></div>";
+    if (r) {
+      const all = allOf(), fb = !all.length && S.plain && S.plain.length;      /* fb: 고른 결과가 한 편도 없으면 낱말 그대로 찾은 것을 그대로 둔다 */
+      if (r.plan_failed || r.ai_problem) hd += "<div class='fwarn'>" + (r.plan_failed ? "Claude 가 검색어를 짜지 못해, 적은 말 그대로만 찾았습니다. " : "Claude 가 결과를 고르지 못해, 찾은 순서대로 보입니다. ") + esc(r.ai_problem || "연구실 PC 의 Athenaeum 에서 AI 로그인을 확인해 주세요.") + "</div>";
+      else if (r.intent && r.intent !== S.q) hd += "<div class='fint'>" + esc(r.intent) + "</div>";
+      if (all.length) hd += "<div class='fbar' id='ffl'>" + FL.map(f => { const n = all.filter(it => passF(it, f[0])).length; return n || f[0] === "all" ? "<button class='fc" + (f[0] === S.flt ? " on" : "") + "' data-f='" + f[0] + "'>" + f[1] + " " + n + "</button>" : ""; }).join("") + "</div>";
+      (r.groups || []).forEach(g => {
+        const its = (g.items || []).filter(it => passF(it, S.flt)); if (!its.length) return;
+        body += "<div class='gh'><b>" + esc(g.name || "") + "<i>" + its.length + "</i></b>" + (g.why ? "<span>" + esc(g.why) + "</span>" : "") + "</div><div class='grp'>" + its.map(it => { items.push(it); return rowFound(it, items.length - 1); }).join("") + "</div>";
+      });
+      if (fb) body += "<div class='gh'><b>낱말 그대로 찾은 것<i>" + S.plain.length + "</i></b></div><div class='grp'>" + S.plain.map(it => { items.push(it); return rowFound(it, items.length - 1); }).join("") + "</div>";
+      else if (!items.length) body += "<div class='empty'>" + (all.length ? "이 조건에 맞는 논문이 없습니다." : "<b>찾은 논문이 없습니다</b>낱말을 바꿔 다시 찾아보세요.") + "</div>";
+      body += "<div class='ffoot'>" + (S.t ? fmtDay(S.t) + "에 찾은 결과입니다. " : "") + (r.excluded ? "주제와 멀다고 본 " + r.excluded + "편은 뺐습니다. " : "") + "<button id='fredo'>다시 찾기</button></div>";
+    } else if (S.plain && S.plain.length) {
+      body += "<div class='gh'><b>" + (S.doi ? "이 DOI 의 논문" : "먼저 찾은 것<i>" + S.plain.length + "</i>") + "</b>" + (S.doi ? "" : "<span>낱말 그대로 찾은 결과입니다. Claude 가 고른 결과가 오면 바뀝니다.</span>") + "</div><div class='grp'>" +
+        S.plain.map(it => { items.push(it); return rowFound(it, items.length - 1); }).join("") + "</div>";
+    } else if (!S.run && !S.err) body += S.loaded ? "<div class='empty'><b>찾은 논문이 없습니다</b>" + (S.doi ? "DOI 를 다시 확인해 주세요." : "") + "</div>" : skeleton();
+    $("fhd").innerHTML = hd; $("fbody").innerHTML = body;
+    const bar = $("ffl"), on = bar && bar.querySelector(".on"); if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - 16);
+  };
+  const keepDraw = () => { const y = window.scrollY; draw(); window.scrollTo(0, y); };
+  const syncOwned = async () => {      /* 결과의 '서재에 있음' 은 찾았을 때의 것 — 그 뒤에 들어온 논문을 지금 서재와 다시 맞춘다 */
+    const all = allOf().concat(S.plain || []); if (!all.length) return;
+    let r; try { r = await api("/api/owned_check", { items: all.map(x => ({ id: x.id, title: x.title })) }); } catch (e) { return; }
+    let ch = 0; all.forEach(x => { const f = (r.owned || {})[x.id]; if (f && x.owned !== f) { x.owned = f; ch++; } });
+    if (all.some(x => x.oa === undefined && !x.owned) && await syncOa(all)) ch++;      /* 옛 기록에는 열린 접근 정보가 없다 — 한 번 물어 채운다 */
+    if (ch && my === view) keepDraw();
+  };
+  const take = (res, hid, t) => { S.r = res; S.hid = hid || S.hid || ""; S.t = t || 0; S.run = null; S.err = ""; S.loaded = true; };      /* 낱말 그대로 찾은 것(S.plain)은 두어, 고른 결과가 비었을 때 보인다 */
+  const openHist = async hid => {
+    let d; try { d = await api("/api/smart_history?id=" + enc(hid) + "&lite=1"); } catch (e) { d = null; }
+    if (!d || !d.result) return false;
+    const m = d.meta || {}; if (!S.q) S.q = m.q || ""; if (!S.year) S.year = String(m.year || "");
+    take(d.result, hid, m.t || 0); return true;
+  };
+  const poll = () => {
+    clearInterval(pollT);
+    pollT = setInterval(async () => {
+      let s; try { s = await api("/api/smart_status?key=" + enc(key) + "&lite=1"); } catch (e) { return; }
+      if (my !== view || !S.run) return;
+      if (s.status === "running") { S.run.stage = s.stage || S.run.stage; if (s.elapsed != null) S.run.t = Date.now() - s.elapsed * 1000; const el = $("frun"); if (el) el.innerHTML = runHtml(); return; }
+      clearInterval(pollT); pollT = null; lsSet("m_frun", "null");
+      if (s.status === "done") { take(s.result, s.hid, Date.now() / 1000); if (!sheet.classList.contains("on")) window.scrollTo(0, 0); draw(); syncOwned(); toast("다 찾았습니다"); }
+      else { S.run = null; S.err = s.status === "none" ? "찾던 것이 사라졌습니다. 연구실 PC 의 서버가 다시 켜졌을 수 있습니다." : (s.error || "찾지 못했습니다"); draw(); }
+    }, 3000);
+  };
+  const start = async fresh => {
+    S.r = null; S.err = ""; S.run = { t: Date.now(), pt: Date.now(), pa: 1, stage: "시작" }; draw();
+    let r; try { r = await api("/api/smart", { q: q0, year, fresh: fresh || undefined }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    if (my !== view) return;
+    if (!r.key) { S.run = null; S.err = r.error || "시작하지 못했습니다"; return draw(); }
+    lsSet("m_frun", JSON.stringify({ q: q0, year, t: Date.now() }));
+    poll();
+  };
+  const plain = async () => {      /* 낱말 그대로 찾기(Claude 없이 바로) — 영어 낱말·DOI 일 때만. 한국어는 Claude 의 검색 계획이 있어야 찾힌다 */
+    const byDoi = isDoiQ(q0); if (/[가-힣]/.test(q0) && !byDoi) return;
+    let d; try { d = await api("/api/explore?q=" + enc(q0) + (year ? "&year=" + enc(year) : "")); } catch (e) { if (byDoi && my === view) { S.err = "서버에 닿지 못했습니다"; S.loaded = true; draw(); } return; }
+    if (my !== view) return;
+    if (byDoi) { S.loaded = true; if (d.error) S.err = d.error; }
+    S.plain = d.results || [];
+    if (S.r && allOf().length) return;      /* 고른 결과가 이미 와 있으면 그것을 둔다 (비어 있을 때만 이것을 보인다) */
+    keepDraw(); syncOwned();
+    if (byDoi && S.plain.length === 1) foundSheet(S.plain[0], { q: S.q, onChange: keepDraw });
+  };
+  $("fhd").onclick = e => { const b = e.target.closest("[data-f]"); if (!b) return; S.flt = b.dataset.f; draw(); };
+  $("fbody").onclick = e => {
+    const a = e.target.closest("[data-fi]");
+    if (a) { e.preventDefault(); const it = items[+a.dataset.fi]; if (it) foundSheet(it, { q: S.q, onChange: keepDraw }); return; }
+    if (e.target.closest("#fredo")) {
+      if (!window.confirm("같은 주제로 다시 찾을까요? 1~2분 걸립니다.")) return;
+      if (isH) { findCache["q:" + S.q + "|" + (S.year || "")] = { q: S.q, year: S.year || "", fresh: true }; location.hash = fUrl(S.q, S.year); } else { start(true); plain(); }
+      return;
+    }
+    if (e.target.closest("#fretry")) { S.err = ""; if (isH) location.reload(); else if (S.doi) { S.loaded = false; draw(); plain(); } else { start(false); plain(); } }
+  };
+  if (S.r || (S.doi && S.plain)) { draw(); restorePos(loc0[0]); syncOwned(); return; }
+  if (isH) {
+    const ok = await openHist(a1); if (my !== view) return;
+    if (!ok) { $("fbody").innerHTML = "<div class='empty'><b>이 기록을 찾지 못했습니다</b>지워졌거나 오래돼 밀려났을 수 있습니다.</div>"; return; }
+    draw(); restorePos(loc0[0]); syncOwned(); return;
+  }
+  if (q0.length < 2) { $("fbody").innerHTML = "<div class='empty'><b>검색어가 없습니다</b></div>"; return; }
+  if (isDoiQ(q0)) { S.doi = true; draw(); return plain(); }
+  if (S.fresh) { delete S.fresh; start(true); return plain(); }
+  if (S.run) { draw(); restorePos(loc0[0]); poll(); return; }      /* 찾는 중에 나갔다 돌아옴 */
+  let s; try { s = await api("/api/smart_status?key=" + enc(key) + "&lite=1"); } catch (e) { if (my === view && String(e && e.message) !== "login") $("fbody").innerHTML = failHtml(); return; }
+  if (my !== view) return;
+  if (s.status === "done") { take(s.result, s.hid, 0); draw(); restorePos(loc0[0]); if (!allOf().length) plain(); return syncOwned(); }
+  if (s.status === "running") { S.run = { t: Date.now() - (s.elapsed || 0) * 1000, pt: Date.now(), pa: 0, stage: s.stage || "" }; draw(); poll(); return plain(); }
+  let hs = []; try { hs = (await api("/api/smart_history")).items || []; } catch (e) {}      /* 전에 같은 말로 찾은 것이 있으면 그것부터 — 다시 찾으려면 맨 아래 「다시 찾기」 */
+  if (my !== view) return;
+  const old = hs.find(x => x.q === q0 && String(x.year || "") === year);
+  if (old && old.n) {      /* 한 편도 없던 옛 결과는 다시 열지 않고 새로 찾는다 */
+    const ok = await openHist(old.id); if (my !== view) return;
+    if (ok && allOf().length) { draw(); restorePos(loc0[0]); return syncOwned(); }
+    S.r = null; S.t = 0;
+  }
+  start(false); plain();
+}
+function foundSheet(it, o) {      /* 논문 창: 서지 · 초록(한국어로) · 받기. 열린 접근은 연구실 PC 가 받고, 구독 논문은 출판사에서 받은 PDF 를 여기서 올린다 */
+  o = o || {};
+  const me = ++fsSeq, doi = doiOf(it), link = doi ? "https://doi.org/" + doi : ((it.oa || {}).url || ""), els = /^10\.1016\//i.test(doi);
+  const st = { busy: "", note: "", cls: "", open: false, ko: "", koOn: false, koBusy: false, absBusy: false, absNone: false, queued: (findWant || []).some(x => (x.key || wkOf(x.title)) === wkOf(it.title)) };
+  const MANUAL = "「출판사에서 열기」 로 PDF 를 받아 '파일에 저장' 한 뒤, 「받은 PDF 올리기」 에서 그 파일을 고르면 서재에 들어갑니다.";
+  const live = () => fsSeq === me && sheet.classList.contains("on") && !!sheet.querySelector(".fact");
+  const landed = (file, dup) => {
+    it.owned = file; st.note = dup ? "이미 서재에 있는 논문입니다." : "서재에 넣었습니다."; st.cls = "good";
+    papersT = 0; loadPapers().catch(() => {}); if (o.onChange) o.onChange();
+    if (!live()) toast(st.note);
+  };
+  const onUp = async e => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    st.busy = "올리는 중…"; st.note = esc(f.name); st.cls = ""; draw();
+    let r; try { r = await (await fetch("/api/upload?name=" + enc(f.name) + (doi ? "&doi=" + enc(doi) : ""), { method: "POST", body: f })).json(); } catch (err) { r = { error: "올리지 못했습니다. 연결을 확인해 주세요." }; }
+    st.busy = "";
+    if (r.ok) {      /* 올린 파일이 이 논문인가 — 서재와 제목을 대조한다 (다른 파일을 골랐을 수 있다) */
+      let om = {}; try { om = (await api("/api/owned_check", { items: [{ id: "x", title: it.title }] })).owned || {}; } catch (err) {}
+      if (om.x) landed(om.x, r.dup);
+      else { st.note = (r.dup ? "이미 서재에 있는 논문의 파일입니다 — " : "서재에 넣었습니다 — ") + esc(String(r.file || "").replace(/\.pdf$/i, "")) + ". 다만 이 논문과는 제목이 다릅니다. 다른 파일을 고르셨다면 다시 올려 주세요."; st.cls = ""; papersT = 0; loadPapers().catch(() => {}); }
+    } else { st.note = esc(r.error || "넣지 못했습니다"); st.cls = "err"; }
+    if (live()) draw();
+  };
+  const draw = () => {
+    const auto = !it.owned && (hasOa(it) || it.oa === undefined || (els && findCaps.els === "maybe"));
+    const who = [it.author ? "첫 저자 " + it.author : "", it.pi ? "교신 " + it.pi : "", it.inst || "", it.abbr && it.venue && it.abbr !== it.venue ? it.venue : ""].filter(Boolean).join(" · ");
+    const ab = st.koOn && st.ko ? st.ko : (it.abstract || ""), fr = o.queue ? (it.from || []).map(f => f && f.title).filter(Boolean)[0] : "";
+    let h = "<div class='grab'></div><div class='fsm'><span>" + esc([jName(it), it.year || ""].filter(x => x && x !== "★").join(" · ")) + (it.cit ? " · 피인용 " + it.cit : "") + "</span>" +
+      (it.owned ? "<span class='tg hi'>서재에 있음</span>" : "") + (it.review ? "<span class='tg'>리뷰</span>" : "") + (!it.owned && hasOa(it) ? "<span class='tg ok'>열린 접근</span>" : "") + "</div>" +
+      "<div class='fst'>" + esc(it.title || "") + "</div>" + (who ? "<div class='fsv'>" + esc(who) + "</div>" : "") + (fr ? "<div class='fsv'>담은 곳: " + esc(fr) + "</div>" : "") +
+      (ab ? "<div class='fab" + (st.koOn && st.ko ? " ko" : "") + (st.open ? "" : " cl5") + "'>" + esc(ab) + "</div><div class='fabx'><button data-a='more'>" + (st.open ? "접기" : "더 보기") + "</button><button data-a='ko'" + (st.koBusy ? " disabled" : "") + ">" + (st.koBusy ? "옮기는 중…" : st.koOn ? "원문으로" : "한국어로") + "</button></div>"
+          : "<div class='fabx' style='margin-top:8px'><button data-a='abs'" + (st.absBusy || st.absNone ? " disabled" : "") + ">" + (st.absBusy ? "초록 찾는 중…" : st.absNone ? "초록을 찾지 못했습니다" : "초록 찾기") + "</button></div>") +
+      "<div class='fact'>";
+    if (it.owned) h += "<a class='pill pri big' href='" + esc(pUrl(it.owned)) + "'>서재에서 읽기</a>";
+    else {
+      if (st.busy) h += "<button class='pill pri big' disabled>" + esc(st.busy) + "</button>";
+      else if (auto) h += "<button class='pill pri big' data-a='get'>" + (hasOa(it) ? "받기 · 열린 접근" : "받기") + "</button>";
+      if (link) h += "<a class='pill big" + (auto || st.busy ? "" : " pri") + "' href='" + esc(link) + "' target='_blank' rel='noopener' data-a='pub'>출판사에서 열기 ↗</a>";
+      h += "<div class='frow2'><button class='pill big' data-a='up'" + (st.busy ? " disabled" : "") + ">받은 PDF 올리기</button>" +
+        (o.queue ? "<button class='pill big' data-a='del'>목록에서 빼기</button>" : "<button class='pill big' data-a='keep'" + (st.queued ? " disabled" : "") + ">" + (st.queued ? "담아 두었습니다" : "담아 두기") + "</button>") + "</div>";
+    }
+    h += "</div><div class='fnote" + (st.cls ? " " + st.cls : "") + "'>" + (st.note || (it.owned ? "" : esc(hasOa(it) ? "열린 접근 논문은 연구실 PC 가 받아 서재에 넣습니다." : "구독 논문은 " + MANUAL))) + "</div><input type='file' id='fup' accept='application/pdf,.pdf' hidden>";
+    sheet.innerHTML = h;
+    const up = $("fup"); if (up) up.onchange = onUp;
+  };
+  openSheet(""); draw();
+  sheet.onclick = async e => {
+    const b = e.target.closest("[data-a]"); if (!b) return;
+    const a = b.dataset.a;
+    if (a === "more") { st.open = !st.open; return draw(); }
+    if (a === "up") { const up = $("fup"); if (up) up.click(); return; }
+    if (a === "pub") { if (!st.busy) { st.note = "출판사 화면에서 PDF 를 받아 '파일에 저장' 한 뒤, 돌아와서 「받은 PDF 올리기」 를 누르세요."; st.cls = ""; setTimeout(() => { if (live()) draw(); }, 400); } return; }      /* 링크는 그대로 열린다 */
+    if (a === "keep") {
+      b.disabled = true;
+      let r; try { r = await api("/api/wanted", { op: "add", items: [{ id: it.id || "", doi: it.doi || "", title: it.title, year: it.year || 0, venue: it.venue || "", author: it.author || "", oa: hasOa(it) ? it.oa : undefined }], src: { kind: "phone", title: String(o.q || "").slice(0, 80) } }); }
+      catch (err) { b.disabled = false; return toast("담지 못했습니다"); }
+      if (r.items) findWant = r.items; st.queued = true; toast("담아 두었습니다 — PC 의 「받을 논문」 에도 보입니다"); if (live()) draw();
+      return;
+    }
+    if (a === "del") {
+      let r; try { r = await api("/api/wanted", { op: "del", key: it.wkey || wkOf(it.title) }); } catch (err) { return toast("빼지 못했습니다"); }
+      if (r.items) findWant = r.items; closeSheet(); if (o.onChange) o.onChange();
+      return;
+    }
+    if (a === "abs") {
+      st.absBusy = true; draw();
+      let r; try { r = await api("/api/smart_brief", { kind: "abstract", id: it.id || "", title: it.title, doi: it.doi || "", owned: it.owned || "" }); } catch (err) { r = {}; }
+      st.absBusy = false; if (r.abstract) it.abstract = r.abstract; else st.absNone = true;
+      if (live()) draw();
+      return;
+    }
+    if (a === "ko") {
+      if (st.koOn) { st.koOn = false; return draw(); }
+      if (st.ko) { st.koOn = true; return draw(); }
+      st.koBusy = true; draw();
+      let r; try { r = await api("/api/smart_brief", { kind: "translate", id: it.id || "", title: it.title, abstract: it.abstract || "", doi: it.doi || "", author: it.author || "", year: it.year || "" }); } catch (err) { r = { error: "서버에 닿지 못했습니다" }; }
+      st.koBusy = false;
+      if (r.brief) { st.ko = r.brief; st.koOn = true; st.open = true; } else toast(r.error || "옮기지 못했습니다");
+      if (live()) draw();
+      return;
+    }
+    if (a === "get") {
+      st.busy = "받는 중…"; st.note = "연구실 PC 가 받고 있습니다. 큰 파일은 1분쯤 걸립니다."; st.cls = ""; draw();
+      let r; try { r = await api("/api/wanted", { op: "fetch", id: /^W\d+$/.test(it.id || "") ? it.id : "", doi: it.doi || "", title: it.title || "", oa: hasOa(it) ? it.oa : null }); } catch (err) { r = { error: "서버에 닿지 못했습니다" }; }
+      st.busy = ""; setCaps(r.caps);
+      if (r.ok) landed(r.file, r.dup);
+      else if (r.oa === false) { it.oa = null; st.note = esc(r.why ? "구독 논문이라 연구실 PC 가 대신 받지 못했습니다. " : "열린 접근 판이 없습니다. ") + esc(MANUAL); st.cls = ""; }
+      else { const pdf = (it.oa || {}).pdf; st.note = esc(r.error || "받지 못했습니다") + (pdf ? " <a href='" + esc(pdf) + "' target='_blank' rel='noopener'>열린 접근 PDF 열기 ↗</a> 로 받아 올리거나, " : " ") + "「출판사에서 열기」 로 받아 올려 주세요."; st.cls = "err"; }
+      if (live()) draw();
+    }
+  };
+}
+
 /* ---------- 더 보기 · 글씨와 화면 · 단어 퀴즈 · PDF 올리기 ---------- */
 function lookSheet() {
   const draw = () => {
@@ -1485,8 +1819,8 @@ function onRoute() {
   closePeek(); if (sheet.classList.contains("on")) closeSheet(); setBars(true); { const qb = $("quizbox"); if (qb) qb.remove(); }
   curHash = location.hash; const my = ++view;
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } });
-  const r = parts[0] || "", depth = r === "p" || r === "n" ? 1 : r === "s" ? (parts[2] != null && parts[2] !== "" ? 2 : 1) : 0;
-  const key = depth ? r + "/" + parts[1] + (depth === 2 ? "/x" : "") : "root";
+  const r = parts[0] || "", depth = r === "p" || r === "n" || r === "f" ? 1 : r === "s" ? (parts[2] != null && parts[2] !== "" ? 2 : 1) : 0;
+  const key = depth ? r + "/" + parts[1] + (r === "f" ? "/" + (parts[2] || "") + "/" + (parts[3] || "") : "") + (depth === 2 ? "/x" : "") : "root";
   if (stack.length > 1 && stack[stack.length - 2] === key) stack.pop(); else if (stack[stack.length - 1] !== key) stack.push(key);
   app.classList.remove("push", "fade"); void app.offsetWidth;
   if (prevDepth >= 0) { if (depth > prevDepth) app.classList.add("push"); else if (depth === 0 && prevDepth === 0) app.classList.add("fade"); }
@@ -1496,6 +1830,8 @@ function onRoute() {
   if (r === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], parts[3], my, parts[4]));
   if (r === "s" && parts[1]) return done(viewStudy(parts[1], parts.slice(2), my));
   if (r === "n" && parts[1]) return done(viewNote(parts[1], my));
+  if (r === "f" && parts[1]) return done(viewFound(parts[1], parts[2], parts[3], my));
+  if (r === "find") return done(viewFind(my));
   if (r === "lib") return done(viewLib(my));
   if (r === "study") return done(viewStudies(my));
   if (r === "notes") return done(viewNotes(my));
@@ -1506,7 +1842,7 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) { flu
 window.addEventListener("pagehide", flushPos);
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";      /* 읽던 자리는 이 화면이 스스로 되돌린다 — 브라우저가 뒤로 가기 때 따로 굴리면 그 굴림이 엉뚱한 화면의 자리로 적힌다 */
 applyLook();
-if (!location.hash && lastRoot !== "#/" && /^#\/(lib|study|notes)$/.test(lastRoot)) lastRoot = "#/";      /* 앱을 새로 열면 늘 「읽기」 부터 */
+if (!location.hash && lastRoot !== "#/" && /^#\/(lib|find|study|notes)$/.test(lastRoot)) lastRoot = "#/";      /* 앱을 새로 열면 늘 「읽기」 부터 */
 (async () => { try { isRemote = !!(await api("/api/version")).remote; } catch (e) {} })();   /* 다른 기기에서 열었는가 — 「로그아웃」 을 보일지 */
 onRoute();
 </script>

@@ -1610,8 +1610,73 @@ def fetch_pdf(url, dest, depth=0):
         r.close()
 
 
+# Elsevier 의 공식 기사 API (2026-11-11, 사용자: '다운로드도 — 엘스비어 들어가서 PDF 열어서 내가 늘 다운 눌렀었는데'). ScienceDirect 화면은 스크립트를 막아 열린 접근 논문도 주소로는 못 받았다
+# (2026-11-04 의 '하이브리드 OA 둘'). 기사 API 는 키만으로 열린 접근 논문의 전문 PDF 를 주고, 구독 논문은 Elsevier 가 그 요청(기관 IP·키)을 구독자로 인정할 때만 전문을 준다 —
+# 인정하지 않으면 첫 쪽만 준다(X-ELS-Status: WARNING - Response limited to first page …). 첫 쪽짜리는 절대 보관소에 넣지 않는다. 권한을 따지는 것은 Elsevier 쪽이고 여기서 돌아가는 길은 없다.
+_ELS_STATE_PATH = os.path.join(FETCH_DIR, "_상태.json")
+_ELS_NOENT_DAYS = 30     # '구독자로 인정되지 않음' 을 본 뒤 구독 논문에 다시 물어보지 않는 날 수
+
+
+def _is_elsevier_doi(doi):
+    return str(doi or "").lower().startswith("10.1016/")
+
+
+def _els_noent_t():
+    try:
+        return float((load_json(_ELS_STATE_PATH, None) or {}).get("els_noent") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def fetch_caps():
+    """화면이 「받기」 를 어디에 보일지 정하는 데 쓰는 것. els: none(키 없음) · no(이 PC 는 구독자로 인정되지 않음 — 열린 접근만) · maybe(아직 물어보지 않음)"""
+    if not _elsevier_key():
+        return {"els": "none"}
+    return {"els": "no" if time.time() - _els_noent_t() < _ELS_NOENT_DAYS * 86400 else "maybe"}
+
+
+def elsevier_pdf(doi, dest):
+    """Elsevier 기사 API 로 PDF 를 받아 dest 에 쓴다(바이트 수). 전문이 아니면(첫 쪽만 · 상태 불명) RuntimeError — 그 파일은 쓰지 않는다"""
+    import requests
+    key = _elsevier_key()
+    if not key:
+        raise RuntimeError("Elsevier API 키가 없습니다")
+    r = requests.get("https://api.elsevier.com/content/article/doi/" + doi, params={"httpAccept": "application/pdf"},
+                     headers={"X-ELS-APIKey": key, "Accept": "application/pdf", "User-Agent": "Athenaeum/1.1"}, timeout=(20, 180), stream=True)
+    try:
+        if r.status_code != 200:
+            raise RuntimeError("Elsevier API 응답 %d" % r.status_code)
+        st = (r.headers.get("X-ELS-Status") or "").strip()
+        if not st.upper().startswith("OK"):      # 전문일 때만 OK — 그 밖(WARNING … first page … not entitled · 헤더 없음)은 받지 않는다
+            if "first page" in st.lower() or "not entitled" in st.lower():
+                try:
+                    os.makedirs(FETCH_DIR, exist_ok=True)
+                    save_json(_ELS_STATE_PATH, {"els_noent": time.time()})
+                except Exception:
+                    pass
+                raise RuntimeError("구독 권한이 확인되지 않아 첫 쪽만 옵니다")
+            raise RuntimeError("Elsevier API 가 전문인지 알려 주지 않았습니다 (%s)" % (st[:60] or "상태 없음"))
+        it = r.iter_content(65536)
+        first = next(it, b"")
+        if first.lstrip()[:5] != b"%PDF-":
+            raise RuntimeError("PDF 가 아닌 응답 (%s)" % (r.headers.get("Content-Type") or "?")[:40])
+        size = 0
+        with open(dest, "wb") as f:
+            f.write(first)
+            size += len(first)
+            for chunk in it:
+                f.write(chunk)
+                size += len(chunk)
+                if size > 120 * 1024 * 1024:
+                    raise RuntimeError("120 MB 를 넘는 파일")
+        return size
+    finally:
+        r.close()
+
+
 def wanted_fetch(body):
-    """받을 논문 페이지의 「받기」: 열린 접근 PDF 를 받아 보관소에 넣는다. {ok, file, dup} · {oa: False, url}(열린 접근 판이 없음 — 화면이 출판사 링크를 연다) · {error, url}"""
+    """받을 논문 페이지·폰의 「받기」: 열린 접근 PDF 를 받아 보관소에 넣는다. {ok, file, dup} · {oa: False, url, why}(받을 수 있는 판이 없음 — 화면이 출판사 링크를 연다) · {error, url}
+    Elsevier 논문(10.1016/)은 키가 있으면 공식 기사 API 부터 — 열린 접근이면 전문이 오고, 구독 논문은 Elsevier 가 이 PC 를 구독자로 인정할 때만 온다(인정하지 않으면 30일 동안 구독 논문에는 다시 묻지 않는다)"""
     doi = _doi_plain(body.get("doi"))
     wid_ = str(body.get("id") or "")
     title = str(body.get("title") or "")[:300]
@@ -1619,33 +1684,48 @@ def wanted_fetch(body):
     if not oa or not (oa.get("pdf") or oa.get("url")):
         oa = (oa_lookup([{"id": wid_, "doi": doi}]) or {}).get(_oa_key({"id": wid_, "doi": doi}))
     link = ("https://doi.org/" + doi) if doi else ((oa or {}).get("url") or "")
-    if not oa or not (oa.get("pdf") or oa.get("url")):
-        return {"oa": False, "url": link}
+    has_oa = bool(oa and (oa.get("pdf") or oa.get("url")))
+    try_els = _is_elsevier_doi(doi) and bool(_elsevier_key()) and (has_oa or fetch_caps()["els"] == "maybe")
+    if not has_oa and not try_els:
+        return {"oa": False, "url": link, "caps": fetch_caps()}
     os.makedirs(FETCH_DIR, exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9가-힣._ -]+", "_", (title or doi or wid_)[:80]).strip(" ._") or "paper"
     dest = os.path.join(FETCH_DIR, safe + ".pdf")
-    tried, err, ok = [], "", False
-    for u in [x for x in ([oa.get("pdf")] + list(oa.get("pdfs") or []) + [oa.get("url")]) if x]:
+    tried, err, ok, els_first = [], "", False, False
+    cands = (["elsevier-api"] if try_els else []) + ([x for x in ([oa.get("pdf")] + list(oa.get("pdfs") or []) + [oa.get("url")]) if x] if has_oa else [])
+    for u in cands:
         if u in tried:
             continue
         tried.append(u)
         try:
-            fetch_pdf(u, dest)
+            if u == "elsevier-api":
+                elsevier_pdf(doi, dest)
+            else:
+                fetch_pdf(u, dest)
             ok = True
             break
         except Exception as e:
             err = str(e)[:160]
+            if u == "elsevier-api" and "첫 쪽" in err:
+                els_first = True
             try:
                 if os.path.exists(dest):
                     os.remove(dest)
             except OSError:
                 pass
     if not ok:
+        if not has_oa:      # 구독 논문 — Elsevier 가 이 PC 를 구독자로 보지 않았다. 화면은 출판사 링크로
+            return {"oa": False, "url": link, "why": err, "caps": fetch_caps()}
+        pub_only = all(re.search(r"^https?://([^/]*\.)?(sciencedirect\.com|elsevier\.com|doi\.org)/", u, re.I) for u in tried if u != "elsevier-api")
+        if els_first and pub_only:      # 목록에는 열린 접근이라고 적혀 있지만(OpenAlex) Elsevier 자신은 전문을 주지 않고, 다른 곳의 판도 없다 → 구독 논문으로 다룬다
+            return {"oa": False, "url": link, "why": "출판사가 열린 접근으로 주지 않는 논문입니다", "caps": fetch_caps()}
+        if "PDF 가 아닌 응답" in err:
+            err = "그 주소가 PDF 대신 웹 화면을 줍니다(스크립트로는 받을 수 없는 주소)"
         return {"error": "자동으로 받지 못했습니다 — " + (err or "열린 접근 주소가 없음"), "url": link, "oa": True}
     r = intake.ingest(dest, doi=doi, title=title)
     if r.get("file"):
         threading.Thread(target=refresh_new_papers, daemon=True).start()   # 새 논문의 제목·라벨 붙이기
-        return {"ok": True, "file": r["file"], "dup": bool(r.get("dup")), "src": tried[-1]}
+        return {"ok": True, "file": r["file"], "dup": bool(r.get("dup")), "src": "Elsevier API" if tried[-1] == "elsevier-api" else tried[-1]}
     return {"error": r.get("error") or "보관소에 넣지 못했습니다", "url": link, "oa": True}
 
 
@@ -1675,11 +1755,13 @@ def _run_smart(q, year, key, plan=None):
         if job and job.get("status") == "running":
             job["stage"] = s
 
+    plan_failed = False
     if plan:
         plan = _clean_plan(plan, q)
     else:
         stage("1/3 검색 계획 만드는 중")
         plan = plan_search(q)
+        plan_failed = len(plan["concepts"]) == 1 and plan["concepts"][0]["terms"] == [q]   # AI 가 계획을 주지 않아 적은 말 그대로 한 개념이 됨(로그인 만료·한도) — 화면이 까닭을 알린다
     req = [c for c in plan["concepts"] if c["required"]]
     opt = [c for c in plan["concepts"] if not c["required"]]
     ladder = []
@@ -1856,7 +1938,8 @@ def _run_smart(q, year, key, plan=None):
         "intent": plan["intent"], "exclude": ", ".join(plan["exclude"]), "plan": plan,
         "queries": queries, "groups": groups, "excluded": excluded, "excluded_items": excluded_items, "candidates": len(items), "map": rmap,
         "journals": journal_counts(groups), "pref_journals": preferred_journals(), "top_count": sum(1 for g in groups for it in g["items"] if it.get("top")),
-        "labs": labs, "libnet": {"indexed": len((libnet_load().get("papers") or {})), "building": _libnet["building"]}}}
+        "labs": labs, "libnet": {"indexed": len((libnet_load().get("papers") or {})), "building": _libnet["building"]},
+        "plan_failed": plan_failed, "ai_problem": (claude_error() or engine_missing_msg() or "") if (plan_failed or not (verdict and verdict.get("groups"))) else ""}}
 
 
 NOTES_DIR = os.path.join(os.path.dirname(ARCHIVE), "메모")
@@ -2869,6 +2952,11 @@ def smart_history_get(hid):
     return load_json(os.path.join(HIST_DIR, hid + ".json"), None) if hid else None
 
 
+def _smart_lite(result):
+    """폰 화면에 보낼 탐색 결과 — 맵(노드·선·유사도, 결과의 절반)을 뺀다. 논문 목록과 초록은 그대로"""
+    return {k: v for k, v in (result or {}).items() if k != "map"}
+
+
 def smart_history_delete(hid):
     hid = re.sub(r"[^A-Za-z0-9_]", "", str(hid or ""))
     if not hid:
@@ -2888,9 +2976,9 @@ def _run_smart_safe(q, year, key, plan=None):
     try:
         _run_smart(q, year, key, plan)
         job = _jobs.get(key)
-        if job and job.get("status") == "done":
+        if job and job.get("status") == "done" and any(g.get("items") for g in job["result"].get("groups") or []):   # 한 편도 못 찾은 검색(AI 를 못 불러 계획이 없을 때 흔하다)은 기록에 남기지 않는다
             try:
-                smart_history_save(q, year, job["result"], replan=bool(plan))
+                job["hid"] = smart_history_save(q, year, job["result"], replan=bool(plan))   # 기록의 id — 폰 화면이 끝난 검색을 기록으로 다시 연다
             except Exception:
                 pass
     except Exception as e:
@@ -5155,7 +5243,10 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             return self._send(400, {"error": str(e)[:200]})
-        r = intake.ingest(dest, doi="", title="")
+        # ?doi= — 화면이 어느 논문의 PDF 인지 알 때(폰의 「받은 PDF 올리기」)의 실마리. 본문에 DOI 가 안 적힌 옛 논문도 넣을 수 있게 하되 엄격하게(strict):
+        # 그 DOI 의 제목 전체가 PDF 앞쪽 글에 있을 때만 받아들이므로, 엉뚱한 파일을 골라도 그 논문 이름으로 들어가지 않는다(그때는 PDF 자신의 DOI 로 판정)
+        hint = _doi_plain(unquote(q.get("doi", [""])[0]))[:200]
+        r = intake.ingest(dest, doi=hint if re.match(r"^10\.\d{4,9}/\S+$", hint) else "", title="", strict=True)
         if r.get("file"):
             threading.Thread(target=refresh_new_papers, daemon=True).start()
             return self._send(200, {"ok": True, "file": r["file"], "dup": bool(r.get("dup"))})
@@ -5464,7 +5555,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(BASE, "wanted.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
         elif url.path == "/api/wanted":   # 담아 둔 받을 논문 (연구노트\_받을논문.json — 연구 노트의 큰 물음과 같은 대기열); ?sync=1 은 서재에 들어왔는지 다시 봄
-            self._send(200, {"items": notes.wanted_list(sync=parse_qs(url.query).get("sync", [""])[0] == "1"), "fetch_dir": FETCH_DIR})
+            self._send(200, {"items": notes.wanted_list(sync=parse_qs(url.query).get("sync", [""])[0] == "1"), "fetch_dir": FETCH_DIR, "caps": fetch_caps()})
         elif url.path == "/start":   # 처음 설정 — Claude Code · 수집 폴더 · 라벨 체계 · 학습 같은 처음 할 일을 한눈에 (paper-search\start.html). 사용법의 「시작하기」 가 처음 한 번 보내고, ⚙ 일반에서 다시 연다
             with open(os.path.join(BASE, "start.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -5579,20 +5670,27 @@ class Handler(BaseHTTPRequestHandler):
             elif sort == "recent":
                 params["sort"] = "publication_year:desc"
             relaxed = False
+            m_doi = re.search(r"\b(10\.\d{4,9}/[^\s\"'<>]+)", query)
             try:
-                d = mapper._get(mapper.API + "/works", params)
+                if m_doi:   # DOI 를 적으면(주소째 붙여 넣어도) 그 논문 하나 — 아는 논문을 폰에서 바로 찾아 받으려고 (2026-11-11)
+                    doi_q = m_doi.group(1).rstrip(".,;)")
+                    d = {"results": [mapper._get(mapper.API + "/works/doi:" + doi_q, {"select": mapper.SELECT + ",abstract_inverted_index"})], "meta": {"count": 1}}
+                    q_filter = ""
+                else:
+                    d = mapper._get(mapper.API + "/works", params)
                 # 단어를 전부 AND 로 묶어 5편도 안 나오면, OpenAlex 자체 관련도 검색(search 만)으로 느슨하게 다시 찾는다
-                if (d.get("meta", {}).get("count", 0) or 0) < 5 and len(q_clean.split()) > 2 and not re.search(r"\b(AND|OR|NOT)\b|\"", q_clean):
+                if not m_doi and (d.get("meta", {}).get("count", 0) or 0) < 5 and len(q_clean.split()) > 2 and not re.search(r"\b(AND|OR|NOT)\b|\"", q_clean):
                     loose = dict(params); loose["filter"] = ",".join(filters[1:]) if len(filters) > 1 else ""
                     if not loose["filter"]:
                         loose.pop("filter")
                     d = mapper._get(mapper.API + "/works", loose); relaxed = True
             except Exception as e:
-                self._send(200, {"error": str(e)[:200], "results": []})
+                self._send(200, {"error": ("이 DOI 의 논문을 찾지 못했습니다. DOI 를 다시 확인해 주세요." if "404" in str(e) else "DOI 로 찾지 못했습니다 — " + str(e)[:120]) if m_doi else str(e)[:200], "results": []})
                 return
             with _lock:
                 tags = load_json(TAGS_PATH, {})
             owned_idx = archive_title_index(tags)
+            pref_norm = [_jnorm(x) for x in preferred_journals()]
             # OpenAlex는 어간 처리 때문에 machining≈machine 으로 매칭함.
             # 입력한 단어가 그 형태 그대로(복수/과거형 정도만 허용) 제목·초록에 있는 결과를 위로 올린다.
             words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z\-]{2,}", q_filter)
@@ -5618,6 +5716,8 @@ class Handler(BaseHTTPRequestHandler):
                 n["abstract"] = abstract[:2500]
                 n["strict"] = strict_hits((n["title"] + " " + abstract).lower())
                 n["rel"] = it.get("relevance_score") or 0
+                n["abbr"] = journal_abbr(n.get("venue"))      # 스마트 결과와 같은 표시(저널 약어 · ★ 우선 저널) — 폰 화면의 줄이 쓴다
+                n["top"] = is_pref_venue(n.get("venue"), pref_norm)
                 results.append(n)
             # 정확 일치 단어 수 우선, 그 안에서 선택한 정렬 기준
             keyf = {"cited": lambda x: (x["strict"], x["cit"]),
@@ -5625,7 +5725,7 @@ class Handler(BaseHTTPRequestHandler):
                     }.get(sort, lambda x: (x["strict"], x["rel"]))
             results.sort(key=keyf, reverse=True)
             self._send(200, {"relaxed": relaxed, "results": results, "total": d.get("meta", {}).get("count", 0),
-                             "words": words})
+                             "words": words, "doi": bool(m_doi)})
         elif url.path == "/api/smart_history":   # 탐색 기록: 목록 · ?id= 로 하나 열기 · ?id=&delete=1
             qs = parse_qs(url.query)
             hid = qs.get("id", [""])[0]
@@ -5633,9 +5733,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ok": smart_history_delete(hid), "items": _hist_index().get("items") or []})
             elif hid:
                 d = smart_history_get(hid)
+                if d and qs.get("lite", [""])[0] == "1":   # 폰 화면: 맵을 뺀 것
+                    d = {"meta": d.get("meta") or {}, "result": _smart_lite(d.get("result"))}
                 self._send(200 if d else 404, d or {"error": "그 기록이 없습니다"})
             else:
-                self._send(200, {"items": _hist_index().get("items") or []})
+                self._send(200, {"items": _hist_index().get("items") or [], "caps": fetch_caps()})
         elif url.path == "/api/lab_recent":   # 연구 그룹의 최신 논문 (탐색의 「연구 그룹」 줄)
             aid = re.sub(r"[^A-Za-z0-9]", "", parse_qs(url.query).get("author", [""])[0])
             if not aid:
@@ -5656,12 +5758,15 @@ class Handler(BaseHTTPRequestHandler):
                 out["gaps"] = libnet_gaps(int(qs.get("n", ["30"])[0] or 30))
             self._send(200, out)
         elif url.path == "/api/smart_status":
-            k = parse_qs(url.query).get("key", [""])[0]
+            qs = parse_qs(url.query)
+            k = qs.get("key", [""])[0]
             job = _jobs.get((k, "smart"))
             if not job:
                 self._send(200, {"status": "none"})
+            elif job["status"] == "done" and qs.get("brief", [""])[0] == "1":   # 끝났는지만 (폰의 탐색 탭이 '찾는 중' 표시를 거둘 때)
+                self._send(200, {"status": "done", "hid": job.get("hid") or ""})
             elif job["status"] == "done":
-                self._send(200, {"status": "done", "result": job["result"]})
+                self._send(200, {"status": "done", "result": _smart_lite(job["result"]) if qs.get("lite", [""])[0] == "1" else job["result"], "hid": job.get("hid") or ""})
             else:
                 v = job_view(job); v["error"] = job.get("error", "")
                 self._send(200, v)
@@ -6083,6 +6188,8 @@ class Handler(BaseHTTPRequestHandler):
             plan = body.get("plan") if isinstance(body.get("plan"), dict) else None   # 화면에서 고친 검색 계획으로 다시 검색
             key = ("smart:" + q + "|" + year + ("|" + hashlib.md5(json.dumps(plan, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:10] if plan else ""), "smart")
             job = _jobs.get(key)
+            if job and job.get("status") == "done" and body.get("fresh"):   # 「다시 검색」 — 끝난 결과는 서버를 끌 때까지 남아 같은 검색어로는 늘 옛 결과가 왔다. fresh 면 버리고 새로 찾는다
+                job = None
             if not job or job.get("status") == "error":
                 _jobs[key] = {"status": "running", "stage": "시작", "t0": time.time()}
                 threading.Thread(target=_run_smart_safe, args=(q, year, key, plan), daemon=True).start()
