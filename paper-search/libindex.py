@@ -380,9 +380,11 @@ def mentions(idx, text):
     return out
 
 
-def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, wait=True):
+def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, wait=True, extra=""):
     """물음(과 배경 글)으로 서재 문장을 찾는다 → {terms, papers[{file, stem, short, author, star, year, journal, title, line, tr, score, mention, sents[{pos, sid, en, ko, page, sec, score, hit}]}], n, cand, nsent, sec}
-    물음이 '저자 연도' 로 가리킨 논문은 낱말이 안 맞아도 맨 앞에 넣는다(그 논문의 맞는 문장, 없으면 앞머리 문장)."""
+    물음이 '저자 연도' 로 가리킨 논문은 낱말이 안 맞아도 맨 앞에 넣는다(그 논문의 맞는 문장, 없으면 앞머리 문장).
+    extra: 물음을 영어 검색어로 푼 것(세상 문헌 검색의 계획 — 'cold rolled, prestrained, work hardened …'). 물음의 낱말처럼 후보를 고르는 데 쓰되 무게는 0.6.
+    한국어 물음의 낱말만으로는 같은 것을 다른 말로 적은 논문이 안 걸렸다 — '냉간압연한 것과 어닐링한 것' 을 물었는데, 미리 변형한 구리가 층류로 깎인다는 서재의 논문(Yeung 2015)이 빠져 답이 그 내용을 '기억' 으로 말했다(2026-11-11)."""
     t0 = time.time()
     idx = ensure(wait=wait)
     if not idx:
@@ -392,7 +394,11 @@ def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, 
     if context:
         have = {x["t"] for x in terms}
         terms += [t for t in terms_of(idx, context, 0.45, "ctx") if t["t"] not in have]
-    q_strong = [i for i, t in enumerate(terms) if t["src"] == "q" and t["df"] <= N * STRONG]
+    if extra:
+        have = {x["t"] for x in terms}
+        terms += [t for t in terms_of(idx, extra, 0.6, "x") if t["t"] not in have]
+    QS = ("q", "x")
+    q_strong = [i for i, t in enumerate(terms) if t["src"] in QS and t["df"] <= N * STRONG]
     need = 2 if len(q_strong) >= 2 else 1
     scores, hits = {}, {}
     for i, t in enumerate(terms):
@@ -409,7 +415,7 @@ def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, 
     cands = []
     for code, sc in scores.items():
         h = hits[code]
-        qs = [i for i in h if terms[i]["src"] == "q"]
+        qs = [i for i in h if terms[i]["src"] in QS]
         if not qs:
             continue
         ns = sum(1 for i in qs if terms[i]["df"] <= N * STRONG)
@@ -476,16 +482,36 @@ def search(question, context="", k=50, per_paper=6, max_papers=14, chars=12000, 
             "papers": out, "n": total, "cand": len(cands), "nsent": N, "sec": round(time.time() - t0, 3), "ready": True}
 
 
-def format_hits(res, label="L", line_chars=110):
-    """search 의 결과 → (글, {"L1 s45": {file, sid, en, ko, page, sec, short, star, year, journal}}). 글은 논문마다 머리줄 + 문장 줄."""
+def format_hits(res, label="L", line_chars=110, card=None, full=0):
+    """search 의 결과 → (글, {"L1 s45": {file, sid, en, ko, page, sec, short, star, year, journal}}). 글은 논문마다 머리줄 + 문장 줄.
+    card(stem) 을 주면(서재 학습의 논문 카드 — corpus.paper_card) 머리줄 아래에 그 논문이 무엇을 묻고 무엇을 보였는지를 붙인다. 앞의 full 편은 한 것·주장 둘·저자가 적은 한계까지,
+    나머지는 물은 것과 주장 하나만(글자 수를 아끼려고) (2026-11-11)"""
     lines, refs = [], {}
     for i, p in enumerate(res.get("papers") or []):
         lab = "%s%d" % (label, i + 1)
         head = "%s %s%s%s %s — %s%s" % (lab, "★" if p.get("star") else "", p.get("year") or "", (" " + p["journal"]) if p.get("journal") else "", p.get("author") or p.get("short", "").split(" ")[0], (p.get("title") or "")[:90],
                                         " (물음이 가리킨 논문)" if p.get("mention") else "")
-        if p.get("line"):
-            head += " :: " + p["line"][:line_chars]
-        lines.append(head)
+        c = None
+        if card:
+            try:
+                c = card(p.get("stem") or p.get("file"))
+            except Exception:
+                c = None
+        if c:      # 논문 카드가 있으면 한 줄 요약 대신 카드를 (같은 말이 두 번 가지 않게)
+            rich = i < full or p.get("mention")
+            lines.append(head + (" [리뷰]" if c.get("type") == "review" else ""))
+            if c.get("question"):
+                lines.append("  · 물은 것: " + c["question"][:200])
+            if rich and c.get("contribution"):
+                lines.append("  · 한 것: " + c["contribution"][:200])
+            if c.get("claims"):
+                lines.append("  · 보인 것: " + " / ".join(x[:160] for x in c["claims"][:(2 if rich else 1)]))
+            if rich and c.get("limits"):
+                lines.append("  · 저자가 적은 한계·남은 일(원문): " + c["limits"][0][:260])
+        else:
+            if p.get("line"):
+                head += " :: " + p["line"][:line_chars]
+            lines.append(head)
         for s in p["sents"]:
             where = []
             if s.get("page") is not None:

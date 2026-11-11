@@ -1140,10 +1140,10 @@ def lab_recent(author_id, limit=15):
     return out
 
 
-def openalex_boolean(expr, year="", per_page=100, sources=None, sort=None, author=None):
+def openalex_boolean(expr, year="", per_page=100, sources=None, sort=None, author=None, title_only=False):
     """제목+초록 불리언 검색식(AND/OR/NOT/따옴표/괄호 — OpenAlex 가 지원, 와일드카드는 안 됨)으로 검색. (노드 목록, 전체 건수). sources = 저널(source id)로 좁히기"""
     import mapper
-    filters = ["title_and_abstract.search:" + expr.replace(",", " ")] if expr else []   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다
+    filters = [("title.search:" if title_only else "title_and_abstract.search:") + expr.replace(",", " ")] if expr else []   # 필터 구분자가 쉼표라 검색식 안의 쉼표는 없앤다. title_only = 제목에만(그 대상을 정면으로 다룬 논문)
     if author:
         filters.append("raw_author_name.search:" + re.sub(r"[,|:]", " ", str(author)))
     if str(year).isdigit():
@@ -1729,8 +1729,8 @@ def wanted_fetch(body):
     return {"error": r.get("error") or "보관소에 넣지 못했습니다", "url": link, "oa": True}
 
 
-def plan_search(q):
-    """말로 적은 주제(한국어·영어)를 개념(필수/선택)·동의어 검색 계획으로."""
+def plan_search(q, model="opus", hint=""):
+    """말로 적은 주제(한국어·영어)를 개념(필수/선택)·동의어 검색 계획으로. model: 탐색은 opus, 연구 노트의 물음마다 도는 세상 문헌 확인은 가벼운 모델(sonnet)"""
     r = ask_claude_json(
         "당신은 공학·과학 문헌 조사 전문가다. 사용자가 말로 적은 조사 주제를 학술 DB(OpenAlex, 영어 제목+초록 불리언 검색)용 검색 계획으로 바꿔라.\n"
         "규칙:\n"
@@ -1741,8 +1741,197 @@ def plan_search(q):
         "- 제외할 맥락이 분명하면 exclude 에 영어 검색어로.\n"
         "- 사용자가 사람이나 연구실을 적었으면(\"Axinte 그룹\", \"드라구스 악신테\", \"Nottingham 의\") authors 에 그 사람의 영어 성(가능하면 이름까지)을 적어라. 사람을 적지 않았으면 빈 목록. 사람 이름은 개념의 검색어에 넣지 않는다.\n"
         "- JSON 한 줄만: {\"intent\": \"조사 의도 한 문장(한국어)\", \"concepts\": [{\"name\": \"개념 이름(한국어, 짧게)\", \"terms\": [\"...\"], \"required\": true}], \"exclude\": [\"...\"], \"authors\": [\"Axinte\"]}\n\n"
-        "[사용자 입력] " + q, timeout=180)
+        "[사용자 입력] " + q + (("\n[덧붙임] " + hint) if hint else ""), timeout=180, model=model)
     return _clean_plan(r, q)
+
+
+# ---------- 세상의 문헌을 대화 안에서 (2026-11-11, 사용자: '연구노트 성능을 더 강화 — 정말 연구가 괜찮은지 논의도 하고 … 선행연구도 잘 알고') ----------
+# 연구 노트의 답은 서재 밖의 선행연구를 Claude 의 기억으로 말했다('…로 기억합니다. 먼저 확인해야 합니다' + '탐색:' 줄). 새로움을 묻는 물음에서 가장 중요한 것이 확인되지 않은 채였다.
+# 이제 물음마다(선행연구·새로움·연구가 되는가를 물을 때) 탐색의 앞 절반 — 검색 계획 → 불리언 사다리 → 우선 저널 안 · 최신 · Scopus → 초록 보강 → 서재 대조 — 을 돌려 20편쯤을 물음에 붙인다.
+# Claude 의 선별·분류(탐색의 3단계)는 하지 않는다: 고르는 것은 그 목록을 받은 답이 한다. 검색 계획만 가벼운 모델(sonnet)로 한 번.
+_WORLD_CACHE = {}
+
+
+def world_search(text, limit=22, model="sonnet"):
+    """말로 적은 물음 → {papers[{id, doi, title, year, venue, abbr, top, author, cit, review, owned, oa, abstract, tier, src}], total, expr, intent, concepts, sec, err}
+    tier 0 = 필수 개념을 모두 담은 논문(선택 개념까지 든 것은 full) · 1 = 연구 대상과 조건 하나만 맞은 이웃 · 2 = 그 대상을 다룬 우선 저널의 많이 인용된 논문(고전·리뷰).
+    total = 필수 개념을 모두 담은 논문이 데이터베이스 전체에 몇 편인가 · total_all = 선택 개념까지 든 것(선택 개념이 없으면 None).
+    사다리는 연구 대상(검색 계획의 첫 필수 개념)을 늘 붙들고 넓힌다 — 처음엔 필수 개념을 하나씩 빼며 넓혔더니 대상이 빠진 조합('마이크로 가공 AND 실시간 관찰')이
+    은 필라멘트 합성·CFRP 손상 같은 무관한 논문을 끌고 왔다(2026-11-11, 버 물음에서 20편 가운데 열두 편). 같은 글은 30분 동안 다시 찾지 않는다(취소하고 다시 물을 때)."""
+    import mapper
+    t0 = time.time()
+    key = hashlib.md5(text.encode("utf-8")).hexdigest()
+    c = _WORLD_CACHE.get(key)
+    if c and time.time() - c[0] < 1800:
+        return dict(c[1], cached=True)
+    plan = plan_search(text, model=model, hint="개념은 중요한 차례로 적는다. 첫 개념은 이 연구가 다루는 대상(현상·재료·공정의 이름)이고 필수다. 방법·조건·척도는 그 뒤에 적는다. 필수 개념은 셋을 넘기지 않는다. "
+                            "한 개념에는 같은 것을 가리키는 말만 넣는다 — 재료와 성질(탄탈럼과 이방성), 대상과 방법처럼 서로 다른 것은 개념을 나눈다. 첫 개념의 검색어는 그 재료나 현상의 이름과 그것의 다른 이름뿐이다.")   # 재료와 성질을 한 개념에 OR 로 묶으면('tantalum OR anisotropy') 지진파 이방성 논문까지 걸렸다
+    if len(plan["concepts"]) == 1 and plan["concepts"][0]["terms"] and plan["concepts"][0]["terms"][0].startswith(text[:40]):
+        return {"papers": [], "total": 0, "expr": "", "err": "검색 계획을 받지 못했습니다" + ((" — " + claude_error()) if claude_error() else ""), "sec": round(time.time() - t0, 1)}
+    for x in plan["concepts"]:     # 원소 기호 같은 두 글자 검색어('Ta'·'Cu')는 뺀다 — 제목·초록 검색에서는 지질학 논문의 Ta 까지 걸려 '모든 개념을 담은 논문' 맨 앞에 엉뚱한 것이 왔다
+        long_t = [t for t in x["terms"] if len(t.strip()) > 2]
+        if long_t:
+            x["terms"] = long_t
+    req = [x for x in plan["concepts"] if x["required"]]
+    opt = [x for x in plan["concepts"] if not x["required"]]
+    subj, rest = req[0], req[1:]
+    pref_ids = pref_source_ids()
+    pref_norm = [_jnorm(x) for x in preferred_journals()]
+    year_recent = str(time.localtime().tm_year - 4)
+    merged, last_err = {}, ""
+
+    def take(nodes, tier, via="", **flags):
+        for n in nodes:
+            m = merged.get(n["id"])
+            if m is None:
+                n["tier"] = tier
+                n["via"] = via
+                n.update(flags)
+                merged[n["id"]] = n
+            else:
+                if tier < m.get("tier", 9):
+                    m["tier"], m["via"] = tier, via
+                for k in ("top", "full"):
+                    if flags.get(k):
+                        m[k] = True
+
+    def run(concepts, tier, per_page, pref=False, recent=False, scopus=False, via="", **flags):
+        """→ (검색식, 데이터베이스 전체에서 걸린 편수 — 모르면 None)"""
+        nonlocal last_err
+        expr = build_boolean(concepts, plan["exclude"])
+        if not expr:
+            return "", None
+        try:
+            res, cnt = openalex_boolean(expr, "", per_page=per_page)
+            take(res, tier, via, **flags)
+        except Exception as e:
+            last_err = str(e)[:200]
+            return expr, None
+        if pref and pref_ids:      # 우선 저널 안에서 한 번 더 — 편수 많은 저널에 밀린 IJMTM·JMPT 논문
+            try:
+                take(openalex_boolean(expr, "", per_page=20, sources=pref_ids)[0], tier, via, top=True, **flags)
+            except Exception:
+                pass
+        if recent:                 # 최신 — 관련도 순은 피인용 많은 옛 논문이 앞선다
+            try:
+                take(openalex_boolean(expr, year_recent, per_page=12, sort="publication_date:desc")[0], tier, via, recent=True, **flags)
+            except Exception:
+                pass
+        if scopus and _elsevier_key():
+            try:
+                sres, _st, _serr = scopus_search(build_scopus(concepts, plan["exclude"]), "", pages=1)
+                if sres:
+                    merge_scopus_into(merged, sres, tier)
+            except Exception:
+                pass
+        return expr, (cnt if isinstance(cnt, int) else None)
+
+    # 0: 필수 개념을 모두 담은 논문 — '누가 이미 했나' 의 답. 여기 걸린 편수(total)가 새로움을 가늠하는 첫 숫자다
+    strict_expr, total = run(req, 0, 40, pref=True, recent=True, scopus=True, via="req")
+    total = total or 0
+    total_all = None
+    if opt:                        # 그 가운데 선택 개념까지 모두 든 것(full) — 물음과 가장 꼭 맞는 논문이라 맨 앞에 둔다
+        total_all = run(req + opt, 0, 25, pref=True, via="all", full=True)[1]
+    others = rest + opt
+    if len(others) >= 2:           # 1: 대상 + 조건 하나씩 — 대상은 늘 붙든다
+        for k, x in enumerate(others[:3]):
+            if [subj, x] != req:
+                run([subj, x], 1, 20, pref=True, via="pair%d" % k)
+    if pref_ids:                   # 2: 그 대상을 다룬 우선 저널의 많이 인용된 논문 — 분야의 고전과 리뷰
+        try:
+            ex1 = build_boolean([subj], plan["exclude"])
+            if ex1:
+                take(openalex_boolean(ex1, "", per_page=12, sources=pref_ids, sort="cited_by_count:desc", title_only=True)[0], 2, "classic", top=True, classic=True)   # 제목에 그 대상이 든 것만 — 초록에 스친 논문(모델링 리뷰 같은)은 뺀다
+        except Exception:
+            pass
+    if not merged:
+        return {"papers": [], "total": 0, "expr": strict_expr, "intent": plan.get("intent", ""), "err": last_err or "", "sec": round(time.time() - t0, 1)}
+    items = list(merged.values())
+    this_year = time.localtime().tm_year
+    # 제목에 연구 대상이 든 논문을 앞세운다 — 초록 어딘가에 낱말이 스친 논문(버 물음에 걸린 레이저 절단·나노유체 논문)이 최근 논문 자리를 채우던 것을 막는다.
+    # 대상의 머리 낱말 = 대상 개념의 검색어들에 가장 자주 든 낱말('burr formation'·'micro burr'·'burr types' → burr)
+    wnorm = lambda x: re.sub(r"[^a-z0-9]+", " ", (x or "").lower()).strip()
+    sterms = [wnorm(t) for t in subj["terms"] if wnorm(t)]
+    wc = {}
+    for t in sterms:
+        for w in set(x for x in t.split() if len(x) >= 3):
+            wc[w] = wc.get(w, 0) + 1
+    top_c = max(wc.values()) if wc else 0
+    heads = [w for w, c in wc.items() if c == top_c] if top_c >= max(2, (len(sterms) + 1) // 2) else []
+
+    def subj_in_title(n):
+        t = wnorm(n.get("title"))
+        if any((" " + x + " ") in (" " + t + " ") for x in sterms):
+            return True
+        tw = t.split()
+        return bool(heads) and all(any(w.startswith(h) for w in tw) for h in heads)
+
+    for n in items:
+        n.pop("_refs", None)
+        if not n.get("top") and is_pref_venue(n.get("venue"), pref_norm):
+            n["top"] = True
+        try:
+            n["year"] = int(n.get("year") or 0)
+        except (TypeError, ValueError):
+            n["year"] = 0
+        n["_st"] = subj_in_title(n)
+    any_st = any(n["_st"] for n in items)
+    # 차례: 제목에 대상이 있고 모든 개념을 담은 것 → 제목에 대상이 있는 것 → 초록에서만 모든 개념이 걸린 것 → 그 밖. 그 안에서는 우선 저널 · 관련도 · 피인용
+    okey = lambda n: ((0 if n.get("full") else 1) if n["_st"] else (2 if n.get("full") else 3), 0 if n.get("top") else 1, -(n.get("rel") or 0), -(n.get("cit") or 0))
+    t0s, t1s, t2s = (sorted([n for n in items if n.get("tier", 9) == k], key=okey) for k in (0, 1, 2))
+    t2s = sorted(t2s, key=lambda n: -(n.get("cit") or 0))
+    seen_t = set()                 # 같은 논문의 학회판·저널판(DOI 가 달라 따로 걸린다)은 앞선 것 하나만
+    def uniq(L):
+        out = []
+        for n in L:
+            k = re.sub(r"[^a-z0-9]+", "", (n.get("title") or "").lower())[:70]
+            if k and k in seen_t:
+                continue
+            seen_t.add(k)
+            out.append(n)
+        return out
+    t0s, t1s, t2s = uniq(t0s), uniq(t1s), uniq(t2s)
+    by_via, rr = {}, []            # 1단계는 검색마다 고르게(관련도 점수는 검색식끼리 견줄 수 없다) — 돌아가며 하나씩
+    for n in t1s:
+        by_via.setdefault(n.get("via") or "", []).append(n)
+    while len(rr) < 8 and any(by_via.values()):
+        for v in list(by_via):
+            if by_via[v] and len(rr) < 8:
+                rr.append(by_via[v].pop(0))
+    picked = t0s[:9] + rr + t2s[:3]
+    have = {n["id"] for n in picked}
+    fresh = sorted([n for n in items if n["id"] not in have and n.get("tier", 9) <= 1 and n["year"] >= this_year - 3 and (n["_st"] or not any_st)],
+                   key=lambda n: (n.get("tier", 9), 0 if n.get("top") else 1, -n["year"], -(n.get("cit") or 0)))[:3]   # 최근 3년의 것 세 자리 — 제목에 대상이 든 것만
+    picked += fresh
+    have |= {n["id"] for n in fresh}
+    for pool in (t0s, t1s, t2s):
+        for n in pool:
+            if len(picked) >= limit:
+                break
+            if n["id"] not in have:
+                picked.append(n)
+                have.add(n["id"])
+    picked = sorted(picked[:limit], key=lambda n: (n.get("tier", 9),) + okey(n))
+    try:
+        fill_abstracts_scopus(picked)
+    except Exception:
+        pass
+    try:
+        om = owned_map([{"id": n["id"], "title": n["title"]} for n in picked])
+    except Exception:
+        om = {}
+    out = []
+    for n in picked:
+        out.append({"id": n["id"], "doi": n.get("doi") or "", "title": (n.get("title") or "")[:240], "year": n["year"], "venue": n.get("venue") or "", "abbr": journal_abbr(n.get("venue")),
+                    "top": bool(n.get("top")), "author": n.get("author") or "", "cit": n.get("cit") or 0, "review": bool(n.get("review")), "owned": om.get(n["id"], ""), "oa": n.get("oa"),
+                    "abstract": (n.get("abstract") or "")[:1200], "tier": n.get("tier", 0), "full": bool(n.get("full")), "src": n.get("src") or "openalex"})
+    res = {"papers": out, "total": total, "total_all": total_all, "found": len(items), "strict": sum(1 for n in items if n.get("tier", 9) == 0), "expr": strict_expr, "intent": plan.get("intent", ""),
+           "concepts": [{"name": x["name"], "terms": x["terms"][:6], "required": x["required"]} for x in plan["concepts"]], "sec": round(time.time() - t0, 1), "err": ""}
+    _WORLD_CACHE[key] = (time.time(), res)
+    if len(_WORLD_CACHE) > 60:
+        for k in sorted(_WORLD_CACHE, key=lambda k: _WORLD_CACHE[k][0])[:20]:
+            _WORLD_CACHE.pop(k, None)
+    return res
 
 
 def _run_smart(q, year, key, plan=None):
@@ -4329,7 +4518,8 @@ import mapper as _mapper
 corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, settings=_mapper.settings, save_settings=_mapper.save_settings, pref_abbrs=pref_file_abbrs)
 ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for, pref_abbrs=pref_file_abbrs, field_text=notes.field_text)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
 notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text,
-                 plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map, forest_material=corpus.forest_material)   # 큰 물음의 재료 (2026-10-28)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
+                 plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map, forest_material=corpus.forest_material,   # 큰 물음의 재료 (2026-10-28)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
+                 world_search=world_search, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
 
 
 # ---------- Claude 채팅이 보는 폴더 (2026-11-07, 사용자: '데이터베이스를 폴더째 공유해서 클로드 chat 에서도 쓸 수 있게 … 라이브러리식으로 필요한 정보만 쏙쏙') ----------

@@ -1078,6 +1078,63 @@ def designs_text(items, brief=False, cap=9000):
     return "\n".join(L) + "\n"
 
 
+# ---------- 논문 카드 · 숲 논문의 보기 — 연구 노트의 대화가 선행연구를 논문 단위로 알게 (2026-11-11) ----------
+# 사용자: '연구노트 성능을 더 강화 — 정말 연구가 괜찮은지 논의도 하고 발전도 시킬 수 있을 만큼. 선행연구도 잘 알고, 연구란 무엇인지에 대해서도.'
+# 대화는 서재의 논문을 한 줄 요약과 낱말이 맞은 문장 몇 개로만 알았다('제목으로 보면 사후 측정입니다'). 서재 학습이 문장마다 읽어 둔 주석에는 논문마다 물음·공백·기여·주장과
+# 저자가 스스로 적은 한계·남은 일(문장의 act 가 limit·future)이 있다 — 그것을 문장 근거의 논문 머리에 붙인다(토큰 0, 주석을 읽기만).
+_CARD_CACHE = {}
+
+
+def paper_card(stem):
+    """→ {type, question, gap, contribution, claims[≤3], limits[≤2](원문 문장), move, scope} 또는 None(주석이 없는 논문)"""
+    stem = _stem(stem)
+    p = ann_path(stem)
+    try:
+        mt = os.path.getmtime(p)
+    except OSError:
+        return None
+    c = _CARD_CACHE.get(stem)
+    if c and c[0] == mt:
+        return c[1]
+    ann = load(stem)
+    pp = (ann or {}).get("paper") or {}
+    if not pp.get("question") and not pp.get("contribution"):
+        return None
+    lim = []
+    ss = ann.get("sents") or {}
+    if isinstance(ss, dict):
+        order = sorted(ss.items(), key=lambda kv: int(re.sub(r"\D", "", kv[0]) or 0), reverse=True)   # 뒤쪽(논의·결론)의 것부터
+        for act in ("limit", "future"):
+            for sid, v in order:
+                if isinstance(v, dict) and v.get("act") == act:
+                    t = _sent_text(stem, sid)
+                    if 40 <= len(t) <= 420 and t not in lim:
+                        lim.append(t)
+                        break
+    mv = move_of(stem) or {}
+    card = {"type": pp.get("type") or "", "question": str(pp.get("question") or "")[:260], "gap": str(pp.get("gap") or "")[:220], "contribution": str(pp.get("contribution") or "")[:260],
+            "claims": [str(x)[:180] for x in (pp.get("claims") or [])[:3] if str(x).strip()], "limits": [t[:300] for t in lim[:2]], "move": mv.get("move") or "", "scope": mv.get("scope") or ""}
+    _CARD_CACHE[stem] = (mt, card)
+    if len(_CARD_CACHE) > 600:
+        for k in list(_CARD_CACHE)[:200]:
+            _CARD_CACHE.pop(k, None)
+    return card
+
+
+def forest_examples(k=12):
+    """서재에서 '숲' 으로 가른 연구 논문(리뷰 제외)의 보기 — 어디서 출발했고 왜 숲인가. 연구 노트의 배경(연구를 보는 눈)이 본보기로 쓴다. 우선 저널 → 최근 순, 글은 _갈래.json 그대로(결정적)"""
+    rows = []
+    for stem, r in (moves_load().get("items") or {}).items():
+        if not isinstance(r, dict) or r.get("scope") != "forest" or r.get("move") in ("review", None, "") or not r.get("seed"):
+            continue
+        y, j, au = _meta(stem)
+        rows.append((0 if j in _pref() else 1, -y, stem, {"stem": stem, "author": au, "year": y, "journal": j, "star": j in _pref(), "move": r.get("move"), "move_ko": MOVE_KO.get(r.get("move"), ""),
+                                                           "seed": str(r.get("seed") or "")[:230], "assumption": str(r.get("assumption") or "")[:160], "from_field": str(r.get("from_field") or "")[:160],
+                                                           "why": str(r.get("why") or "")[:200]}))
+    rows.sort(key=lambda x: (x[0], x[1], x[2]))
+    return [x[3] for x in rows[:k]]
+
+
 # ---------- 연구 갈래(move) — 논문마다 '어떤 종류의 연구인가': 나무(틈 메우기)와 숲(현상·전제·타 분야 구조) (2026-10-28) ----------
 # 사용자: '네가 추천하는 새 연구 주제는 남이 하다 만 것, 거의 다 한 것, 남이 한 것 틈에서 찾기가 많다 — 나무를 보는 연구. 대단한 연구들은 숲을 보고, 타 분야에서 구조를 가져오기도 한다.'
 # 주석(논문 층·서론·결론 요지)만 읽고 Opus 가 한 번 분류한다 → 번역\주석\_갈래.json (한 파일, stem 마다). 연구 노트의 「큰 물음」 이 서재의 숲 논문을 본보기로 쓰고, 새 주제마다 나무·숲 꼬리표를 붙이는 잣대.

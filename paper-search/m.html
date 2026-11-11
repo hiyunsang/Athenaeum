@@ -508,7 +508,8 @@ function inline(s, o) {
   s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' data-name='" + esc(n) + "' src='/eq?file=" + enc(o.file || "") + "&name=" + enc(n) + "'>");
   if (o.math) s = s.replace(/\$([^$\n]{1,300})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
   s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
-  if (o.anchors || o.lrefs) s = s.replace(/⟦\s*((?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?)(?:\s*[,·]\s*(?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?))*)\s*⟧/g, (m, ids) => ids.split(/\s*[,·]\s*/).map(k =>   /* 공부 장의 논지(C1.2) · 서재 문장(L3 s45, 2026-11-09) */
+  if (o.anchors || o.lrefs || o.wrefs) s = s.replace(/⟦\s*((?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?|W\d+)(?:\s*[,·]\s*(?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?|W\d+))*)\s*⟧/g, (m, ids) => ids.split(/\s*[,·]\s*/).map(k =>   /* 공부 장의 논지(C1.2) · 서재 문장(L3 s45, 2026-11-09) · 세상 문헌(W3, 2026-11-11) */
+    /^W\d+$/.test(k) ? ((o.wrefs || {})[k] ? "<a class='anc lr' href='#' data-wref='" + k + "'>" + k + "</a>" : "") :
     /^L/.test(k) ? ((o.lrefs || {})[k] ? "<a class='anc lr' href='#' data-lref='" + k + "'>" + k + "</a>" : "") : ((o.anchors || {})[k] ? "<a class='anc' href='#' data-anc='" + k + "'>" + k + "</a>" : "")).join(" "));
   if (!o.sent) return s.replace(/\[s\d+\]\s*/g, "");
   const parts = s.split(/\[s(\d+)\]\s*/); let h = parts[0];      /* 번역: 문장마다 누를 수 있게 */
@@ -1324,12 +1325,12 @@ async function viewNote(id, my) {
     nav.querySelector(".nt").textContent = nt.title || "노트";
     $("msgs").innerHTML = "<div class='ch2' style='margin-top:6px'>" + (nt.kind === "ask" ? "물음" : "연구 주제 · " + (NSTAT[nt.status] || "")) + "</div><div class='ch1'>" + esc(nt.title || "") + "</div>" +
       (nt.seed && nt.seed.text ? "<div class='doc' style='padding:0;font-size:14px'><details><summary>출발점</summary><p style='white-space:pre-wrap'>" + esc(nt.seed.text) + "</p></details></div>" : "") +
-      th.map(m => { if (m.role === "user") return bubble(m.text || "");
+      th.map((m, ti) => { if (m.role === "user") return bubble(m.text || "");
         if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
         Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
-        return markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {} }), m.cites) + "<div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + "</span></div>"; }).join("") +
+        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + "</span></div>"; }).join("") +
       (lastC && !nt.pending && !nt.error && (lastC.choices || []).length ? "<div class='pks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" + lastC.choices.map((c, i) => "<button data-pk='" + i + "'>" + esc(c) + "</button>").join("") + "</div>" : "") +   /* 답 끝의 선택지 — 마지막 답 아래에만 (2026-11-11) */
-      (nt.pending ? waitHtml("Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
+      (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
     $("msgs").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => { const c = ((lastC || {}).choices || [])[+b.dataset.pk]; if (!c) return; $("msgs").querySelectorAll("[data-pk]").forEach(x => x.disabled = true); ask(c, true); });
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel", id }); } catch (e) {} pull(); };
@@ -1339,11 +1340,15 @@ async function viewNote(id, my) {
       renderMath(peek);
     });
     $("msgs").querySelectorAll("[data-lref]").forEach(a => a.onclick = e => {   /* 서재 문장 번호 → 원문·번역, 거기서 그 논문의 그 문장으로 (2026-11-09) */
-      e.preventDefault(); const k = a.dataset.lref, v = lrefs[k]; if (!v) return;
+      e.preventDefault(); const k = a.dataset.lref, tt = a.closest("[data-ti]"), v = ((tt && (nt.thread || [])[+tt.dataset.ti] || {}).lib_refs || {})[k] || lrefs[k]; if (!v) return;   /* 번호는 답마다 따로다 — 그 답의 것부터 */
       const whole = v.paper || v.tr === false, where = [(v.star ? "★ " : "") + (v.short || ""), v.journal, v.page != null ? "p." + (v.page + 1) : ""].filter(Boolean).join(" · ");
       const ss = t => esc(t).replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");   /* 번역문의 h<sub>C</sub> 첨자는 살린다 */
       openPeek("<div class='pkl'>" + esc(k) + " · " + esc(where) + "</div>" + (v.paper ? "" : "<div class='pkk' style='margin-top:0;color:var(--text)'>" + ss(v.en || "") + "</div>" + (v.ko ? "<div class='pkk' style='color:var(--text-2)'>" + ss(v.ko) + "</div>" : "")) +
         "<div class='pka'><a class='pill pri' href='" + (whole ? pUrl(v.file, "summary") : pUrl(v.file, "translation", v.sid, (v.en || "").slice(0, 120))) + "'>" + (whole ? "논문 열기" : "논문에서 이 문장 보기") + "</a></div>");
+    });
+    $("msgs").querySelectorAll("[data-wref]").forEach(a => a.onclick = e => {   /* 세상 문헌 번호 → 그 논문의 창(초록 · 출판사 · 받기 · 담아 두기) — 탐색의 논문 창 그대로 (2026-11-11) */
+      e.preventDefault(); const tt = a.closest("[data-ti]"), v = ((tt && (nt.thread || [])[+tt.dataset.ti] || {}).world_refs || {})[a.dataset.wref]; if (!v) return;
+      foundSheet(Object.assign({}, v), { q: nt.title || "" });
     });
     renderMath($("msgs"));
   };
