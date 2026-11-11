@@ -511,7 +511,7 @@ function inline(s, o) {
   s = s.replace(/\[\[EQ:([^\]\s]+)\]\]/g, (m, n) => "<img class='eq' loading='lazy' alt='수식' data-name='" + esc(n) + "' src='/eq?file=" + enc(o.file || "") + "&name=" + enc(n) + "'>");
   if (o.math) s = s.replace(/\$([^$\n]{1,300})\$/g, (m, tex) => "<span class='imath' data-tex=\"" + tex + "\">" + tex + "</span>");
   s = s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
-  if (o.anchors || o.lrefs || o.wrefs) s = s.replace(/⟦\s*((?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?|W\d+)(?:\s*[,·]\s*(?:[A-Z]\d+\.\d+|L\d+(?:\s+s\d+)?|W\d+))*)\s*⟧/g, (m, ids) => ids.split(/\s*[,·]\s*/).map(k =>   /* 공부 장의 논지(C1.2) · 서재 문장(L3 s45, 2026-11-09) · 세상 문헌(W3, 2026-11-11) */
+  if (o.anchors || o.lrefs || o.wrefs) s = s.replace(/⟦\s*((?:[A-Z]\d+\.\d+|L\d+(?:\s+[sx]\d+)?|W\d+)(?:\s*[,·]\s*(?:[A-Z]\d+\.\d+|L\d+(?:\s+[sx]\d+)?|W\d+))*)\s*⟧/g, (m, ids) => ids.split(/\s*[,·]\s*/).map(k =>   /* 공부 장의 논지(C1.2) · 서재 문장(L3 s45, 2026-11-09) · 세상 문헌(W3, 2026-11-11) */
     /^W\d+$/.test(k) ? ((o.wrefs || {})[k] ? "<a class='anc lr' href='#' data-wref='" + k + "'>" + k + "</a>" : "") :
     /^L/.test(k) ? ((o.lrefs || {})[k] ? "<a class='anc lr' href='#' data-lref='" + k + "'>" + k + "</a>" : "") : ((o.anchors || {})[k] ? "<a class='anc' href='#' data-anc='" + k + "'>" + k + "</a>" : "")).join(" "));
   if (!o.sent) return s.replace(/\[s\d+\]\s*/g, "");

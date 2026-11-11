@@ -23,7 +23,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-11-11 밤)"
+VERSION = "연구 노트 (2026-11-12)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
@@ -1610,9 +1610,9 @@ def _study_anchors(anchors, text):
 # 전에는 배경(시스템 프롬프트)의 논문마다 한 줄 요약이 Claude 가 서재를 아는 전부였고, 특정 논문의 조건·수치는 「서재 찾아보기」(5~15분·수십만 토큰)를 켜야 했다.
 # 이제 물음(과 주제 제목)의 낱말로 libindex 가 서재 전체의 문장을 찍어 50문장쯤(논문 14편까지, 1만 2천 자 ≈ 토큰 4천)을 물음에 붙인다 — 모델 호출 없이 0.1초.
 # 답은 그 문장을 ⟦L3 s45⟧ 로 가리키고(_lib_mark 가 꼴을 맞춘다), 화면이 원문·번역·읽기 창으로 연결한다(turn.lib_refs). 물음에 낱말이 없는 짧은 이어 묻기는 바로 앞 물음의 낱말로 찾는다.
-_L_RX = re.compile(r"[⟦\[(]\s*(L\d{1,2}(?:\s*[,·]?\s*s\d{1,4})?(?:\s*[,·;]\s*L\d{1,2}(?:\s*[,·]?\s*s\d{1,4})?)*)\s*[⟧\])]")
+_L_RX = re.compile(r"[⟦\[(]\s*(L\d{1,2}(?:\s*[,·]?\s*[sx]\d{1,4})?(?:\s*[,·;]\s*L\d{1,2}(?:\s*[,·]?\s*[sx]\d{1,4})?)*)\s*[⟧\])]")   # 번역이 없는 논문의 문장은 x번호다(study._paper_sents 의 PDF 본문) — s 만 받으면 그 논문을 가리킨 번호가 눌리지 않는다 (2026-11-12)
 _LIB_HEAD = ("[서재에서 찾은 문장 — 물음의 낱말로 서재의 문장 %d개를 찍어 논문 %d편에서 %d문장을 꺼낸 것입니다. 모델이 고른 것이 아니라 낱말이 맞은 문장이라 물음과 무관한 것도 섞여 있습니다 — 맞는 것만 씁니다. "
-             "논문은 L번호, 문장은 그 논문의 s번호입니다(원문 영어). 이 문장을 근거로 쓴 문장 끝에 ⟦L3 s45⟧처럼 번호를 붙이면 화면이 그 원문과 번역으로 연결합니다. 여기 있는 번호만 쓰고, 여기 없는 세부·수치를 그 논문의 말처럼 보태지 않습니다. "
+             "논문은 L번호, 문장은 그 논문의 s번호입니다(원문 영어 — 번역이 없는 논문의 문장은 x번호). 이 문장을 근거로 쓴 문장 끝에 ⟦L3 s45⟧처럼 적힌 번호를 그대로 붙이면 화면이 그 원문과 번역으로 연결합니다. 여기 있는 번호만 쓰고, 여기 없는 세부·수치를 그 논문의 말처럼 보태지 않습니다. "
              "논문 머리 아래의 '물은 것 · 한 것 · 보인 것 · 저자가 적은 한계' 는 서재 학습이 그 논문 전체를 읽고 적어 둔 것입니다(그 논문이 어떤 연구인지는 이것으로 말하고, 근거 번호는 문장에만 붙입니다). ★ 는 우선 저널]")
 
 
@@ -1659,9 +1659,9 @@ def _lib_mark(text):
     def fix(m):
         items = []
         for it in re.split(r"\s*[,·;]\s*(?=L\d)", m.group(1)):
-            mm = re.match(r"L(\d{1,2})(?:\s*[,·]?\s*s(\d{1,4}))?", it.strip())
+            mm = re.match(r"L(\d{1,2})(?:\s*[,·]?\s*([sx]\d{1,4}))?", it.strip())
             if mm:
-                items.append("L" + mm.group(1) + ((" s" + mm.group(2)) if mm.group(2) else ""))
+                items.append("L" + mm.group(1) + ((" " + mm.group(2)) if mm.group(2) else ""))
         return ("⟦" + ", ".join(items) + "⟧") if items else m.group(0)
     return _L_RX.sub(fix, text or "")
 
@@ -1672,8 +1672,12 @@ def _lib_anchors(refs, text):
     for m in _L_RX.finditer(text or ""):
         for it in re.split(r"\s*[,·;]\s*(?=L\d)", m.group(1)):
             k = re.sub(r"\s+", " ", it.strip())
+            alt = re.fullmatch(r"(L\d{1,2}) ([sx])(\d{1,4})", k)
+            alt = ("%s %s%s" % (alt.group(1), "x" if alt.group(2) == "s" else "s", alt.group(3))) if alt else ""
             if k in refs:
                 used[k] = refs[k]
+            elif alt in refs:      # 번역이 없는 논문의 x28 을 답이 s28 로 옮겨 적었다(머리글의 보기가 s번호라) — 그 논문에는 한쪽 번호만 있으니 같은 문장이다
+                used[k] = refs[alt]
             elif re.fullmatch(r"L\d{1,2}", k):
                 r = next((v for kk, v in refs.items() if kk.startswith(k + " ")), None)
                 if r:
