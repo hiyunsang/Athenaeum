@@ -11,8 +11,25 @@
   header { flex: none; display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4); min-height: 46px; background: var(--surface); border-bottom: 1px solid var(--line); }
   header .brand-mark { height: 24px; display: block; }
   header h1 { font-size: 14px; font-weight: 600; }
-  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: 268px minmax(0, 1fr) 6px var(--card-w, 380px); }
-  #side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; padding-bottom: var(--s8); }
+  /* 왼쪽·오른쪽 칸을 늘 띄워 두지 않는다 (사용자 2026-11-13: '굳이 왼쪽오른쪽이 항상 떠있어야 할까 — 새 주제·물음 종류는 위나 아래에 둬도 되잖아') —
+     주제 목록과 새 주제 상자는 가운데의 「주제 목록」 보기로, 오른쪽 칸(카드·계획)은 머리줄 단추로 여닫는다 */
+  #app { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 6px min(var(--card-w, 380px), 62vw); }
+  #app.nocard { grid-template-columns: minmax(0, 1fr); }
+  #app.nocard #cardsplit, #app.nocard #cardp { display: none; }
+  #nav { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .navix { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--text); cursor: pointer; white-space: nowrap; flex: none; }
+  .navix b { font-weight: 600; color: var(--text-2); margin-left: 2px; }
+  .navix .b { font-size: 11px; margin-left: 4px; color: var(--accent); }
+  .navix:hover { border-color: var(--accent); color: var(--accent); }
+  .navix.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  #nav .navsep { color: var(--text-3); flex: none; }
+  #nav .navcur { font-size: 14px; font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: pointer; }
+  #nav .navcur:hover { color: var(--accent); }
+  #index { flex: 1; min-height: 0; overflow-y: auto; }
+  #main:not(.ix) #index { display: none; }
+  #main.ix #thwrap, #main.ix #askbox { display: none; }
+  .ixh { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+  .ixh h2 { font-size: 18px; font-weight: 700; margin: 0; }
   #main { background: var(--surface); min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }   /* min-height·overflow 가 없으면 긴 답에서 가운데 칸이 창보다 길어져 묻는 칸이 화면 밖으로 밀린다 (사용자 2026-10-08: '왜 이어서 대화를 못하냐') */
   #cardsplit { cursor: col-resize; background: var(--line-2); }   /* 끌어서 오른쪽 칸의 폭을 바꾼다 (공부·탐색과 같은 방식) */
   #cardsplit:hover, #cardsplit.drag { background: var(--accent); }
@@ -27,13 +44,19 @@
   #cardtabs .b.n, #cardtabs .b.run, #cardtabs .b.new { color: var(--accent); } #cardtabs .b.warn, #cardtabs .b.err { color: var(--amber); }
   #cardbody { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s3) var(--s4) var(--s8); }
   #cardbody > .sec:first-child { margin-top: var(--s1); }
-  /* 왼쪽: 새 주제 · 주제 목록(상태별) */
+  /* 「주제 목록」 보기: 새 주제 · 주제 목록(물음 · 상태별) · 받을 논문 */
   .sideh { display: flex; align-items: center; gap: var(--s2); padding: 10px var(--s3) 4px; font-size: 12px; font-weight: 700; letter-spacing: 0; color: var(--text); text-transform: none; padding-bottom: 3px; border-bottom: 1px solid var(--line); }
   .sideh .n { color: var(--text-3); font-weight: 400; }
-  .newbox { padding: 0 var(--s3) var(--s3); border-bottom: 1px solid var(--line); }
-  .newbox textarea { width: 100%; resize: vertical; min-height: 64px; }
-  .newbox .primary { width: 100%; margin-top: var(--s2); }
-  .newbox .hint { margin-top: var(--s2); line-height: 1.5; }
+  .newbox { padding: 0 0 var(--s3); }
+  .newbox textarea { width: 100%; resize: vertical; min-height: 52px; }
+  .newbox .nbrow { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-top: var(--s2); }
+  .newbox .hint { line-height: 1.5; }
+  #index .sideh { padding: var(--s4) 0 3px; }
+  #index .oi { padding: 9px var(--s3) 9px 10px; }
+  #index .oi .t { font-size: 14px; font-weight: 600; }
+  #index .oi .m { font-size: 11.5px; margin-top: 3px; }
+  #index .wbox { padding: 0 0 4px; margin-top: var(--s5); border-bottom: 0; }
+  #index .welcome { padding: var(--s4) 0; max-width: none; }
   .oi { display: block; padding: 7px var(--s3) 7px 10px; cursor: pointer; font-size: 12.5px; line-height: 1.4; color: var(--text); border-left: 3px solid transparent; border-bottom: 1px solid var(--line); }
   .oi:hover { background: var(--hover); }
   .oi.on { background: var(--sel-bg); border-left-color: var(--accent); }
@@ -146,7 +169,7 @@
   .objdone { margin-top: 4px; } .objdone .obj { opacity: .72; } .objdone summary { cursor: pointer; }
   .sec .n { font-weight: 400; color: var(--accent); margin-left: 4px; }
   .secline { display: flex; align-items: center; gap: 6px; } .secline .r { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; }
-  @media (max-width: 1100px) { #app { grid-template-columns: 220px minmax(0, 1fr) 6px var(--card-w, 320px); } }
+  @media (max-width: 1100px) { #app { grid-template-columns: minmax(0, 1fr) 6px min(var(--card-w, 340px), 62vw); } #app.nocard { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <script src="/ui.js"></script>
 </head>
@@ -154,25 +177,25 @@
 <header>
   <a href="/" target="_top" title="Athenaeum 홈"><img class="brand-mark" src="/logo/mark.svg" alt="Athenaeum"></a>
   <h1>연구 노트</h1>
-  <span class="hint">연구 주제를 놓고 Claude 와 토의합니다 — Claude 는 서재의 논문 전부·공부 장·지난 탐색·원고를 알고 답합니다. 정해진 것은 오른쪽 주제 카드로.</span>
-  <span style="margin-left:auto"></span>
+  <nav id="nav"></nav>
+  <button class="act" id="hdrNew" title="주제 목록 맨 위의 새 주제 칸으로 갑니다">새 주제</button>
+  <button class="navix" id="cardTg"></button>
 </header>
-<div id="app">
-  <aside id="side">
-    <div class="newbox">
-      <div class="sideh">새 주제</div>
-      <textarea id="newT" placeholder="연구 주제나 물음 (예: AM 금속의 이방성을 직교 절삭의 칩 생성으로 볼 수 있을까?)"></textarea>
-      <div style="display:flex;gap:6px;align-items:center"><button class="primary" id="newGo">주제 열기</button><button class="act" id="newAsk" title="연구 주제가 아니라 분야를 배우려는 물음 — Claude 가 서재 전부·공부 장을 알고 설명합니다. 읽기 화면의 「이 분야에 관해 묻기」 는 그 논문의 요약을 출발점으로 엽니다">물음 열기</button></div>
-      <div class="hint">주제는 공저자처럼 따지고(새로움·실험·반론), 물음은 분야를 설명합니다. 자란 물음은 「주제로 세우기」 로 연구 주제가 됩니다. 공부의 「답하지 못한 것」·탐색 결과·읽기 화면에서도 열 수 있습니다.</div>
-    </div>
-    <div id="wanted"></div>
-    <div id="list"></div>
-  </aside>
-  <main id="main">
+<div id="app" class="nocard">
+  <main id="main" class="ix">
+    <div id="index"><div class="page">
+      <div class="ixh"><h2>주제 목록</h2><span class="hint">연구 주제를 놓고 Claude 와 토의합니다. Claude 는 서재의 논문 전부, 공부 장, 지난 탐색, 원고를 알고 답합니다.</span></div>
+      <div class="newbox">
+        <textarea id="newT" placeholder="새 연구 주제나 물음 (예: AM 금속의 이방성을 직교 절삭의 칩 생성으로 볼 수 있을까?)"></textarea>
+        <div class="nbrow"><button class="primary" id="newGo" title="연구 주제로 엽니다 — Claude 가 공저자처럼 새로움·실험·반론을 따집니다 (Ctrl+Enter)">주제 열기</button><button class="act" id="newAsk" title="연구 주제가 아니라 분야를 배우려는 물음 — Claude 가 서재 전부·공부 장을 알고 설명합니다. 읽기 화면의 「이 분야에 관해 묻기」 는 그 논문의 요약을 출발점으로 엽니다. 자란 물음은 「주제로 세우기」 로 연구 주제가 됩니다">물음 열기</button><span class="hint">주제는 공저자처럼 따지고, 물음은 분야를 설명합니다.</span></div>
+      </div>
+      <div id="list"></div>
+      <div id="wanted"></div>
+    </div></div>
     <div id="thwrap"></div>
     <div id="askbox" hidden></div>
   </main>
-  <div id="cardsplit" title="끌어서 오른쪽 칸의 폭을 바꿉니다 · 두 번 누르면 기본 폭"></div>
+  <div id="cardsplit" title="끌어서 카드·계획 칸의 폭을 바꿉니다 · 두 번 누르면 기본 폭"></div>
   <aside id="cardp"><div id="cardtabs" hidden></div><div id="cardbody"></div></aside>
 </div>
 <script>
@@ -190,6 +213,43 @@ let META = { status: ["idea", "review", "adopt", "hold"], status_ko: { idea: "�
 const FROM_KO = { study: "공부 장", explore: "논문 탐색", ms: "원고", paper: "논문" };   /* 출발점이 어디서 왔나 */
 let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null, wanted = [];
 const URLP = new URLSearchParams(location.search);
+let showIx = true;   /* 가운데 칸: 주제 목록(true) ↔ 토의. 연 주제가 없으면 늘 목록 */
+let panelOpen = !!URLP.get("tab") || lsGet("notes_cardp_open", "0") === "1";   /* 오른쪽 칸(카드·계획) — 머리줄 단추로 여닫고 기억한다 */
+let thKeep = 0;
+
+// ---------- 머리줄 · 보기 바꾸기 ----------
+function renderNav() {
+  const el = $("nav"); if (!el) return;
+  const ix = showIx || !cur;
+  el.innerHTML = "<button class='navix" + (ix ? " on" : "") + "' id='navIx' title='연 주제와 물음을 모두 보고 고릅니다 — 새 주제도 여기서 엽니다'>주제 목록" + (items.length ? " <b>" + items.length + "</b>" : "") + "</button>" +
+    (cur ? "<span class='navsep'>›</span><a class='navcur' id='navCur' title='" + (ix ? "이 주제의 토의로 돌아갑니다" : esc(cur.title)) + "'>" + esc(cur.title) + "</a>" : "");
+  $("navIx").onclick = () => setView(!(showIx || !cur));
+  const c = $("navCur"); if (c) c.onclick = () => setView(false);
+  renderCardTg();
+}
+function setView(ix) {   /* 주제 목록 ↔ 토의 — 토의의 읽던 자리는 지킨다 */
+  const w = $("thwrap"), was = $("main").classList.contains("ix"), now = !!ix || !cur;
+  if (!was && now) thKeep = w.scrollTop;
+  showIx = !!ix; $("main").classList.toggle("ix", now);
+  if (was && !now) { w.scrollTop = thKeep; const t = $("title"); if (t) fit(t, 28); const a = $("askIn"); if (a && a.value) fit(a, 40); }
+  renderNav();
+}
+function renderCardTg() {   /* 오른쪽 칸을 여닫는 단추 — 닫혀 있어도 만드는 중(…)과 새 결과(●)는 보인다 */
+  const b = $("cardTg"); if (!b) return;
+  let mark = "";
+  if (cur && !panelOpen) { const p = TAB_PEND(cur); if (Object.keys(p).some(k => p[k])) mark = "…"; else if (newTabs.size) mark = "●"; }
+  b.className = "navix" + (panelOpen ? " on" : "");
+  b.title = panelOpen ? "카드·계획 칸을 닫습니다" : "이 주제의 카드 · 틀 · 설계서 · 반론 · 서론 · 점검 · 이어서 · 연구실을 오른쪽에 엽니다";
+  b.innerHTML = "카드 · 계획" + (mark ? "<span class='b'>" + mark + "</span>" : "");
+}
+function setPanel(on) {
+  on = !!on; if (on === panelOpen && $("app").classList.contains("nocard") === !on) return;
+  if (!on) flushSaves();
+  panelOpen = on; lsSet("notes_cardp_open", on ? "1" : "0");
+  $("app").classList.toggle("nocard", !on);
+  if (on) { newTabs.delete(cardTab); renderCard(); } else renderCardTg();
+  const t = $("title"); if (t) fit(t, 28);
+}
 
 // ---------- 목록 ----------
 async function loadList() {
@@ -221,7 +281,13 @@ function renderWanted() {
 }
 function renderList() {
   const el = $("list");
-  if (!items.length) { el.innerHTML = "<div class='empty'>아직 주제가 없습니다. 위에 연구 주제나 물음을 적어 열어 보세요.</div>"; return; }
+  renderNav();
+  if (!items.length) {
+    el.innerHTML = "<div class='welcome'><p>'이런 연구 주제는 어떨까?' 를 놓고 Claude 와 따져 보는 곳입니다. 위 칸에 연구 주제나 물음을 적어 열어 보세요. Claude 는 묻는 순간 다음을 모두 알고 답합니다.</p><ul>" +
+      "<li>서재의 논문 전부 — 편마다 연도·저널·저자·제목과 요약의 한 줄</li><li>공부로 쓴 장들 — 범위·물음·「이 서재로는 답하지 못한 것」·Claude 의 생각</li><li>지난 논문 탐색 — 검색어·소주제·저널·연구 그룹</li><li>서재가 많이 인용하는데 서재에 없는 논문</li><li>쓰고 있는 원고의 초록과 절</li></ul>" +
+      "<p>정해진 것은 머리줄의 「카드 · 계획」 에서 주제 카드로 정리하고, 거기서 논문 탐색·공부로 이어집니다. 연구 주제가 아니라 분야를 배우려는 물음은 「물음 열기」 로 엽니다.</p><p class='hint'>첫 물음은 배경을 읽느라 1~2분 걸리고 토큰을 많이 읽습니다(그 뒤 한 시간은 캐시).</p></div>";
+    return;
+  }
   let h = "";
   const row = x => "<a class='oi" + (cur && x.id === cur.id ? " on" : "") + "' data-id='" + esc(x.id) + "'><div class='t'>" + esc(x.title) + "</div><div class='m'>" + fmtDate(x.updated || x.t) +
       (x.pending ? " · <span class='run'>Claude 생각 중</span>" : x.answers ? " · 답 " + x.answers : " · 아직 묻지 않음") + (x.from === "paper" ? " · 논문에서" : "") + (x.card ? " · 카드" : "") + (x.forest ? " · 큰 물음" + (x.forest_pick ? " " + x.forest_pick : "") : "") + (x.trees ? " · 작은 물음" + (x.trees_pick ? " " + x.trees_pick : "") : "") + (x.framing ? " · 틀" + (x.framing_pick ? " " + x.framing_pick : "") : "") + (x.plan ? " · 설계서" : "") + (x.intro ? " · 서론" + (x.intro_drafts ? "(" + x.intro_drafts + "문단 씀)" : "") : "") + (x.open ? " · 반론 " + x.open : "") + (x.ms ? " · 원고" : "") + (x.busy ? " · <span class='run'>만드는 중</span>" : "") + "</div></a>";
@@ -242,8 +308,9 @@ async function open(id) {
   if (r.error || !r.note) { alert(r.error || "찾지 못했습니다"); return; }
   cur = r.note; curId = cur.id; lsSet("notes_last", curId); draft = "";
   try { history.replaceState(null, "", "/notes?id=" + encodeURIComponent(curId)); } catch (e) {}
+  showIx = false; $("main").classList.remove("ix");   /* 그리기 전에 토의 보기로 — 숨은 채 그리면 제목·글 칸의 높이를 못 잰다 */
   renderList(); renderMain(); renderCard(); schedulePoll();
-  const w = $("thwrap"); w.scrollTop = w.scrollHeight;
+  const w = $("thwrap"); w.scrollTop = w.scrollHeight; thKeep = w.scrollTop;
 }
 async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 글은 지킨다)
   if (!cur) return;
@@ -253,7 +320,7 @@ async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 
   const before = JSON.stringify(keys(cur)), after = JSON.stringify(keys(r.note));
   const wasPending = !!cur.pending, dgT = (cur.digest || {}).t || 0;
   const pb = TAB_PEND(cur), pa = TAB_PEND(r.note);
-  Object.keys(pb).forEach(k => { if (pb[k] && !pa[k] && k !== cardTab) newTabs.add(k); });   /* 다른 갈래를 보는 동안 결과가 왔다 → 단추에 점 */
+  Object.keys(pb).forEach(k => { if (pb[k] && !pa[k] && (k !== cardTab || !panelOpen)) newTabs.add(k); });   /* 다른 갈래를 보는 동안 결과가 왔다 → 단추에 점 */
   cur = r.note;
   if (((cur.digest || {}).t || 0) !== dgT) memInfo = null;   /* 정리가 갱신되면 기억 목록도 다시 받는다 */
   if (before === after) return;
@@ -273,16 +340,11 @@ function schedulePoll() {
 
 // ---------- 가운데: 토의 ----------
 function renderMain() {
-  if (!cur) {
-    $("thwrap").innerHTML = "<div class='welcome'><h2>연구 노트</h2><p>'이런 연구 주제는 어떨까?' 를 놓고 Claude 와 따져 보는 곳입니다. Claude 는 묻는 순간 다음을 모두 알고 답합니다.</p><ul>" +
-      "<li>서재의 논문 전부 — 편마다 연도·저널·저자·제목과 요약의 한 줄</li><li>공부로 쓴 장들 — 범위·물음·「이 서재로는 답하지 못한 것」·Claude 의 생각</li><li>지난 논문 탐색 — 검색어·소주제·저널·연구 그룹</li><li>서재가 많이 인용하는데 서재에 없는 논문</li><li>쓰고 있는 원고의 초록과 절</li></ul>" +
-      "<p>왼쪽에서 주제를 열고 첫 물음을 적으세요. 정해진 것은 오른쪽 「주제 카드」 로 정리하고, 거기서 논문 탐색·공부로 이어집니다.</p><p>연구 주제가 아니라 분야를 배우려는 물음은 「물음 열기」 로 — 읽기 화면의 「이 분야에 관해 묻기」 가 그 논문의 요약을 출발점으로 열어 줍니다. 자란 물음은 「주제로 세우기」 로 연구 주제가 됩니다.</p><p class='hint'>첫 물음은 배경을 읽느라 1~2분 걸리고 토큰을 많이 읽습니다(그 뒤 한 시간은 캐시).</p></div>";
-    $("askbox").hidden = true; return;
-  }
+  if (!cur) { $("thwrap").innerHTML = ""; $("askbox").hidden = true; setView(true); return; }   /* 연 주제가 없으면 주제 목록 */
   const st = META.status.map(s => "<option value='" + s + "'" + (cur.status === s ? " selected" : "") + ">" + esc(META.status_ko[s] || s) + "</option>").join("");
   const isAsk = cur.kind === "ask", fr = (cur.seed || {}).from || {};
   let h = "<div class='page'><div class='th'><textarea class='tt' id='title' rows='1' title='" + (isAsk ? "물음의 이름" : "주제 이름") + " — 고치면 바로 저장됩니다'>" + esc(cur.title) + "</textarea>" +
-    (isAsk ? "<span class='kindtag' title='분야를 배우려는 물음 — Claude 가 심사하지 않고 설명합니다'>물음</span><button class='act' id='toTopic' title='이 물음을 연구 주제로 세웁니다 — 왼쪽의 아이디어로 옮겨지고 카드·틀·설계서를 만들 수 있습니다'>주제로 세우기</button>" : "<select id='status' title='이 주제의 상태'>" + st + "</select>") +
+    (isAsk ? "<span class='kindtag' title='분야를 배우려는 물음 — Claude 가 심사하지 않고 설명합니다'>물음</span><button class='act' id='toTopic' title='이 물음을 연구 주제로 세웁니다 — 주제 목록의 아이디어로 옮겨지고 카드·틀·설계서를 만들 수 있습니다'>주제로 세우기</button>" : "<select id='status' title='이 주제의 상태'>" + st + "</select>") +
     "<button class='act' id='mdBtn' title='카드와 토의를 md 글로 복사'>md 복사</button><button class='act warn' id='delBtn'>지우기</button>" +
     "<div class='m'>" + fmtDate(cur.t) + " 에 열음" + (fr.title ? " · " + (FROM_KO[fr.kind] || "") + " 「" + esc(fr.title) + "」 에서" + (fr.kind === "paper" && fr.id ? " <a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(fr.id) + "&kind=summary' title='읽기 화면에서 이 논문 열기'>논문 열기 ↗</a>" : "") : "") + "</div></div>";
   if ((cur.seed || {}).text) h += "<div class='seed'><div class='k'>출발점 — Claude 에게 같이 갑니다</div>" + esc(cur.seed.text) + "</div>";
@@ -291,7 +353,7 @@ function renderMain() {
   const ti = $("title"); fit(ti, 28); ti.oninput = () => fit(ti, 28); ti.onchange = () => saveFields({ title: ti.value.replace(/\s+/g, " ").trim() });
   ti.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ti.blur(); } });
   if ($("status")) $("status").onchange = () => saveFields({ status: $("status").value });
-  if ($("toTopic")) $("toTopic").onclick = async () => { if (!confirm("이 물음을 연구 주제로 세울까요? 토의는 그대로 두고 왼쪽 목록의 아이디어로 옮겨집니다.")) return; await saveFields({ kind: "topic", status: "idea" }); await loadList(); await open(cur.id); };
+  if ($("toTopic")) $("toTopic").onclick = async () => { if (!confirm("이 물음을 연구 주제로 세울까요? 토의는 그대로 두고 주제 목록의 아이디어로 옮겨집니다.")) return; await saveFields({ kind: "topic", status: "idea" }); await loadList(); await open(cur.id); };
   $("delBtn").onclick = async () => { if (!confirm("이 주제와 토의를 지울까요?")) return; await api("/api/notes", { op: "delete", id: cur.id }); cur = null; curId = ""; lsSet("notes_last", ""); await loadList(); renderMain(); renderCard(); };
   $("mdBtn").onclick = async () => { const r = await api("/api/notes", { op: "md", id: cur.id }); if (r.error) { alert(r.error); return; } try { await navigator.clipboard.writeText(r.md); $("mdBtn").textContent = "복사됨"; setTimeout(() => $("mdBtn").textContent = "md 복사", 1500); } catch (e) { prompt("복사:", r.md); } };
   renderThread(); renderAsk();
@@ -658,14 +720,15 @@ function tabBadge(id) {   /* 단추의 작은 표시: … 만드는 중 · ! 오
   return txt ? "<span class='b " + cls + "'>" + esc(txt) + "</span>" : "";
 }
 function renderTabs() {
-  const el = $("cardtabs"); el.hidden = !cur; if (!cur) return;
+  const el = $("cardtabs"); el.hidden = !cur; renderCardTg(); if (!cur) return;
   el.innerHTML = CARD_TABS.map(t => "<button data-tab='" + t.id + "'" + (t.id === cardTab ? " class='on'" : "") + " title='" + esc(t.tip) + "'>" + esc(t.name) + tabBadge(t.id) + "</button>").join("");
   el.querySelectorAll("button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 }
 function setTab(id) {
   if (!CARD_TABS.some(t => t.id === id)) return;
   flushSaves(); cardTab = id; lsSet("notes_card_tab", id); newTabs.delete(id);
-  renderCard(); $("cardbody").scrollTop = 0;
+  if (!panelOpen) setPanel(true); else renderCard();   /* 닫혀 있으면 연다 — 받을 논문의 주제 링크·?tab= 처럼 밖에서 갈래를 고를 때 */
+  $("cardbody").scrollTop = 0;
 }
 function flushSaves() {   /* 갈래를 바꾸기 전에, 아직 저장되지 않은 칸을 그 칸이 화면에 있는 동안 저장한다 */
   if (cardSaveT) { clearTimeout(cardSaveT); saveCard(); }
@@ -698,7 +761,8 @@ function nextHtml() {
 function renderCard() {
   const el = $("cardbody");
   renderTabs();
-  if (!cur) { el.innerHTML = "<div class='sec'>주제 카드</div><div class='hint' style='line-height:1.6'>주제를 열면 오른쪽 칸이 갈래 단추(카드 · 틀 · 설계서 · 반론 · 서론 · 점검 · 이어서 · 연구실)로 나뉩니다 — 누른 갈래만 보입니다.</div>" + labHtml() + bgHtml(); bindLab(); bindBg(); return; }
+  if (!panelOpen) return;   /* 닫힌 칸은 그리지 않는다 — 열 때(setPanel) 그린다. 숨은 칸에서는 글 칸의 높이를 못 잰다 */
+  if (!cur) { el.innerHTML = "<div class='sec'>주제 카드</div><div class='hint' style='line-height:1.6'>주제를 열면 이 칸이 갈래 단추(카드 · 틀 · 설계서 · 반론 · 서론 · 점검 · 이어서 · 연구실)로 나뉩니다 — 누른 갈래만 보입니다.</div>" + labHtml() + bgHtml(); bindLab(); bindBg(); return; }
   const ae = document.activeElement;
   if (ae && el.contains(ae) && ae.matches && ae.matches("textarea[data-k],textarea[data-pk]")) return;   /* 칸을 고치는 중 — 다시 그리면 고치던 글이 날아간다 */
   const answered = (cur.thread || []).some(m => m.role === "claude");
@@ -1222,7 +1286,7 @@ function openBig(path, name, feat) {   /* 이 창이 연 창만 앞으로 가져
   const saved = +lsGet("notes_card_w", "0"); if (saved) apply(saved);
   sp.addEventListener("pointerdown", e => {
     e.preventDefault(); sp.classList.add("drag"); try { sp.setPointerCapture(e.pointerId); } catch (e2) {} let w = 0;
-    const move = ev => { w = Math.min(Math.max(window.innerWidth - ev.clientX, 260), Math.max(300, window.innerWidth - 520)); apply(w); };
+    const move = ev => { w = Math.min(Math.max(window.innerWidth - ev.clientX, 260), Math.max(300, window.innerWidth - 420)); apply(w); };
     const up = () => { sp.classList.remove("drag"); sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); if (w) lsSet("notes_card_w", String(w)); $("cardp").querySelectorAll(".cf textarea").forEach(fit); };
     sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up);
   });
@@ -1237,6 +1301,9 @@ async function openNew(kind) {   /* 주제 또는 물음(분야를 배우려는 
 $("newGo").onclick = () => openNew("topic");
 $("newAsk").onclick = () => openNew("ask");
 $("newT").addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); $("newGo").click(); } });
+$("hdrNew").onclick = () => { setView(true); $("index").scrollTop = 0; $("newT").focus(); };
+$("cardTg").onclick = () => setPanel(!panelOpen);
+$("app").classList.toggle("nocard", !panelOpen); renderCardTg();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && cur) refresh(); });
 applyFont();
 (async () => {
