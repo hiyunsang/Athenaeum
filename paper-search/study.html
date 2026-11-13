@@ -221,6 +221,17 @@
   .srci .cited { color: var(--text-3); font-size: 11.5px; line-height: 1.5; margin-top: 5px; }
   .srci .act { padding: 4px 0; display: inline-block; margin-top: 2px; }
   .kv { display: flex; gap: var(--s2); padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; } .kv span:first-child { color: var(--text-3); min-width: 6.5em; }
+  /* 읽은 토큰 막대 — 예상 대 실제 (2026-11-13) */
+  .tokbox { margin: var(--s3) 0; }
+  .tokrow { display: flex; align-items: center; gap: var(--s2); margin: 4px 0; font-size: 12px; }
+  .tokrow .k { flex: none; width: 2.4em; color: var(--text-2); }
+  .tokrow .v { flex: none; min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  .tokbar { flex: 1; min-width: 0; height: 12px; display: flex; gap: 2px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .tokbar i { display: block; height: 100%; min-width: 0; }
+  .tokbar.act i.cur { animation: tokpulse 1.6s ease-in-out infinite; } @keyframes tokpulse { 50% { opacity: .55; } }
+  .tokleg { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 11.5px; color: var(--text-2); margin-top: 4px; }
+  .tokleg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .tokleg b { font-weight: 600; color: var(--text); }
   .stgtab { border-collapse: collapse; font-size: 12px; margin: 2px 0 var(--s2); } .stgtab th { text-align: left; color: var(--text-3); font-weight: 500; padding: 2px 10px 2px 0; }
   .stgtab td { padding: 2px 10px 2px 0; border-top: 1px solid var(--line); white-space: nowrap; } .stgtab td:nth-child(2), .stgtab td:nth-child(3), .stgtab td:nth-child(4) { text-align: right; }
   .rm { padding: var(--s2) 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.55; } .rm .w { color: var(--amber); margin-top: 2px; } .rm .s { color: var(--text-3); }
@@ -553,6 +564,66 @@ function stagesHtml() {   /* 단계마다 걸린 시간·호출·토큰 표 (202
   if (fi.sec && !sg.some(x => x.name === "figs")) rows.splice(Math.max(0, sg.findIndex(x => x.name === "read") + 1), 0, "<tr><td>" + STAGE_KO.figs_bg + "</td><td>" + fmtDur(fi.sec) + "</td><td></td><td></td></tr>");
   return "<div class='sec'>단계마다 걸린 시간</div><table class='stgtab'><tr><th>단계</th><th>시간</th><th>호출</th><th>읽은 토큰</th></tr>" + rows.join("") + "</table>";
 }
+/* 읽은 토큰 — 예상 대 실제 (사용자 2026-11-13: '토큰 얼마나 쓰는지 바 형태로도 — 예상이랑 실제 이렇게')
+   실제 = 서버가 단계마다 적는 st.stages 의 tok(도는 단계는 전체에서 끝난 단계를 뺀 것). 배경의 그림·식 색인은 읽기 단계에 섞여 세어지므로 한 묶음으로 둔다.
+   예상 = 이 브라우저가 본 지난 장들(같은 범위)의 묶음별 가운데값(localStorage study_tokrec — 다 쓴 장의 기록을 열 때 적는다), 없으면 2026-11 에 잰 20편 장의 값을 편수에 맞춘 어림 */
+const TOK_GROUPS = [["읽기 · 색인", ["plan", "scan", "select", "prep", "read", "figs"]], ["짜기 · 논지", ["outline", "claims"]], ["쓰기", ["write", "join", "edit"]], ["대조", ["verify"]], ["마무리", ["wrap", "terms", "comment", "quiz"]]];
+const TOK_MIX = [92, 72, 54, 38, 26];   /* 묶음마다 강조색의 짙기 */
+const TOK_DEPTH_N = { small: 10, mid: 20, wide: 36 };
+function tokActual(st) {   /* 묶음마다 실제로 읽은 토큰 + 지금 도는 묶음 */
+  const sg = st.stages || [], total = (st.tok || {}).in || 0, g = TOK_GROUPS.map(() => 0);
+  let closed = 0, curG = -1, any = false;
+  const gi = name => TOK_GROUPS.findIndex(x => x[1].includes(name));
+  sg.forEach(x => { const i = gi(x.name); if (i < 0) return; if (x.t1) { g[i] += x.tok || 0; closed += x.tok || 0; any = any || !!x.tok; } else curG = i; });
+  if (st.status === "running" && curG < 0) curG = gi(st.stage);
+  const rest = Math.max(0, total - closed);
+  if (rest) { if (curG >= 0) g[curG] += rest; else if (any) g[TOK_GROUPS.length - 1] += rest; }   /* 단계 기록 밖의 것(나중에 쓴 해설·확인 물음 등)은 마무리로 */
+  return { g, total, cur: st.status === "running" ? curG : -1, split: any || curG >= 0 };
+}
+function tokRecs() { try { return JSON.parse(localStorage.getItem("study_tokrec") || "[]") || []; } catch (e) { return []; } }
+function tokRemember(st) {   /* 다 쓴 장(읽기부터 한 것)의 묶음별 토큰을 예상의 바탕으로 적어 둔다 */
+  if (!st || st.status !== "done") return;
+  const rd = (st.stages || []).find(x => x.name === "read"); if (!rd || !rd.tok) return;
+  const a = tokActual(st), o = st.opts || {};
+  const recs = tokRecs().filter(r => r.id !== st.id);
+  recs.push({ id: st.id, depth: o.depth || "mid", n: (st.papers || []).length, g: a.g, t: st.t || 0 });
+  recs.sort((x, y) => x.t - y.t);
+  try { localStorage.setItem("study_tokrec", JSON.stringify(recs.slice(-16))); } catch (e) {}
+}
+function tokExpect(st) {   /* 다시 쓰기(읽은 메모 그대로)는 읽기 묶음을 뺀다 */
+  const e = tokExpect0(st);
+  if (st.rewrite_of) { e.total -= e.g[0]; e.g[0] = 0; e.from += " · 다시 쓰기라 읽기는 뺌"; }
+  return e;
+}
+function tokExpect0(st) {
+  const o = st.opts || {}, depth = o.depth || "mid", n = (st.papers || []).length || TOK_DEPTH_N[depth] || 20;
+  const recs = tokRecs().filter(r => r.depth === depth && r.id !== st.id).slice(-5);
+  if (recs.length) {
+    const med = xs => { const a = xs.slice().sort((x, y) => x - y), m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+    const g = TOK_GROUPS.map((_, i) => Math.round(med(recs.map(r => (r.g || [])[i] || 0))));
+    return { g, total: g.reduce((x, y) => x + y, 0), from: "지난 " + (TOK_DEPTH_N[depth] || n) + "편 장 " + recs.length + "개의 가운데값" };
+  }
+  const k = n / 20;   /* 2026-11 에 잰 20편 · Opus 엑스트라 장: 읽기·색인 290만 · 짜기·논지 40만 · 쓰기 80만 · 대조 50만 · 마무리 40만 */
+  const g = [2900000 * k, 400000, 800000 + (o.editor ? 400000 : 0), 500000, 400000].map(Math.round);
+  return { g, total: g.reduce((x, y) => x + y, 0), from: "2026-11 에 잰 20편 장으로 본 어림" };
+}
+function tokBarHtml() {
+  if (!cur) return "";
+  const a = tokActual(cur), e = tokExpect(cur), tok = cur.tok || {};
+  if (!a.total && cur.status !== "running") return "";
+  const scale = Math.max(a.total, e.total, 1), pct = v => (Math.round(v / scale * 1000) / 10) + "%";
+  const col = (i, base) => "color-mix(in srgb, var(" + base + ") " + TOK_MIX[i] + "%, var(--surface))";
+  const segs = (g, base, curI) => g.map((v, i) => v > 0 ? "<i" + (i === curI ? " class='cur'" : "") + " style='width:" + pct(v) + ";background:" + col(i, base) + "' title='" + TOK_GROUPS[i][0] + " " + fmtTok(v) + "'></i>" : "").join("");
+  const one = "<i style='width:" + pct(a.total) + ";background:" + col(0, "--accent") + "' title='읽은 토큰 " + fmtTok(a.total) + "'></i>";   /* 단계 기록이 없는 옛 장 */
+  const diff = a.total - e.total, done = cur.status === "done";
+  const note = done ? (Math.abs(diff) < e.total * 0.08 ? "예상과 비슷" : diff > 0 ? "예상보다 " + fmtTok(diff) + " 더" : "예상보다 " + fmtTok(-diff) + " 덜")
+    : (diff > 0 ? "예상을 " + fmtTok(diff) + " 넘음" : "예상의 " + Math.round(a.total / e.total * 100) + "%");
+  const leg = a.split ? "<div class='tokleg'>" + TOK_GROUPS.map((x, i) => "<span><i style='background:" + col(i, "--accent") + "'></i>" + x[0] + " <b>" + (a.g[i] ? fmtTok(a.g[i]) : "–") + "</b> / " + fmtTok(e.g[i]) + (i === a.cur ? " · 지금" : "") + "</span>").join("") + "</div>" : "";
+  return "<div class='tokbox'><div class='sec'>읽은 토큰 — 예상과 실제</div>" +
+    "<div class='tokrow'><span class='k'>예상</span><span class='tokbar exp'>" + segs(e.g, "--text-3", -1) + "</span><span class='v'>" + fmtTok(e.total) + " 안팎</span></div>" +
+    "<div class='tokrow'><span class='k'>실제</span><span class='tokbar act'>" + (a.split ? segs(a.g, "--accent", a.cur) : one) + "</span><span class='v'><b>" + fmtTok(a.total) + "</b></span></div>" + leg +
+    "<div class='hint' style='margin-top:4px;line-height:1.5'>" + note + (tok.cached ? " · 실제 가운데 캐시에서 읽은 것 " + fmtTok(tok.cached) : "") + " · 호출 " + (cur.calls || 0) + "번 · 묶음마다 실제 / 예상 · 예상은 " + e.from + "</div></div>";
+}
 function stageFrac() {
   const pr = cur.prog || {}, el = (cur.now - (cur.stage_t || cur.now)) + (Date.now() - got) / 1000, T = expectSec(cur.stage);
   const byTime = Math.min(0.92, el / T);
@@ -575,7 +646,7 @@ function runHtml() {
     "<div class='warnbox'>" + (cur.status === "error" ? "멈췄습니다 — " + esc(cur.error || "") : "멈춰 있습니다.") + " 지금까지 한 것은 남아 있어 남은 단계부터 이어서 씁니다.</div>";
   return "<div class='page run'><h2>" + esc((cur.plan || {}).title || cur.topic) + "</h2>" +
     "<div class='hint' style='margin-bottom:var(--s3)'>" + esc(cur.topic) + " · " + esc(EFFORT[(cur.opts || {}).effort] || "") + "</div>" + head +
-    "<div style='margin:var(--s3) 0'>" + rows + "</div>" +
+    "<div style='margin:var(--s3) 0'>" + rows + "</div>" + tokBarHtml() +
     "<div>" + (running ? "<button class='ghostbtn' id='stopBtn'>멈추기</button>" : "<button class='primary' id='resumeBtn'>이어서 쓰기</button> <button class='act warn' id='delBtn'>지우기</button>") + "</div>" +
     ((cur.log || []).length ? "<div class='sec'>진행</div>" + cur.log.map(l => "<div class='logl'>" + esc(l.m) + "</div>").join("") : "") + plist + "</div>";
 }
@@ -1330,7 +1401,8 @@ function infoPanel() {
     kv("원문과 대조", "고쳐 쓴 문장 " + (s.fixed || 0) + (s.joined ? " · 절 사이 잇는 문장 손질 " + s.joined : "") + " · 뺀 문장 " + rm.length + (rm.length ? " <button class='act' id='rmBtn' style='padding:0 4px'>" + (panel === "removed" ? "접기" : "보기") + "</button>" : "")) +
     kv("걸린 시간", fmtDur(cur.sec || 0)) + kv("모델", esc(Object.keys(cur.models || {}).join(", ") || EFFORT[(cur.opts || {}).effort] || "")) +
     kv("읽은 토큰", fmtTok(tok.in || 0) + (tok.cached ? " (그중 캐시 " + fmtTok(tok.cached) + ")" : "") + " · 호출 " + (cur.calls || 0) + "번");
-  h += stagesHtml();
+  tokRemember(cur);
+  h += tokBarHtml() + stagesHtml();
   if (panel === "removed" && rm.length) h += "<div class='sec'>대조에서 뺀 문장 " + rm.length + "개</div><div class='hint' style='line-height:1.5'>원문 문장이 받치지 않아 장에 싣지 않은 문장입니다.</div>" +
     rm.map(x => "<div class='rm'><div>" + esc(x.t) + "</div><div class='w'>" + esc(VERDICT[x.v] || "") + " — " + esc(x.why) + "</div>" +
       (x.tried ? "<div class='s'>고쳐 써 본 문장: " + esc(x.tried) + (x.why2 ? " — 다시 대조에서: " + esc(x.why2) : "") + "</div>" : "") + "<div class='s'>" + esc(x.sec || "") + "</div></div>").join("");
