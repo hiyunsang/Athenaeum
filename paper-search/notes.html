@@ -65,7 +65,7 @@
   .empty { padding: var(--s4) var(--s3); color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
   /* 가운데: 토의 */
   #thwrap { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* 논지 popover 의 기준 */
-  .page { max-width: var(--read-width); margin: 0 auto; padding: var(--s5) var(--s6) var(--s6); }
+  .page { max-width: calc(var(--read-width) + 2 * var(--s6)); margin: 0 auto; padding: var(--s5) var(--s6) var(--s6); }   /* 좌우 여백은 폭 안에서 뺀다(border-box) — 넓은 창에서는 글 폭이 그대로 읽기 폭, 좁은 창에서는 여백이 남는다 */
   .th { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
   .th textarea.tt { flex: 1; min-width: 240px; font-family: var(--font-serif); font-size: 20px; font-weight: 600; line-height: 1.3; border: 0; padding: 2px 0; background: transparent; resize: none; overflow: hidden; }   /* 긴 물음도 제목이 된다 — 줄바꿈해 다 보이게 */
   .th textarea.tt:focus { outline: none; border-bottom: 1px solid var(--accent); background: transparent; }
@@ -123,7 +123,7 @@
   .waitbox .hint { margin-top: 4px; }
   .warnbox { background: var(--amber-bg); color: var(--amber); border-radius: var(--r); padding: var(--s2) var(--s3); margin: var(--s3) 0; line-height: 1.55; }
   #askbox { flex: none; border-top: 1px solid var(--line); background: var(--surface); }
-  #askbox .in { max-width: var(--read-width); margin: 0 auto; padding: var(--s3) var(--s6) var(--s4); }
+  #askbox .in { max-width: calc(var(--read-width) + 2 * var(--s6)); margin: 0 auto; padding: var(--s3) var(--s6) var(--s4); }
   #askbox textarea { width: 100%; resize: vertical; min-height: 68px; max-height: 40vh; }
   #askbox .row { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s2); flex-wrap: wrap; }
   #askbox .row select { padding: 3px 6px; font-size: 12px; } #askbox .row label { font-size: 12px; color: var(--text-2); display: inline-flex; gap: 4px; align-items: center; }
@@ -170,6 +170,17 @@
   .sec .n { font-weight: 400; color: var(--accent); margin-left: 4px; }
   .secline { display: flex; align-items: center; gap: 6px; } .secline .r { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; }
   @media (max-width: 1100px) { #app { grid-template-columns: minmax(0, 1fr) 6px min(var(--card-w, 340px), 62vw); } #app.nocard { grid-template-columns: minmax(0, 1fr); } }
+  /* 좁은 창 (사용자 2026-11-13: '창을 좁게 보면 좌우 여유가 너무 없어진다') — 카드·계획 칸은 토의 옆이 아니라 토의 자리에 통째로 뜨고, 머리줄과 여백을 줄인다 */
+  @media (max-width: 760px) {
+    #app:not(.nocard) { grid-template-columns: minmax(0, 1fr); }
+    #app:not(.nocard) #main, #app:not(.nocard) #cardsplit { display: none; }
+    #cardp { border-left: 0; }
+  }
+  @media (max-width: 640px) {
+    header { gap: var(--s2); padding: 0 var(--s3); } header h1 { display: none; }
+    .page { padding: var(--s4) var(--s4) var(--s6); } #askbox .in { padding: var(--s3) var(--s4) var(--s4); }
+    .navix { padding: 5px 9px; }
+  }
 </style>
 <script src="/ui.js"></script>
 </head>
@@ -214,7 +225,8 @@ const FROM_KO = { study: "공부 장", explore: "논문 탐색", ms: "원고", p
 let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null, wanted = [];
 const URLP = new URLSearchParams(location.search);
 let showIx = true;   /* 가운데 칸: 주제 목록(true) ↔ 토의. 연 주제가 없으면 늘 목록 */
-let panelOpen = !!URLP.get("tab") || lsGet("notes_cardp_open", "0") === "1";   /* 오른쪽 칸(카드·계획) — 머리줄 단추로 여닫고 기억한다 */
+const narrow = () => window.matchMedia("(max-width: 760px)").matches;   /* 좁은 창에서는 카드·계획 칸이 토의 자리에 통째로 뜬다 */
+let panelOpen = !!URLP.get("tab") || (lsGet("notes_cardp_open", "0") === "1" && !narrow());   /* 오른쪽 칸(카드·계획) — 머리줄 단추로 여닫고 기억한다 (좁은 창은 닫힌 채 열고, 거기서 여닫은 것은 기억하지 않는다) */
 let thKeep = 0;
 
 // ---------- 머리줄 · 보기 바꾸기 ----------
@@ -228,6 +240,7 @@ function renderNav() {
   renderCardTg();
 }
 function setView(ix) {   /* 주제 목록 ↔ 토의 — 토의의 읽던 자리는 지킨다 */
+  if (panelOpen && narrow()) setPanel(false);   /* 좁은 창에서는 칸이 토의·목록을 가린다 */
   const w = $("thwrap"), was = $("main").classList.contains("ix"), now = !!ix || !cur;
   if (!was && now) thKeep = w.scrollTop;
   showIx = !!ix; $("main").classList.toggle("ix", now);
@@ -242,10 +255,14 @@ function renderCardTg() {   /* 오른쪽 칸을 여닫는 단추 — 닫혀 있�
   b.title = panelOpen ? "카드·계획 칸을 닫습니다" : "이 주제의 카드 · 틀 · 설계서 · 반론 · 서론 · 점검 · 이어서 · 연구실을 오른쪽에 엽니다";
   b.innerHTML = "카드 · 계획" + (mark ? "<span class='b'>" + mark + "</span>" : "");
 }
+function showTalk() {   /* 칸의 「대화로」 를 눌렀을 때 — 묻는 칸이 보이게 */
+  if (panelOpen && narrow()) setPanel(false);
+  if (cur && $("main").classList.contains("ix")) setView(false);
+}
 function setPanel(on) {
   on = !!on; if (on === panelOpen && $("app").classList.contains("nocard") === !on) return;
   if (!on) flushSaves();
-  panelOpen = on; lsSet("notes_cardp_open", on ? "1" : "0");
+  panelOpen = on; if (!narrow()) lsSet("notes_cardp_open", on ? "1" : "0");
   $("app").classList.toggle("nocard", !on);
   if (on) { newTabs.delete(cardTab); renderCard(); } else renderCardTg();
   const t = $("title"); if (t) fit(t, 28);
@@ -308,6 +325,7 @@ async function open(id) {
   if (r.error || !r.note) { alert(r.error || "찾지 못했습니다"); return; }
   cur = r.note; curId = cur.id; lsSet("notes_last", curId); draft = "";
   try { history.replaceState(null, "", "/notes?id=" + encodeURIComponent(curId)); } catch (e) {}
+  if (panelOpen && narrow()) setPanel(false);
   showIx = false; $("main").classList.remove("ix");   /* 그리기 전에 토의 보기로 — 숨은 채 그리면 제목·글 칸의 높이를 못 잰다 */
   renderList(); renderMain(); renderCard(); schedulePoll();
   const w = $("thwrap"); w.scrollTop = w.scrollHeight; thKeep = w.scrollTop;
@@ -611,7 +629,7 @@ function renderThread() {
   el.innerHTML = h;
   el.querySelectorAll(".pick").forEach(b => b.onclick = e => {   /* 선택지 — 그 말로 바로 묻는다. Shift 는 묻는 칸에 넣기만 */
     const th = cur.thread || [], c = ((th[th.length - 1] || {}).choices || [])[+b.dataset.pi]; if (!c) return;
-    if (e.shiftKey) { draft = c; renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } return; }
+    if (e.shiftKey) { draft = c; showTalk(); renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } return; }
     el.querySelectorAll(".pick").forEach(x => x.disabled = true);
     send(c, true);
   });
@@ -806,7 +824,7 @@ function renderCard() {
     if (cur.pending) return;
     const p = ((cur.intro || {}).paras || [])[+b.dataset.iask]; if (!p) return;
     draft = "서론 " + (+b.dataset.iask + 1) + "문단(" + p.role + "): " + p.gist + "\n이 문단을 이렇게 짜는 것이 맞나? 할 말의 차례와 근거 논문이 충분한지, 빠진 선행 연구가 있는지 따져 줘.";
-    renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView(); }
+    showTalk(); renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView(); }
   });
   el.querySelectorAll("[data-iwrite]").forEach(b => b.onclick = async () => {   /* 서론 문단 쓰기 — 원고의 문단 쓰기 그대로 (2026-10-25) */
     b.disabled = true;
@@ -827,12 +845,12 @@ function renderCard() {
   bindFields(el, ".cf textarea[data-pk]", () => { clearTimeout(planSaveT); planSaveT = setTimeout(savePlan, 800); });
   el.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); fetch("/api/open", { method: "POST", body: JSON.stringify({ file: a.dataset.open }) }); });
   el.querySelectorAll("[data-q]").forEach(b => b.onclick = () => openBig("/explore?q=" + encodeURIComponent(b.dataset.q) + "&go=1", "athenaeum_explore", "width=1280,height=900"));
-  el.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { if (cur.pending) return; draft = "'" + b.dataset.ask + "' — 이것을 정해야 한다. 서재의 논문과 지금까지의 토의로 보아 어느 쪽이 나은가, 까닭은?"; renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.scrollIntoView(); } });
+  el.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => { if (cur.pending) return; draft = "'" + b.dataset.ask + "' — 이것을 정해야 한다. 서재의 논문과 지금까지의 토의로 보아 어느 쪽이 나은가, 까닭은?"; showTalk(); renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.scrollIntoView(); } });
   el.querySelectorAll("[data-reply]").forEach(b => b.onclick = () => {
     if (cur.pending) return;
     const o = (cur.objections || []).find(x => x.id === b.dataset.reply); if (!o) return;
     draft = "반론(" + (META.reviewer_ko[o.who] || o.who) + "): " + o.t + (o.ask ? "\n물음: " + o.ask : "") + "\n내 답: ";
-    renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView(); }
+    showTalk(); renderAsk(); const t = $("askIn"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); t.scrollIntoView(); }
   });
   el.querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
     const [rid, status] = b.dataset.st.split(":"); b.disabled = true;
