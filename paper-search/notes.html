@@ -515,7 +515,7 @@ function msgHtml(m, i) {
   const rh = (m.read || []).length ? " · 논문 " + m.read.length + "편을 읽음(" + esc(m.read.map(x => x.short).join(", ")) + ")" : "";   /* 이 물음에 답하려고 골라 읽은 논문의 요약 (2026-11-17) */
   const wh = m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편을 봄" : "";   /* 학술 데이터베이스에서 방금 찾아 붙인 논문(제목·초록) */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
-    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + lh + rh + wh +
+    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 원문을 열어 봄" : "") + lh + rh + wh +
     ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + cissueHtml(m) + "</div>";
 }
 /* 답이 든 서재 논문을 요약과 견줘 어긋난 말 — 답 뒤의 정리 호출이 같이 본다 */
@@ -679,7 +679,7 @@ function renderAsk() {
   const box = $("askbox"); if (!cur) { box.hidden = true; return; }
   box.hidden = false;
   if (cur.pending) { box.innerHTML = "<div class='in'><div class='hint'>답을 기다리는 중입니다. 답이 오면 이어서 물을 수 있습니다.</div></div>"; return; }
-  const effSaved = lsGet("notes_effort", "xhigh"), eff = (effSaved === "max" || !EFFORT[effSaved]) ? "xhigh" : effSaved, lib = false, first = !(cur.thread || []).length, study = lsGet("notes_study", "auto");   /* 최대·서재 찾아보기는 그 물음에만 — 다음 물음은 엑스트라·끔으로 (2026-10-30: 둘이 기억돼 물음마다 13분·100만 토큰이 들었다) */
+  const effSaved = lsGet("notes_effort", "xhigh"), eff = (effSaved === "max" || !EFFORT[effSaved]) ? "xhigh" : effSaved, first = !(cur.thread || []).length, study = lsGet("notes_study", "auto");   /* 최대·서재 원문까지는 그 물음에만 — 다음 물음은 엑스트라·끔으로 (2026-10-30: 둘이 기억돼 물음마다 13분·100만 토큰이 들었다) */
   const studies = META.studies || [], studyOk = study === "auto" || study === "none" || studies.some(x => x.id === study), sv = studyOk ? study : "auto";
   const studyOpts = "<option value='auto'" + (sv === "auto" ? " selected" : "") + ">공부 장: 알아서</option><option value='none'" + (sv === "none" ? " selected" : "") + ">공부 장 안 봄</option>" +
     studies.map(x => "<option value='" + esc(x.id) + "'" + (sv === x.id ? " selected" : "") + ">공부: " + esc((x.title || "").slice(0, 34)) + "</option>").join("");
@@ -688,19 +688,18 @@ function renderAsk() {
   const wv = (cur.opts || {}).world === "on" ? "on" : "auto";   /* 세상 문헌 — 기본은 서재만 보고, 청할 때만 밖을 찾는다. 주제마다 기억(opts.world) (2026-11-11) */
   const worldOpts = [["auto", "세상 문헌: 청할 때만"], ["on", "세상 문헌: 물음마다"]].map(x => "<option value='" + x[0] + "'" + (wv === x[0] ? " selected" : "") + ">" + x[1] + "</option>").join("");
   const lastA = (cur.thread || []).filter(m => m.role === "claude" && m.sec).slice(-1)[0];
-  const lastLine = lastA ? "지난 답: " + fmtDur(lastA.sec) + (lastA.tok ? " · 읽은 토큰 " + fmtTok(lastA.tok.in) : "") + (EFFORT[(cur.opts || {}).effort] ? " · " + EFFORT[(cur.opts || {}).effort] : "") + (lastA.lib && lastA.turns > 1 ? " · 서재를 찾아봄" : "") + ((lastA.studies || []).length ? " · 공부 " + lastA.studies.length + "장" : "") + (lastA.ms ? " · 원고" : "") + " — 답의 길이는 물음의 길이를 따릅니다(길게 받으려면 '자세히')" : "";
+  const lastLine = lastA ? "지난 답: " + fmtDur(lastA.sec) + (lastA.tok ? " · 읽은 토큰 " + fmtTok(lastA.tok.in) : "") + (EFFORT[(cur.opts || {}).effort] ? " · " + EFFORT[(cur.opts || {}).effort] : "") + (lastA.lib && lastA.turns > 1 ? " · 원문을 열어 봄" : "") + ((lastA.studies || []).length ? " · 공부 " + lastA.studies.length + "장" : "") + (lastA.ms ? " · 원고" : "") + " — 답의 길이는 물음의 길이를 따릅니다(길게 받으려면 '자세히')" : "";
   const opts = lsGet("notes_askopts", "0") === "1";   /* 선택지는 「옵션」 뒤로 (2026-10-30: 단추가 너무 많다) */
   const val = cur.error ? ((cur.thread || []).slice(-1)[0] || {}).text || draft : draft;
   const ph = !first ? "이어서 묻기 (Ctrl+Enter)" : cur.kind === "ask" ? "읽고 나서 궁금한 것을 물어 보세요 (Ctrl+Enter) — 예: 이 분야의 큰 흐름은? 이 논문은 그 안에서 어디에 서나? 우리 서재의 논문들은 무엇을 말하나?" :
     (cur.seed && cur.seed.text ? "출발점을 놓고 물어 보세요 — 예: 이걸 연구 주제로 세울 수 있을까? (Ctrl+Enter)" : "첫 물음 (Ctrl+Enter) — 예: 이 주제, 서재에 이미 한 연구가 있나? 새로움이 어디에 있을까?");
   box.innerHTML = "<div class='in'><textarea id='askIn' placeholder='" + ph + "'>" + esc(val) + "</textarea>" +
-    "<div class='row'><button class='primary' id='askGo'>묻기</button><button class='act' id='askOptTg' title='모델 · 서재 찾아보기 · 공부 장 · 원고 · 세상 문헌 · 글씨 크기'>" + (opts ? "옵션 접기" : "옵션") + "</button><span class='opts'" + (opts ? "" : " hidden") + "><select id='askEff' title='답하는 모델'>" + Object.keys(EFFORT).map(k => "<option value='" + k + "'" + (eff === k ? " selected" : "") + ">" + EFFORT[k] + "</option>").join("") + "</select>" +
-    "<label title='끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 1~3분에 답합니다 — 연구 물음은 대개 충분. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만 — 특정 논문의 수치·조건·방법을 물을 때만. 이번 물음에만 켜집니다'><input type='checkbox' id='askLib'" + (lib ? " checked" : "") + "> 서재 찾아보기</label>" +
+    "<div class='row'><button class='primary' id='askGo'>묻기</button><button class='act' id='askOptTg' title='모델 · 서재 읽기 · 공부 장 · 원고 · 세상 문헌 · 글씨 크기'>" + (opts ? "옵션 접기" : "옵션") + "</button><span class='opts'" + (opts ? "" : " hidden") + "><select id='askEff' title='답하는 모델'>" + Object.keys(EFFORT).map(k => "<option value='" + k + "'" + (eff === k ? " selected" : "") + ">" + EFFORT[k] + "</option>").join("") + "</select>" +
     "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 그 논지와 근거 원문이 뜹니다'>" + studyOpts + "</select>" +
     "<select id='askMs' title='고른 원고의 글(제목·초록·절·그림 캡션)을 물음에 붙입니다 — 우리 실험의 장비·조건·측정값·기호의 뜻을 알고 답하게. 「알아서」 는 주제와 맞는 원고가 있을 때만 붙입니다. 붙으면 토큰 1만~2만이 더 듭니다'>" + msOpts + "</select>" +
     "<select id='askWorld' title='기본은 서재만 보고 답합니다. 「세상 문헌에서 찾아 줘」 라고 묻거나 답 끝의 그런 선택지를 누르면, 그 물음에서만 학술 데이터베이스(OpenAlex·Scopus)에서 가까운 논문 스무 편쯤의 제목과 초록을 찾아 같이 봅니다(15~45초 더 걸림). 「물음마다」 로 두면 이 주제에서는 연구가 될 만한지·선행연구를 물을 때마다 찾습니다 — 서재에 논문이 거의 없는 새 주제에 맞습니다'>" + worldOpts + "</select>" +
-    "<select id='askRead' title='물음마다 가벼운 모델이 서재에서 읽어야 할 논문을 여섯 편까지 고르고, 그 논문의 요약 전문을 Claude 가 읽고 답합니다(앞의 세 편은 절마다의 요약까지). 고르는 데 10~20초, 읽는 토큰이 2만쯤 더 듭니다. 「안 읽음」 이면 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
-    "<option value='auto'" + (((cur.opts || {}).read) !== "off" ? " selected" : "") + ">논문 읽기: 골라서 읽음</option><option value='off'" + (((cur.opts || {}).read) === "off" ? " selected" : "") + ">논문 읽기: 안 읽음</option></select>" +
+    "<select id='askRead' title='서재 읽기 — 「골라서 요약 읽기」(기본): 가벼운 모델이 이 물음에 읽어야 할 논문을 여섯 편까지 고르고, Claude 가 그 논문의 요약 전문을 읽고 답합니다(고르는 데 10~20초, 토큰 2만쯤 더). 「골라서 원문까지」: 그 위에 고른 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(5~15분, 토큰 수십만 — 이번 물음에만). 「안 읽음」: 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
+    [["auto", "서재: 골라서 요약 읽기"], ["deep", "서재: 골라서 원문까지 (이번만)"], ["off", "서재: 안 읽음"]].map(([v, t]) => "<option value='" + v + "'" + ((((cur.opts || {}).read) === "off" ? "off" : "auto") === v ? " selected" : "") + ">" + t + "</option>").join("") + "</select>" +
     "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
     "</span></div><div class='hint' id='askMsg'></div></div>";
   const ot = $("askOptTg"); if (ot) ot.onclick = () => { lsSet("notes_askopts", lsGet("notes_askopts", "0") === "1" ? "0" : "1"); renderAsk(); };
@@ -713,7 +712,7 @@ function applyFont() { $("thwrap").style.fontSize = (+lsGet("ui_chat_font", "13"
 async function send(pickText, pick) {   /* pick = 답 끝의 선택지를 눌러 보낸 것 — 묻는 칸에 쓰던 글은 그대로 둔다 */
   pick = pick === true && typeof pickText === "string";
   const t = $("askIn"), q = (pick ? pickText : (t ? t.value : "")).trim(); if (!q) { if (t) t.focus(); return; }
-  const eff = $("askEff").value, lib = $("askLib").checked, study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto", read = ($("askRead") || {}).value || "auto";
+  const eff = $("askEff").value, rsel = ($("askRead") || {}).value || "auto", lib = rsel === "deep", study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto", read = rsel === "off" ? "off" : "auto";   /* 원문까지는 이번 물음에만 — 주제에는 auto 로 남는다 */
   lsSet("notes_effort", eff === "max" ? "xhigh" : eff); lsSet("notes_study", study);   /* 최대·서재 찾아보기는 기억하지 않는다 (2026-10-30) */
   $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
   let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv, world, read, pick: pick || undefined }); } catch (e) { r = { error: "서버 연결 실패" }; }
@@ -1055,7 +1054,7 @@ const TAB_HELP = {   /* 갈래마다 '어떻게 쓰나' (2026-10-29) — 단추�
   check: "가설×관찰×예측 표(식별력 — 못 가르는 가설 쌍을 프로그램이 찾음, Opus 4~5분) · 약속↔답 지도(서론의 약속이 예상 결과·주장으로 답해지는가) · 공백 검증(서론의 공백을 세상의 문헌으로 — 이미 한 사람이 있나). 경고 수가 단추에 보입니다.",
   next: "설계서로 원고 초안(제목·초록·절 차례)을 새 원고 파일로 세우고(Opus 3~4분), 이 주제로 논문 탐색·공부 창을 엽니다.",
   lab: "우리 연구실의 장비·역량·못 하는 것과 분야 지형(핵심 저자·그룹·저널 등급·우리 자리)을 적어 두면 모든 답이 그것에 비추어 실험을 가르고 주장의 무게를 가립니다. 「Claude 가 아는 것」 은 배경의 크기입니다." };
-const ASK_HELP = "답의 길이는 물음의 길이를 따릅니다 — 한 줄로 물으면 한두 문단, '자세히·검토해 줘·다 따져 줘' 라고 적으면 길게. 모델은 Opus 엑스트라가 기본(2~4분)입니다. 최대는 10분을 넘기기 쉽고 글이 더 낫다는 증거가 없어서, 골라도 그 물음에만 쓰이고 다음 물음은 엑스트라로 돌아옵니다. 「서재 찾아보기」 를 끄면 배경(서재 전체의 한 줄 요약·공부 장·탐색 기록)만 보고 답합니다 — 연구 물음은 대개 이것으로 충분합니다. 켜면 번역·요약 파일을 직접 읽어 5~15분·토큰 수십만: 특정 논문의 수치·조건·방법을 물을 때만, 그 물음에만 켜집니다. " +
+const ASK_HELP = "답의 길이는 물음의 길이를 따릅니다 — 한 줄로 물으면 한두 문단, '자세히·검토해 줘·다 따져 줘' 라고 적으면 길게. 모델은 Opus 엑스트라가 기본(2~4분)입니다. 최대는 10분을 넘기기 쉽고 글이 더 낫다는 증거가 없어서, 골라도 그 물음에만 쓰이고 다음 물음은 엑스트라로 돌아옵니다. 「서재」 는 기본이 '골라서 요약 읽기' — 물음마다 읽어야 할 논문을 여섯 편까지 골라 그 요약 전문을 읽고 답합니다. '골라서 원문까지' 는 그 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(5~15분·토큰 수십만, 그 물음에만). " +
   "「공부 장」 은 주제와 맞는 다 쓴 장의 논지·엇갈림·식을 물음에 붙입니다(알아서 = 맞는 장 둘까지) — 답 속의 C1.2 같은 번호를 누르면 그 논지·장의 문장·근거 원문이 여기 뜨고, 거기서 공부 창으로 갈 수 있습니다. 「원고」 를 고르면 그 원고의 글을 붙여 우리 실험(장비·조건·측정값)을 알고 답합니다 — 모르면 가정하지 않고 되묻습니다. 답 끝의 '탐색:'·'공부:' 줄은 눌러서 돌립니다.";
 function helpHtml() {
   const on = lsGet("notes_help", "0") === "1", t = TAB_HELP[cardTab] || "";

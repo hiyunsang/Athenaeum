@@ -23,7 +23,7 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-11-17c)"
+VERSION = "연구 노트 (2026-11-17d)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
@@ -1017,7 +1017,7 @@ def _own_research(nt):
     return n >= 2
 
 
-def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False, worldtext="", qkind="", readtext=""):
+def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False, worldtext="", qkind="", readtext="", readfiles=()):
     seed = nt.get("seed") or {}
     fr = seed.get("from") or {}
     isask = (nt.get("kind") or "topic") == "ask" and not _own_research(nt)   # 물음 — 분야를 배우려는 대화 (2026-10-27); 제 연구를 다루게 된 물음 노트는 연구 주제처럼 (2026-11-17)
@@ -1120,13 +1120,17 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
     elif qkind == "prior" and isask and worldtext and not (short and not asking):
         note = note.rstrip("\n").rstrip(")") + " 서재 밖의 연구는 [세상의 문헌에서 찾은 것]에서 확인한 것으로 말합니다.)\n"
     out += "\n[물음]\n" + question + "\n" + note + "\n" + (_RULE_ASK if isask else _RULE)
-    if lib:
-        out += ("\n[서재를 찾아볼 수 있다]\n연구자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
-                "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(이름은 서재 목록의 '연도_저널_저자_제목' 꼴 — Glob 으로 찾는다).\n"
-                "- 배경의 한 줄 요약만으로 답할 수 없는 물음일 때만 찾아라. Grep 으로 용어(영어·한국어)를 *.요약.md 에서 찾고, 필요한 논문의 요약 또는 .번역.md 의 그 부분만 Read 한다(통째로 읽지 마라). 도구는 많아야 10번.\n"
-                "- 서재에서 확인한 것은 (저자 연도)로 가리키고, 확인하지 못한 것은 확인하지 못했다고 말하라.") % (cfg["GEN_DIR"], cfg["ARCHIVE"])
+    if lib:   # 서재 읽기 「원문까지」 — 고른 논문의 전문 번역을 직접 연다 (2026-11-17: 「서재 찾아보기」 와 「논문 읽기」 를 하나로)
+        first = ""
+        if readfiles:
+            first = ("- 먼저 볼 파일은 [읽은 논문]의 전문 번역이다: " + ", ".join('"%s.번역.md"' % os.path.splitext(os.path.basename(f))[0] for f in list(readfiles)[:6]) +
+                     ". 요약에 없는 세부(수치·조건·장치·방법·그림이 보인 것)가 답을 바꿀 때 그 부분을 Grep 으로 찾아 Read 한다. 다른 논문은 그 다음이다.\n")
+        out += ("\n[서재의 원문을 열어 볼 수 있다]\n연구자가 모은 논문의 번역 폴더는 \"%s\" 다(지금 작업 폴더가 아니니 Grep·Glob·Read 에 이 경로를 주어라). 논문마다 \"<이름>.요약.md\"(한국어 요약)와 \"<이름>.번역.md\"(한국어 전문 번역, 문장마다 [sN] 표식)가 있고, "
+                "원문 PDF 는 \"%s\" 에 같은 이름으로 있다(이름은 서재 목록의 '연도_저널_저자_제목' 꼴 — Glob 으로 찾는다).\n" + first +
+                "- 파일을 통째로 읽지 말고 필요한 부분만 Read 한다. 도구는 많아야 10번.\n"
+                "- 원문에서 확인한 것은 (저자 연도)로 가리키고, 확인하지 못한 것은 확인하지 못했다고 말하라.") % (cfg["GEN_DIR"], cfg["ARCHIVE"])
     else:
-        out += "\n(파일은 열 수 없습니다. 배경과 여기에 준 것만 보고 답하고, 더 확인해야 할 것이 있으면 무엇을 봐야 하는지만 말해 주세요. 연구자가 「서재 찾아보기」를 켜고 다시 물을 수 있습니다.)"
+        out += "\n(파일은 열 수 없습니다. 배경과 여기에 준 것만 보고 답하고, 더 확인해야 할 것이 있으면 무엇을 봐야 하는지만 말해 주세요. 연구자가 「서재 읽기: 원문까지」로 다시 물을 수 있습니다.)"
     return out
 
 
@@ -1271,7 +1275,7 @@ def _ask_job(nid):
         others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
-        res = None if cancelled else run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
+        res = None if cancelled else run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo]), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
                   add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt)) if run else None
         cancelled = cancelled or bool((res or {}).get("cancelled"))
         if not cancelled and (not res or not (res.get("text") or "").strip()):
