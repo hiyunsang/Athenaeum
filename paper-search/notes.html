@@ -512,9 +512,10 @@ function msgHtml(m, i) {
       if (/^L/.test(id)) { const r = lrf[id]; return r ? "<a class='lref' data-lk='" + esc(id) + "' data-mi='" + i + "' title='" + esc((r.star ? "★ " : "") + (r.short || "") + (r.journal ? " · " + r.journal : "") + (r.paper ? " — 논문" : (r.page != null ? " · p." + (r.page + 1) : "")) + " · 누르면 원문과 번역") + "'>" + esc(id) + "</a>" : esc(id); }
       const a = anc[id]; return a ? "<a class='stc' data-st='" + esc(a.sid) + "' data-si='" + a.si + "' data-u='" + esc(a.key) + "' data-cid='" + esc(id) + "'" + (a.fb ? " data-fb='1'" : "") + " title='" + esc(("공부 「" + (titles[a.sid] || "") + "」 — " + (a.claim || a.t || "")).slice(0, 220)) + " · 누르면 그 논지와 근거 원문'>" + esc(id) + "</a>" : esc(id); }).join(" "));
   const lh = m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개(" + m.libhits.papers + "편)를 봄" : "";   /* 물음의 낱말로 색인에서 찍어 붙인 문장 — 머리줄은 flex 라 span 을 끼우면 줄이 갈린다 */
+  const rh = (m.read || []).length ? " · 논문 " + m.read.length + "편을 읽음(" + esc(m.read.map(x => x.short).join(", ")) + ")" : "";   /* 이 물음에 답하려고 골라 읽은 논문의 요약 (2026-11-17) */
   const wh = m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편을 봄" : "";   /* 학술 데이터베이스에서 방금 찾아 붙인 논문(제목·초록) */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
-    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + lh + wh +
+    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + lh + rh + wh +
     ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + cissueHtml(m) + "</div>";
 }
 /* 답이 든 서재 논문을 요약과 견줘 어긋난 말 — 답 뒤의 정리 호출이 같이 본다 */
@@ -666,7 +667,7 @@ function renderThread() {
   if (cur.pending) {
     const eff = (cur.opts || {}).effort || "xhigh", T = expect(eff);
     const tk = () => { const el2 = Date.now() / 1000 - cur.pending, b = $("askBar"), e2 = $("askEta"); if (!b) { clearInterval(tick); return; }
-      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (cur.stage === "world" ? "세상의 문헌을 찾는 중 · " : cur.stage === "lib" ? "서재를 찾는 중 · " : el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
+      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (cur.stage === "world" ? "세상의 문헌을 찾는 중 · " : cur.stage === "lib" ? "서재를 찾는 중 · " : cur.stage === "read" ? "읽을 논문을 고르는 중 · " : el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
     tk(); tick = setInterval(tk, 1000);
   }
 }
@@ -698,6 +699,8 @@ function renderAsk() {
     "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 그 논지와 근거 원문이 뜹니다'>" + studyOpts + "</select>" +
     "<select id='askMs' title='고른 원고의 글(제목·초록·절·그림 캡션)을 물음에 붙입니다 — 우리 실험의 장비·조건·측정값·기호의 뜻을 알고 답하게. 「알아서」 는 주제와 맞는 원고가 있을 때만 붙입니다. 붙으면 토큰 1만~2만이 더 듭니다'>" + msOpts + "</select>" +
     "<select id='askWorld' title='기본은 서재만 보고 답합니다. 「세상 문헌에서 찾아 줘」 라고 묻거나 답 끝의 그런 선택지를 누르면, 그 물음에서만 학술 데이터베이스(OpenAlex·Scopus)에서 가까운 논문 스무 편쯤의 제목과 초록을 찾아 같이 봅니다(15~45초 더 걸림). 「물음마다」 로 두면 이 주제에서는 연구가 될 만한지·선행연구를 물을 때마다 찾습니다 — 서재에 논문이 거의 없는 새 주제에 맞습니다'>" + worldOpts + "</select>" +
+    "<select id='askRead' title='물음마다 가벼운 모델이 서재에서 읽어야 할 논문을 여섯 편까지 고르고, 그 논문의 요약 전문을 Claude 가 읽고 답합니다(앞의 세 편은 절마다의 요약까지). 고르는 데 10~20초, 읽는 토큰이 2만쯤 더 듭니다. 「안 읽음」 이면 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
+    "<option value='auto'" + (((cur.opts || {}).read) !== "off" ? " selected" : "") + ">논문 읽기: 골라서 읽음</option><option value='off'" + (((cur.opts || {}).read) === "off" ? " selected" : "") + ">논문 읽기: 안 읽음</option></select>" +
     "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
     "</span></div><div class='hint' id='askMsg'></div></div>";
   const ot = $("askOptTg"); if (ot) ot.onclick = () => { lsSet("notes_askopts", lsGet("notes_askopts", "0") === "1" ? "0" : "1"); renderAsk(); };
@@ -710,10 +713,10 @@ function applyFont() { $("thwrap").style.fontSize = (+lsGet("ui_chat_font", "13"
 async function send(pickText, pick) {   /* pick = 답 끝의 선택지를 눌러 보낸 것 — 묻는 칸에 쓰던 글은 그대로 둔다 */
   pick = pick === true && typeof pickText === "string";
   const t = $("askIn"), q = (pick ? pickText : (t ? t.value : "")).trim(); if (!q) { if (t) t.focus(); return; }
-  const eff = $("askEff").value, lib = $("askLib").checked, study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto";
+  const eff = $("askEff").value, lib = $("askLib").checked, study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto", read = ($("askRead") || {}).value || "auto";
   lsSet("notes_effort", eff === "max" ? "xhigh" : eff); lsSet("notes_study", study);   /* 최대·서재 찾아보기는 기억하지 않는다 (2026-10-30) */
   $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
-  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv, world, pick: pick || undefined }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv, world, read, pick: pick || undefined }); } catch (e) { r = { error: "서버 연결 실패" }; }
   if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; document.querySelectorAll("#thread .pick").forEach(x => x.disabled = false); return; }
   if (!pick) draft = "";
   cur = r.note; renderThread(); renderAsk(); renderListSoon(); schedulePoll();
