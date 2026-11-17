@@ -96,6 +96,8 @@
   .msg .go { display: block; margin: 2px 0; padding: 3px 0; color: var(--accent); text-align: left; }
   .msg .go::before { content: "↗ "; color: var(--text-3); }
   /* 답 끝의 선택지 — 마지막 답 아래에만. 누르면 그 말이 다음 물음이 된다 (2026-11-11, 사용자: '묻기 말고 그래도 선택 몇 개 중에 하나 선택할 자유는 있었음 좋겠는데') */
+  .cissue { margin-top: var(--s2); padding: 6px 10px; border-left: 3px solid var(--amber); background: var(--amber-bg); font-size: 12px; line-height: 1.55; color: var(--text-2); }   /* 답이 서재 논문에 관해 한 말이 요약과 어긋날 때 (2026-11-17) */
+  .cissue b { color: var(--text); font-weight: 600; }
   .picks { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: var(--s3) 0 var(--s2); }
   .picks .pkh { font-size: 11px; color: var(--text-3); }
   .pick { font-size: 13px; line-height: 1.45; text-align: left; color: var(--text); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r); padding: 5px 11px 5px 9px; cursor: pointer; word-break: keep-all; max-width: 100%; }
@@ -513,7 +515,13 @@ function msgHtml(m, i) {
   const wh = m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편을 봄" : "";   /* 학술 데이터베이스에서 방금 찾아 붙인 논문(제목·초록) */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
     (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 서재를 찾아봄" : "") + lh + wh +
-    ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + "</div>";
+    ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + cissueHtml(m) + "</div>";
+}
+/* 답이 든 서재 논문을 요약과 견줘 어긋난 말 — 답 뒤의 정리 호출이 같이 본다 */
+function cissueHtml(m) {
+  const xs = m.cite_issues || []; if (!xs.length) return "";
+  return "<div class='cissue' title='답이 끝난 뒤 프로그램이 답이 든 서재 논문을 그 논문의 요약과 견준 것입니다. 다음 물음에 같이 가서 Claude 가 바로잡습니다'>서재의 요약과 어긋난 말" +
+    xs.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + (x.file ? " <a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(x.file) + "&kind=summary'>요약 열기 ↗</a>" : "") + "</div>").join("") + "</div>";
 }
 function clip(t, n) { t = String(t || ""); return t.length > n ? t.slice(0, n).trim() + "…" : t; }   /* 잘린 제목은 잘렸다고 보이게 */
 /* 답 끝의 선택지 — 마지막 답이 Claude 의 것이고 기다리는 물음이 없을 때만 (2026-11-11) */

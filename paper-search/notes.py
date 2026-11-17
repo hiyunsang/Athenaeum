@@ -23,12 +23,15 @@ _BG = {}            # 배경 조각의 캐시: gaps(인용 이웃, 12시간) · 
 _STUDY_CACHE = {}
 _HIST_LABS = {}
 
-VERSION = "연구 노트 (2026-11-17)"
+VERSION = "연구 노트 (2026-11-17b)"
 STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
 KIND_KO = {"topic": "연구 주제", "ask": "물음"}
 _EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None)}
+_LIB_MAX = 104000        # 서재 블록의 위 끝(글자) — 한 줄 요약을 실을 때의 상한
+_LIB_LINE = 0            # 논문마다 한 줄 요약의 길이(0 = 싣지 않는다). 서재가 419편이 되자 옛 상한(62,000자)에서 줄마다 20자가 남아 요약이 저절로 통째로 빠져 있었다(2026-11-17 에 알아챔).
+                         # 90자씩 되살리면 배경이 9.2만 → 13.3만 자(물음마다 읽는 토큰 +3만)라 기본은 싣지 않고, 대신 줄마다 방법 라벨을 붙인다(+7천 자). 요약의 앞 90자는 대개 제목을 되풀이하는 배경 절이다
 _LIB_BUDGET = 62000      # 서재 블록(글자) — 논문 287편이면 머리줄 ~35,000자 + 요약 한 줄 100자쯤 (재 봄 2026-10-08: 60,000 에 제목 100자로 두니 요약이 59자로 잘려 쓸모가 없었다)
 CARD_KEYS = ["question", "hypothesis", "design", "expected", "risks", "papers", "groups", "journals", "next"]
 CARD_KO = {"question": "연구 물음", "hypothesis": "가설", "design": "실험·해석 설계", "expected": "예상 결과와 그 뜻", "risks": "위험·약점·반론",
@@ -278,6 +281,30 @@ def _clean_card(d, base=None):
 
 
 # ---------- 배경: Claude 가 아는 것 (시스템 프롬프트 → 캐시) ----------
+_METHOD_GROUP = re.compile(r"방법|측정|기법|method|technique|measure", re.I)
+_MLAB = {"mt": None, "set": frozenset()}
+
+
+def _method_labels():
+    """라벨 체계에서 '방법' 묶음의 라벨(In-situ · SEM · DIC · FEM …) — 서재 목록의 줄에 붙여, 그 논문이 무엇으로 본 연구인지 제목 밖에서도 알게 한다.
+    묶음 이름에 방법·측정·기법(method·technique)이 든 것만. 그런 묶음이 없는 체계에서는 빈 집합(전처럼 앞의 두 라벨만 보인다)."""
+    p = os.path.join(os.path.dirname(cfg.get("TAGS_PATH") or ""), "labels.json")
+    try:
+        mt = os.path.getmtime(p)
+    except OSError:
+        return frozenset()
+    if _MLAB["mt"] == mt:
+        return _MLAB["set"]
+    d = cfg["load_json"](p, {})
+    out = set()
+    if isinstance(d, dict):
+        for g, ls in d.items():
+            if not str(g).startswith("_") and isinstance(ls, list) and _METHOD_GROUP.search(str(g)):
+                out |= {str(x) for x in ls if isinstance(x, str)}
+    _MLAB["mt"], _MLAB["set"] = mt, frozenset(out)
+    return _MLAB["set"]
+
+
 def _lib_rows():
     """서재의 논문 전부 → [{year, file, head, line}] 최신순. head = '연도 ★저널 첫 저자 — 제목 [라벨]', line = 요약의 한 줄"""
     try:
@@ -291,18 +318,19 @@ def _lib_rows():
         tops = set(str(x).upper() for x in (cfg["pref_abbrs"]() if cfg.get("pref_abbrs") else ()))
     except Exception:
         tops = set()
-    rows = []
+    rows, mlab = [], _method_labels()
     for f in files:
         m = re.match(r"^(\d{4})_([A-Za-z0-9&-]+)_([^_]+)_(.*)\.pdf$", f)
         year, jr, au, title = (m.group(1), m.group(2), m.group(3), m.group(4)) if m else ("", "", "", f[:-4])
         t = tags.get(f) if isinstance(tags.get(f), dict) else {}
         title = re.sub(r"\s+", " ", str(t.get("title") or title)).strip()
-        labels = [str(x) for x in (t.get("labels") or [])[:2] if str(x).strip()]
+        allab = [str(x) for x in (t.get("labels") or []) if str(x).strip()]
+        labels = allab[:2] + [x for x in allab[2:] if x in mlab][:3]   # 앞의 둘(대개 재료·공정) + 방법 라벨 셋까지 (2026-11-17)
         try:
             line = cfg["paper_line"](f) if cfg.get("paper_line") else ""
         except Exception:
             line = ""
-        rows.append({"year": year, "file": f, "line": re.sub(r"\s+", " ", line or "").strip(),
+        rows.append({"year": year, "file": f, "line": re.sub(r"\s+", " ", line or "").strip(), "star": jr.upper() in tops,
                      "head": "%s %s%s %s — %s%s" % (year or "????", "★" if jr.upper() in tops else "", jr or "?", au or "?", title[:84], (" [" + ", ".join(labels) + "]") if labels else "")})
     rows.sort(key=lambda r: (-(int(r["year"]) if r["year"].isdigit() else 0), r["file"]))
     return rows
@@ -441,17 +469,29 @@ def field_text():
 
 
 def _lib_block(budget=_LIB_BUDGET):
+    """서재 블록 — 논문마다 머리줄 + 한 줄 요약. 요약은 논문마다 _LIB_LINE 자를 주고, 그래도 _LIB_MAX 를 넘으면 ★ 저널·최근 논문부터 실을 수 있는 만큼만 싣는다
+    (전처럼 고르게 줄이면 서재가 커질수록 모든 요약이 쓸모없는 길이가 되고, 40자 아래에서는 통째로 빠졌다)."""
     rows = _lib_rows()
     n_sum = sum(1 for r in rows if r["line"])
-    room = max(0, budget - sum(len(r["head"]) + 6 for r in rows))
-    cut = min(170, room // n_sum) if n_sum else 0
-    out = ["# 서재 — 연구자가 모은 논문 %d편(최신순; 요약이 있는 것 %d편). 줄마다: 연도 저널(★ = 우선 저널) 첫 저자 — 제목 [라벨] :: 그 논문이 무엇을 했나(요약의 한 줄). 파일 이름은 '연도_저널_저자_제목.pdf' 꼴이다." % (len(rows), n_sum)]
-    for r in rows:
-        s = r["line"][:cut] if cut >= 40 else ""
+    heads = sum(len(r["head"]) + 3 for r in rows)
+    room = max(budget, _LIB_MAX) - heads
+    cut = _LIB_LINE
+    order = [] if cut < 40 else sorted((i for i, r in enumerate(rows) if r["line"]), key=lambda i: (0 if rows[i].get("star") else 1, i))   # rows 는 최신순 — ★ 저널 먼저, 그 안에서 최근 것부터
+    give, used = set(), 0
+    for i in order:
+        need = min(len(rows[i]["line"]), cut) + 5
+        if used + need > room:
+            break
+        give.add(i)
+        used += need
+    out = ["# 서재 — 연구자가 모은 논문 %d편(최신순; 요약이 있는 것 %d편). 줄마다: 연도 저널(★ = 우선 저널) 첫 저자 — 제목 [라벨 — 재료·공정과, 있으면 그 연구의 방법(In-situ · SEM · DIC · FEM 같은 것)]%s. "
+           "이 목록은 서재에 무엇이 있는지 알려 주는 색인이다 — 줄에 적히지 않은 장치·방법·수치는 이 목록만으로는 알 수 없다. 파일 이름은 '연도_저널_저자_제목.pdf' 꼴이다." % (len(rows), n_sum, " :: 그 논문이 무엇을 했나(요약의 한 줄, 앞머리만)" if give else "")]
+    for i, r in enumerate(rows):
+        s = r["line"][:cut] if i in give else ""
         if s and len(r["line"]) > cut:
             s = s.rstrip() + "…"
         out.append("- " + r["head"] + ((" :: " + s) if s else ""))
-    return "\n".join(out), {"papers": len(rows), "summaries": n_sum, "cut": cut}
+    return "\n".join(out), {"papers": len(rows), "summaries": n_sum, "cut": cut, "lines": len(give)}
 
 
 def _study_digest(it):
@@ -684,7 +724,7 @@ _RULE = (
     "그 사실 하나에 답이 갈릴 때만 짧게 묻습니다. 답을 끝맺는 습관으로 질문을 붙이지 않습니다. 물을 필요가 없으면 묻지 않습니다.\n\n"
     "연구자가 뜻을 적지 않고 쓴 기호나 줄임말이 나오면 스스로 뜻을 찾아 읽습니다. 먼저 [원고]와 [지금까지의 정리]의 용어, 지난 대화에서 연구자가 그 말을 어떻게 썼는지 봅니다. 거기에 없으면 이 분야의 연구자가 당연히 떠올릴 뜻으로 읽습니다. 그렇게 읽었다는 것은 필요할 때 반 문장으로만 밝히고 바로 답합니다. "
     "연구자가 실제로 재서 쓰고 있는 값은 뜻이 통하는 값이라고 보고 출발합니다. '만약 다른 뜻이라면'을 가정해 그 위에 조언을 쌓거나, 연구자의 값을 다른 값으로 바꾸라고 하지 않습니다. 뜻이 둘로 갈려 답이 달라질 때만 어느 뜻인지 고르는 말을 선택 줄에 넣습니다.\n\n"
-    "논문은 (첫 저자 연도)로 가리킵니다. 서재에 있는 논문은 서재의 요약, 공부 장, [서재에서 찾은 문장]에 적힌 만큼만 말하고, 거기 없는 세부나 수치를 덧붙이지 않습니다. "
+    "논문은 (첫 저자 연도)로 가리킵니다. 서재에 있는 논문은 서재의 요약, 공부 장, [서재에서 찾은 문장]에 적힌 만큼만 말하고, 거기 없는 세부나 수치를 덧붙이지 않습니다. 배경의 서재 목록은 논문마다 제목과 라벨뿐인 색인입니다. 그 논문이 어떤 장치와 방법으로 무엇을 보았는지는 그 줄이나 라벨, [서재에서 찾은 문장], 공부 장에 적혀 있을 때만 말합니다. 적혀 있지 않으면 제목에서 짐작하지 않습니다. 특히 논문 여럿을 '~한 연구들'로 묶을 때는 묶음에 넣는 논문마다 그 방법이 적혀 있는지 봅니다. in situ(실시간 관찰)라고만 적힌 연구는 고속 카메라나 DIC 로 본 연구일 수 있고, SEM 안에서 깎은 연구라는 뜻이 아닙니다. 보기로 들 논문이 마땅치 않으면 확인되는 논문만 들고 멈춥니다. "
     "[세상의 문헌에서 찾은 것]에 있는 논문은 서재에 없어도 실제로 찾아 확인한 논문이니, 본문에서 ⟦W3⟧처럼 번호를 붙여 씁니다. 두 곳 어디에도 없이 당신의 기억으로만 보태는 내용은 "
     "'서재 밖:'으로 시작하는 문단 하나에 모아 두어 연구자가 확인할 수 있게 합니다. 그런 내용은 적을수록 좋습니다. 수치나 인용을 지어내지 않습니다. 같은 말을 하는 논문을 여럿 나열하지 않습니다. "
     "당신이 계산하거나 어림한 값은 그 자리에서 '제 계산으로는'이라고 한 번만 밝힙니다.\n\n"
@@ -725,7 +765,7 @@ _RULE_ASK = (
     "이것은 분야에 관한 질문이지 연구 주제의 심사가 아닙니다. 읽는 사람은 자기 분야에서는 전문가인 연구자입니다. 서재와 원고가 보여 주는 그 분야의 기본 개념과 기호는 풀어 설명하지 않습니다. 이 질문에서 새로 만나는 갈래의 개념만 그 자리에서 한 문장으로 풀고, "
     "큰 그림(무엇이 왜 문제이고 어떤 설명들이 겨루는가)에서 시작해 이 논문이나 이 질문이 그 안에서 서는 자리, 서재의 다른 논문이 말하는 것의 순서로 갑니다. 묻지 않았으면 새로움, 실험 설계, 저널, 약점을 따지지 않습니다.\n\n"
     "답의 길이는 질문에 맞춥니다. 한 줄 질문에는 한두 문단, '자세히'라고 했을 때만 길게 씁니다. 결론을 먼저 말하고 풀이를 붙입니다. 지난 답에서 이미 한 말과 연구자가 이미 아는 것은 반복하지 않습니다.\n\n"
-    "근거는 배경(서재, 공부 장, 지난 탐색)과 [출발점]의 요약입니다. 논문은 (첫 저자 연도)로 가리키고, 서재의 논문은 요약이나 공부 장에 적힌 만큼만 말합니다. 서재에 없는 논문이나 당신의 기억으로 보태는 내용은 "
+    "근거는 배경(서재, 공부 장, 지난 탐색)과 [출발점]의 요약입니다. 논문은 (첫 저자 연도)로 가리키고, 서재의 논문은 요약이나 공부 장에 적힌 만큼만 말합니다. 배경의 서재 목록은 논문마다 제목과 라벨뿐인 색인입니다. 그 논문이 어떤 장치와 방법으로 무엇을 보았는지는 그 줄이나 라벨, [서재에서 찾은 문장], 공부 장에 적혀 있을 때만 말합니다. 적혀 있지 않으면 제목에서 짐작하지 않습니다. 특히 논문 여럿을 '~한 연구들'로 묶을 때는 묶음에 넣는 논문마다 그 방법이 적혀 있는지 봅니다. in situ(실시간 관찰)라고만 적힌 연구는 고속 카메라나 DIC 로 본 연구일 수 있고, SEM 안에서 깎은 연구라는 뜻이 아닙니다. 보기로 들 논문이 마땅치 않으면 확인되는 논문만 들고 멈춥니다. 서재에 없는 논문이나 당신의 기억으로 보태는 내용은 "
     "'서재 밖:'으로 시작하는 문단 하나에 모읍니다. 수치나 인용을 지어내지 않고, 문장마다 '제 생각'이라고 달지 않습니다. 모르는 사실은 '~라면'으로 경우를 나누기보다 짧게 묻되, 답이 그 사실에 갈릴 때만 묻습니다.\n\n"
     "연구자가 뜻을 적지 않고 쓴 기호나 줄임말이 나오면 스스로 뜻을 찾아 읽습니다. 먼저 [원고]와 [지금까지의 정리]의 용어, 지난 대화에서 연구자가 그 말을 어떻게 썼는지 봅니다. 거기에 없으면 이 분야의 연구자가 당연히 떠올릴 뜻으로 읽습니다. 그렇게 읽었다는 것은 필요할 때 반 문장으로만 밝히고 바로 답합니다. "
     "연구자가 실제로 재서 쓰고 있는 값은 뜻이 통하는 값이라고 보고 출발합니다. '만약 다른 뜻이라면'을 가정해 그 위에 조언을 쌓거나, 연구자의 값을 다른 값으로 바꾸라고 하지 않습니다. 뜻이 둘로 갈려 답이 달라질 때만 어느 뜻인지 고르는 말을 선택 줄에 넣습니다.\n\n"
@@ -1016,6 +1056,7 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
         last = past_items[-1] if past_items else {}
         if last.get("role") == "claude" and last.get("choices"):   # 바로 앞 답 끝에 낸 선택지 — 같은 것을 다시 내지 않게, 고른 것이 무엇이었는지 알게 (2026-11-11)
             out += "(바로 앞 답의 끝에 낸 선택지: " + " / ".join(str(c) for c in last["choices"][:4]) + ")\n"
+        out += _cite_issues_text(past_items)
         if any(m.get("role") == "chat" for m in past_items):
             out += "(「Claude 채팅에서 가져온 글」 은 연구자가 다른 창의 Claude 와 나눈 이야기를 정리해 이 노트에 넣은 것입니다. 연구자가 이미 읽은 내용이니 되풀이하지 않고 그 위에서 답합니다.)\n"
     if nt.get("plan"):
@@ -1786,6 +1827,77 @@ _DIGEST_RULE = (
     "지난 정리에서 아직 참인 것은 남기고 뒤집힌 것은 고치거나 뺍니다. Claude 가 '~라면' 하고 가정해서 내놓은 제안은 연구자가 받아들였을 때만 넣고, 연구자가 그 가정이 틀렸다고 했으면 그 제안은 버린 것에 적습니다. 토의에 없는 것을 넣지 않고, 수치는 출처가 있는 것만 적습니다. 보통 한국어 문장으로, 마크다운 제목·굵게 없이.\n"
     "그리고 이 문답에서 연구자가 밝힌 것 가운데 다른 주제의 토의에도 그대로 적용될 만한 것 — 어떤 종류의 제안이나 답을 싫어하는가(reject), 글과 답의 꼴·방향에 관한 바람(prefer), 연구실·장비·시간의 제약(constraint) — 이 있으면 0~3개를 한 문장씩 적습니다. 이 주제에만 해당하는 것은 넣지 않습니다. 없으면 빈 목록.\n"
     "JSON 으로만 답합니다: {\"digest\": \"정리 글\", \"memory\": [{\"kind\": \"reject|prefer|constraint\", \"text\": \"한 문장\"}]}")
+# 답이 든 서재 논문을 그 논문의 요약과 견준다 (2026-11-17, 사용자: 'Gupta 는 in-SEM 연구가 아닌데 자꾸 구라침') — 따로 부르지 않고 정리 호출에 얹는다(논문 여섯까지, 2천~3천 자)
+_CITE_RULE = (
+    "\n\n하나 더 합니다. 아래 [답이 든 서재 논문]은 새 문답의 Claude 답이 이름을 든 논문과, 서재의 요약에 적힌 그 논문의 내용입니다. "
+    "답이 그 논문에 관해 한 말 — 어떤 장치와 방법으로 보았나, 어떤 재료와 규모인가, 무엇을 보였나 — 가운데 요약과 분명히 어긋나는 것만 cite_issues 에 적습니다. "
+    "논문 여럿을 한 묶음으로 부른 말('in-SEM 연구들', '세 연구 모두')도 그 논문 하나하나에 대한 말로 봅니다. 예를 들어 요약에는 고속 카메라와 DIC 로 보았다고 적혀 있는데 답이 SEM 안에서 깎은 연구로 묶었으면 어긋난 것입니다. "
+    "어긋난다는 것은 답의 말과 요약이 함께 참일 수 없다는 뜻입니다. 요약에 없어서 확인할 수 없는 것, 표현만 다른 것, 요약을 줄여 말한 것, 요약이 더 자세히 적었을 뿐인 것, 논문의 제목이 그대로 말하고 있는 것은 넣지 않습니다. 망설여지면 넣지 않습니다. 어긋난 것이 없으면 빈 목록입니다. 어긋난 말은 정리의 '세운 사실'에 넣지 않습니다.\n"
+    "이때는 JSON 에 한 칸을 더합니다: \"cite_issues\": [{\"paper\": \"목록의 이름 그대로\", \"said\": \"답이 한 말(짧게)\", \"is\": \"요약에 적힌 것(짧게)\"}]")
+
+
+def _cite_material(turn, cap=6):
+    """답이 든 서재 논문마다 요약에 적힌 것 — 한 줄 요약(300자) · 라벨 · 논문 카드의 물은 것과 한 것. → (글, {이름: 파일}). 답이 문장 번호(L)로 받친 논문보다 이름만 든 논문을 먼저."""
+    cites = turn.get("cites") or {}
+    lfiles = {(v or {}).get("file") for v in (turn.get("lib_refs") or {}).values()}
+    items, seen = [], set()
+    for key, v in cites.items():
+        f = (v or {}).get("file")
+        if f and f not in seen:
+            seen.add(f)
+            items.append((1 if f in lfiles else 0, len(items), key, f))
+    items.sort()
+    tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
+    mlab = _method_labels()
+    L, names = [], {}
+    for _, _, key, f in items[:cap]:
+        try:
+            line = cfg["paper_line"](f) if cfg.get("paper_line") else ""
+        except Exception:
+            line = ""
+        try:
+            card = cfg["paper_card"](f) if cfg.get("paper_card") else None
+        except Exception:
+            card = None
+        if not line and not card:
+            continue
+        t = tags.get(f) if isinstance(tags, dict) and isinstance(tags.get(f), dict) else {}
+        allab = [str(x) for x in (t.get("labels") or [])]
+        labs = ", ".join([x for x in allab if x in mlab] + [x for x in allab if x not in mlab][:8])   # 방법 라벨을 앞에 — 어떤 장치로 본 연구인지가 가장 자주 어긋난다
+        row = "- %s — %s" % (key, re.sub(r"\.pdf$", "", f)[:110])
+        if labs:
+            row += "\n  라벨: " + labs
+        if line:
+            row += "\n  요약: " + line[:320]
+        if card and card.get("contribution"):
+            row += "\n  한 것: " + card["contribution"][:240]
+        L.append(row)
+        names[key] = f
+    return "\n".join(L), names
+
+
+def _cite_issues_clean(raw, names):
+    out = []
+    for it in raw if isinstance(raw, list) else []:
+        if not isinstance(it, dict):
+            continue
+        p, said, is_ = str(it.get("paper") or "").strip(), re.sub(r"\s+", " ", str(it.get("said") or "")).strip(), re.sub(r"\s+", " ", str(it.get("is") or "")).strip()
+        key = p if p in names else next((k for k in names if k in p or p in k), "") if p else ""
+        if not key or len(said) < 4 or len(is_) < 4:
+            continue
+        out.append({"key": key, "file": names[key], "said": said[:200], "is": is_[:240]})
+    return out[:4]
+
+
+def _cite_issues_text(past_items):
+    """다음 물음에 — 앞의 두 답에서 서재 요약과 어긋났던 말"""
+    L = []
+    for m in [x for x in past_items if x.get("role") == "claude"][-2:]:
+        for it in m.get("cite_issues") or []:
+            L.append("- %s: 앞 답은 '%s' 라고 했지만 서재의 요약에는 '%s' 라고 적혀 있습니다." % (it.get("key"), it.get("said"), it.get("is")))
+    if not L:
+        return ""
+    return "(앞 답이 서재 논문에 관해 한 말 가운데 요약과 어긋난 것 — 프로그램이 답 뒤에 견준 것입니다. 같은 말을 되풀이하지 않고, 이번 답이 그 말에 기대게 되면 한 문장으로 바로잡은 뒤 이어갑니다)\n" + "\n".join(L[:5]) + "\n"
 _MEM_KO = {"reject": "거절", "prefer": "선호", "constraint": "제약"}
 MEM_FILE = "_기억.json"
 
@@ -1870,6 +1982,14 @@ def _digest_run(nid):
               (("[지금까지의 정리]\n" + old[:3600] + "\n\n") if old else "") + (_decisions_text(nt) + "\n" if nt.get("decisions") else "") +
               (("[바로 앞 문답]\n" + "\n\n".join(cut(m, 1500) for m in th[-4:-2]) + "\n\n") if len(th) >= 4 else "") +
               "[새 문답]\n" + "\n\n".join(cut(m, 6000) for m in th[-2:]))
+    ctext, cnames = "", {}
+    try:
+        ctext, cnames = _cite_material(th[-1])
+    except Exception:
+        ctext, cnames = "", {}
+    if ctext:
+        prompt = prompt.replace(_DIGEST_RULE, _DIGEST_RULE + _CITE_RULE, 1) + "\n\n[답이 든 서재 논문 — 서재의 요약에 적힌 것]\n" + ctext
+    last_t = th[-1].get("t")
     res, d = None, None
     try:
         run = cfg.get("claude_run")
@@ -1898,6 +2018,16 @@ def _digest_run(nid):
             nt.pop("digest_error", None)
         else:
             nt["digest_error"] = "정리를 갱신하지 못했습니다" + _why()
+        if isinstance(d, dict) and cnames:   # 답이 든 논문 가운데 요약과 어긋난 말 — 그 답에 적어 화면이 보이고, 다음 물음에 같이 간다
+            issues = _cite_issues_clean(d.get("cite_issues"), cnames)
+            for m in reversed(nt.get("thread") or []):
+                if m.get("role") == "claude" and m.get("t") == last_t:
+                    if issues:
+                        m["cite_issues"] = issues
+                    else:
+                        m.pop("cite_issues", None)
+                    m["cite_checked"] = len(cnames)
+                    break
         _save(nt)
 
 
