@@ -2804,7 +2804,7 @@ function chatThreadHtml(m) {
   const altBody = (base, a) => { const b = cl ? cleanDiff(base, a) : wordDiff(base, a); return { html: b, cut: cl && !/<ins>/.test(b) && normWs(a).length < normWs(base).length }; };
   return th.map((x, i) => x.role === "user" ? x.quiet ? "" : "<div class='fbmsg user'><b>나:</b> " + (x.swap ? "대안으로 바꿈" + (x.swap.undone ? " <span class='hint' style='display:inline'>— 되돌렸음</span>"
         : i === lastSwap ? " · <a href='#' class='act' data-undo='" + i + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도 되돌릴 수 있습니다)'>고치기 전으로 되돌리기</a>" : "") : esc(x.text)) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole || x.ev || x.stylus ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.stylus || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + chatEditsBlock(m, x, i) + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
+    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole || x.ev || x.stylus ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.stylus || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + chatEditsBlock(m, x, i) + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (x.wide ? " · <b style='color:var(--text-2);font-weight:600' title='고른 글만이 아니라 앞뒤 문장까지 함께 고친 글입니다 — 바꾸면 그 범위가 통째로 바뀝니다'>앞뒤 문장까지 고침</b>" : "") + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>"; }).join("") +
       (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend((x.alts || []).length || (x.rw || []).length ? Object.assign({}, x, { text: (x.alts || []).join(" ") + " " + (x.rw || []).map(r => r.text).join(" ") }) : x) + "</div>").join("");
 }
@@ -3154,7 +3154,7 @@ function chatBind(card) {
   if (cq("[data-mgo]")) cq("[data-mgo]").onclick = () => selGoto(m);
   if (cq("[data-mdel]")) cq("[data-mdel]").onclick = e => { e.stopPropagation(); if (!confirm("이 " + ((m.thread || []).length ? "대화" : "메모") + "를 지울까요?")) return; doc.memos = doc.memos.filter(x => x !== m); chatOpen.delete(id); delete chatDraft[id]; save(true); memoUi(); };
   if (cq(".memoDone")) cq(".memoDone").onchange = e => { m.done = e.target.checked; if (m.done) chatOpen.delete(id); save(); memoUi(); };
-  all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k], m.thread[i].cites); });
+  all("[data-alt]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.alt.split(":").map(Number); chatApply(m, m.thread[i].alts[k], m.thread[i].cites, m.thread[i].wide ? m.thread[i].base : ""); });
   all("[data-undo]").forEach(a => a.onclick = e => { e.preventDefault(); chatUndo(m, +a.dataset.undo); });
   all("[data-rwundo]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.rwundo.split(":").map(Number); chatRewriteUndo(m, i, k); });
   all("[data-altview]").forEach(a => a.onclick = e => { e.preventDefault(); localStorage.setItem("ms_alt_view", altView() === "clean" ? "diff" : "clean"); rwCache.clear(); renderChat(); });
@@ -3355,20 +3355,27 @@ function selGoto(m) {
   const c = $("center"), y = ta.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop + (a / Math.max(1, ta.value.length)) * ta.offsetHeight;
   c.scrollTop = Math.max(0, y - c.clientHeight / 3);
 }
-function chatApply(m, alt, cites) {   // 대안을 고른 글 자리에 바꿔 넣는다
-  const a = selFind(m);
+function chatApply(m, alt, cites, base) {   // 대안을 고른 글 자리에 바꿔 넣는다. base = Claude 가 앞뒤 문장까지 넓힌 범위의 원문(고른 글을 품는다) — 있으면 그 범위를 통째로 바꾼다
+  let a = selFind(m), old = m.quote;
   if (a < 0) { alert("고른 글을 원고에서 찾지 못했습니다 (그 사이 글이 바뀌었습니다). 다시 드래그해서 물어 주세요."); return; }
+  if (base && base !== m.quote && base.includes(m.quote)) {   /* 넓힌 범위: 고른 글을 품은 자리의 그 글 */
+    const text = selText(m.node, m.key), off = base.indexOf(m.quote);
+    let b = text.slice(a - off, a - off + base.length) === base ? a - off : -1;
+    if (b < 0) { b = text.lastIndexOf(base, a); if (b < 0 || b + base.length < a + m.quote.length) b = -1; }
+    if (b < 0) { alert("이 대안은 고른 글의 앞뒤 문장까지 고치는 것인데, 그 문장들이 그 사이 바뀌었습니다. 다시 물어 주세요."); return; }
+    a = b; old = base;
+  }
   alt = citeApply(alt, cites);   // 서재에서 단 인용 [@열쇠] → 참고문헌 번호
   const ta = taFor(m.node, m.key);
   if (ta) {
-    ta.focus(); ta.setSelectionRange(a, a + m.quote.length);
-    if (!document.execCommand("insertText", false, alt)) { ta.setRangeText(alt, a, a + m.quote.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); }   // Ctrl+Z 로 되돌릴 수 있다
+    ta.focus(); ta.setSelectionRange(a, a + old.length);
+    if (!document.execCommand("insertText", false, alt)) { ta.setRangeText(alt, a, a + old.length, "end"); ta.dispatchEvent(new Event("input", { bubbles: true })); }   // Ctrl+Z 로 되돌릴 수 있다
   } else {
-    const text = selText(m.node, m.key), next = text.slice(0, a) + alt + text.slice(a + m.quote.length);
+    const text = selText(m.node, m.key), next = text.slice(0, a) + alt + text.slice(a + old.length);
     if (m.node === "front") doc.front.abstract = next; else node(m.node)[m.key] = next;
   }
-  m.thread.push({ role: "user", text: "(대안으로 바꿈)", swap: { before: m.quote, after: alt, t: Date.now() / 1000 } });   // 고치기 전의 글 — 「고치기 전으로 되돌리기」
-  caseAdd("swap", m.quote, alt, chatLastQ(m));   // 교정 기억: 저자가 Claude 의 대안을 받아들인 것
+  m.thread.push({ role: "user", text: "(대안으로 바꿈)", swap: { before: old, after: alt, t: Date.now() / 1000 } });   // 고치기 전의 글 — 「고치기 전으로 되돌리기」
+  caseAdd("swap", old, alt, chatLastQ(m));   // 교정 기억: 저자가 Claude 의 대안을 받아들인 것
   m.quote = alt; m.start = a; m.unread = false; save(true); memoUi(m.id);
 }
 function chatUndo(m, i) {   // 대안으로 바꾼 것을 고치기 전의 글로 되돌린다 (가장 나중에 바꾼 것부터)

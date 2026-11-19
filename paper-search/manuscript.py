@@ -4955,7 +4955,7 @@ def ask_selection(doc, body):
                 m["error"] = res["error"]
             else:
                 m.pop("error", None)
-                m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": memo.get("quote"), "t": time.time(),
+                m.setdefault("thread", []).append({"role": "claude", "text": res.get("answer") or "", "alts": res.get("alternatives") or [], "base": res.get("base") or memo.get("quote"), "wide": bool(res.get("base")), "t": time.time(),
                                                    "model": res.get("model") or "", "effort": res.get("effort") or "", "looked": bool(res.get("looked")), "whole": bool(res.get("whole")), "tok": res.get("tok"), "refs": res.get("refs") or [],
                                                    "rw": res.get("rewrites") or [], "cites": res.get("cites") or [], "altflow": res.get("altflow") or [], "unknown": res.get("unknown") or [], "ev": res.get("ev"), "stylus": res.get("stylus") or ""})
                 m["unread"] = True
@@ -5624,6 +5624,29 @@ def chat_edits(doc, body):
             "model": meta.get("model", ""), "effort": effort or "", "tok": meta.get("tok"), "sec": round(time.time() - t0, 1), "i": i, "t": time.time()}
 
 
+_SPAN_ABBR = re.compile(r"(?:\b(?:Figs?|Eqs?|Refs?|Nos?|vs|al|e\.g|i\.e|cf|approx|Sec|Tab|ca|resp|Dr|Prof)|\b[A-Z])\.$")
+
+
+def _sent_spans(text):
+    """글을 문장으로 나눈 자리 [(시작, 끝)] — 글자 자리를 지킨다(대안의 범위를 문장 번호로 주고받으려고).
+    약어(Fig. · et al. · e.g.)와 소수점은 문장 끝으로 보지 않는다. 나눔이 조금 어긋나도 보여 준 번호와 같은 자리로 바꿔 넣으므로 안전하다."""
+    spans, a = [], 0
+    for m in re.finditer(r"[.!?][\"'\u201d\u2019)\]]*\s+", text):
+        if _SPAN_ABBR.search(text[a:m.start() + 1]):
+            continue
+        nxt = text[m.end():m.end() + 1]
+        if nxt and nxt.isascii() and nxt.islower():
+            continue
+        end = m.start() + len(m.group(0).rstrip())
+        if text[a:end].strip():
+            spans.append((a, end))
+        a = m.end()
+    tail_end = len(text.rstrip())
+    if text[a:tail_end].strip():
+        spans.append((a, tail_end))
+    return spans
+
+
 def _ask_selection(doc, body):
     """물음의 범위(scope): sel 고른 글 · para 그 문단(고른 글과 같은 길 — 대안이 문단 전체를 대체) · sec 그 절 전체 · doc 원고 전체.
     절은 검토·물음, 그리고 저자가 다시 써 달라고 하면 조각(절·소절)마다 다시 쓴 글(rewrites). 원고 전체는 검토·물음만.
@@ -5713,25 +5736,43 @@ def _ask_selection(doc, body):
             k = text.find(quote)
             para = text[max(0, k - 1200):k + len(quote) + 1200]
         ctx = para.replace(quote, "\u27ea" + quote + "\u27eb", 1) if para else "(고른 글이 든 문단을 찾지 못함 — 그 사이 글이 바뀌었을 수 있다)"
+        # 대안의 범위를 앞뒤 문장까지 넓힐 수 있게: 문단의 문장에 번호를 붙여 보여 준다 (2026-11-19, 사용자: '처음에 드래그한 문장만 수정이 가능한 것처럼 보여 — 앞뒤 문장도 손봐야 할 수 있으니')
+        spans, qa = [], para.find(quote) if para else -1
+        if scope == "sel" and qa >= 0 and len(para) <= 8000 and any(quote in p for p in re.split(r"\n\s*\n", text)):
+            spans = _sent_spans(para)
+            if len(spans) >= 2:
+                marks = [(a, 0, "[%d] " % (i + 1)) for i, (a, b) in enumerate(spans)] + [(qa, 1, "\u27ea"), (qa + len(quote), -1, "\u27eb")]
+                ctx, last = "", 0
+                for pos, _, tok in sorted(marks, key=lambda x: (x[0], x[1])):
+                    ctx += para[last:pos] + tok
+                    last = pos
+                ctx += para[last:]
+            else:
+                spans = []
+        range_rule = ("- 고른 부분만 고쳐서는 글이 서지 않을 때는 범위를 넓힌다 — 앞뒤 문장과 말이 겹치거나, 이음말·주어·문장의 차례가 같이 바뀌어야 하거나, 저자가 '통으로'·'앞뒤도'·'같이' 라고 했을 때. "
+                      "넓히려면 JSON 에 \"range\": [첫 문장 번호, 끝 문장 번호] 를 적는다([문단]의 [n] 번호, 고른 부분이 걸친 문장을 모두 품어야 한다). "
+                      "range 를 주면 모든 대안은 그 문장들 전체를 대체하는 글이다(문장을 합치거나 나누거나 차례를 바꿔도 된다) — 이때는 [문단]의 번호 표시 [n] 와 \u27ea \u27eb 를 대안에 넣지 않는다. "
+                      "넓힐 까닭이 없으면 range 는 [] 로 둔다 — 멀쩡한 앞뒤 문장까지 건드리지 않는다. 넓혔으면 answer 에서 어디까지 넓혔고 왜인지 한 문장으로 말한다(저자는 문장 번호를 보지 못한다 — 번호가 아니라 그 문장의 첫머리 말로 가리킨다). "
+                      "'범위를 넓혀 다시 물어 달라' 고 저자에게 떠넘기지 않는다 — 넓혀야 하면 직접 넓혀서 낸다.\n") if spans else ""
         lang_en = doc.get("meta", {}).get("lang") == "en" or sum(1 for ch in quote if ord(ch) < 128) > len(quote) * 0.8
         system, pre, whole = _ctx(doc, nid, key, quote + " " + question + " " + para[:3000], bool(body.get("whole", True)))
         prompt = (
             "당신은 기계가공·재료 분야 국제 저널 논문의 공저자이자 교정자다. 저자가 원고에서 글의 한 부분을 골라 묻거나, 고쳐 달라고 하거나, 제 생각(\"이렇게 바꾸면 어때?\")을 말한다. JSON 으로만 답하라:\n"
-            "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"], \"cites\": []}\n"
+            "{\"answer\": \"한국어로 짧게(2~5문장). 질문이면 답, 제안이면 그 제안에 대한 솔직한 평가와 이유\", \"alternatives\": [\"[고른 부분]을 그대로 대체할 글\"], \"range\": [], \"cites\": []}\n"
             "규칙:\n"
             "- 저자가 '짧게', '숫자만' 이라고 해도 형식은 이 JSON 이다 (짧은 답을 answer 에 넣는다).\n"
             "- alternatives 는 고쳐 쓰기를 바라거나 표현을 묻는 경우에만 1~3개. 뜻·사실·근거만 묻는 질문이면 빈 배열.\n"
             "- 각 대안은 [고른 부분]과 정확히 같은 범위를 대체한다. 앞뒤 글과 그대로 이어져야 하므로 고른 부분 밖의 글을 넣거나 빼지 마라. 글은 %s, 학술 문체.\n"
-            "%s"
+            "%s%s"
             "- 저자가 방향을 말했으면 첫 대안은 그 방향을 충실히 따른 것. 더 나은 길이 있다고 보면 그것을 둘째 대안으로 내고 answer 에서 이유를 말하라. 대안끼리는 실제로 달라야 한다.\n"
             "- 저자의 제안이 틀렸거나 글을 나쁘게 만든다고 보면 그렇게 말하라. 듣기 좋은 말을 하지 마라.\n"
             "%s%s"
             "- 원고에 없는 수치·결과를 지어내지 마라. 인용 번호 [n], 카드 번호 [cN], 수식($…$ 안의 LaTeX)은 고쳐 달라는 것이 아니면 그대로 둔다.\n\n"
             "%s\n"
-            "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
-            % ("영어로" if lang_en else "한국어로",
+            "논문 제목: %s\n절: %s\n\n[문단 — 고른 부분은 \u27ea \u27eb 사이%s]\n%s\n\n[고른 부분]\n%s\n%s\n[저자의 말]\n%s"
+            % ("영어로" if lang_en else "한국어로", range_rule,
                "- 저자는 문단 하나를 통째로 골랐다. 문장만이 아니라 문단의 구성(첫 문장이 요지를 여는지, 문장 순서, 앞뒤 문단과의 이음)도 보라. 대안은 문단 전체를 대체하며 대안은 1~2개면 된다.\n" if scope == "para" else "",
-               _ANSWER_RULE, cite_rule, _chat_style(doc, key, scope, quote, bool(ev_item)), doc.get("title", ""), (node or {}).get("heading", ""), ctx[:8000], quote[:6000], hist, question[:2000]))
+               _ANSWER_RULE, cite_rule, _chat_style(doc, key, scope, quote, bool(ev_item)), doc.get("title", ""), (node or {}).get("heading", ""), "; [n] = 문장 번호" if spans else "", ctx[:8000], quote[:6000], hist, question[:2000]))
     model, effort = _SEL_EFFORT.get(body.get("effort") or "xhigh", _SEL_EFFORT["xhigh"])
     cited = _cited_refs(doc, quote, para)
     extra = ""
@@ -5783,9 +5824,25 @@ def _ask_selection(doc, body):
             r = None
     if not isinstance(r, dict) or not (r.get("answer") or r.get("alternatives")):   # '숫자만' 같은 말에 JSON 없이 답한 경우 — 그 글을 답으로
         r = {"answer": re.sub(r"^```[a-z]*\n|\n```$", "", head).strip() or ("다시 쓴 글을 아래에 냈습니다." if rws else ""), "alternatives": []}
-    alts = [] if wide else [str(a).strip() for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(quote)][:3]
+    base = quote   # 대안이 대체하는 글 — Claude 가 range 를 주면 그 문장들(고른 부분을 품는다)
+    if not wide and spans and isinstance(r.get("range"), list) and len(r["range"]) == 2:
+        try:
+            ra, rb = sorted(int(v) for v in r["range"])
+            if 1 <= ra <= rb <= len(spans):
+                sa, sb = spans[ra - 1][0], spans[rb - 1][1]
+                for a0, b0 in spans:   # 고른 부분이 걸친 문장은 모두 품는다
+                    if a0 < qa + len(quote) and b0 > qa:
+                        sa, sb = min(sa, a0), max(sb, b0)
+                if para[sa:sb].strip() and _norm_ws(para[sa:sb]) != _norm_ws(quote):
+                    base = para[sa:sb]
+        except (TypeError, ValueError):
+            pass
+    alts = [] if wide else [re.sub(r"^\[\d{1,2}\] ", "", str(a).replace("\u27ea", "").replace("\u27eb", "").strip()).strip() if base != quote else str(a).strip()
+                            for a in (r.get("alternatives") or []) if str(a).strip() and _norm_ws(str(a)) != _norm_ws(base)][:3]
+    if not alts:
+        base = quote
     used = " ".join(alts) + " " + " ".join(x["text"] for x in rws)
-    altflow = [_chat_flow(a, base=quote) for a in alts]
+    altflow = [_chat_flow(a, base=base) for a in alts]
     for x in rws:
         x["flow"] = _chat_flow(x["text"], base=piece_text.get(x["node"]))
     cites = [c for c in _cite_info(doc, r.get("cites") if isinstance(r.get("cites"), list) else []) if ("[@%s]" % c["key"]) in used] if lib else []
@@ -5795,7 +5852,7 @@ def _ask_selection(doc, body):
     known = {c["key"] for c in cites}
     unknown = [k for k in dict.fromkeys(re.findall(r"\[@([^\]\s,;]+)\]", used)) if k not in known and k != "?"]
     answer = str(r.get("answer") or "").strip() + ("\n\n(다시 쓴 글의 일부가 끝까지 오지 않아 그 조각은 버렸습니다 — 범위를 좁혀 다시 물어 주세요.)" if lost else "")
-    return {"answer": answer, "alternatives": alts, "altflow": altflow if any(altflow) else [], "rewrites": rws, "cites": cites, "unknown": unknown,
+    return {"answer": answer, "alternatives": alts, "base": base if base != quote else "", "altflow": altflow if any(altflow) else [], "rewrites": rws, "cites": cites, "unknown": unknown,
             "ev": {"id": ev_item.get("id"), "topic": str(ev_item.get("topic") or "")[:80]} if ev_item else None, "stylus": STYLUS, "model": meta["model"], "effort": effort or "", "looked": lib and meta["turns"] > 1, "whole": bool(whole), "tok": meta.get("tok"),
             "refs": [{"n": c["n"], "file": c["file"]} for c in cited]}
 
