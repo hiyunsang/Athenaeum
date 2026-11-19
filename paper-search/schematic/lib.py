@@ -254,6 +254,11 @@ class Panel(object):
         return "\n".join(out)
 
 
+def _part(name, svg):
+    """PowerPoint 로 옮길 때 한 묶음이 되게 표시한다 (svg2pptx 가 읽는다 — 그림의 모양은 그대로)."""
+    return '<g data-k="part" data-name="%s">%s</g>' % (name, svg) if svg else svg
+
+
 def group(fragment, attrs="", opacity=1, transform=None):
     """Wrap fragment(s) in <g>; attrs is a raw attribute string (e.g. from glow()), transform like "rotate(30 100 100)"."""
     a = (" " + attrs.strip()) if attrs else ""
@@ -373,7 +378,8 @@ def _arrow(x1, y1, x2, y2, color, w, head, bend, dash, both):
     out += _head(x2, y2, math.atan2(y2 - c[1], x2 - c[0]), head, color)
     if both:
         out += _head(x1, y1, math.atan2(y1 - c[1], x1 - c[0]), head, color)
-    return out
+    return '<g data-k="arrow" data-p="%s %s %s %s %s %s" data-both="%d" data-head="%s">%s</g>' % (
+        _f(x1), _f(y1), _f(c[0]), _f(c[1]), _f(x2), _f(y2), 1 if both else 0, _f(head), out)
 
 
 def arrow(x1, y1, x2, y2, color=None, w=3, head=12, bend=0, dash=None):
@@ -411,7 +417,7 @@ def dimension(x1, y1, x2, y2, label, offset=24, color=None, size=14, sw=1.2, ext
     else:
         anchor = "start" if nx * sgn > 0 else "end"
         out.append(text(lx + (2 if anchor == "start" else -2), ly + size * 0.35, label, size, color, anchor=anchor))
-    return "".join(out)
+    return _part("dimension", "".join(out))
 
 
 def angle_mark(cx, cy, r, a0_deg, a1_deg, label=None, color=None, size=14, sw=1.5, dash=None, short=True):
@@ -435,7 +441,7 @@ def angle_mark(cx, cy, r, a0_deg, a1_deg, label=None, color=None, size=14, sw=1.
         lr = r + size * 0.9
         lx, ly = cx + lr * math.cos(am), cy - lr * math.sin(am)
         anchor = "start" if math.cos(am) > 0.4 else ("end" if math.cos(am) < -0.4 else "middle")
-        out += text(lx, ly + size * 0.35, label, size, color, anchor=anchor)
+        out = _part("angle", out + text(lx, ly + size * 0.35, label, size, color, anchor=anchor))
     return out
 
 
@@ -470,7 +476,7 @@ def label_box(x, y, s, size=14, fill=None, bg="#fff", stroke=None, pad=6, rx=3, 
     """Text s inside a rounded box centered at (x,y); fill = text color, bg = box color, stroke = box outline ("none" to drop)."""
     w = _text_w(s, size) + 2 * pad
     h = size * 1.15 + 2 * pad
-    return rect(x - w / 2.0, y - h / 2.0, w, h, bg, stroke, sw, rx) + text(x, y + size * 0.35, s, size, fill, weight, halo=None)
+    return '<g data-k="label">' + rect(x - w / 2.0, y - h / 2.0, w, h, bg, stroke, sw, rx) + text(x, y + size * 0.35, s, size, fill, weight, halo=None) + "</g>"
 
 
 def sub(x, y, base, subscript, size=16, fill=None, italic=True, anchor="middle", halo="#fff", weight="normal"):
@@ -481,7 +487,7 @@ def sub(x, y, base, subscript, size=16, fill=None, italic=True, anchor="middle",
     x0 = x - total / 2.0 if anchor == "middle" else (x - total if anchor == "end" else x)
     out = text(x0, y, base, size, fill, weight, italic, "start", halo)
     out += text(x0 + wb, y + size * 0.28, subscript, size * 0.7, fill, weight, False, "start", halo)
-    return out
+    return '<g data-k="sub" data-x="%s" data-y="%s" data-anchor="%s">%s</g>' % (_f(x), _f(y), anchor, out)
 
 
 # ----------------------------------------------------------------------------- defs, colors, decorations
@@ -580,7 +586,7 @@ def colorbar(canvas, x, y, w, h, name="jet", vmin=0, vmax=1, label="", ticks=5, 
             out.append(text(x + w / 2.0, y - size * 0.7, label, size, color, halo=None))
         else:
             out.append(text(x + w / 2.0, y + h + 8 + size * 0.8 + size * 1.3, label, size, color, halo=None))
-    return "".join(out)
+    return _part("colorbar", "".join(out))
 
 
 def axis_box(x, y, size=110, labels=("X", "Y"), color=None, sw=None):
@@ -593,7 +599,7 @@ def axis_box(x, y, size=110, labels=("X", "Y"), color=None, sw=None):
            text(x + 118 * k, y + 44 * k, labels[0], 28 * k, color, halo=None),
            arrow(x + 38 * k, y + 50 * k, x + 38 * k, y + 103 * k, color, max(1.5, 3 * k), 12 * k),
            text(x + 60 * k, y + 108 * k, labels[1], 28 * k, color, halo=None)]
-    return "".join(out)
+    return _part("axis", "".join(out))
 
 
 def zoom_link(x, y, w, h, tx, ty, tw, th, color=None, sw=1.5, target_box=True):
@@ -615,7 +621,7 @@ def zoom_link(x, y, w, h, tx, ty, tw, th, color=None, sw=1.5, target_box=True):
             pairs = [((x, y), (tx, ty + th)), ((x + w, y), (tx + tw, ty + th))]
     for a, b in pairs:
         out.append(line(a[0], a[1], b[0], b[1], color, sw * 0.8, dash="2 4"))
-    return "".join(out)
+    return _part("zoom", "".join(out))
 
 
 def scale_bar(x, y, length_px, label, color=None, sw=3, size=14, tick=6):
@@ -625,7 +631,7 @@ def scale_bar(x, y, length_px, label, color=None, sw=3, size=14, tick=6):
            line(x, y - tick, x, y + tick, color, sw * 0.6),
            line(x + length_px, y - tick, x + length_px, y + tick, color, sw * 0.6),
            text(x + length_px / 2.0, y - tick - 4, label, size, color)]
-    return "".join(out)
+    return _part("scale bar", "".join(out))
 
 
 # ----------------------------------------------------------------------------- grains / fields
@@ -751,7 +757,7 @@ def field_layer(x0, y0, x1, y1, fn, nx=40, ny=None, name="jet", opacity=1, blur=
         g = '<g clip-path="url(#%s)"><g filter="url(#%s)">%s</g></g>' % (cid, fid, g)
     if opacity is not None and float(opacity) < 1:
         g = '<g opacity="%s">%s</g>' % (_f(opacity), g)
-    return g
+    return '<g data-k="raster">%s</g>' % g
 
 
 def shade_polygons(polys, fn, name="jet", stroke=None, sw=1.2, opacity=1):
@@ -826,10 +832,10 @@ def workpiece(x, y, w, h, fill="#dcdcdc", stroke=None, sw=None, uncut=None, cut_
             pts = [(x, y), (xs, y), (xs, ym), (x + w, ym), (x + w, y + h), (x, y + h)]
             layer = [(x, y), (xs, y), (xs, ym), (x, ym)]
         tip = (xs, ym)
-    svg = polygon(pts, fill, "none")
     if uncut_fill and layer:
-        svg += polygon(layer, uncut_fill, "none")
-    svg += polygon(pts, "none", stroke, sw)
+        svg = _part("workpiece", polygon(pts, fill, "none") + polygon(layer, uncut_fill, "none") + polygon(pts, "none", stroke, sw))
+    else:
+        svg = polygon(pts, fill, stroke, sw)
     info = {"tip": tip, "step_x": xs, "machined_y": ym, "top_y": y, "bottom_y": y + h, "left": x, "right": x + w,
             "center": (x + w / 2.0, (ym + y + h) / 2.0), "layer": layer, "outline": pts, "side": side,
             "machined": ((x, ym), (xs, ym)) if side == "right" else ((xs, ym), (x + w, ym)),
@@ -939,7 +945,7 @@ def shear_plane(x_tip, y_tip, phi=25, length=120, color="#e53935", sw=2, dash="6
     svg = line(x_tip, y_tip, ex, ey, color, sw, dash)
     if label:
         lx, ly = ex + s * 8 * math.cos(a) + s * 4, ey - 8 * math.sin(a)
-        svg += text(lx, ly + size * 0.35, label, size, color, anchor="start" if s > 0 else "end")
+        svg = _part("shear plane", svg + text(lx, ly + size * 0.35, label, size, color, anchor="start" if s > 0 else "end"))
     info = {"tip": (x_tip, y_tip), "end": (ex, ey), "mid": ((x_tip + ex) / 2.0, (y_tip + ey) / 2.0), "angle": phi,
             "dir": (s * math.cos(a), -math.sin(a))}
     return svg, info
@@ -967,7 +973,7 @@ def force_vectors(x, y, forces, scale=1.0, color=None, size=14, w=3, head=12):
         out.append(_auto_label(lx, ly + size * 0.35, label, size, col, anchor))
         ends[label] = (ex, ey)
     out.append(circle(x, y, max(2.0, w * 0.9), color, "none"))
-    return "".join(out), {"origin": (x, y), "ends": ends}
+    return _part("forces", "".join(out)), {"origin": (x, y), "ends": ends}
 
 
 def velocity_arrow(x, y, dx, dy, label="Vc", color=None, w=4, head=14, size=16):
@@ -981,7 +987,7 @@ def velocity_arrow(x, y, dx, dy, label="Vc", color=None, w=4, head=14, size=16):
     svg = arrow(x, y, x + dx, y + dy, color, w, head)
     if label:
         anchor = "start" if nx > 0.3 else ("end" if nx < -0.3 else "middle")
-        svg += _auto_label(mx, my + size * 0.35, label, size, color, anchor)
+        svg = _part("velocity", svg + _auto_label(mx, my + size * 0.35, label, size, color, anchor))
     return svg, {"start": (x, y), "end": (x + dx, y + dy), "mid": (x + dx / 2.0, y + dy / 2.0), "label_pos": (mx, my)}
 
 

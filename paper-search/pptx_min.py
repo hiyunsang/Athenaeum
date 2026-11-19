@@ -625,6 +625,57 @@ def build(path, deck, preview_dir=None):
     return {"slides": nslides, "pics": len(media), "previews": n_prev}
 
 
+def build_shapes(path, shapes_xml, w_emu, h_emu, media=(), title=""):
+    """도형 XML 을 그대로 실은 한 쪽짜리 .pptx — 쪽 크기를 그림에 맞춘다 (원고의 도식: schematic/svg2pptx 가 쓴다, 2026-11-19).
+    media = 그림 파일 경로들 — 도형 XML 은 차례대로 rId2, rId3 … 으로 가리킨다(rId1 은 레이아웃)."""
+    media = [m for m in (media or []) if m and os.path.isfile(m)]
+    w_emu, h_emu = int(max(914400, min(51206400, w_emu))), int(max(914400, min(51206400, h_emu)))
+    slide = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:sld %s><p:cSld><p:spTree>'
+             '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'
+             '%s</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>' % (NS_P, shapes_xml))
+    ct = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+          '<Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="jpeg" ContentType="image/jpeg"/>'
+          '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
+          '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
+          '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
+          '<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+          '<Override PartName="/ppt/presProps.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presProps+xml"/>'
+          '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+          '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+          '<Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>')
+    pres = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentation %s saveSubsetFonts="1">'
+            '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>'
+            '<p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst><p:sldSz cx="%d" cy="%d"/><p:notesSz cx="6858000" cy="9144000"/>'
+            '<p:defaultTextStyle><a:defPPr><a:defRPr lang="ko-KR"/></a:defPPr></p:defaultTextStyle></p:presentation>' % (NS_P, w_emu, h_emu))
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    core = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            '<dc:title>%s</dc:title><dc:creator>Athenaeum</dc:creator><cp:lastModifiedBy>Athenaeum</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">%s</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified></cp:coreProperties>' % (esc(title), now, now))
+    app = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Athenaeum</Application><Slides>1</Slides></Properties>')
+    tmp = path + ".%d.tmp" % os.getpid()
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", ct)
+        z.writestr("_rels/.rels", _RELS_ROOT)
+        z.writestr("docProps/core.xml", core)
+        z.writestr("docProps/app.xml", app)
+        z.writestr("ppt/presentation.xml", pres)
+        z.writestr("ppt/_rels/presentation.xml.rels", _rels([("rId1", "slideMaster", "slideMasters/slideMaster1.xml"), ("rId2", "slide", "slides/slide1.xml"),
+                                                             ("rId3", "theme", "theme/theme1.xml"), ("rId4", "presProps", "presProps.xml")]))
+        z.writestr("ppt/presProps.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:presentationPr %s/>' % NS_P)
+        z.writestr("ppt/theme/theme1.xml", _THEME)
+        z.writestr("ppt/slideMasters/slideMaster1.xml", _MASTER)
+        z.writestr("ppt/slideMasters/_rels/slideMaster1.xml.rels", _rels([("rId1", "slideLayout", "../slideLayouts/slideLayout1.xml"), ("rId2", "theme", "../theme/theme1.xml")]))
+        z.writestr("ppt/slideLayouts/slideLayout1.xml", _LAYOUT)
+        z.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels", _rels([("rId1", "slideMaster", "../slideMasters/slideMaster1.xml")]))
+        z.writestr("ppt/slides/slide1.xml", slide)
+        z.writestr("ppt/slides/_rels/slide1.xml.rels", _rels([("rId1", "slideLayout", "../slideLayouts/slideLayout1.xml")] +
+                                                             [("rId%d" % (i + 2), "image", "../media/image%d.png" % (i + 1)) for i in range(len(media))]))
+        for i, src in enumerate(media):
+            z.write(src, "ppt/media/image%d.png" % (i + 1))
+    os.replace(tmp, path)
+    return {"pics": len(media)}
+
+
 # ---------- 미리보기 PNG (PyMuPDF 가 있을 때만; 화면의 쪽 미리보기용 — 글꼴·줄바꿈이 PowerPoint 와 똑같지는 않다) ----------
 def _font_files():
     d = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")

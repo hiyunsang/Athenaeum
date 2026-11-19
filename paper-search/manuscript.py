@@ -3124,15 +3124,20 @@ def _edge():
     return None
 
 
-def render_png(svg_path, png_path, w, h, scale=1):
+def render_png(svg_path, png_path, w, h, scale=1, bg="ffffffff"):
+    """SVG → PNG (Edge headless). bg = 바탕색 RRGGBBAA — "00000000" 이면 투명."""
     edge = _edge()
     if not edge:
         return False
     url = "file:///" + svg_path.replace("\\", "/")
-    args = [edge, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--default-background-color=ffffffff",
+    args = [edge, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--default-background-color=" + bg,
             "--window-size=%d,%d" % (w, h), "--force-device-scale-factor=%d" % scale, "--screenshot=" + png_path, url]
     subprocess.run(args, capture_output=True, timeout=120, **cfg["no_window"]())
-    return os.path.isfile(png_path)
+    for _ in range(24):   # Edge 가 돌아온 뒤에 파일이 써질 때가 있다
+        if os.path.isfile(png_path) and os.path.getsize(png_path) > 0:
+            return True
+        time.sleep(0.25)
+    return False
 
 
 def schematic_figure(doc, params, fig_id=None):
@@ -3183,6 +3188,129 @@ def save_ref(doc, name, data):
     return {"images": [os.path.basename(p) for p in paths], "note": note}
 
 
+# ---------- 도식의 그림체 — 서재의 논문 그림을 예시로 (2026-11-19) ----------
+_FIGLIB = {"t": 0, "sig": None, "items": []}
+_FIG_DRAWN = ("schematic", "setup", "mixed")
+
+
+def _fig_library():
+    """그림 색인(번역\\그림색인)에 든 논문 그림 전부 — 잘라 둔 PNG 가 있고 poor 가 아닌 것. 60초 기억."""
+    d = os.path.join(cfg["GEN_DIR"], "그림색인")
+    try:
+        names = sorted(n for n in os.listdir(d) if n.endswith(".json"))
+        sig = (len(names), max([os.path.getmtime(os.path.join(d, n)) for n in names] or [0]))
+    except OSError:
+        return []
+    if _FIGLIB["sig"] == sig and time.time() - _FIGLIB["t"] < 60:
+        return _FIGLIB["items"]
+    try:
+        top = _pref_set()
+    except Exception:
+        top = set()
+    out = []
+    for n in names:
+        j = cfg["load_json"](os.path.join(d, n), None)
+        if not isinstance(j, dict):
+            continue
+        stem = n[:-5]
+        f = os.path.basename(j.get("file") or (stem + ".pdf"))
+        parts = stem.split("_", 3)
+        year, abbr, author = (parts + ["", "", ""])[:3] if len(parts) >= 3 else ("", "", stem[:20])
+        idir = os.path.join(cfg["GEN_DIR"], "그림", stem)
+        for g in j.get("figs") or []:
+            img = os.path.basename(g.get("img") or "")
+            if not img or g.get("quality") == "poor" or not os.path.isfile(os.path.join(idir, img)):
+                continue
+            out.append({"file": f, "n": g.get("n"), "img": img, "type": g.get("type") or "other", "what": (g.get("what") or "")[:160],
+                        "short": ("%s %s" % (author, year)).strip(), "abbr": abbr, "year": year, "top": abbr in top,
+                        "_s": " ".join([stem, g.get("what") or "", " ".join(g.get("labels") or []), g.get("cap") or ""]).lower()})
+    out.sort(key=lambda x: (not x["top"], -(int(x["year"]) if x["year"].isdigit() else 0), x["file"], x["n"] or 0))
+    _FIGLIB.update(t=time.time(), sig=sig, items=out)
+    return out
+
+
+def _fig_styles_path():
+    return os.path.join(cfg["MS_DIR"], "_그림체.json")
+
+
+def _fig_styles():
+    d = cfg["load_json"](_fig_styles_path(), {})
+    return [x for x in (d.get("styles") or []) if isinstance(x, dict) and x.get("id")] if isinstance(d, dict) else []
+
+
+def fig_style_op(body):
+    """그림체: library(서재 그림 고르기 목록) · pick(고른 그림을 그림체 예시로 복사) · list · save · delete"""
+    import hashlib, shutil
+    op = body.get("op") or "list"
+    ref_dir = os.path.join(cfg["FIG_DIR"], "refs")
+    if op == "library":
+        items = _fig_library()
+        q = [w for w in (body.get("q") or "").lower().split() if w]
+        kinds = None if body.get("all") else _FIG_DRAWN
+        hit = [x for x in items if (kinds is None or x["type"] in kinds) and all(w in x["_s"] for w in q)]
+        lim = max(20, min(400, int(body.get("limit") or 120)))
+        return {"items": [{k: v for k, v in x.items() if k != "_s"} for x in hit[:lim]], "total": len(hit), "all": len(items),
+                "drawn": sum(1 for x in items if x["type"] in _FIG_DRAWN)}
+    if op == "pick":
+        os.makedirs(ref_dir, exist_ok=True)
+        out = []
+        for it in (body.get("items") or [])[:3]:
+            f = os.path.basename(str(it.get("file") or ""))
+            stem = os.path.splitext(f)[0]
+            img = os.path.basename(str(it.get("img") or ""))
+            src = os.path.join(cfg["GEN_DIR"], "그림", stem, img)
+            if not img.lower().endswith(".png") or not os.path.isfile(src):
+                continue
+            name = "st_%s_%s" % (hashlib.md5(stem.encode("utf-8")).hexdigest()[:8], img)
+            shutil.copyfile(src, os.path.join(ref_dir, name))
+            parts = stem.split("_", 3)
+            out.append({"img": name, "file": f, "n": it.get("n"), "short": ("%s %s" % (parts[2], parts[0])) if len(parts) >= 3 else stem[:24]})
+        return {"picked": out}
+    styles = _fig_styles()
+    if op == "save":
+        name = (body.get("name") or "").strip()[:40]
+        imgs = [os.path.basename(str(x)) for x in (body.get("imgs") or [])][:3]
+        imgs = [x for x in imgs if os.path.isfile(os.path.join(ref_dir, x))]
+        if not name or not imgs:
+            raise RuntimeError("이름과 예시 그림이 있어야 합니다")
+        styles = [x for x in styles if x.get("name") != name]
+        styles.append({"id": "gs%d" % int(time.time() * 1000), "name": name, "imgs": imgs, "from": (body.get("from") or [])[:3], "t": time.time()})
+        cfg["save_json"](_fig_styles_path(), {"styles": styles[-30:]})
+    elif op == "delete":
+        styles = [x for x in styles if x.get("id") != body.get("sid")]
+        cfg["save_json"](_fig_styles_path(), {"styles": styles})
+    return {"styles": _fig_styles()}
+
+
+def fig_pptx(fig, title=""):
+    """그림의 SVG → PowerPoint 도형 파일(.pptx). 도형·선·글상자를 PowerPoint 에서 하나씩 고칠 수 있다(schematic/svg2pptx).
+    흐림을 쓴 부분만 Edge 로 그린 그림으로 들어간다. PowerPoint 는 띄우지 않는다. → {file, stats}"""
+    import tempfile, shutil
+    _gen()
+    from schematic import svg2pptx
+    if not fig or not fig.get("svg"):
+        raise RuntimeError("그림을 찾을 수 없습니다")
+    svg_path = os.path.join(cfg["FIG_DIR"], os.path.basename(fig["svg"]))
+    svg = io.open(svg_path, encoding="utf-8").read()
+    base = os.path.splitext(os.path.basename(fig["svg"]))[0]
+    out = os.path.join(cfg["FIG_DIR"], base + ".pptx")
+    tmpd = tempfile.mkdtemp(prefix="ath_fig_")
+    k = [0]
+
+    def raster(svg_text, w, h):
+        k[0] += 1
+        sp, pp = os.path.join(tmpd, "r%d.svg" % k[0]), os.path.join(tmpd, "r%d.png" % k[0])
+        io.open(sp, "w", encoding="utf-8").write(svg_text)
+        return pp if render_png(sp, pp, max(1, w), max(1, h), 2, bg="00000000") else None
+    try:
+        st = svg2pptx.to_pptx(svg, out, raster, title or ("Fig. %s" % fig.get("num", "")))
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+    fig["pptx"] = base + ".pptx"
+    fig["pptx_stats"] = {k2: v for k2, v in st.items() if v}
+    return {"file": fig["pptx"], "stats": fig["pptx_stats"]}
+
+
 def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     """설명(+참고 그림) → Claude 가 lib 로 그리는 스크립트 → SVG/PNG. fig_id 가 있으면 그 그림의 스크립트를 수정 요청으로 고친다."""
     gen = _gen()
@@ -3193,13 +3321,15 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     if fig and not spec:
         spec = fig["source"].get("spec") or {}
         ref_paths = ref_paths or [os.path.join(ref_dir, r) for r in fig["source"].get("refs", []) if os.path.isfile(os.path.join(ref_dir, r))]
+    style_paths = [os.path.join(ref_dir, os.path.basename(str(r))) for r in ((spec or {}).get("style_refs") or [])[:3]]
+    style_paths = [p for p in style_paths if os.path.isfile(p)]   # 그림체 예시 — 서재의 논문 그림(fig_style_op 의 pick 이 refs 폴더에 복사해 둔 것)
     log = []
     # 같은 분야의 최근 그림 스크립트를 출발점으로 (백지 설계보다 훨씬 빠르고 스타일도 이어짐)
     dom = (spec or {}).get("domain")
     prior = [f["source"].get("script") for f in sorted(doc["figures"], key=lambda f: -(f.get("t") or 0))
              if f.get("source", {}).get("type") == "claude" and f["source"].get("script") and (not dom or f["source"].get("spec", {}).get("domain") == dom)
              and f["id"] != (fig or {}).get("id")]
-    code, svg, log = gen.generate(spec or {}, ref_paths, prev_script=prev, feedback=feedback, log=log, prior_scripts=prior)
+    code, svg, log = gen.generate(spec or {}, ref_paths, prev_script=prev, feedback=feedback, log=log, prior_scripts=prior, style_images=style_paths)
     if not fig:
         fig = {"id": _next_id(doc["figures"], "f"), "num": len(doc["figures"]) + 1, "caption": "", "caption_en": "", "source": {}}
         doc["figures"].append(fig)
@@ -3214,6 +3344,13 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     w, h = gen.svg_size(svg)
     ok = render_png(svg_path, png_path, w, h, 1)
     fig["svg"] = base + ".svg"; fig["png"] = base + ".png" if ok else ""; fig["w"], fig["h"] = w, h; fig["t"] = time.time(); fig["log"] = log
+    try:   # PowerPoint 에서 고칠 수 있는 도형 파일도 같이 (못 만들어도 그림은 그대로)
+        fig_pptx(fig, (spec or {}).get("description") or "")
+        log.append("PowerPoint 파일: 도형 %d · 글 %d · 선·화살표 %d" % (fig["pptx_stats"].get("shapes", 0), fig["pptx_stats"].get("texts", 0),
+                                                              fig["pptx_stats"].get("lines", 0) + fig["pptx_stats"].get("arrows", 0)))
+    except Exception as e:
+        fig.pop("pptx", None)
+        log.append("PowerPoint 파일을 만들지 못함: %s" % str(e)[:120])
     save_ms(doc)
     return fig
 
@@ -6965,7 +7102,7 @@ def handle_get(h, url):
         fp = os.path.join(cfg["FIG_DIR"], "refs", name) if p.startswith("/fig/refs/") else os.path.join(cfg["FIG_DIR"], name)
         if not os.path.isfile(fp):
             return h._send(404, {"error": "no file"})
-        ctype = "image/svg+xml" if name.endswith(".svg") else "image/png"
+        ctype = "image/svg+xml" if name.endswith(".svg") else ("application/vnd.openxmlformats-officedocument.presentationml.presentation" if name.endswith(".pptx") else "image/png")
         with open(fp, "rb") as f:
             return h._send(200, f.read(), ctype)
     return h._send(404, {"error": "unknown"})
@@ -7160,6 +7297,12 @@ def handle_post(h, body):
             doc = load_ms(body.get("id"))
             fig = claude_figure(doc, body.get("spec") or {}, body.get("refs") or [], body.get("fig"), body.get("feedback"))
             return h._send(200, fig)
+        if p == "/api/ms/figure/style":
+            return h._send(200, fig_style_op(body))
+        if p == "/api/ms/figure/pptx":   # 이미 만든 그림을 PowerPoint 도형 파일로 (저장은 화면이 한다)
+            doc = load_ms(body.get("id"))
+            fig = next((f for f in doc["figures"] if f["id"] == body.get("fig")), None)
+            return h._send(200, fig_pptx(fig, (fig or {}).get("caption_en") or (fig or {}).get("caption") or ""))
         if p == "/api/ms/figure/export":
             doc = load_ms(body.get("id"))
             return h._send(200, {"path": export_figure(doc, body.get("fig"), int(body.get("scale", 3)))})
