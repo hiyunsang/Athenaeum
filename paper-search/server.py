@@ -5846,6 +5846,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url.path == "/explore":
             with open(os.path.join(BASE, "explore.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif url.path == "/figure":   # 그림 만들기 — 글을 바탕으로 구도·그림체를 골라 도식을 그리고 PPT 로 받는 창 (paper-search\figure.html, 2026-11-19). API 는 원고 모듈(/api/ms/figure/*)
+            with open(os.path.join(BASE, "figure.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
         elif url.path == "/wanted":   # 받을 논문 — 서재에 없는 논문을 찾아 받는 페이지 (paper-search\wanted.html, 2026-11-04)
             with open(os.path.join(BASE, "wanted.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")

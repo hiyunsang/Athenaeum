@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>그림 만들기 · Athenaeum</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/svg+xml" href="/logo/favicon.svg"><link rel="icon" type="image/png" sizes="192x192" href="/logo/icon-192.png">
+<link rel="stylesheet" href="/ui.css">
+<style>
+  body { background: var(--bg); }
+  header { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); background: var(--surface); border-bottom: 1px solid var(--line-2); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 14px; font-weight: 600; margin-right: var(--s1); }
+  header .brand-mark { height: 24px; width: auto; display: block; margin-right: 2px; }
+  header .ttl { font-size: 13px; color: var(--text-2); margin-right: var(--s2); }
+  header select { max-width: 360px; font-size: 12.5px; }
+  #info { margin-left: auto; font-size: 12px; color: var(--text-3); }
+  #app { display: grid; grid-template-columns: minmax(380px, 520px) 1fr; height: calc(100vh - 45px); }
+  #left { overflow-y: auto; background: var(--surface); border-right: 1px solid var(--line-2); padding: var(--s4) var(--s4) var(--s8); }
+  #right { overflow-y: auto; padding: var(--s4) var(--s6) var(--s8); min-width: 0; }
+  .step { margin-bottom: var(--s6); }
+  .step > h2 { font-size: 13px; font-weight: 700; color: var(--text); border-bottom: 1px solid var(--line); padding-bottom: 3px; margin: 0 0 var(--s2); display: flex; gap: 8px; align-items: baseline; }
+  .step > h2 .no { color: var(--accent); } .step > h2 .hint { font-weight: 400; margin-left: auto; text-align: right; }
+  .hint { font-size: 12px; color: var(--text-3); line-height: 1.55; }
+  .warn { color: var(--amber); }
+  textarea { width: 100%; font-size: 13px; line-height: 1.6; }
+  .rowl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; font-size: 12.5px; color: var(--text-2); }
+  .rowl select { font-size: 12.5px; }
+  .opt { border: 1px solid var(--line); padding: 8px 10px; margin: 6px 0; cursor: pointer; }
+  .opt:hover { background: var(--hover); }
+  .opt.on { border-color: var(--accent); background: var(--sel-bg); box-shadow: inset 3px 0 0 var(--accent); }
+  .opt .t { font-weight: 600; font-size: 13px; } .opt .t span { font-weight: 400; font-size: 12px; color: var(--text-3); margin-left: 6px; }
+  .opt .l { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin-top: 2px; } .opt .e { font-size: 12px; color: var(--text-3); margin-top: 3px; line-height: 1.5; }
+  .read { font-size: 12.5px; line-height: 1.6; color: var(--text-2); margin: 4px 0 6px; }
+  .qq { margin: 10px 0 2px; font-size: 12.5px; color: var(--text); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .chipb { border: 1px solid var(--line-2); background: var(--surface); padding: 3px 9px; font-size: 12.5px; cursor: pointer; border-radius: var(--r); color: var(--text); font-family: inherit; }
+  .chipb:hover { background: var(--hover); } .chipb.on { border-color: var(--accent); color: var(--accent); background: var(--sel-bg); }
+  .fam { border: 1px solid var(--line); margin: 8px 0; }
+  .fam.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .fam .fh { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px 1px; cursor: pointer; } .fam .fh b { font-size: 13px; } .fam .fh span { font-size: 12px; color: var(--text-3); }
+  .fam .fd { padding: 0 10px 6px; font-size: 12px; color: var(--text-2); line-height: 1.5; cursor: pointer; }
+  .fam .fx { display: flex; gap: 6px; padding: 0 10px 9px; overflow: hidden; cursor: pointer; }
+  .fam .fx img { height: 84px; max-width: 160px; object-fit: contain; background: #fff; border: 1px solid var(--line); flex: none; }
+  .exg { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; padding: 2px 10px 6px; }
+  .ex { border: 1px solid var(--line); padding: 4px; font-size: 11px; color: var(--text-2); cursor: pointer; background: var(--surface); position: relative; }
+  .ex img { width: 100%; height: 100px; object-fit: contain; background: #fff; display: block; }
+  .ex.on { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--sel-bg); }
+  .ex .pm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .ex .zm { position: absolute; right: 5px; top: 5px; background: var(--surface); border: 1px solid var(--line-2); font-size: 11px; padding: 0 4px; line-height: 1.5; cursor: zoom-in; opacity: 0; }
+  .ex:hover .zm { opacity: 1; }
+  .exfoot { padding: 0 10px 9px; font-size: 12px; color: var(--text-3); }
+  .cat { font-size: 12px; color: var(--text-3); line-height: 1.6; margin: 6px 0; } .cat input { width: 170px; font-size: 12px; }
+  .gobar { display: flex; gap: 10px; align-items: center; margin-top: var(--s3); flex-wrap: wrap; }
+  .pbar2 { height: 3px; background: var(--line); margin-top: 6px; } .pbar2 i { display: block; height: 100%; width: 3%; background: var(--accent); transition: width 1s linear; }
+  /* 오른쪽: 만든 그림 */
+  .strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: var(--s3); }
+  .th { border: 1px solid var(--line); background: var(--surface); padding: 3px; cursor: pointer; font-size: 11px; color: var(--text-3); text-align: center; }
+  .th img { height: 62px; max-width: 120px; object-fit: contain; display: block; background: #fff; } .th.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .big { background: var(--surface); border: 1px solid var(--line); padding: var(--s2); max-width: 1100px; } .big img { width: 100%; display: block; background: #fff; }
+  .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: var(--s2) 0; font-size: 12px; color: var(--text-2); max-width: 1100px; } .meta b { font-size: 13px; color: var(--text); }
+  .meta .sp { flex: 1; }
+  .fld { max-width: 1100px; margin-top: var(--s3); } .fld label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+  .fld .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .intro { max-width: 760px; margin: var(--s8) auto; color: var(--text-2); font-size: 13px; line-height: 1.85; } .intro b { color: var(--text); }
+  pre.code { font-size: 11px; white-space: pre-wrap; max-height: 320px; overflow: auto; background: var(--surface); border: 1px solid var(--line); padding: 8px; max-width: 1100px; }
+  details.src { max-width: 1100px; margin-top: var(--s2); font-size: 12.5px; color: var(--text-2); } details.src summary { cursor: pointer; font-size: 12px; color: var(--text-3); } details.src div { white-space: pre-wrap; line-height: 1.6; padding: 6px 0; }
+  /* 겹쳐 뜨는 창: 원고에서 고르기 · 그림 크게 */
+  #ov { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: none; align-items: center; justify-content: center; }
+  #ov .box { width: min(1000px, calc(100vw - 32px)); height: calc(100vh - 70px); background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 10px 30px #0004; display: flex; flex-direction: column; }
+  #ov .oh { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-3); flex-wrap: wrap; } #ov .oh b { font-size: 14px; color: var(--text); }
+  #ov .ob { flex: 1; display: flex; min-height: 0; }
+  #ov .secs { width: 250px; flex: none; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel, var(--bg)); }
+  #ov .secs div { padding: 5px 12px; font-size: 12.5px; cursor: pointer; } #ov .secs div:hover { background: var(--hover); } #ov .secs div.on { box-shadow: inset 3px 0 0 var(--accent); background: var(--sel-bg); }
+  #ov .paras { flex: 1; overflow-y: auto; padding: 10px 16px; }
+  #ov .pp { border-left: 3px solid transparent; padding: 6px 10px; margin: 4px 0; font-size: 13px; line-height: 1.65; cursor: pointer; white-space: pre-wrap; } #ov .pp:hover { background: var(--hover); }
+  #ov .pp.on { border-left-color: var(--accent); background: var(--sel-bg); }
+  #ov .of { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
+  #ov .zoom { flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px; min-height: 0; } #ov .zoom img { max-width: 100%; max-height: 100%; background: #fff; }
+  @media (max-width: 900px) { #app { grid-template-columns: 1fr; height: auto; } #left, #right { overflow: visible; } #left { border-right: 0; border-bottom: 1px solid var(--line-2); } #right { padding: var(--s4); } #ov .secs { width: 130px; } .fld .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><a class="brand" href="/" title="Athenaeum 홈" target="athenaeum_home"><img class="brand-mark" src="/logo/mark.svg" alt="">ATHENAEUM</a></h1>
+  <span class="ttl">그림 만들기</span>
+  <select id="msSel" title="그림을 넣을 원고"></select>
+  <span id="info"></span>
+  <span id="uiCtlHost"></span>
+</header>
+<div id="app">
+  <div id="left">
+    <div class="step"><h2><span class="no">1</span>무엇을 그리나<span class="hint"><button class="act" id="fromMs" title="원고의 절에서 문단을 골라 바탕 글로 가져옵니다">원고에서 고르기</button></span></h2>
+      <textarea id="src" rows="6" placeholder="바탕 글 — 그림으로 옮길 원고의 대목을 붙여 넣습니다. 이 글이 말하는 것만 그립니다(글에 없는 수치를 지어내지 않습니다)."></textarea>
+      <textarea id="note" rows="2" style="margin-top:6px" placeholder="덧붙일 말 (없어도 됩니다) — 예: 세 상태를 나란히, 치수선은 빼고. 바탕 글 없이 여기에만 설명해도 됩니다."></textarea>
+    </div>
+    <div class="step"><h2><span class="no">2</span>구도<span class="hint" id="planHint"></span></h2><div id="plan"></div></div>
+    <div class="step"><h2><span class="no">3</span>그림체<span class="hint" id="styleHint"></span></h2><div id="style"></div></div>
+    <div class="step"><h2><span class="no">4</span>그리기</h2>
+      <div class="rowl">
+        <label>크기 <select id="size"><option value="wide">16:9 (1280×720)</option><option value="single">1단 (900×700)</option><option value="double">2단 (1800×1000)</option><option value="square">정사각</option><option value="tall">세로</option></select></label>
+        <label>라벨 <select id="lang"><option value="en">영어</option><option value="ko">한국어</option></select></label>
+        <label>자세함 <select id="cx"><option value="normal">보통</option><option value="simple">간단히</option><option value="detailed">자세히</option></select></label>
+        <label>모델 <select id="model"><option value="opus">Opus · 꼼꼼 (3~7분)</option><option value="sonnet">Sonnet · 빠름 (1~2분)</option></select></label>
+      </div>
+      <div class="gobar"><button class="primary" id="go">그리기</button><span class="hint" id="goHint"></span></div>
+      <div id="goProg"></div>
+    </div>
+  </div>
+  <div id="right"></div>
+</div>
+<div id="ov"></div>
+<script src="/ui.js"></script>
+<script>
+/* 그림 만들기 (2026-11-19, 사용자: '드래그해서 그렇게 하지 말고, 위에 그림 만들기를 하나 창을 둬서 좀 더 전문적으로. 훌륭한 연구 있잖아 MTM 연구나 Dragos 씨 논문 같은 데서
+   사진 가져와서 예시로 들고, 이런 스타일, 저런 스타일 등등 물어보고').
+   왼쪽 = 네 걸음(무엇을 → 구도 → 그림체 → 그리기), 오른쪽 = 만든 그림(고치기 · PPT 받기 · 캡션).
+   · 구도: 바탕 글을 가벼운 모델이 읽고 구도 후보 둘·셋과 정할 것을 선택지로 낸다(/api/ms/figure/plan). 건너뛰고 형식만 골라도 된다.
+   · 그림체: 도감(figstyle.py — 우선 저널과 본보기 저자의 논문 도식을 그림체별로 묶은 것)에서 갈래를 고르고 본보기 그림을 셋까지 고른다. 그릴 때 그 그림들을 읽혀 선·색·글꼴·라벨만 따르게 한다.
+   · 그림은 원고에 딸린다(doc.figures) — 이 창은 원고를 통째로 저장하지 않고 그림만 고친다(/api/ms/figure/meta). 원고 창이 열려 있어도 서로의 글을 덮지 않는다. */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const api = (url, body) => fetch(url, body ? { method: "POST", body: JSON.stringify(body) } : undefined).then(r => r.json()).catch(e => ({ error: "서버 연결 실패" }));
+const fmtDur = s => s < 60 ? Math.round(s) + "초" : Math.floor(s / 60) + "분 " + (Math.round(s) % 60) + "초";
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const QS = new URLSearchParams(location.search);
+const FORMS = [["auto", "알아서 (글에 맞게)"], ["cutting", "가공 도식 (공구·칩)"], ["grinding", "연삭·밀링 운동학"], ["setup", "장치 구성도"], ["flow", "흐름도·개념도"], ["steps", "단계 패널 (a→b→c)"], ["compare", "비교 패널 (나란히)"], ["graph", "개념 그래프 (축과 곡선)"], ["micro", "미세조직·재료"], ["mechanics", "힘·역학 벡터"], ["general", "그 밖"]];
+const FORM_KO = Object.fromEntries(FORMS.map(([k, v]) => [k, v.replace(/ \(.*/, "")]));
+const BASES = [["color", "논문 컬러"], ["line", "흑백 선화"], ["thermal", "온도장·컬러맵"]];
+const imgUrl = x => "/figimg?file=" + encodeURIComponent(x.file) + "&name=" + encodeURIComponent(x.img);
+const exKey = x => x.file.replace(/\.pdf$/i, "") + "|" + x.img;
+
+let docId = QS.get("id") || lsGet("fig_doc", ""), msList = [], figs = [], curFig = null, msDoc = null;
+let S = { plan: null, planFor: "", opt: 0, ans: {}, form: "auto", fam: "", ex: [], base: "color", flt: "", more: false, where: "" };
+let cat = null, saved = [], busy = false, planBusy = false, catTimer = null;
+
+/* ---------- 원고 · 그림 목록 ---------- */
+async function init() {
+  msList = (await api("/api/ms/list")).items || [];
+  if (!msList.some(m => m.id === docId)) docId = (msList[0] || {}).id || "";
+  $("msSel").innerHTML = msList.length ? msList.map(m => "<option value='" + esc(m.id) + "'" + (m.id === docId ? " selected" : "") + ">" + esc((m.title || m.id).slice(0, 60)) + "</option>").join("") : "<option value=''>원고가 없습니다</option>";
+  $("msSel").onchange = () => { docId = $("msSel").value; lsSet("fig_doc", docId); msDoc = null; curFig = null; loadDraft(); loadFigs(); };
+  ["size", "lang", "cx", "model"].forEach(k => { $(k).value = lsGet("fig_" + k, $(k).value) || $(k).value; if (!$(k).value) $(k).selectedIndex = 0; $(k).onchange = () => { lsSet("fig_" + k, $(k).value); goHint(); }; });
+  if (!lsGet("fig_model", "") && typeof uiGet === "function" && uiGet("fig_model")) $("model").value = uiGet("fig_model");
+  $("src").oninput = $("note").oninput = () => { saveDraft(); renderPlan(); };
+  $("fromMs").onclick = openMsPick;
+  $("go").onclick = draw;
+  loadDraft(); goHint(); renderPlan(); renderStyle();
+  if (!msList.length) { $("right").innerHTML = "<div class='intro'>원고가 아직 없습니다. 그림은 원고에 딸려 저장됩니다 — 홈의 「원고」 에서 원고를 하나 만든 뒤 다시 열어 주세요.</div>"; return; }
+  lsSet("fig_doc", docId);
+  loadFigs(); loadCat(); api("/api/ms/figure/style", { op: "list" }).then(r => { saved = (r && r.styles) || []; renderStyle(); });
+}
+function loadDraft() { let d = {}; try { d = JSON.parse(lsGet("fig_draft_" + docId, "{}")) || {}; } catch (e) {} $("src").value = d.text || ""; $("note").value = d.note || ""; S.where = d.where || ""; S.plan = null; S.ans = {}; S.opt = 0; }
+function saveDraft() { lsSet("fig_draft_" + docId, JSON.stringify({ text: $("src").value, note: $("note").value, where: S.where })); }
+async function loadFigs(keep) {
+  if (!docId) return;
+  const r = await api("/api/ms/figure/meta", { id: docId, op: "list" });
+  figs = (r.figures || []);
+  if (!figs.some(f => f.id === curFig)) curFig = (figs[figs.length - 1] || {}).id || null;
+  $("info").textContent = figs.length ? "이 원고의 그림 " + figs.length + "장" : "";
+  if (!keep) renderStage();
+}
+
+/* ---------- 2. 구도 ---------- */
+function planKey() { return $("src").value.trim() + "\n" + $("note").value.trim(); }
+function renderPlan() {
+  const el = $("plan"), has = $("src").value.trim().length >= 20 || $("note").value.trim().length >= 10;
+  const stale = S.plan && S.planFor !== planKey();
+  $("planHint").textContent = S.plan ? "" : "가벼운 모델이 글을 읽고 구도 후보를 냅니다 · 15~30초";
+  if (planBusy) { el.innerHTML = "<div class='hint'>글을 읽고 구도를 생각하는 중…</div><div class='pbar2'><i id='planBar'></i></div>"; return; }
+  if (!S.plan) {
+    el.innerHTML = "<div class='rowl'><button class='primary' id='planGo'" + (has ? "" : " disabled") + ">구도 제안 받기</button><span class='hint'>또는 형식만 고르기</span><select id='formSel'>" + FORMS.map(([k, v]) => "<option value='" + k + "'" + (k === S.form ? " selected" : "") + ">" + v + "</option>").join("") + "</select></div>" +
+      (has ? "" : "<div class='hint'>위에 바탕 글이나 설명을 먼저 적어 주세요.</div>") + (S.planErr ? "<div class='hint warn'>" + esc(S.planErr) + "</div>" : "");
+    $("planGo").onclick = getPlan; $("formSel").onchange = () => { S.form = $("formSel").value; };
+    return;
+  }
+  const p = S.plan;
+  el.innerHTML = (p.read ? "<div class='read'>" + esc(p.read) + "</div>" : "") +
+    p.options.map((o, i) => "<div class='opt" + (i === S.opt ? " on" : "") + "' data-o='" + i + "'><div class='t'>" + esc(o.title) + "<span>" + esc(FORM_KO[o.form] || "") + (i === 0 ? " · 권함" : "") + "</span></div><div class='l'>" + esc(o.layout) + "</div>" +
+      (o.elements.length ? "<div class='e'>넣을 것: " + o.elements.map(esc).join(" · ") + "</div>" : "") + (o.why && i === S.opt ? "<div class='e'>" + esc(o.why) + "</div>" : "") + "</div>").join("") +
+    p.questions.map((q, qi) => "<div class='qq'>" + esc(q.q) + "</div><div class='chips'>" + q.choices.map((c, ci) => "<button class='chipb" + ((S.ans[qi] == null ? 0 : S.ans[qi]) === ci ? " on" : "") + "' data-q='" + qi + "' data-c='" + ci + "'>" + esc(c) + "</button>").join("") + "</div>").join("") +
+    "<div class='rowl' style='margin-top:10px'>" + (stale ? "<span class='hint warn'>글이 바뀌었습니다 —</span>" : "") + "<button class='act' id='planGo'>다시 받기</button><button class='act' id='planX'>구도 없이 형식만 고르기</button></div>";
+  el.querySelectorAll(".opt").forEach(d => d.onclick = () => { S.opt = +d.dataset.o; renderPlan(); });
+  el.querySelectorAll(".chipb").forEach(b => b.onclick = () => { S.ans[+b.dataset.q] = +b.dataset.c; renderPlan(); });
+  $("planGo").onclick = getPlan; $("planX").onclick = () => { S.plan = null; renderPlan(); };
+}
+async function getPlan() {
+  if (planBusy) return; planBusy = true; S.planErr = ""; const key = planKey(); renderPlan();
+  const t0 = Date.now(), tm = setInterval(() => { const b = $("planBar"); if (b) b.style.width = Math.min(95, (Date.now() - t0) / 250) + "%"; }, 1000);
+  const r = await api("/api/ms/figure/plan", { id: docId, text: $("src").value.trim(), note: $("note").value.trim() });
+  clearInterval(tm); planBusy = false;
+  if (r.error || !(r.options || []).length) { S.planErr = r.error || "구도를 받지 못했습니다"; S.plan = null; } else { S.plan = r; S.planFor = key; S.opt = 0; S.ans = {}; }
+  renderPlan();
+}
+
+/* ---------- 3. 그림체 ---------- */
+async function loadCat() {
+  const r = await api("/api/ms/figure/style", { op: "catalog" });
+  if (!r.error) cat = r;
+  renderStyle();
+  clearTimeout(catTimer);
+  if (cat && cat.status && cat.status.running) catTimer = setTimeout(loadCat, 4000);
+}
+const fltOk = x => !S.flt || (S.flt.startsWith("by:") ? x.by === S.flt.slice(3) : x.abbr === S.flt);
+function renderStyle() {
+  const el = $("style");
+  if (!cat) { el.innerHTML = "<div class='hint'>그림체 도감을 불러오는 중…</div>"; return; }
+  const st = cat.status || {}, fams = cat.families.map(f => Object.assign({}, f, { items: f.items.filter(fltOk) })).filter(f => f.items.length);
+  $("styleHint").textContent = cat.shown ? "좋은 논문의 그림에서 고릅니다 — 선·색·글꼴·라벨만 따르고 내용은 따르지 않습니다" : "";
+  let h = "";
+  if (cat.shown) {
+    const authors = Object.keys(cat.author_papers || {}).filter(a => cat.families.some(f => f.items.some(x => x.by === a)));
+    h += "<div class='chips' style='margin-bottom:4px'><button class='chipb" + (!S.flt ? " on" : "") + "' data-flt=''>전체</button>" +
+      authors.map(a => "<button class='chipb" + (S.flt === "by:" + a ? " on" : "") + "' data-flt='by:" + esc(a) + "' title='" + esc(a) + " 이(가) 저자인 논문의 그림'>" + esc(a) + " 그룹</button>").join("") +
+      (cat.journals || []).filter(j => j[0]).map(j => "<button class='chipb" + (S.flt === j[0] ? " on" : "") + "' data-flt='" + esc(j[0]) + "'>" + esc(j[0]) + " " + j[1] + "</button>").join("") + "</div>";
+    h += fams.map(f => {
+      const on = S.fam === f.key;
+      return "<div class='fam" + (on ? " on" : "") + "' data-fam='" + f.key + "'><div class='fh'><b>" + esc(f.name) + "</b><span>" + f.items.length + "장</span></div><div class='fd'>" + esc(f.desc) + "</div>" +
+        (on ? "<div class='exg'>" + f.items.slice(0, S.more ? 60 : 12).map(x => "<div class='ex" + (S.ex.some(y => exKey(y) === exKey(x)) ? " on" : "") + "' data-ex='" + esc(exKey(x)) + "' title='" + esc((x.note || "") + (x.palette ? " · 색: " + x.palette : "")) + "'><img loading='lazy' src='" + imgUrl(x) + "'><span class='zm' data-zoom='" + esc(exKey(x)) + "'>크게</span>" +
+            "<div class='pm'>" + (x.top ? "★ " : "") + esc(x.short) + " · " + esc(x.abbr) + "</div><div class='pm'>" + esc(x.note || ("Fig. " + x.n)) + "</div></div>").join("") + "</div>" +
+            "<div class='exfoot'>본보기로 삼을 그림을 셋까지 고릅니다 · 고른 그림 " + S.ex.length + " / 3" + (f.items.length > 12 && !S.more ? " · <button class='act' id='exMore'>" + (f.items.length - 12) + "장 더 보기</button>" : "") +
+            (S.ex.length ? " · <button class='act' id='exSave' title='이름을 붙여 두면 다음에 바로 고릅니다'>이 그림체 저장</button>" : "") + "</div>"
+          : "<div class='fx'>" + f.items.slice(0, 5).map(x => "<img loading='lazy' src='" + imgUrl(x) + "' title='" + esc(x.short + " · " + x.abbr) + "'>").join("") + "</div>") + "</div>";
+    }).join("");
+    if (!fams.length) h += "<div class='hint'>이 조건에 맞는 그림이 없습니다.</div>";
+  }
+  if (saved.length) h += "<div class='rowl'>저장한 그림체 " + saved.map(s => "<button class='chipb" + (S.fam === "gs:" + s.id ? " on" : "") + "' data-saved='" + esc(s.id) + "'>" + esc(s.name) + "</button>").join("") + (S.fam.startsWith("gs:") ? "<button class='act' id='savedDel'>지우기</button>" : "") + "</div>";
+  h += "<div class='rowl'>" + (cat.shown ? "본보기 없이 그리려면 " : "기본 그림체 ") + BASES.map(([k, v]) => "<button class='chipb" + (!S.fam && S.base === k ? " on" : "") + "' data-base='" + k + "'>" + v + "</button>").join("") + "</div>";
+  /* 도감의 상태 */
+  const nA = (cat.authors || []).join(", ");
+  if (st.running) h += "<div class='cat'>도감을 만드는 중 — 그림 " + st.done + " / " + st.total + "장을 읽었습니다. <button class='act' id='catStop'>멈추기</button><div class='pbar2'><i style='width:" + Math.max(3, Math.round(100 * st.done / Math.max(1, st.total))) + "%'></i></div></div>";
+  else if (cat.left > 0 || !cat.read) h += "<div class='cat'>" + (cat.read ? "도감에 그림 " + cat.read + "장 · 아직 읽지 않은 후보 " + cat.left + "장. " : "<b style='color:var(--text)'>그림체 도감이 아직 없습니다.</b> 우선 저널과 본보기 저자의 논문에 든 도식 " + cat.candidates + "장을 가벼운 모델이 한 번씩 보고 그림체별로 묶습니다. ") +
+      "<br>본보기 저자 <input type='text' id='catAuthors' value='" + esc(nA) + "' placeholder='예: Axinte (쉼표로 여럿)'> <button class='" + (cat.read ? "act" : "primary") + "' id='catGo'>" + (cat.read ? "더 읽기" : "도감 만들기") + "</button>" +
+      "<br>여덟 장에 Sonnet 호출 하나(읽는 토큰 12만쯤, 대부분 캐시) — " + (cat.left || cat.candidates) + "장이면 " + Math.max(1, Math.round((cat.left || cat.candidates) / 8 * 15 / 4 / 60)) + "~" + Math.max(2, Math.round((cat.left || cat.candidates) / 8 * 30 / 4 / 60)) + "분, 읽는 토큰 " + Math.max(12, Math.round((cat.left || cat.candidates) / 8 * 12)) + "만쯤. 한 번 읽은 그림은 다시 읽지 않습니다." + (st.err ? "<br><span class='warn'>" + esc(st.err) + "</span>" : "") + "</div>";
+  else h += "<div class='cat'>도감에 그림 " + cat.read + "장" + (nA ? " · 본보기 저자 " + esc(nA) : "") + " <button class='act' id='catEdit'>본보기 저자 바꾸기</button></div>";
+  el.innerHTML = h;
+  el.querySelectorAll("[data-flt]").forEach(b => b.onclick = () => { S.flt = b.dataset.flt; S.more = false; renderStyle(); });
+  el.querySelectorAll(".fam").forEach(d => d.querySelectorAll(".fh, .fd, .fx").forEach(z => z.onclick = () => pickFam(d.dataset.fam)));
+  el.querySelectorAll(".ex").forEach(d => d.onclick = e => { if (e.target.dataset.zoom) { zoom(findEx(e.target.dataset.zoom)); return; } const x = findEx(d.dataset.ex), at = S.ex.findIndex(y => exKey(y) === d.dataset.ex);
+    if (at >= 0) S.ex.splice(at, 1); else if (S.ex.length < 3) S.ex.push(x); else return; renderStyle(); goHint(); });
+  el.querySelectorAll("[data-base]").forEach(b => b.onclick = () => { S.base = b.dataset.base; S.fam = ""; S.ex = []; renderStyle(); goHint(); });
+  el.querySelectorAll("[data-saved]").forEach(b => b.onclick = () => { const s = saved.find(x => x.id === b.dataset.saved); if (!s) return; S.fam = "gs:" + s.id; S.ex = s.imgs.map((img, i) => Object.assign({ ref: img, img: img, file: "", saved: true }, (s.from || [])[i] || {})); renderStyle(); goHint(); });
+  if ($("exMore")) $("exMore").onclick = () => { S.more = true; renderStyle(); };
+  if ($("exSave")) $("exSave").onclick = saveStyle;
+  if ($("savedDel")) $("savedDel").onclick = async () => { if (!confirm("저장한 그림체를 지울까요? (이미 만든 그림은 그대로입니다)")) return; const r = await api("/api/ms/figure/style", { op: "delete", sid: S.fam.slice(3) }); saved = r.styles || []; S.fam = ""; S.ex = []; renderStyle(); goHint(); };
+  if ($("catGo")) $("catGo").onclick = () => catBuild();
+  if ($("catStop")) $("catStop").onclick = async () => { await api("/api/ms/figure/style", { op: "catalog_stop" }); loadCat(); };
+  if ($("catEdit")) $("catEdit").onclick = () => { const a = prompt("본보기 저자 (쉼표로 여럿) — 이 저자의 논문에 든 도식을 도감에 넣고 따로 고를 수 있게 합니다:", nA); if (a == null) return; catBuild(a); };
+}
+const findEx = k => { for (const f of (cat || {}).families || []) { const x = f.items.find(y => exKey(y) === k); if (x) return x; } return S.ex.find(y => exKey(y) === k); };
+function pickFam(k) {
+  if (S.fam === k) { S.fam = ""; S.ex = []; }
+  else { S.fam = k; S.more = false; const f = cat.families.find(x => x.key === k); S.ex = f ? f.items.filter(fltOk).slice(0, 2) : []; }   /* 갈래를 고르면 맨 앞의 둘을 본보기로 — 바꿀 수 있다 */
+  renderStyle(); goHint();
+}
+async function catBuild(authorsText) {
+  const txt = authorsText != null ? authorsText : (($("catAuthors") || {}).value || "");
+  const r = await api("/api/ms/figure/style", { op: "catalog_build", authors: txt.split(/[,，;]/).map(s => s.trim()).filter(Boolean) });
+  if (r.error) { alert("⚠ " + r.error); return; }
+  cat = r; renderStyle(); clearTimeout(catTimer);
+  if (r.status && r.status.running) catTimer = setTimeout(loadCat, 4000);
+}
+async function pickRefs() {   /* 고른 본보기 그림을 서버의 그림체 예시 폴더로 — 저장한 그림체는 이미 거기 있다 */
+  const need = S.ex.filter(x => !x.saved);
+  let got = [];
+  if (need.length) { const r = await api("/api/ms/figure/style", { op: "pick", items: need.map(x => ({ file: x.file, img: x.img, n: x.n })) }); got = r.picked || []; }
+  const refs = S.ex.filter(x => x.saved).map(x => ({ img: x.ref, key: "", short: x.short, n: x.n, file: x.file })).concat(got);
+  return refs;
+}
+async function saveStyle() {
+  const name = prompt("이 그림체의 이름:", S.ex.map(x => x.short).filter(Boolean)[0] || "내 그림체"); if (!name) return;
+  const refs = await pickRefs(); if (!refs.length) return;
+  const r = await api("/api/ms/figure/style", { op: "save", name, imgs: refs.map(x => x.img), from: refs.map(x => ({ file: x.file, n: x.n, short: x.short })) });
+  if (r.error) { alert("⚠ " + r.error); return; }
+  saved = r.styles || []; renderStyle();
+}
+function zoom(x) { if (!x) return; const ov = $("ov"); ov.style.display = "flex";
+  ov.innerHTML = "<div class='box'><div class='oh'><b>" + esc(x.short) + " · " + esc(x.abbr) + " · Fig. " + esc(x.n) + "</b><span>" + esc(x.note || "") + (x.palette ? " · 색: " + esc(x.palette) : "") + "</span><span style='flex:1'></span><button id='ovX'>닫기</button></div><div class='zoom'><img src='" + imgUrl(x) + "'></div></div>";
+  $("ovX").onclick = () => { ov.style.display = "none"; }; }
+
+/* ---------- 원고에서 고르기 ---------- */
+async function openMsPick() {
+  if (!docId) return;
+  const ov = $("ov"); ov.style.display = "flex"; ov.innerHTML = "<div class='box'><div class='oh'><b>원고에서 고르기</b><span>불러오는 중…</span></div></div>";
+  if (!msDoc || msDoc.id !== docId) msDoc = await api("/api/ms?id=" + encodeURIComponent(docId));
+  const en = lsGet("ms_doclang", "ko") === "en";
+  const secs = [];
+  const abs = ((msDoc.front || {}).abstract || "").trim(); if (abs) secs.push({ h: "초록", t: abs });
+  (msDoc.outline || []).forEach(n => { const t = ((en ? n.draft_en : n.draft) || n.draft || n.draft_en || "").trim(); if (t) secs.push({ h: n.heading || "", t, lv: n.level || 1 }); });
+  let si = 0, pick = new Set();
+  const draw = () => {
+    const ps = secs[si] ? secs[si].t.split(/\n[ \t]*\n\s*/).filter(p => p.trim()) : [];
+    ov.innerHTML = "<div class='box'><div class='oh'><b>원고에서 고르기</b><span>그림으로 옮길 문단을 누릅니다(여럿도 됩니다). 고른 글이 「바탕 글」 이 됩니다.</span></div><div class='ob'><div class='secs'>" +
+      (secs.length ? secs.map((s, i) => "<div class='" + (i === si ? "on" : "") + "' data-s='" + i + "' style='padding-left:" + (12 + 10 * ((s.lv || 1) - 1)) + "px'>" + esc(s.h || "(제목 없음)") + "</div>").join("") : "<div>글이 있는 절이 없습니다</div>") + "</div><div class='paras'>" +
+      ps.map((p, i) => "<div class='pp" + (pick.has(si + ":" + i) ? " on" : "") + "' data-p='" + i + "'>" + esc(p) + "</div>").join("") + "</div></div>" +
+      "<div class='of'><span>고른 문단 " + pick.size + "개</span><span style='flex:1'></span><button id='ovX'>닫기</button><button class='primary' id='ovOk'" + (pick.size ? "" : " disabled") + ">이 글로</button></div></div>";
+    ov.querySelectorAll("[data-s]").forEach(d => d.onclick = () => { si = +d.dataset.s; pick = new Set(); draw(); });
+    ov.querySelectorAll("[data-p]").forEach(d => d.onclick = () => { const k = si + ":" + d.dataset.p; if (pick.has(k)) pick.delete(k); else pick.add(k); const y = ov.querySelector(".paras").scrollTop; draw(); ov.querySelector(".paras").scrollTop = y; });
+    $("ovX").onclick = () => { ov.style.display = "none"; };
+    $("ovOk").onclick = () => { const idx = [...pick].map(k => +k.split(":")[1]).sort((a, b) => a - b); $("src").value = idx.map(i => ps[i].trim()).join("\n\n"); S.where = secs[si].h; S.plan = null; saveDraft(); renderPlan(); ov.style.display = "none"; };
+  };
+  draw();
+}
+$("ov").addEventListener("mousedown", e => { if (e.target === $("ov")) $("ov").style.display = "none"; });
+
+/* ---------- 4. 그리기 ---------- */
+function goHint() {
+  const m = $("model").value, d = +lsGet("fig_dur_" + m, 0);
+  $("goHint").textContent = (S.ex.length ? "본보기 " + S.ex.length + "장의 그림체로 · " : "") + (d ? "지난번 " + fmtDur(d) : (m === "opus" ? "보통 3~7분" : "보통 1~2분")) + " · 만든 뒤 말로 고치고 PPT 로 받습니다";
+}
+function waitBar(host, label, expect) {
+  const t0 = Date.now(); host.innerHTML = "<div class='hint'><span id='wbT'></span></div><div class='pbar2'><i id='wbI'></i></div>";
+  const tick = () => { const s = (Date.now() - t0) / 1000; if ($("wbT")) $("wbT").textContent = label + " · " + fmtDur(s) + "째" + (s > expect * 1.3 ? " (예상 " + fmtDur(expect) + "보다 오래 걸리고 있습니다)" : ""); if ($("wbI")) $("wbI").style.width = Math.min(92, 3 + 89 * s / expect) + "%"; };
+  tick(); const tm = setInterval(tick, 1000);
+  return () => { clearInterval(tm); return (Date.now() - t0) / 1000; };
+}
+async function draw() {
+  if (busy || !docId) return;
+  const text = $("src").value.trim(), note = $("note").value.trim();
+  if (text.length < 10 && note.length < 6) { alert("바탕 글이나 설명을 먼저 적어 주세요."); return; }
+  busy = true; $("go").disabled = true;
+  const o = S.plan ? S.plan.options[S.opt] : null, desc = [];
+  if (o) { desc.push("[구도] " + o.title + " — " + o.layout); if (o.elements.length) desc.push("[넣을 것] " + o.elements.join("; "));
+    const qa = S.plan.questions.map((q, i) => q.q + " → " + q.choices[S.ans[i] == null ? 0 : S.ans[i]]); if (qa.length) desc.push("[연구자가 정한 것] " + qa.join(" / ")); }
+  if (note) desc.push((o ? "[덧붙인 말] " : "") + note);
+  const model = $("model").value, expect = +lsGet("fig_dur_" + model, 0) || (model === "opus" ? 240 : 80);
+  const stop = waitBar($("goProg"), "그리는 중 — Claude 가 그리기 코드를 씁니다", expect);
+  const refs = S.ex.length ? await pickRefs() : [];
+  const spec = { description: desc.join("\n"), domain: o ? o.form : S.form, complexity: $("cx").value, style: refs.length ? "refs" : S.base, size: $("size").value, lang: $("lang").value,
+    style_refs: refs.map(x => x.img), style_keys: refs.map(x => x.key).filter(Boolean), source: text ? { text, para: "", where: S.where || "" } : null, model };
+  const r = await api("/api/ms/figure/generate", { id: docId, spec, refs: [], fig: null, feedback: null });
+  const sec = stop(); busy = false; $("go").disabled = false;
+  if (r.error) { $("goProg").innerHTML = "<div class='hint warn'>⚠ " + esc(r.error) + "</div>"; return; }
+  lsSet("fig_dur_" + model, Math.round(sec)); $("goProg").innerHTML = ""; goHint();
+  curFig = r.id; await loadFigs();
+}
+
+/* ---------- 오른쪽: 만든 그림 ---------- */
+function pptNote(f, fresh) {
+  const st = f.pptx_stats; if (!st || !f.pptx) return "";
+  const bits = [];
+  if (fresh) bits.push("PPT 를 받았습니다 — 도형 " + (st.shapes || 0) + " · 글 " + (st.texts || 0) + " · 선·화살표 " + ((st.lines || 0) + (st.arrows || 0)));
+  if (st.pictures) bits.push("흐림을 쓴 " + st.pictures + "곳은 그림으로 들어갑니다");
+  if (st.skipped) bits.push("옮기지 못한 요소 " + st.skipped + "개");
+  return bits.join(" · ");
+}
+let capTimer = null;
+function renderStage() {
+  const el = $("right"), f = figs.find(x => x.id === curFig);
+  if (!figs.length) {
+    el.innerHTML = "<div class='intro'><b>그림 만들기</b><br>왼쪽의 네 걸음을 차례로 갑니다.<br>① 그림으로 옮길 글을 붙여 넣거나 원고에서 고릅니다.<br>② 「구도 제안 받기」 를 누르면 그 글에 맞는 구도 후보가 둘이나 셋 나옵니다 — 하나를 고르고, 물음이 있으면 선택지를 고릅니다.<br>" +
+      "③ 그림체는 좋은 논문의 그림에서 고릅니다. 갈래를 누르면 본보기 그림이 펼쳐지고, 셋까지 고르면 그 선·색·글꼴·라벨 다는 방식으로 그립니다.<br>④ 「그리기」. 만든 그림은 여기 오른쪽에 뜨고, 말로 고치거나 PPT 파일로 받아 PowerPoint 에서 도형과 글을 직접 손봅니다.</div>"; return;
+  }
+  const sp = (f.source || {}).spec || {}, src = (sp.source || {}).text || "", made = f.source && f.source.type === "claude";
+  el.innerHTML = "<div class='strip'>" + figs.map(x => "<div class='th" + (x.id === curFig ? " on" : "") + "' data-f='" + esc(x.id) + "'>" + (x.png ? "<img src='/fig/" + encodeURIComponent(x.png) + "?t=" + (x.t || 0) + "'>" : "<div style='height:62px;width:80px'></div>") + "Fig. " + x.num + "</div>").join("") + "</div>" +
+    "<div class='big'>" + (f.png ? "<img src='/fig/" + encodeURIComponent(f.png) + "?t=" + (f.t || 0) + "'>" : "<div class='hint'>이미지 없음</div>") + "</div>" +
+    "<div class='meta'><b>Fig. " + f.num + "</b>" + (f.w ? "<span>" + f.w + "×" + f.h + "</span>" : "") + (made ? "<span>" + esc(FORM_KO[sp.domain] || "") + ((f.source.history || []).length ? " · 고침 " + f.source.history.length + "회" : "") + "</span>" : "") + "<span class='sp'></span>" +
+      (f.svg ? "<button class='primary' id='fPpt' title='PowerPoint 파일로 받습니다 — 그림 한 장이 아니라 도형·선·글상자를 하나씩 고칠 수 있습니다'>PPT 받기</button><a class='act' href='/fig/" + encodeURIComponent(f.svg) + "' target='_blank'>SVG</a>" : "") +
+      "<button class='act' id='fHi' data-local title='저널 제출용 3배 PNG 를 원고의 내보내기 폴더에 만듭니다'>고해상도 PNG</button>" + (made ? "<button class='act' id='fCode'>코드</button>" : "") + "<button class='act' id='fDel'>삭제</button></div>" +
+    "<div class='hint' id='fNote'>" + esc(pptNote(f)) + "</div>" +
+    (made ? "<div class='fld'><label>고치기</label><textarea id='fFb' rows='2' placeholder='말로 적으면 그리기 코드를 고쳐 다시 그립니다 — 예: 화살표를 더 굵게, 칩을 더 길게, 범례는 빼고'></textarea><div class='gobar' style='margin-top:6px'><button id='fRefine'>이렇게 고쳐 줘</button><span class='hint'>1~3분</span></div><div id='fProg'></div></div>" : "") +
+    "<div class='fld'><div class='two'><div><label>캡션 (한국어)</label><textarea id='fCap' rows='2'>" + esc(f.caption || "") + "</textarea></div><div><label>Caption (English)</label><textarea id='fCapEn' rows='2'>" + esc(f.caption_en || "") + "</textarea></div></div></div>" +
+    (src ? "<details class='src'><summary>이 그림의 바탕 글" + ((sp.source || {}).where ? " — " + esc(sp.source.where) : "") + "</summary><div>" + esc(src) + "</div></details>" : "") +
+    (made && sp.description ? "<details class='src'><summary>구도와 덧붙인 말</summary><div>" + esc(sp.description) + "</div></details>" : "") +
+    (made ? "<pre class='code' id='fCodeBox' style='display:none'>" + esc(f.source.script || "") + "</pre>" : "");
+  el.querySelectorAll("[data-f]").forEach(t => t.onclick = () => { curFig = t.dataset.f; renderStage(); });
+  if ($("fPpt")) $("fPpt").onclick = async () => { const b = $("fPpt"); b.disabled = true; b.textContent = "만드는 중…";
+    const r = await api("/api/ms/figure/pptx", { id: docId, fig: f.id }); b.disabled = false; b.textContent = "PPT 받기";
+    if (r.error) { alert("⚠ " + r.error); return; }
+    f.pptx = r.file; f.pptx_stats = r.stats || {};
+    const title = ((msList.find(m => m.id === docId) || {}).title || "figure").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 40);
+    const a = document.createElement("a"); a.href = "/fig/" + encodeURIComponent(r.file) + "?t=" + Date.now(); a.download = "Fig" + f.num + "_" + title + ".pptx"; document.body.appendChild(a); a.click(); a.remove();
+    $("fNote").textContent = pptNote(f, true); };
+  $("fHi").onclick = async () => { const b = $("fHi"); b.textContent = "만드는 중…"; const r = await api("/api/ms/figure/export", { id: docId, fig: f.id, scale: 3 }); b.textContent = "고해상도 PNG"; $("fNote").textContent = r.error ? "⚠ " + r.error : "저장했습니다: " + r.path; };
+  if ($("fCode")) $("fCode").onclick = () => { const b = $("fCodeBox"); b.style.display = b.style.display === "none" ? "block" : "none"; };
+  $("fDel").onclick = async () => { if (!confirm("Fig. " + f.num + " 을 지울까요?")) return; const r = await api("/api/ms/figure/meta", { id: docId, op: "delete", fig: f.id }); if (r.error) { alert("⚠ " + r.error); return; } curFig = null; loadFigs(); };
+  const cap = () => { clearTimeout(capTimer); capTimer = setTimeout(() => { f.caption = $("fCap").value; f.caption_en = $("fCapEn").value; api("/api/ms/figure/meta", { id: docId, op: "caption", fig: f.id, caption: f.caption, caption_en: f.caption_en }); }, 600); };
+  $("fCap").oninput = $("fCapEn").oninput = cap;
+  if ($("fRefine")) $("fRefine").onclick = async () => { const fb = $("fFb").value.trim(); if (!fb) { alert("어떻게 고칠지 적어 주세요."); return; } if (busy) return; busy = true; $("fRefine").disabled = true;
+    const stop = waitBar($("fProg"), "고치는 중", +lsGet("fig_dur_fix", 0) || 90);
+    const r = await api("/api/ms/figure/generate", { id: docId, fig: f.id, feedback: fb }); const sec = stop(); busy = false;
+    if (r.error) { $("fProg").innerHTML = "<div class='hint warn'>⚠ " + esc(r.error) + "</div>"; $("fRefine").disabled = false; return; }
+    lsSet("fig_dur_fix", Math.round(sec)); await loadFigs(); };
+}
+window.addEventListener("focus", () => { if (!busy && docId) loadFigs(true).then(() => { if (!document.activeElement || !/TEXTAREA|INPUT/.test(document.activeElement.tagName)) renderStage(); }); });
+init();
+</script>
+</body>
+</html>

@@ -3229,6 +3229,118 @@ def _fig_library():
     return out
 
 
+def _fs():
+    """그림체 도감 모듈(figstyle) — 원고의 경로·함수로 한 번 초기화해서 쓴다"""
+    import figstyle
+    if not figstyle.cfg.get("MS_DIR"):
+        figstyle.init(MS_DIR=cfg["MS_DIR"], GEN_DIR=cfg["GEN_DIR"], ARCHIVE=cfg["ARCHIVE"], load_json=cfg["load_json"], save_json=cfg["save_json"],
+                      claude_run=cfg.get("claude_run"))
+    return figstyle
+
+
+_FIG_PLAN = (
+    "연구자가 논문에 넣을 도식을 그리려 한다. 아래 [바탕 글]이 말하는 것을 그림으로 옮긴다. 그리기 전에 구도를 정한다.\n"
+    "구도 후보를 둘이나 셋 내라 — 서로 정말 다른 구도여야 한다(같은 구도의 변주는 안 된다). 후보마다:\n"
+    "- title: 구도의 이름 (한국어 20자 안)\n"
+    "- form: cutting(공구·칩·공작물) | grinding(연삭·밀링 운동학) | setup(장치 구성도) | flow(흐름도·개념도) | steps(단계 패널 a→b→c) | compare(조건을 나란히 비교) | "
+    "graph(축과 곡선의 개념 그래프) | micro(미세조직) | mechanics(힘·응력 벡터) | general 가운데 하나\n"
+    "- layout: 무엇을 어디에 어떻게 놓는가 (한국어 두 문장 안)\n"
+    "- elements: 그림에 넣을 것 4~9개 (짧은 구절. 글이 말한 대상·관계·수치만 — 글에 없는 수치·현상은 넣지 않는다)\n"
+    "- why: 이 구도가 이 글에 맞는 까닭 한 문장\n"
+    "첫 후보가 가장 권하는 것이다.\n"
+    "그리고 연구자가 정해야 그림이 달라지는 것을 물음으로 0~3개 낸다(questions). 물음마다 선택지 2~4개(짧은 구절, 첫째가 권하는 것). "
+    "글에서 이미 알 수 있는 것, 그림체(색·선·글꼴 — 따로 고른다), 크기, 라벨의 언어는 묻지 않는다. 물을 것이 없으면 빈 목록.\n"
+    "그릴 수 있는 것은 선·도형·글로 된 벡터 도식뿐이다 — 사진·현미경 사진·실제 측정 그래프가 있어야 하는 구도나 선택지는 내지 않는다.\n"
+    "read: 이 글이 그림으로 보여 주려는 요점 한 문장(한국어).\n"
+    'JSON 하나로만: {"read": "...", "options": [{"title": "...", "form": "...", "layout": "...", "elements": ["..."], "why": "..."}], '
+    '"questions": [{"q": "...", "choices": ["...", "..."]}]}\n\n')
+_FIG_FORMS = ("cutting", "grinding", "setup", "flow", "steps", "compare", "graph", "micro", "mechanics", "general")
+
+
+def fig_plan(body):
+    """그리기 전의 구상: 바탕 글을 읽고 구도 후보 둘·셋과 연구자가 정할 것을 선택지로 낸다 (가벼운 모델 한 번)."""
+    text = (body.get("text") or "").strip()
+    note = (body.get("note") or "").strip()
+    if len(text) < 20 and len(note) < 10:
+        raise RuntimeError("바탕 글이나 설명을 먼저 적어 주세요")
+    t0 = time.time()
+    prompt = _FIG_PLAN + ("[바탕 글]\n%s\n\n" % text[:5000] if text else "") + ("[연구자가 덧붙인 말]\n%s\n" % note[:1500] if note else "")
+    r = cfg["claude_json"](prompt, timeout=200, model="sonnet") or {}
+    opts = []
+    for o in (r.get("options") or [])[:3]:
+        if not isinstance(o, dict) or not str(o.get("title") or "").strip():
+            continue
+        form = str(o.get("form") or "").strip().lower()
+        opts.append({"title": str(o["title"]).strip()[:40], "form": form if form in _FIG_FORMS else "general", "layout": _norm_ws(str(o.get("layout") or ""))[:300],
+                     "elements": [_norm_ws(str(x))[:80] for x in (o.get("elements") or [])[:10] if str(x).strip()], "why": _norm_ws(str(o.get("why") or ""))[:200]})
+    if not opts:
+        raise RuntimeError("구상을 받지 못했습니다 — 다시 눌러 보거나 형식을 직접 골라 그리세요")
+    qs = []
+    for q in (r.get("questions") or [])[:3]:
+        if isinstance(q, dict) and str(q.get("q") or "").strip():
+            ch = [_norm_ws(str(c))[:60] for c in (q.get("choices") or [])[:4] if str(c).strip()]
+            if len(ch) >= 2:
+                qs.append({"q": _norm_ws(str(q["q"]))[:120], "choices": ch})
+    return {"read": _norm_ws(str(r.get("read") or ""))[:240], "options": opts, "questions": qs, "sec": round(time.time() - t0)}
+
+
+def fig_meta(body):
+    """그림 목록 · 캡션 · 삭제 — 원고를 통째로 저장하지 않고 그림만 고친다(「그림 만들기」 창이 쓴다; 원고 창의 글을 덮지 않게)."""
+    op = body.get("op") or "list"
+    with _REV_LOCK:
+        doc = load_ms(body.get("id"))
+        if not doc:
+            raise RuntimeError("원고를 찾을 수 없습니다")
+        figs = doc.setdefault("figures", [])
+        if op != "list":
+            fig = next((f for f in figs if f.get("id") == body.get("fig")), None)
+            if not fig:
+                raise RuntimeError("그림을 찾을 수 없습니다")
+            if op == "caption":
+                if "caption" in body:
+                    fig["caption"] = str(body.get("caption") or "")[:2000]
+                if "caption_en" in body:
+                    fig["caption_en"] = str(body.get("caption_en") or "")[:2000]
+                fig["cap_t"] = time.time()
+            elif op == "delete":
+                doc["figures"] = figs = [f for f in figs if f.get("id") != fig["id"]]
+                doc["fig_gone"] = ((doc.get("fig_gone") or []) + [fig["id"]])[-300:]
+                for i, f in enumerate(figs):
+                    f["num"] = i + 1
+            save_ms(doc)
+        return {"figures": figs, "fig_gone": doc.get("fig_gone") or [], "title": doc.get("title") or ""}
+
+
+def _keep_figures(old, d):
+    """다른 창(그림 만들기)이 만든·고친·지운 그림을 지킨다 — 화면이 보낸 원고의 그림 목록이 서버의 것보다 옛것일 때.
+    지운 그림은 fig_gone 에 남아(화면도 지울 때 적는다) 옛 화면의 저장이 되살리지 못한다."""
+    gone = list(dict.fromkeys([str(x) for x in (old.get("fig_gone") or []) + (d.get("fig_gone") or [])]))[-300:]
+    oldby = {f.get("id"): f for f in old.get("figures") or [] if isinstance(f, dict)}
+    out = []
+    for f in d.get("figures") or []:
+        if not isinstance(f, dict) or f.get("id") in gone:
+            continue
+        o = oldby.get(f.get("id"))
+        if o and (o.get("t") or 0) > (f.get("t") or 0):          # 서버 쪽이 더 새 그림(다른 창에서 고쳐 그린 것) — 캡션은 나중에 고친 쪽
+            g = dict(o)
+            if (f.get("cap_t") or 0) > (o.get("cap_t") or 0):
+                g.update(caption=f.get("caption", ""), caption_en=f.get("caption_en", ""), cap_t=f.get("cap_t"))
+            f = g
+        elif o and (o.get("cap_t") or 0) > (f.get("cap_t") or 0):
+            f = dict(f, caption=o.get("caption", ""), caption_en=o.get("caption_en", ""), cap_t=o.get("cap_t"))
+        out.append(f)
+    have = set(f.get("id") for f in out)
+    out += [f for i, f in oldby.items() if i not in have and i not in gone]   # 다른 창이 만든 그림
+    for i, f in enumerate(out):
+        f["num"] = i + 1
+    d["figures"] = out
+    if gone:
+        d["fig_gone"] = gone
+
+
+_FIG_RESERVED = {}
+
+
 def _fig_styles_path():
     return os.path.join(cfg["MS_DIR"], "_그림체.json")
 
@@ -3251,6 +3363,18 @@ def fig_style_op(body):
         lim = max(20, min(400, int(body.get("limit") or 120)))
         return {"items": [{k: v for k, v in x.items() if k != "_s"} for x in hit[:lim]], "total": len(hit), "all": len(items),
                 "drawn": sum(1 for x in items if x["type"] in _FIG_DRAWN)}
+    if op in ("catalog", "catalog_build", "catalog_stop"):
+        fs = _fs()
+        st = None
+        if op == "catalog_build":
+            a = body.get("authors")
+            st = fs.build_start(_fig_library(), authors=([str(x) for x in a] if isinstance(a, list) else None), limit=int(body.get("limit") or 400))
+        elif op == "catalog_stop":
+            fs.stop()
+        v = fs.view(_fig_library())
+        if st and st.get("nothing"):
+            v["nothing"] = True
+        return v
     if op == "pick":
         os.makedirs(ref_dir, exist_ok=True)
         out = []
@@ -3264,7 +3388,8 @@ def fig_style_op(body):
             name = "st_%s_%s" % (hashlib.md5(stem.encode("utf-8")).hexdigest()[:8], img)
             shutil.copyfile(src, os.path.join(ref_dir, name))
             parts = stem.split("_", 3)
-            out.append({"img": name, "file": f, "n": it.get("n"), "short": ("%s %s" % (parts[2], parts[0])) if len(parts) >= 3 else stem[:24]})
+            out.append({"img": name, "file": f, "n": it.get("n"), "short": ("%s %s" % (parts[2], parts[0])) if len(parts) >= 3 else stem[:24],
+                        "key": "%s|%s" % (stem, img)})
         return {"picked": out}
     styles = _fig_styles()
     if op == "save":
@@ -3329,10 +3454,23 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     prior = [f["source"].get("script") for f in sorted(doc["figures"], key=lambda f: -(f.get("t") or 0))
              if f.get("source", {}).get("type") == "claude" and f["source"].get("script") and (not dom or f["source"].get("spec", {}).get("domain") == dom)
              and f["id"] != (fig or {}).get("id")]
-    code, svg, log = gen.generate(spec or {}, ref_paths, prev_script=prev, feedback=feedback, log=log, prior_scripts=prior, style_images=style_paths)
-    if not fig:
-        fig = {"id": _next_id(doc["figures"], "f"), "num": len(doc["figures"]) + 1, "caption": "", "caption_en": "", "source": {}}
-        doc["figures"].append(fig)
+    gspec = dict(spec or {})
+    if style_paths and gspec.get("style_keys"):   # 도감이 그 예시들을 보고 적어 둔 그림체(색·선·채움·글꼴·라벨) — 그림을 읽는 것에 더해
+        try:
+            gspec["style_note"] = _fs().note_for([str(k) for k in gspec["style_keys"]][:3])
+        except Exception:
+            pass
+    code, svg, log = gen.generate(gspec, ref_paths, prev_script=prev, feedback=feedback, log=log, prior_scripts=prior, style_images=style_paths)
+    new = fig is None
+    if new:   # 번호는 지금의 원고에서 — 지운 그림의 번호도 다시 쓰지 않는다(지운 표시 fig_gone 과 겹친다)
+        with _REV_LOCK:
+            cur0 = load_ms(doc["id"]) or doc
+            taken = [str(f.get("id")) for f in cur0.get("figures") or []] + [str(x) for x in cur0.get("fig_gone") or []] + list(_FIG_RESERVED.get(doc["id"], ()))
+            n = max([int(m.group(1)) for m in (re.match(r"^f(\d+)$", t) for t in taken) if m] or [0]) + 1
+            _FIG_RESERVED.setdefault(doc["id"], set()).add("f%d" % n)
+        fig = {"id": "f%d" % n, "num": len(doc["figures"]) + 1, "caption": "", "caption_en": "", "source": {}}
+    else:
+        fig = dict(fig)
     hist = (fig.get("source") or {}).get("history", [])
     if prev:
         hist = (hist + [{"t": fig.get("t", 0), "script": prev, "feedback": feedback or ""}])[-10:]
@@ -3351,7 +3489,21 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     except Exception as e:
         fig.pop("pptx", None)
         log.append("PowerPoint 파일을 만들지 못함: %s" % str(e)[:120])
-    save_ms(doc)
+    with _REV_LOCK:   # 그리는 몇 분 동안 원고 창이 쓴 글을 덮지 않게: 파일을 다시 읽어 그림만 얹는다
+        cur = load_ms(doc["id"]) or doc
+        figs = cur.setdefault("figures", [])
+        at = next((i for i, f in enumerate(figs) if f.get("id") == fig["id"]), None)
+        if at is not None:
+            for k in ("caption", "caption_en", "cap_t"):
+                if k in figs[at]:
+                    fig[k] = figs[at][k]
+            figs[at] = fig
+        elif new or fig["id"] not in (cur.get("fig_gone") or []):
+            figs.append(fig)
+        for i, f in enumerate(figs):
+            f["num"] = i + 1
+        save_ms(cur)
+        _FIG_RESERVED.get(doc["id"], set()).discard(fig["id"])
     return fig
 
 
@@ -7126,6 +7278,7 @@ def handle_post(h, body):
                     pass                # 판을 못 남겨도 저장은 한다
                 d.pop("versions", None)   # 예전 방식의 이력(원고 안의 최근 20개 개요)은 더 쓰지 않는다
                 _keep_memo_answers(old, d)
+                _keep_figures(old, d)
                 upd = save_ms(d)["updated"]
             return h._send(200, {"ok": True, "updated": upd})
         if p == "/api/ms/delete":
@@ -7299,6 +7452,10 @@ def handle_post(h, body):
             return h._send(200, fig)
         if p == "/api/ms/figure/style":
             return h._send(200, fig_style_op(body))
+        if p == "/api/ms/figure/plan":
+            return h._send(200, fig_plan(body))
+        if p == "/api/ms/figure/meta":
+            return h._send(200, fig_meta(body))
         if p == "/api/ms/figure/pptx":   # 이미 만든 그림을 PowerPoint 도형 파일로 (저장은 화면이 한다)
             doc = load_ms(body.get("id"))
             fig = next((f for f in doc["figures"] if f["id"] == body.get("fig")), None)

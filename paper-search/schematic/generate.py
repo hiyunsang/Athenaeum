@@ -85,6 +85,8 @@ def build_prompt(spec, ref_images=(), prev_script=None, feedback=None, error=Non
     refs = ""
     if style_images:
         refs += STYLE_REF_RULES % (len(style_images), "\n".join("- " + p for p in style_images))
+        if (spec.get("style_note") or "").strip():
+            refs += "[그림체 메모 — 이 예시들을 미리 보고 적어 둔 것. 그림에서 본 것과 함께 따른다]\n%s\n" % spec["style_note"].strip()[:1200]
     if ref_images:
         refs += ("참고 그림 %d장이 있다. **먼저 Read 도구로 각 파일을 열어 보고** 구성·배치·요소·라벨을 그대로 따르되 깔끔한 벡터 도식으로 다시 그려라 "
                 "(손그림이면 의도를 해석해 정돈, PPT 슬라이드면 배치를 유지):\n%s\n" % (len(ref_images), "\n".join("- " + p for p in ref_images)))
@@ -183,8 +185,8 @@ def find_seed(spec, prior_scripts=()):
 
 def save_template(spec, code):
     """분야 틀이 아직 없으면 성공한 스크립트를 틀로 저장 (다음부터 그 분야는 이 코드에서 시작)"""
-    if spec.get("domain", "general") == "auto":
-        return False
+    if spec.get("domain", "general") == "auto" or (spec.get("source") or {}).get("text"):
+        return False   # 원고의 글을 바탕으로 그린 그림은 틀로 두지 않는다 — 스크립트에 그 글의 내용이 들어 있고, 이 폴더는 저장소 안이다
     try:
         os.makedirs(TEMPLATE_DIR, exist_ok=True)
         p = os.path.join(TEMPLATE_DIR, "%s.py" % spec.get("domain", "general"))
