@@ -317,10 +317,10 @@ let askCtx = null, askOpen = null, askDraft = "", askedSet = new Set(), chatPoll
 let mapStamp = "", mapSel = null, mapZoom = +lsGet("study_map_zoom", 1) || 1, mapMode = "all", mapSi = -1, mapTick = null;   // 마인드맵
 
 $("depth").value = lsGet("study_depth", "mid");
-$("effort").value = lsGet("ms_sel_effort", "xhigh");     // 원고의 대화·서재에서 뽑기와 같은 설정
+$("effort").value = lsGet("study_effort", "xhigh");     // 공부의 모델 — 원고의 모델(ms_sel_effort)과 따로 기억한다 (2026-11-19; 처음 한 번은 ui.js 가 그때까지 같이 쓰던 값을 옮겨 둔다)
 if (!$("effort").value) $("effort").value = "xhigh";
 $("depth").onchange = () => lsSet("study_depth", $("depth").value);
-$("effort").onchange = () => lsSet("ms_sel_effort", $("effort").value);
+$("effort").onchange = () => lsSet("study_effort", $("effort").value);
 $("hdrNew").onclick = () => { newboxSet(true); const t = $("topic"); if (t) { t.focus(); t.scrollIntoView({ block: "nearest" }); } };
 function newboxSet(open) { $("newbox").classList.toggle("closed", !open); $("nbTg").textContent = open ? "접기" : "펴기"; lsSet("study_new_open", open ? "1" : "0"); }
 $("nbTg").onclick = () => newboxSet($("newbox").classList.contains("closed"));

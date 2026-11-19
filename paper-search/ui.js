@@ -41,7 +41,7 @@ function animateBars(root) {
 // ---------- 환경설정 (모든 화면 공통, localStorage 에 기억) ----------
 // 항목: 테마(시스템/밝게/어둡게) · 읽기 글꼴 배율 · 원고 글꼴 배율 · 읽기 폭 · 줄 간격 · 원고 자동 검토
 const UI_DEFAULTS = { ui_theme: "system", ui_scale_read: 1, ui_scale_ms: 1, ui_width: 760, ui_lh: 1.8, ms_autorev: "0", fig_model: "opus", ui_font_ms: "", ui_font_read: "", ui_pdf_zoom: 1,
-  ms_sel_effort: "xhigh", ms_sel_whole: "1", ms_sel_lib: "1", ms_chat_view: "side", ms_alt_view: "clean", ui_update_check: "1" };   // 원고에서 Claude 에게 물을 때: 모델 · 원고 전체를 같이 · 서재 찾아보기 · 대화를 글 옆에/목록으로
+  ms_sel_effort: "xhigh", study_effort: "xhigh", ms_sel_whole: "1", ms_sel_lib: "1", ms_chat_view: "side", ms_alt_view: "clean", ui_update_check: "1" };   // 원고에서 Claude 에게 물을 때: 모델 · 원고 전체를 같이 · 서재 찾아보기 · 대화를 글 옆에/목록으로
 // 글꼴: 기본 목록(이 PC 에 깔린 것만 보임) + 사용자가 추가한 것(글꼴 폴더에 넣은 파일, 직접 적은 설치 글꼴 이름)
 const UI_FONTS = [["Malgun Gothic", "맑은 고딕"], ["Batang", "바탕"], ["Gulim", "굴림"], ["Dotum", "돋움"], ["NanumGothic", "나눔고딕"], ["NanumMyeongjo", "나눔명조"],
   ["NanumSquare", "나눔스퀘어"], ["Noto Sans KR", "Noto Sans KR"], ["Noto Serif KR", "Noto Serif KR"], ["HCR Batang", "함초롬바탕"], ["HCR Dotum", "함초롬돋움"], ["KoPubWorldBatang", "KoPub 바탕"], ["KoPubWorldDotum", "KoPub 돋움"],
@@ -74,6 +74,9 @@ async function uiLoadUserFonts() {   // 글꼴 폴더의 파일을 웹 글꼴로
   } catch (e) {}
 }
 uiLoadUserFonts();
+/* 공부의 모델은 원고의 모델과 따로 기억한다(2026-11-19) — 전에는 한 값을 같이 써서 공부에서 Fable 을 고르면 원고의 대화도 Fable 이 됐다.
+   처음 한 번, 그때까지 같이 쓰던 값을 공부 쪽에 옮겨 둔다(공부에서 고른 것이 바뀌지 않게). */
+try { if (localStorage.getItem("study_effort") == null && localStorage.getItem("ms_sel_effort") != null) localStorage.setItem("study_effort", localStorage.getItem("ms_sel_effort")); } catch (e) {}
 function uiGet(k) {
   try {
     let v = localStorage.getItem(k);
@@ -149,9 +152,11 @@ function openSettings(cat) {
         row("Athenaeum 전용 ChatGPT 계정", "<label class='usw'><input type='checkbox' id='codexOwn'><i></i></label><span class='uout' id='codexOwnState'></span>",
             "켜면 Athenaeum 만 다른 ChatGPT 계정으로 돕니다(로그인 폴더를 따로 둠). 켠 뒤 위의 「로그인 창 열기」 에서 그 계정으로 한 번 로그인", true)] },
       { title: "원고에서 물을 때", rows: [
-        row("모델", sel("ms_sel_effort", [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]]), "대화와 서재에서 뽑기에 같이 쓰입니다. 최대·Fable 은 더 오래 걸리고 사용량이 많습니다"),
+        row("모델", sel("ms_sel_effort", [["xhigh", "Opus · 엑스트라"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["high", "Opus · 보통"], ["fast", "Sonnet · 빠름"]]), "원고의 대화 · 서재에서 뽑기 · Stylus · 논증에 같이 쓰입니다. 최대·Fable 은 더 오래 걸리고 사용량이 많습니다"),
         row("원고 전체를 같이 보내기", sw("ms_sel_whole"), "고른 문단만이 아니라 논문 전체를 읽고 답합니다"),
         row("서재 찾아보기", sw("ms_sel_lib"), "내 논문모음을 직접 찾아 읽고 답합니다. 문헌이 필요 없는 물음에는 끄는 것이 가장 큰 절약입니다")] },
+      { title: "공부에서 쓸 때", rows: [
+        row("모델", sel("study_effort", [["xhigh", "Opus · 엑스트라"], ["high", "Opus · 보통"], ["max", "Opus · 최대"], ["fable", "Fable · 엑스트라"], ["fast", "Sonnet · 빠름 (대조는 Opus)"]]), "공부 장을 쓰는 모델입니다. 원고의 모델과 따로 기억합니다. 공부 창의 「새 장 쓰기」 에서도 바꿉니다")] },
       { title: "그 밖에", rows: [
         row("쓰다 멈추면 자동 검토", sw("ms_autorev"), "30초 멈추면 그 문단을 검토합니다. 사용량이 듭니다"),
         row("도식 코드 모델", sel("fig_model", [["opus", "Opus (꼼꼼함, 5~7분)"], ["sonnet", "Sonnet (빠름, 약 2분)"]]), "말로 만드는 도식의 그리기 코드를 쓰는 모델")] },
