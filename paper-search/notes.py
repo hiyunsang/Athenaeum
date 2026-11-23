@@ -1260,6 +1260,8 @@ def _ask_job(nid):
     readtext, readinfo, readstat = "", [], None
     q0 = question.strip()
     chatty = len(q0) < 60 and not nt["thread"][-1].get("pick") and not re.search(r"[?？]|자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐|무엇|어디|어느|어떤|논문|연구|(?:나|까|지|가|냐|니|죠)\s*[.!…~]*\s*$", q0)
+    if chatty:   # 「원문까지」 를 계속 켜 두고 쓸 수 있게 됐다(2026-11-23) — 짧은 확인·정정에는 원문을 열지 않는다(도구 없이 바로 답)
+        lib = False
     if _read_mode((nt.get("opts") or {}).get("read")) != "off" and not chatty:   # 관련 논문을 먼저 고르고 그 요약을 읽는다 (2026-11-17) — 짧은 확인·정정에는 하지 않는다
         try:
             _stage("read")

@@ -679,7 +679,7 @@ function renderAsk() {
   const box = $("askbox"); if (!cur) { box.hidden = true; return; }
   box.hidden = false;
   if (cur.pending) { box.innerHTML = "<div class='in'><div class='hint'>답을 기다리는 중입니다. 답이 오면 이어서 물을 수 있습니다.</div></div>"; return; }
-  const effSaved = lsGet("notes_effort", "xhigh"), eff = (effSaved === "max" || !EFFORT[effSaved]) ? "xhigh" : effSaved, first = !(cur.thread || []).length, study = lsGet("notes_study", "auto");   /* 최대·서재 원문까지는 그 물음에만 — 다음 물음은 엑스트라·끔으로 (2026-10-30: 둘이 기억돼 물음마다 13분·100만 토큰이 들었다) */
+  const effSaved = lsGet("notes_effort", "xhigh"), eff = (effSaved === "max" || !EFFORT[effSaved]) ? "xhigh" : effSaved, first = !(cur.thread || []).length, study = lsGet("notes_study", "auto");   /* 최대는 그 물음에만 — 다음 물음은 엑스트라로 (2026-10-30: 최대와 서재 찾아보기가 같이 기억돼 물음마다 13분·100만 토큰이 들었다). 서재 「원문까지」 는 2026-11-23 부터 고른 대로 기억한다(readSel) */
   const studies = META.studies || [], studyOk = study === "auto" || study === "none" || studies.some(x => x.id === study), sv = studyOk ? study : "auto";
   const studyOpts = "<option value='auto'" + (sv === "auto" ? " selected" : "") + ">공부 장: 알아서</option><option value='none'" + (sv === "none" ? " selected" : "") + ">공부 장 안 봄</option>" +
     studies.map(x => "<option value='" + esc(x.id) + "'" + (sv === x.id ? " selected" : "") + ">공부: " + esc((x.title || "").slice(0, 34)) + "</option>").join("");
@@ -698,8 +698,8 @@ function renderAsk() {
     "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 그 논지와 근거 원문이 뜹니다'>" + studyOpts + "</select>" +
     "<select id='askMs' title='고른 원고의 글(제목·초록·절·그림 캡션)을 물음에 붙입니다 — 우리 실험의 장비·조건·측정값·기호의 뜻을 알고 답하게. 「알아서」 는 주제와 맞는 원고가 있을 때만 붙입니다. 붙으면 토큰 1만~2만이 더 듭니다'>" + msOpts + "</select>" +
     "<select id='askWorld' title='기본은 서재만 보고 답합니다. 「세상 문헌에서 찾아 줘」 라고 묻거나 답 끝의 그런 선택지를 누르면, 그 물음에서만 학술 데이터베이스(OpenAlex·Scopus)에서 가까운 논문 스무 편쯤의 제목과 초록을 찾아 같이 봅니다(15~45초 더 걸림). 「물음마다」 로 두면 이 주제에서는 연구가 될 만한지·선행연구를 물을 때마다 찾습니다 — 서재에 논문이 거의 없는 새 주제에 맞습니다'>" + worldOpts + "</select>" +
-    "<select id='askRead' title='서재 읽기 — 「골라서 요약 읽기」(기본): 가벼운 모델이 이 물음에 읽어야 할 논문을 여섯 편까지 고르고, Claude 가 그 논문의 요약 전문을 읽고 답합니다(고르는 데 10~20초, 토큰 2만쯤 더). 「골라서 원문까지」: 그 위에 고른 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(5~15분, 토큰 수십만 — 이번 물음에만). 「안 읽음」: 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
-    [["auto", "서재: 골라서 요약 읽기"], ["deep", "서재: 골라서 원문까지 (이번만)"], ["off", "서재: 안 읽음"]].map(([v, t]) => "<option value='" + v + "'" + ((((cur.opts || {}).read) === "off" ? "off" : "auto") === v ? " selected" : "") + ">" + t + "</option>").join("") + "</select>" +
+    "<select id='askRead' title='서재 읽기 — 「골라서 요약 읽기」(기본): 가벼운 모델이 이 물음에 읽어야 할 논문을 여섯 편까지 고르고, Claude 가 그 논문의 요약 전문을 읽고 답합니다(고르는 데 10~20초, 토큰 2만쯤 더). 「골라서 원문까지」: 그 위에 고른 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(물음마다 5~15분, 토큰 수십만 — 다른 것으로 바꿀 때까지 계속 이렇게 답합니다. 짧은 확인·정정에는 원문을 열지 않습니다). 「안 읽음」: 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
+    [["auto", "서재: 골라서 요약 읽기"], ["deep", "서재: 골라서 원문까지"], ["off", "서재: 안 읽음"]].map(([v, t]) => "<option value='" + v + "'" + (readSel() === v ? " selected" : "") + ">" + t + "</option>").join("") + "</select>" +
     "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
     "</span></div><div class='hint' id='askMsg'></div></div>";
   const ot = $("askOptTg"); if (ot) ot.onclick = () => { lsSet("notes_askopts", lsGet("notes_askopts", "0") === "1" ? "0" : "1"); renderAsk(); };
@@ -708,12 +708,14 @@ function renderAsk() {
   box.querySelectorAll(".fsz button").forEach(b => b.onclick = () => { const v = Math.min(20, Math.max(11, (+lsGet("ui_chat_font", "13") || 13) + (+b.dataset.f))); lsSet("ui_chat_font", String(v)); applyFont(); });
   if (first && !draft && URLP.get("ask") === "1" && cur.seed && cur.seed.text && cur.kind !== "ask") { t.value = draft = cur.seed.text.length > 300 ? "이것을 연구 주제로 세울 수 있을까? 서재에 이미 한 연구가 있는지, 새로움이 어디에 있는지, 어떤 실험으로 보일 수 있는지 따져 줘." : cur.seed.text; }
 }
+/* 서재 읽기의 고른 값 — 이 브라우저에 기억한다(모델처럼 모든 주제에). 고른 적이 없으면 그 주제에 저장된 값(안 읽음)·기본(요약 읽기) */
+function readSel() { const v = lsGet("notes_read", ""); return (v === "auto" || v === "deep" || v === "off") ? v : (((cur && cur.opts || {}).read) === "off" ? "off" : "auto"); }
 function applyFont() { $("thwrap").style.fontSize = (+lsGet("ui_chat_font", "13") || 13) + "px"; }
 async function send(pickText, pick) {   /* pick = 답 끝의 선택지를 눌러 보낸 것 — 묻는 칸에 쓰던 글은 그대로 둔다 */
   pick = pick === true && typeof pickText === "string";
   const t = $("askIn"), q = (pick ? pickText : (t ? t.value : "")).trim(); if (!q) { if (t) t.focus(); return; }
-  const eff = $("askEff").value, rsel = ($("askRead") || {}).value || "auto", lib = rsel === "deep", study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto", read = rsel === "off" ? "off" : "auto";   /* 원문까지는 이번 물음에만 — 주제에는 auto 로 남는다 */
-  lsSet("notes_effort", eff === "max" ? "xhigh" : eff); lsSet("notes_study", study);   /* 최대·서재 찾아보기는 기억하지 않는다 (2026-10-30) */
+  const eff = $("askEff").value, rsel = ($("askRead") || {}).value || "auto", lib = rsel === "deep", study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto", read = rsel === "off" ? "off" : "auto";
+  lsSet("notes_effort", eff === "max" ? "xhigh" : eff); lsSet("notes_study", study); lsSet("notes_read", rsel);   /* 최대는 기억하지 않는다 (2026-10-30). 서재 읽기는 고른 대로 기억한다 — 원문까지도 (2026-11-23, 사용자: '이번까지 말고 그냥 계속 쓰고 싶은데') */
   $("askGo").disabled = true; $("askMsg").textContent = "보내는 중…";
   let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: q, effort: eff, lib, study, ms: msv === "none" ? "" : msv, world, read, pick: pick || undefined }); } catch (e) { r = { error: "서버 연결 실패" }; }
   if (r.error) { $("askGo").disabled = false; $("askMsg").textContent = "⚠ " + r.error; document.querySelectorAll("#thread .pick").forEach(x => x.disabled = false); return; }
@@ -1054,7 +1056,7 @@ const TAB_HELP = {   /* 갈래마다 '어떻게 쓰나' (2026-10-29) — 단추�
   check: "가설×관찰×예측 표(식별력 — 못 가르는 가설 쌍을 프로그램이 찾음, Opus 4~5분) · 약속↔답 지도(서론의 약속이 예상 결과·주장으로 답해지는가) · 공백 검증(서론의 공백을 세상의 문헌으로 — 이미 한 사람이 있나). 경고 수가 단추에 보입니다.",
   next: "설계서로 원고 초안(제목·초록·절 차례)을 새 원고 파일로 세우고(Opus 3~4분), 이 주제로 논문 탐색·공부 창을 엽니다.",
   lab: "우리 연구실의 장비·역량·못 하는 것과 분야 지형(핵심 저자·그룹·저널 등급·우리 자리)을 적어 두면 모든 답이 그것에 비추어 실험을 가르고 주장의 무게를 가립니다. 「Claude 가 아는 것」 은 배경의 크기입니다." };
-const ASK_HELP = "답의 길이는 물음의 길이를 따릅니다 — 한 줄로 물으면 한두 문단, '자세히·검토해 줘·다 따져 줘' 라고 적으면 길게. 모델은 Opus 엑스트라가 기본(2~4분)입니다. 최대는 10분을 넘기기 쉽고 글이 더 낫다는 증거가 없어서, 골라도 그 물음에만 쓰이고 다음 물음은 엑스트라로 돌아옵니다. 「서재」 는 기본이 '골라서 요약 읽기' — 물음마다 읽어야 할 논문을 여섯 편까지 골라 그 요약 전문을 읽고 답합니다. '골라서 원문까지' 는 그 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(5~15분·토큰 수십만, 그 물음에만). " +
+const ASK_HELP = "답의 길이는 물음의 길이를 따릅니다 — 한 줄로 물으면 한두 문단, '자세히·검토해 줘·다 따져 줘' 라고 적으면 길게. 모델은 Opus 엑스트라가 기본(2~4분)입니다. 최대는 10분을 넘기기 쉽고 글이 더 낫다는 증거가 없어서, 골라도 그 물음에만 쓰이고 다음 물음은 엑스트라로 돌아옵니다. 「서재」 는 기본이 '골라서 요약 읽기' — 물음마다 읽어야 할 논문을 여섯 편까지 골라 그 요약 전문을 읽고 답합니다. '골라서 원문까지' 는 그 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(물음마다 5~15분·토큰 수십만 — 고르면 바꿀 때까지 계속 그렇게 답합니다)." +
   "「공부 장」 은 주제와 맞는 다 쓴 장의 논지·엇갈림·식을 물음에 붙입니다(알아서 = 맞는 장 둘까지) — 답 속의 C1.2 같은 번호를 누르면 그 논지·장의 문장·근거 원문이 여기 뜨고, 거기서 공부 창으로 갈 수 있습니다. 「원고」 를 고르면 그 원고의 글을 붙여 우리 실험(장비·조건·측정값)을 알고 답합니다 — 모르면 가정하지 않고 되묻습니다. 답 끝의 '탐색:'·'공부:' 줄은 눌러서 돌립니다.";
 function helpHtml() {
   const on = lsGet("notes_help", "0") === "1", t = TAB_HELP[cardTab] || "";
