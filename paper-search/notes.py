@@ -1164,6 +1164,27 @@ def ask(nid, body):
     return {"ok": True, "note": nt}
 
 
+_CH_ASK = re.compile(r"[?？]|자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐|무엇|어디|어느|어떤|논문|연구|원문|찾아|읽어|알려|(?:봐|해)\s*줘")
+_CH_END = re.compile(r"(?:나|까|지|가|냐|니|죠|려나)$")            # 묻는 말끝 — 문장 가운데의 '…있나. …' 도 본다
+_CH_TRAIL = re.compile(r"(?:데|대|듯|은가|는가)$")                # 말끝을 흐리는 제안·떠보기 ('…좋을 거 같은데')
+_CH_PROPOSE = re.compile(r"좋을\s*(?:거|것|듯)|좋겠|싶|어때|어떄|해\s*보|보면|하면|하자|되나|될까|가능")
+_CH_ACK = re.compile(r"맞음|맞아|맞고|맞습|맞네|아니야|아님|아닌|틀렸|틀림|잘못|그만|고마|알겠|오케이|없음|있음|^\s*(?:ㅇㅇ|ㄱㄱ|ㄴㄴ|ok|넵|네)", re.I)
+
+
+def _chatty(q, pick=False):
+    """짧은 확인·정정·맞장구인가 — 그럴 때만 논문 읽기와 원문 열기를 건너뛴다. 헷갈리면 읽는 쪽으로 (2026-11-25).
+    전에는 60자 미만이고 물음표·의문사가 없으면 모두 그렇게 보아, 'Ti64 도 이방성있나. 결정방향별로 … 보면 좋을 거 같은대'(48자)가
+    「원문까지」 를 켠 채로도 논문을 한 편도 읽지 않고 답했다('제가 가진 것은 제목과 라벨뿐 … 원문을 봐야 압니다')."""
+    q = (q or "").strip()
+    if pick or len(q) >= 60 or _CH_ASK.search(q) or _CH_PROPOSE.search(q):
+        return False
+    for c in re.split(r"[.!…~,\n]+(?:\s+|$)", q):
+        c = c.strip()
+        if c and (_CH_END.search(c) or (len(q) >= 12 and _CH_TRAIL.search(c))):
+            return False
+    return len(q) < 25 or bool(_CH_ACK.search(q))
+
+
 def _ask_jobkey(nid, nt):
     """돌고 있는 claude 호출의 이름 — 물음마다 다르게(pending 시각)."""
     return "notes:%s:%d" % (nid, int(nt.get("pending") or 0))
@@ -1259,7 +1280,7 @@ def _ask_job(nid):
         libtext, librefs, libinfo = "", {}, {"n": 0, "err": str(e)[:120]}
     readtext, readinfo, readstat = "", [], None
     q0 = question.strip()
-    chatty = len(q0) < 60 and not nt["thread"][-1].get("pick") and not re.search(r"[?？]|자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐|무엇|어디|어느|어떤|논문|연구|(?:나|까|지|가|냐|니|죠)\s*[.!…~]*\s*$", q0)
+    chatty = _chatty(q0, nt["thread"][-1].get("pick"))
     if chatty:   # 「원문까지」 를 계속 켜 두고 쓸 수 있게 됐다(2026-11-23) — 짧은 확인·정정에는 원문을 열지 않는다(도구 없이 바로 답)
         lib = False
     if _read_mode((nt.get("opts") or {}).get("read")) != "off" and not chatty:   # 관련 논문을 먼저 고르고 그 요약을 읽는다 (2026-11-17) — 짧은 확인·정정에는 하지 않는다
