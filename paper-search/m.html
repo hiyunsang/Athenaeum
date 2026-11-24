@@ -119,6 +119,19 @@
   .seg { display: inline-flex; background: var(--fill); border-radius: 10px; padding: 2px; }
   .seg button { border: 0; background: none; min-width: 60px; height: 30px; padding: 0 12px; border-radius: 8px; font-size: 14px; color: var(--text); }
   .seg button.on { background: var(--seg-on); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .16); }
+  /* 큰 물음(숲) 화면 (2026-11-25) — 물음마다 카드: 물음 · 예측 · 첫 논문 · 심사, 나머지는 「자세히」 */
+  .fqc { margin: 14px 0; padding: 16px 16px 12px; background: var(--card); border-radius: 16px; } .fqc.on { box-shadow: 0 0 0 2px var(--green); }
+  .fqc .fh { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 7px; font-size: 12.5px; color: var(--text-3); margin-bottom: 6px; } .fqc .fh b { color: var(--green); font-size: 13.5px; }
+  .fqc .fn { font-size: 17.5px; font-weight: 700; line-height: 1.38; letter-spacing: -.01em; word-break: keep-all; }
+  .fqc .fqq { font-size: 15.5px; line-height: 1.68; margin-top: 8px; word-break: keep-all; overflow-wrap: anywhere; }
+  .fqc .fl { margin-top: 12px; font-size: 14.5px; line-height: 1.66; color: var(--text); word-break: keep-all; overflow-wrap: anywhere; } .fqc .fl > b { display: block; font-size: 12.5px; color: var(--text-3); font-weight: 700; margin-bottom: 2px; }
+  .fqc .fl.cr { padding: 9px 12px; border-left: 3px solid var(--amber); background: var(--amber-bg); border-radius: 0 10px 10px 0; } .fqc .fl.cr > b { color: var(--amber); }
+  .fqc .fl a { color: var(--accent); text-decoration: none; } .fqc .fl .no { color: var(--text-3); }
+  .fqc details { margin-top: 12px; } .fqc summary { font-size: 14px; color: var(--accent); padding: 6px 0; cursor: pointer; }
+  .fqc table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin-top: 4px; } .fqc td { border-top: 1px solid var(--line); padding: 5px 6px 5px 0; vertical-align: top; } .fqc td:first-child { color: var(--text-2); width: 44%; }
+  .fqc .fa { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .fqm { font-size: 13px; line-height: 1.6; color: var(--text-3); margin: 6px 0; } .fqm b { color: var(--text-2); }
+  .fqreq { width: 100%; box-sizing: border-box; min-height: 70px; border: 0; border-radius: 14px; background: var(--fill); padding: 11px 14px; font-size: 16px; line-height: 1.5; color: var(--text); font-family: inherit; resize: none; margin: 10px 0; }
   .nseg .seg { display: flex; } .nseg .seg button { flex: 1; min-width: 0; height: 38px; padding: 0 6px; }      /* 연구 노트의 묻기 옵션 (2026-11-25) */
   .nol { font-size: 13px; font-weight: 700; margin: 16px 0 8px; } .noh { font-size: 13px; line-height: 1.5; color: var(--text-2); margin-top: 8px; min-height: 39px; }
 
@@ -258,6 +271,7 @@
   .composer .send { flex: none; width: 40px; height: 40px; border-radius: 20px; border: 0; padding: 0; background: var(--accent); color: var(--surface); display: flex; align-items: center; justify-content: center; }
   .composer .send svg { width: 22px; height: 22px; } .composer .send:disabled { background: var(--fill-2); color: var(--text-3); }
   .composer .alt { flex: none; height: 40px; padding: 0 13px; border: 0; border-radius: 20px; background: var(--fill); font-size: 14px; color: var(--text); }
+  .composer .alt.fkey { width: 40px; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--green); } .composer .alt.fkey svg { width: 25px; height: 25px; }      /* 숲 키 (2026-11-25) */
   /* 탐색 (2026-11-11) — 세상의 논문 찾기: 찾는 중 카드 · 소주제 머리 · 논문 창(초록 · 받기) */
   .tg.ok { background: none; box-shadow: inset 0 0 0 1px var(--green); color: var(--green); }
   .fint { padding: 0 20px 12px; font-size: 14px; line-height: 1.55; color: var(--text-2); }
@@ -319,6 +333,18 @@ function ago(t) {
 }
 const fmtDur = s => s < 60 ? s + "초" : Math.floor(s / 60) + "분 " + (s % 60) + "초";
 const svg = (p, sw) => "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='" + (sw || 1.7) + "' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>" + p + "</svg>";
+/* 숲 아이콘 — 침엽수 다섯 그루(뒤의 둘은 옅게). 연구 노트의 숲 키 (2026-11-25, 사용자: '숲 키가 있었음 좋겠어 나무 많은 숲 아이콘으로'). notes.html 과 같은 그림 */
+const FOREST_IC = (() => {
+  const f = v => Math.round(v * 10) / 10;
+  const tree = (cx, top, base, hw) => { const m = top + (base - top) * 0.5; return "M" + cx + " " + top + "L" + f(cx + hw * 0.66) + " " + f(m) + "H" + f(cx + hw * 0.28) + "L" + f(cx + hw) + " " + base + "H" + f(cx - hw) + "L" + f(cx - hw * 0.28) + " " + f(m) + "H" + f(cx - hw * 0.66) + "Z"; };
+  const trunk = (cx, y, h) => "M" + f(cx - 0.7) + " " + y + "h1.4v" + h + "h-1.4z";
+  return "<svg viewBox='0 0 24 24' fill='currentColor' stroke='none' aria-hidden='true'><path opacity='.5' d='" + tree(8, 5.5, 16.5, 3.3) + tree(16.2, 6.5, 16.5, 3.1) + "'/><path d='" +
+    tree(4, 9.5, 18.5, 3.3) + trunk(4, 18.5, 2.6) + tree(12, 3, 18.5, 4.3) + trunk(12, 18.5, 2.6) + tree(20, 10, 18.5, 3.3) + trunk(20, 18.5, 2.6) + "'/></svg>";
+})();
+const IC_FOREST_BTN = "<span style='display:inline-flex;width:22px;height:22px'>" + FOREST_IC + "</span>";
+const forestReq = {};      /* 노트 id → 숲 키를 누를 때 묻는 칸에 적혀 있던 말(큰 물음 화면의 요청 칸으로) */
+const FOREST_STAGE = { layers: "한 단계 위의 층을 세우는 중", read: "읽을 논문을 고르는 중", write: "큰 물음을 쓰는 중", crit: "심사자가 물음을 따져 보는 중", check: "타 분야의 짜임을 세상 문헌으로 확인하는 중" };
+const FQ_KIND = { phenomenon: "현상", assumption: "전제", "import": "타 분야의 짜임" }, FQ_FIT = { high: "잘 맞음", mid: "보통", low: "버거움" }, FQ_CRIT = { keep: "그대로 섬", fix: "고쳐서 섬", "new": "심사자가 세움" };
 const IC = {
   read: svg("<path d='M12 6.6C10.3 5.4 8 4.8 5 4.8a1 1 0 0 0-1 1v11.4a1 1 0 0 0 1 1c3 0 5.3.6 7 1.8 1.7-1.2 4-1.8 7-1.8a1 1 0 0 0 1-1V5.8a1 1 0 0 0-1-1c-3 0-5.3.6-7 1.8z'/><path d='M12 6.6V20'/>"),
   lib: svg("<rect x='3.2' y='4' width='4.3' height='16' rx='1.1'/><rect x='9.4' y='4' width='4.3' height='16' rx='1.1'/><path d='M16.3 7.2l2.6-.7a1.1 1.1 0 0 1 1.3.8l2.5 9.6a1.1 1.1 0 0 1-.8 1.3l-2.6.7a1.1 1.1 0 0 1-1.3-.8L15.5 8.5a1.1 1.1 0 0 1 .8-1.3z'/>"),
@@ -1423,7 +1449,7 @@ function newNoteSheet() {
 }
 async function viewNote(id, my) {
   shell({ parent: "#/notes", title: "노트", fade: true, chat: true, right: "<button class='nb' id='nopt' style='width:auto;padding:0 10px;font-size:15px'>옵션</button>" });
-  app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'><div class='sk' style='height:80px;margin:14px 0'></div><div class='sk' style='height:200px;margin:0'></div></div>" + composerHtml("이어서 묻기") + "</div>";
+  app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'><div class='sk' style='height:80px;margin:14px 0'></div><div class='sk' style='height:200px;margin:0'></div></div>" + composerHtml("이어서 묻기", FOREST_IC) + "</div>";
   let nt = null, now0 = Date.now() / 1000, got = Date.now(), ancs = {}, lrefs = {};
   const optShow = () => { const c = noteOpt(nt), ta = $("cta"); if (ta) ta.placeholder = "이어서 묻기" + (c.read === "deep" ? " · 원문까지" : c.read === "off" ? " · 논문 안 읽음" : ""); };   /* 고른 것이 기본과 다르면 묻는 칸에 보인다 */
   $("nopt").onclick = () => noteOptSheet(nt, optShow);
@@ -1438,7 +1464,7 @@ async function viewNote(id, my) {
         Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
         return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 원문을 열어 봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + "</span></div>"; }).join("") +
       (lastC && !nt.pending && !nt.error && (lastC.choices || []).length ? "<div class='pks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" + lastC.choices.map((c, i) => "<button data-pk='" + i + "'>" + esc(c) + "</button>").join("") + "</div>" : "") +   /* 답 끝의 선택지 — 마지막 답 아래에만 (2026-11-11) */
-      (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : nt.stage === "lib" ? "서재를 찾는 중" : nt.stage === "read" ? "읽을 논문을 고르는 중" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
+      (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : nt.stage === "lib" ? "서재를 찾는 중" : nt.stage === "read" ? "읽을 논문을 고르는 중" : nt.stage === "forest" ? "숲을 볼 재료를 모으는 중" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
     $("msgs").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => { const c = ((lastC || {}).choices || [])[+b.dataset.pk]; if (!c) return; $("msgs").querySelectorAll("[data-pk]").forEach(x => x.disabled = true); ask(c, true); });
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel", id }); } catch (e) {} pull(); };
@@ -1477,6 +1503,90 @@ async function viewNote(id, my) {
     await pull(); toBottom();
   };
   bindComposer(v => ask(v, false));
+  const fk = $("calt"); fk.classList.add("fkey"); fk.setAttribute("aria-label", "큰 물음 — 숲");      /* 숲 키 — 이 주제의 큰 물음 화면을 연다. 묻는 칸에 적어 둔 말은 그 화면의 요청으로 넘어간다 */
+  fk.onclick = () => { const v = $("cta").value.trim(); if (v) forestReq[id] = v; location.hash = "#/n/" + enc(id) + "/forest"; };
+  await pull();
+}
+
+/* ---------- 큰 물음 — 숲 (2026-11-25, 사용자: '숲 버튼 누르면 결국 채팅 한 문장이 쳐지는 기능이 전부인가? PC 에서 쓰는 숲을 업그레이드하고 폰에도 적용하고픈데') ----------
+   PC 연구 노트의 「틀」 갈래에 있는 큰 물음과 같은 것(POST /api/notes {op: forest · forest_pick · cancel_job}, 결과는 note.forest). 연구실 PC 에서 10~15분 돌고 휴대폰을 꺼도 계속된다.
+   주소: #/n/<노트>/forest. 물음마다 카드 — 물음 · 예측 · 첫 논문 · 심사자가 본 약한 지점이 먼저, 나머지는 「자세히」. */
+async function viewForest(id, my) {
+  shell({ parent: "#/n/" + enc(id), title: "큰 물음", fade: true });
+  app.innerHTML = "<div class='doc' id='fbox'>" + skeleton() + "</div>";
+  let nt = null, now0 = Date.now() / 1000, got = Date.now(), req = forestReq[id] || "";
+  const cite = c => c.file ? "<a href='" + pUrl(c.file, "summary") + "'>" + esc(c.key) + " ✓</a>" : "<span class='no'>" + esc(c.key) + " ?</span>";
+  const cites = cs => (cs || []).length ? " (" + cs.map(cite).join(", ") + ")" : "";
+  const line = (k, v, cls) => v ? "<div class='fl" + (cls ? " " + cls : "") + "'><b>" + k + "</b>" + v + "</div>" : "";
+  const card = (q, x) => {
+    const on = q.pick === x.id, ck = x.check, cr = x.crit || {};
+    return "<div class='fqc" + (on ? " on" : "") + "'><div class='fh'><b>" + esc(x.id) + "</b><span class='tg'>" + esc(FQ_KIND[x.kind] || x.kind) + "</span>" + (x.general ? "<span class='tg'>재료 무관</span>" : "") +
+      (q.recommend === x.id ? "<span class='tg hi'>추천</span>" : "") + "<span>" + (FQ_FIT[x.fit] || "") + "</span>" + (on ? "<span class='tg hi'>고른 물음</span>" : "") + "</div>" +
+      "<div class='fn'>" + esc(x.name) + "</div><div class='fqq'>" + esc(x.question) + "</div>" +
+      line("예측 — 틀릴 수 있는 것", esc(x.prediction)) + line("첫 논문", esc(x.first)) +
+      (cr.weak || cr.fixed ? line("심사 — " + (FQ_CRIT[cr.verdict] || ""), (cr.weak ? esc(cr.weak) : "") + (cr.fixed ? "<div style='color:var(--text-2);margin-top:4px'>고친 것: " + esc(cr.fixed) + "</div>" : ""), "cr") : "") +
+      "<details><summary>자세히</summary>" +
+      line("걸친 현상", x.phenomenon ? esc(x.phenomenon) + cites(x.cites) : "") + line("흔드는 전제", esc(x.assumption)) +
+      line("가져오는 짜임·방법" + (x.from_field ? " (" + esc(x.from_field) + ")" : ""), esc(x.structure)) +
+      ((x.mapping || []).length ? "<div class='fl'><b>대응표</b><table>" + x.mapping.map(m => "<tr><td>" + esc(m.there) + "</td><td>" + esc(m.here) + "</td></tr>").join("") + "</table></div>" : "") +
+      line("이 문제에서의 실험", esc(x.method)) +
+      (ck ? line("세상 문헌으로 확인", "그 분야에 " + esc({ yes: "그렇게 서 있음", partly: "일부만 확인", no: "확인 안 됨" }[ck.exists] || "") + (ck.note ? " — " + esc(ck.note) : "") +
+        ((ck.taken || []).length ? "<div style='margin-top:4px'>이 분야에 이미 가져온 사람: " + ck.taken.map(c => esc(c.title) + " (" + (c.year || "?") + ")" + (c.how ? " — " + esc(c.how) : "")).join(" / ") + "</div>" : "<div style='margin-top:4px'>이 분야에 이미 가져온 사람은 찾은 범위에서 없습니다.</div>")) : "") +
+      line("다시 정리되는 것", x.reorganizes ? esc(x.reorganizes) + cites(x.re_cites) : "") + ((x.near || []).length ? line("가까운 연구(이미 한 것)", x.near.map(cite).join(", ")) : "") +
+      line("왜 아직 아무도 안 했나", esc(x.why_not)) + line("우리 연구실", esc(x.ours)) + line("왜 그럴듯한가", esc(x.plausible)) + line("서재 밖 — 확인할 것", esc(x.outside), "cr") +
+      ((x.gets || []).length ? "<div class='fl'><b>받을 논문</b>" + x.gets.map(g => "<div style='margin-top:4px'>" + (g.owned ? "★ " : "") + esc(g.title) + " <span class='no'>(" + esc(g.authors || "") + (g.year ? " " + g.year : "") + ")</span></div>").join("") + "</div>" : "") +
+      "</details><div class='fa'><button class='pill" + (on ? "" : " pri") + "' data-fpick='" + esc(on ? "" : x.id) + "'>" + (on ? "선택 풀기" : "이 물음으로 정하기") + "</button><button class='pill' data-ftalk='" + esc(x.id) + "'>이 물음으로 이야기하기</button></div></div>";
+  };
+  const draw = () => {
+    if (!nt) return;
+    const q = nt.forest, pend = nt.forest_pending, m = (q && q.material) || {}, answered = (nt.thread || []).some(t => t.role === "claude");
+    const ta0 = $("freq"); if (ta0) req = ta0.value;
+    let h = "<div class='ch2'>" + esc(nt.title || "") + "</div><div class='ch1'>큰 물음 — 숲</div>";
+    if (pend) h += waitHtml(FOREST_STAGE[nt.forest_stage] || "큰 물음을 찾는 중", got - Math.max(0, now0 - pend) * 1000, true) + "<div class='fqm'>10~15분쯤 걸립니다. 연구실 PC 에서 도니 화면을 끄거나 다른 화면으로 가도 됩니다.</div>";
+    if (nt.forest_error) h += "<div class='merr'>" + esc(nt.forest_error) + "</div>";
+    if (q && (q.items || []).length) {
+      h += "<div class='fqm'>" + ago(q.t) + " · 물음 " + q.items.length + "개" + ((m.read || []).length ? " · 논문 " + m.read.length + "편을 읽고 씀" : "") + (m.near ? " · 둘레 논문 " + (m.near + (m.wide || 0)) + "편의 물음을 봄" : "") + (q.crit_t ? " · 심사를 거침" : "") + "</div>" +
+        ((q.layers || []).length ? "<div class='fqm'><b>한 단계 위</b> " + q.layers.map(l => esc(l.name)).join(" → ") + "</div>" : "") +
+        (q.crit_err ? "<div class='fqm' style='color:var(--amber)'>" + esc(q.crit_err) + "</div>" : "") +
+        q.items.map(x => card(q, x)).join("") +
+        (q.why ? "<div class='fl' style='font-size:14.5px;line-height:1.66;margin:14px 0'><b style='display:block;font-size:12.5px;color:var(--text-3)'>추천 까닭</b>" + esc(q.why) + "</div>" : "") +
+        ((q.killed || []).length || (q.dropped || []).length ? "<details style='margin:10px 0'><summary style='font-size:14px;color:var(--accent);padding:6px 0'>버린 것 " + ((q.killed || []).length + (q.dropped || []).length) + "개</summary>" +
+          (q.killed || []).map(k => "<div class='fqm'><b>심사에서 버림 — " + esc(k.name || k.id) + "</b><br>" + esc(k.weak || "") + "</div>").join("") + (q.dropped || []).map(d => "<div class='fqm'>나무라서 버림 — " + esc(d) + "</div>").join("") + "</details>" : "");
+    } else if (!pend) {
+      h += "<p style='color:var(--text-2);font-size:15px;line-height:1.7'>남이 한 연구의 빈칸을 메우는 주제가 아니라, 여러 논문에 걸친 현상 · 분야가 함께 깔고 있는 전제 · 다른 분야의 연구 짜임에서 출발하는 물음을 둘에서 넷 찾습니다. 지금까지의 토의와 서재를 재료로 쓰고, 논문을 골라 읽은 뒤 쓰며, 쓴 물음은 심사자가 한 번 따져 고치거나 버립니다.</p>";
+    }
+    if (!pend) h += "<textarea class='fqreq' id='freq' placeholder='요청(선택) — 예: 전제를 흔드는 물음 위주로 / In-SEM 이 아니어도 되는 물음'>" + esc(req) + "</textarea>" +
+      "<button class='pill pri big' id='fgo'" + (answered ? "" : " disabled") + ">" + IC_FOREST_BTN + (q ? "큰 물음 다시 찾기" : "큰 물음 찾기") + "</button>" +
+      "<div class='fqm' style='text-align:center'>" + (answered ? "Opus 로 10~15분 · 토큰을 꽤 씁니다(수십만)" : "먼저 이 노트에서 한 번은 묻고 답을 받아야 합니다") + "</div>";
+    $("fbox").innerHTML = h;
+    const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel_job", id, kind: "forest" }); } catch (e) {} pull(); };
+    const g = $("fgo"); if (g) g.onclick = async () => {
+      g.disabled = true; req = ($("freq") || {}).value || ""; delete forestReq[id];
+      let r; try { r = await api("/api/notes", { op: "forest", id, effort: noteOpt(nt).effort === "fast" ? "fast" : "xhigh", req }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+      if (r.error) { toast(r.error); g.disabled = false; return; }
+      req = ""; await pull(); window.scrollTo(0, 0);
+    };
+    $("fbox").querySelectorAll("[data-fpick]").forEach(b => b.onclick = async () => {
+      b.disabled = true; let r; try { r = await api("/api/notes", { op: "forest_pick", id, qid: b.dataset.fpick }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+      if (r.error) { toast(r.error); b.disabled = false; return; }
+      toast(b.dataset.fpick ? "이 물음 아래에서 토의합니다" : "선택을 풀었습니다"); await pull();
+    });
+    $("fbox").querySelectorAll("[data-ftalk]").forEach(b => b.onclick = () => {
+      const it = ((nt.forest || {}).items || []).find(v => v.id === b.dataset.ftalk); if (!it) return;
+      lsSet("m_draft_#/n/" + enc(id), "큰 물음 " + it.id + "(" + it.name + ")을 놓고 이야기하고 싶습니다. ");      /* 노트의 묻는 칸에 넣어 둔다 — 보내는 것은 연구자가 */
+      location.hash = "#/n/" + enc(id);
+    });
+  };
+  const pull = async () => {
+    let r; try { r = await api("/api/notes/get?id=" + enc(id)); } catch (e) { return; }
+    if (my !== view) return;
+    if (!r.note) { $("fbox").innerHTML = "<div class='empty'><b>이 노트를 찾지 못했습니다</b></div>"; clearInterval(pollT); return; }
+    const sig = n => JSON.stringify([n.forest_pending, n.forest_stage, n.forest_error, (n.forest || {}).t, (n.forest || {}).crit_t, (n.forest || {}).check_t, (n.forest || {}).pick]);
+    const changed = !nt || sig(nt) !== sig(r.note);
+    nt = r.note; now0 = r.now || Date.now() / 1000; got = Date.now();
+    if (changed) draw();
+    clearInterval(pollT); pollT = nt.forest_pending ? setInterval(pull, 5000) : null;
+  };
   await pull();
 }
 
@@ -1977,6 +2087,7 @@ function onRoute() {
   const done = p => p && p.catch && p.catch(e => { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); });
   if (r === "p" && parts[1]) return done(viewPaper(parts[1], parts[2], parts[3], my, parts[4]));
   if (r === "s" && parts[1]) return done(viewStudy(parts[1], parts.slice(2), my));
+  if (r === "n" && parts[1] && parts[2] === "forest") return done(viewForest(parts[1], my));
   if (r === "n" && parts[1]) return done(viewNote(parts[1], my));
   if (r === "f" && parts[1]) return done(viewFound(parts[1], parts[2], parts[3], my));
   if (r === "find") return done(viewFind(my));

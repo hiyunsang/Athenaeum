@@ -749,8 +749,11 @@ _RULE = (
     "문헌을 더 찾아야 답할 수 있을 때만 답 끝에 '탐색: 검색어' 줄을 적고, 서재의 논문을 깊이 읽어야 할 때만 '공부: 주제' 줄을 적습니다. 연구자가 그 줄을 눌러 돌립니다. 습관처럼 붙이지 않고, 검색어나 주제만 적습니다(논문 이름을 덧붙이지 않습니다).\n\n"
     "연구자는 답을 읽은 뒤 어디로 더 갈지를 직접 고르고 싶어 합니다. 그래서 확인이나 정정에 한두 문장으로 답한 경우가 아니면, 답의 맨 끝에 '선택: '으로 시작하는 줄을 두 개에서 네 개 적습니다. "
     "연구자가 이 답 다음에 갈 수 있는 서로 다른 방향입니다. 한 줄에 하나씩 적고, '선택: ' 뒤에는 연구자가 직접 말하듯이 한 줄로 짧게 씁니다(마흔 자 안쪽). "
-    "화면이 이 줄을 단추로 보여 주고, 연구자가 하나를 누르면 그 말이 그대로 다음 물음이 됩니다. 방금 답에서 덜 다룬 것, 결론이 엇갈린 채 남은 것, 연구자가 어느 쪽인지 정해야 다음이 정해지는 갈림길이 좋은 선택지입니다. "
-    "서재 밖의 선행연구를 기억으로만 말했고 [세상의 문헌에서 찾은 것]이 없었다면, 선택지 하나를 '이 선행연구를 세상 문헌에서 확인해 주세요'처럼 확인을 청하는 말로 둡니다. "
+    "화면이 이 줄을 단추로 보여 주고, 연구자가 하나를 누르면 그 말이 그대로 다음 물음이 됩니다. 좋은 선택지는 연구의 갈림길입니다. 어느 쪽을 고르느냐에 따라 연구가 달라지는 것이어야 합니다. "
+    "이 답의 판단이 기대고 있는 가장 약한 가정을 따져 보는 것, 답에서 엇갈린 채 남긴 두 해석 가운데 하나를 파 보는 것, 주장을 어느 쪽으로 세울지 정하는 것이 그런 선택지입니다. 선택지끼리는 종류가 서로 달라야 합니다. "
+    "시편을 정하자, 범위를 정하자, 설계를 구체화해 달라 같은 실행 준비는 넣지 않습니다(연구자가 필요할 때 스스로 묻습니다). "
+    "'세상 문헌에서 찾아 달라'는 선택지는 답의 판단이 서재 밖에 그 연구가 이미 있느냐에 실제로 달려 있고, 있을 법하다고 볼 근거가 있을 때만 하나 넣습니다. "
+    "새 장치와 재료의 조합처럼 이 분야를 아는 사람이 보기에 없을 것이 뻔한 선행연구를 찾아 달라는 선택지는 넣지 않습니다. "
     "'더 자세히'처럼 막연한 것이나 방금 한 답을 다시 하게 되는 것은 넣지 않습니다. 연구자가 무엇을 원하는지 되묻고 싶을 때도 질문 문장 대신 이 줄로 고를 것을 줍니다. "
     "선택지는 이 토의를 잇는 말이지 새 연구 주제의 제안이 아니고, 본문에 '다음에 할 일'을 적는 것과도 다릅니다(본문에는 여전히 묻지 않은 할 일을 적지 않습니다). "
     "마땅한 방향이 하나뿐이면 억지로 채우지 않고 적지 않습니다. 본문에서는 선택지를 소개하거나 되풀이하지 않습니다.\n\n"
@@ -779,7 +782,8 @@ _RULE_ASK = (
     "이 질문이 연구 주제로 자랄 만하면 본문의 마지막에 한 문장으로 그렇게 말해 줍니다. 앞 답에서 이미 그렇게 말했으면 다시 말하지 않습니다.\n\n"
     "연구자는 답을 읽은 뒤 어디로 더 갈지를 직접 고르고 싶어 합니다. 그래서 확인이나 정정에 한두 문장으로 답한 경우가 아니면, 답의 맨 끝에 '선택: '으로 시작하는 줄을 두 개에서 네 개 적습니다. "
     "연구자가 이 답 다음에 갈 수 있는 서로 다른 방향입니다. 한 줄에 하나씩 적고, '선택: ' 뒤에는 연구자가 직접 말하듯이 한 줄로 짧게 씁니다(마흔 자 안쪽). "
-    "화면이 이 줄을 단추로 보여 주고, 연구자가 하나를 누르면 그 말이 그대로 다음 물음이 됩니다. 방금 설명에서 깊이 들어가지 못한 부분, 설명이 서로 겨루는 지점, 우리 연구실의 일과 이어지는 지점이 좋은 선택지입니다. "
+    "화면이 이 줄을 단추로 보여 주고, 연구자가 하나를 누르면 그 말이 그대로 다음 물음이 됩니다. 방금 설명에서 깊이 들어가지 못한 부분, 설명이 서로 겨루는 지점, 우리 연구실의 일과 이어지는 지점이 좋은 선택지입니다. 선택지끼리는 종류가 서로 달라야 합니다. "
+    "시편이나 범위를 정하자는 실행 준비, 이 분야를 아는 사람이 보기에 없을 것이 뻔한 선행연구를 찾아 달라는 것은 넣지 않습니다. "
     "'더 자세히'처럼 막연한 것이나 방금 한 설명을 다시 하게 되는 것은 넣지 않습니다. 연구자가 무엇을 알고 싶은지 되묻고 싶을 때도 질문 문장 대신 이 줄로 고를 것을 줍니다. "
     "마땅한 방향이 하나뿐이면 억지로 채우지 않고 적지 않습니다. 본문에서는 선택지를 소개하거나 되풀이하지 않습니다.\n\n"
     "글은 자연스러운 한국어 문단으로, '~습니다'로 끝나는 높임말로 씁니다(교과서처럼 '~다'로 끝내지 않습니다). 처음부터 한국어로 생각해서 쓰고, 영어 문장을 옮기듯 쓰지 않습니다. 관계절을 관형절로 옮겨 한 문장에 주어가 둘셋 겹치는 문장은 조건과 결론으로 풀거나 두 문장으로 나눕니다. 한 문장에는 주어를 하나만 둡니다. "
@@ -895,9 +899,16 @@ _QK_GROW = re.compile(r"발전|더\s*(?:좋|세|강|낫)|추가로|키우|보강
 _QK_IDEA = re.compile(r"(?:있을까|없을까|없나|어떨까|해\s*볼까|볼\s*수\s*있을까|될까|되려나|되겠지|되지\s*않을까|하면\s*어때|어떨지)\s*[?.!…~]*\s*$")   # 생각을 던져 보는 말 — 틀은 씌우지 않고, 물음을 영어 낱말로 풀어 서재를 더 잘 찾는 것만 한다
 
 
+# 숲을 청하는 말(2026-11-25, 사용자가 폰에서: '숲을 보는 것도 하고 싶은데, 연구노트가 제시하는 건 너무 다 세부공백같아') — 「틀」 갈래의 큰 물음은 PC 의 오른쪽 칸에만 있어
+# 폰의 대화에서는 닿을 길이 없었고, 토의의 답은 '가장 가까운 선행연구와의 차이' 로 따지게 돼 있어 늘 틈으로 좁혀졌다. 이런 말이 있으면(답 끝의 그런 선택지를 누른 것도) 큰 물음의 재료를 붙여 답한다.
+_QK_FOREST = re.compile(r"숲|큰\s*그림(?:을|를|이|가|도|은|는|에|에서|으로)?\s*(?:찾|내\s*줘|내고|뽑|제시|보여|보고|보면|봐|볼|하고|속하|없|그려)|큰\s*(?:물음|질문|틀|연구|주제)(?:을|를|이|가|도|은|는|에|에서|으로)?\s*(?:찾|내\s*줘|내고|뽑|제시|보여|보고|보면|봐|볼|하고|속하|없|그려)|더\s*큰\s*(?:물음|질문|틀|연구|주제|그림)|한\s*단계\s*위|줌\s*아웃|크게\s*(?:보|봐|봤|볼)|넓게\s*(?:보|봐|볼)|세부\s*공백|틈\s*(?:메우|새)|대단한\s*연구|판을\s*바꾸")
+
+
 def _qkind(question):
-    """→ 'judge'(연구가 될 만한가) | 'prior'(선행연구) | 'grow'(더 낫게) | 'idea'(생각을 던져 봄 — 답의 틀은 그대로 두고 세상의 문헌만 같이 본다) | ''"""
+    """→ 'forest'(숲을 보고 싶다) | 'judge'(연구가 될 만한가) | 'prior'(선행연구) | 'grow'(더 낫게) | 'idea'(생각을 던져 봄 — 답의 틀은 그대로 두고 세상의 문헌만 같이 본다) | ''"""
     q = (question or "").strip()
+    if _QK_FOREST.search(q):
+        return "forest"
     if _QK_JUDGE.search(q):
         return "judge"
     if _QK_PRIOR.search(q):
@@ -1017,7 +1028,7 @@ def _own_research(nt):
     return n >= 2
 
 
-def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False, worldtext="", qkind="", readtext="", readfiles=()):
+def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False, worldtext="", qkind="", readtext="", readfiles=(), foresttext=""):
     seed = nt.get("seed") or {}
     fr = seed.get("from") or {}
     isask = (nt.get("kind") or "topic") == "ask" and not _own_research(nt)   # 물음 — 분야를 배우려는 대화 (2026-10-27); 제 연구를 다루게 된 물음 노트는 연구 주제처럼 (2026-11-17)
@@ -1106,7 +1117,7 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
         seen = "[서재에서 찾은 문장]" + ("과 [세상의 문헌에서 찾은 것]" if worldtext else "")
         # 서재만 보고 답할 때 — '서재에 없다' 와 '아무도 안 했다' 를 가르고, 밖을 볼지는 연구자가 고르게 선택지로 남긴다
         outside = "" if worldtext else (" 이번 답은 서재만 보고 하는 것이니, 이미 한 연구가 있는지는 '서재 안에서는'이라고 밝혀 말합니다(서재에 없다는 것이 아무도 하지 않았다는 뜻은 아닙니다). "
-                                        "서재가 이 주제를 얇게 덮고 있거나 서재 밖에 이미 한 연구가 있을 법하면, 선택지 하나를 '세상 문헌에서 이미 한 연구가 있는지 찾아 주세요'로 둡니다.")
+                                        "서재 밖에 이미 한 연구가 있을 법하다고 볼 근거가 있고 판단이 거기에 달려 있을 때만, 선택지 하나를 '세상 문헌에서 이미 한 연구가 있는지 찾아 주세요'로 둡니다. 없을 것이 뻔하면 두지 않습니다.")
         if qkind == "judge":
             note = ("(이 연구가 될 만한지를 묻는 물음입니다. 판단을 먼저 한두 문장으로 말합니다. 이어서 근거를 말합니다: 이 연구가 끝나면 내세울 주장이 무엇인지, 가장 가까운 선행연구 한두 편이 무엇을 이미 했고 이 연구와 어디가 다른지, "
                     "이 연구가 틀리거나 약해질 수 있는 지점이 어디인지입니다. 끝으로 이 생각을 더 서게 만드는 방법을 한두 가지 말합니다. 선행연구는 %s에서 확인한 것으로 말하고, 확인하지 못한 것을 기억으로 채우지 않습니다.%s "
@@ -1119,6 +1130,17 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
                     "방법마다 그것을 더하면 무엇을 더 말할 수 있게 되는지를 붙입니다. 길이는 %s입니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % size
     elif qkind == "prior" and isask and worldtext and not (short and not asking):
         note = note.rstrip("\n").rstrip(")") + " 서재 밖의 연구는 [세상의 문헌에서 찾은 것]에서 확인한 것으로 말합니다.)\n"
+    # 2026-11-25 숲 — 연구자가 큰 물음을 청한 물음. 이 한 줄이 위의 것들을 덮는다(고른 선택지 · 짧은 물음이어도)
+    if qkind == "forest":
+        note = ("(연구자가 숲을 보고 싶어 합니다. 남이 한 연구의 빈칸을 메우는 주제가 아니라 더 큰 물음을 청한 것입니다. 물음에 적은 대상이나 생각이 있으면 그것을 출발점으로 삼아 한 단계 위에서 봅니다. %s큰 물음을 둘이나 셋 냅니다. "
+                "큰 물음은 세 가지 가운데 하나에서 나옵니다. 첫째, 서로 다른 그룹의 논문 셋 이상에 걸쳐 되풀이되거나 엇갈리는 현상을 한 번에 설명하는 물음입니다. 둘째, 분야가 말없이 함께 깔고 있는 전제가 어디서 깨지는지 묻는 물음입니다. "
+                "셋째, 다른 분야가 물음을 세우는 짜임이나 방법을 가져오는 물음입니다(그 분야의 내용을 섞는 것이 아닙니다). "
+                "새 재료나 새 조건, 새 치수에 같은 방법을 쓰는 물음과 한 논문이 멈춘 자리를 잇는 물음은 내지 않습니다. 물음 가운데 적어도 하나는 이 주제의 재료나 장치 없이도 서는 물음이어야 합니다. "
+                "물음마다 한 줄 이름을 붙이고, 어떤 서재 논문들에 걸쳐 있는지, 아직 아무도 재지 않았고 틀릴 수 있는 예측 하나('X를 바꾸면 Y가 Z로 바뀐다' 꼴), 우리 연구실에서 그 예측을 시험하는 가장 값싼 실험을 말합니다. "
+                "연구자가 지금 하려는 실험은 버리지 않고, 그 큰 물음을 시험하는 첫 재료로 놓습니다. 다른 분야에서 가져온 것과 서재로 확인하지 못한 것은 '서재 밖:'으로 갈라 적습니다. 이 분야 사람이 보기에 터무니없는 것은 내지 않습니다. "
+                "길이는 2,500자 안쪽입니다. 답 끝의 '선택: ' 줄에는 낸 큰 물음마다 그것을 더 파는 선택지를 하나씩 둡니다.)\n") % ("[숲을 보는 재료]의 [한 단계 위]에서 출발해 " if foresttext else "")
+    if foresttext:
+        out += "\n" + foresttext + "\n"
     out += "\n[물음]\n" + question + "\n" + note + "\n" + (_RULE_ASK if isask else _RULE)
     if lib:   # 서재 읽기 「원문까지」 — 고른 논문의 전문 번역을 직접 연다 (2026-11-17: 「서재 찾아보기」 와 「논문 읽기」 를 하나로)
         first = ""
@@ -1150,6 +1172,8 @@ def ask(nid, body):
         offered = [c for m in th[-2:] if m.get("role") == "claude" for c in (m.get("choices") or [])]
         if offered and (body.get("pick") or question in offered):   # 답 끝의 선택지를 눌러 보낸 물음 (2026-11-11) — 취소했다가 묻는 칸에서 그대로 다시 보낸 것도 같은 글이면 고른 것으로 본다
             turn["pick"] = True
+        if body.get("forest"):   # 숲 키로 보낸 물음 (2026-11-25) — 적은 말이 무엇이든 한 단계 위의 큰 물음으로 답한다
+            turn["forest"] = True
         if th and th[-1].get("role") == "user" and nt.get("error"):
             th[-1] = turn
         else:
@@ -1176,7 +1200,7 @@ def _chatty(q, pick=False):
     전에는 60자 미만이고 물음표·의문사가 없으면 모두 그렇게 보아, 'Ti64 도 이방성있나. 결정방향별로 … 보면 좋을 거 같은대'(48자)가
     「원문까지」 를 켠 채로도 논문을 한 편도 읽지 않고 답했다('제가 가진 것은 제목과 라벨뿐 … 원문을 봐야 압니다')."""
     q = (q or "").strip()
-    if pick or len(q) >= 60 or _CH_ASK.search(q) or _CH_PROPOSE.search(q):
+    if pick or len(q) >= 60 or _CH_ASK.search(q) or _CH_PROPOSE.search(q) or _QK_FOREST.search(q):
         return False
     for c in re.split(r"[.!…~,\n]+(?:\s+|$)", q):
         c = c.strip()
@@ -1230,7 +1254,7 @@ def _ask_job(nid):
     except Exception:
         mstext, msinfo = "", None
     libtext, librefs, libinfo = "", {}, None
-    qkind = _qkind(question)   # 연구가 되는가 · 선행연구 · 더 낫게 (2026-11-11)
+    qkind = "forest" if nt["thread"][-1].get("forest") else _qkind(question)   # 숲(숲 키 · 숲을 청하는 말) · 연구가 되는가 · 선행연구 · 더 낫게
     prevq = next((m.get("text") or "" for m in reversed((nt.get("thread") or [])[:-1]) if m.get("role") == "user"), "")
     worldtext, worldrefs, worldinfo = "", {}, None
     wmode = _world_mode((nt.get("opts") or {}).get("world"))
@@ -1268,6 +1292,14 @@ def _ask_job(nid):
         except Exception as e:
             planinfo = {"n": 0, "err": str(e)[:160]}
         _stage("")
+    foresttext, forestinfo = "", None
+    if qkind == "forest":   # 숲을 청한 물음 (2026-11-25) — 큰 물음의 재료(층 세우기 Opus 한 번 20초쯤 + 주석에서 논문 80편의 물음·공백, 모델 호출 없음)
+        try:
+            _stage("forest")
+            foresttext, forestinfo = _forest_talk(nt, question, prevq)
+        except Exception as e:
+            foresttext, forestinfo = "", {"error": str(e)[:160]}
+        _stage("")
     if subject:
         new_subject = list(subject)[:6]
     else:      # 검색 계획을 세우지 않은 물음 — 이 주제에서 지난번에 세운 대상의 낱말을 쓴다(그 대상을 다룬 서재 논문이 늘 같이 가게)
@@ -1280,7 +1312,7 @@ def _ask_job(nid):
         libtext, librefs, libinfo = "", {}, {"n": 0, "err": str(e)[:120]}
     readtext, readinfo, readstat = "", [], None
     q0 = question.strip()
-    chatty = _chatty(q0, nt["thread"][-1].get("pick"))
+    chatty = _chatty(q0, nt["thread"][-1].get("pick") or qkind == "forest")
     if chatty:   # 「원문까지」 를 계속 켜 두고 쓸 수 있게 됐다(2026-11-23) — 짧은 확인·정정에는 원문을 열지 않는다(도구 없이 바로 답)
         lib = False
     if _read_mode((nt.get("opts") or {}).get("read")) != "off" and not chatty:   # 관련 논문을 먼저 고르고 그 요약을 읽는다 (2026-11-17) — 짧은 확인·정정에는 하지 않는다
@@ -1298,7 +1330,7 @@ def _ask_job(nid):
         others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
-        res = None if cancelled else run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo]), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
+        res = None if cancelled else run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo], foresttext=foresttext), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
                   add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt)) if run else None
         cancelled = cancelled or bool((res or {}).get("cancelled"))
         if not cancelled and (not res or not (res.get("text") or "").strip()):
@@ -1327,6 +1359,9 @@ def _ask_job(nid):
                     "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib}
             if qkind:
                 turn["qkind"] = qkind
+            if forestinfo:   # 숲을 청한 물음에 붙인 재료 — 층의 이름과 편수
+                turn["forest"] = {"layers": [str(L.get("name") or "") for L in forestinfo.get("layers") or []], "near": forestinfo.get("near"), "wide": forestinfo.get("wide"), "forest": forestinfo.get("forest"),
+                                  "sec": forestinfo.get("sec"), "err": forestinfo.get("error") or ""}
             if new_subject:   # 이 주제의 대상(영어 검색어) — 다음 물음의 서재 찾기에 쓴다
                 nt["subj_terms"] = new_subject
             if worldinfo:   # 세상의 문헌에서 찾아 붙인 것 + 답이 가리킨 논문(⟦W3⟧) (2026-11-11)
@@ -2790,12 +2825,14 @@ _FOREST_RULE = (
     "물음마다: name 짧은 이름 · question 큰 물음 한 문장 · general true|false · phenomenon 걸친 현상(어느 논문들에서 무엇이 되풀이·엇갈리는가, cites) · assumption 흔드는 전제(②일 때, 누가 전제하나) · structure·mapping·method·source (③일 때) 와 from_field · "
     "prediction 아직 아무도 재지 않은, 틀릴 수 있는 예측 하나('X 를 바꾸면 Y 가 Z 로 바뀐다' 꼴 — '…를 밝힌다' 는 예측이 아니다) · reorganizes 이 물음에 답하면 다시 정리되는 기존 결과(어느 논문의 어느 결과가 같은 원인의 두 얼굴이 되는가, re_cites) · "
     "why_not 왜 아직 아무도 안 했나(측정이 없었나, 척도가 달랐나, 분야 경계였나) · ours [우리 연구실] 에 비추어 되는 것과 외부에 맡길 것 · plausible 왜 이 분야 사람(★ 저널 심사자·[분야 지형]의 대가)에게 그럴듯한가 한 문장 · outside 서재 밖에서 가져온 것(연구자가 확인할 것; 없으면 빈 문자열) · "
+    "first 이 물음으로 쓰는 첫 논문 한 편 — 그 논문이 내세울 주장 한 문장과 그 주장을 받칠 핵심 실험 한 줄(큰 물음 전체가 아니라 [우리 연구실]에서 한 해 안에 끝낼 수 있는 첫 걸음) · "
     "papers_to_get 이 물음을 세우는 데 꼭 필요한데 서재에 없는 논문 0~4편 — 연구자가 받아 서재에 넣는다. 실제로 있다고 확신하는 논문만, 제목·첫 저자·연도·저널을 아는 대로 적고 why 에 왜 필요한가; 확실하지 않으면 적지 않는다 · fit high|mid|low 토의·[우리 연구실]·서재로 보아 이 연구실이 감당할 수 있는가.\n"
+    "[읽은 논문]이 있으면 걸친 현상과 흔드는 전제는 거기 적힌 내용으로 세운다 — 논문 층의 한 줄(물음·공백)만 보고 그 논문이 무엇을 보였는지 짐작하지 않는다.\n"
     "거르기: ★ 논문·[분야 지형]의 대가 그룹이 이미 세운 물음이면 그것은 near 에 '첫 저자 연도' 로 적고 물음을 그 너머로 옮긴다(이미 한 것을 다시 내지 않는다). 분야 사람이 보기에 터무니없는 것(척도·재료가 안 맞는 비유, 측정 불가능한 예측)은 내지 않는다. 서재의 논문은 '(첫 저자 연도)' 로, 지어낸 수치·인용은 쓰지 않는다. "
     "[서재의 숲 논문] 은 어떤 종류의 출발점이 대단한 연구를 만들었는가의 본보기다 — 그 논문의 물음을 되풀이하지 말고 그 종류의 출발점을 이 주제에서 찾는다. recommend 는 하나, why 는 왜 그것인가 2~3문장.\n"
     "JSON 으로만 답하라(한국어, 마크다운 없이): {\"questions\": [{\"id\": \"Q1\", \"name\": \"…\", \"kind\": \"phenomenon|assumption|import\", \"general\": true, \"question\": \"…\", \"phenomenon\": \"…\", \"cites\": [\"첫 저자 연도\"], "
     "\"assumption\": \"…\", \"structure\": \"…\", \"mapping\": [{\"there\": \"저쪽 짜임의 요소\", \"here\": \"이쪽 대응\"}], \"method\": \"…\", \"source\": \"…\", \"from_field\": \"…\", \"prediction\": \"…\", \"reorganizes\": \"…\", \"re_cites\": [\"첫 저자 연도\"], \"near\": [\"첫 저자 연도\"], "
-    "\"why_not\": \"…\", \"ours\": \"…\", \"plausible\": \"…\", \"outside\": \"…\", \"papers_to_get\": [{\"title\": \"…\", \"authors\": \"첫 저자 등\", \"year\": 2015, \"venue\": \"…\", \"why\": \"…\"}], \"fit\": \"high|mid|low\"}], "
+    "\"why_not\": \"…\", \"ours\": \"…\", \"plausible\": \"…\", \"outside\": \"…\", \"first\": \"…\", \"papers_to_get\": [{\"title\": \"…\", \"authors\": \"첫 저자 등\", \"year\": 2015, \"venue\": \"…\", \"why\": \"…\"}], \"fit\": \"high|mid|low\"}], "
     "\"recommend\": \"Q1\", \"why\": \"…\", \"dropped\": [\"버린 나무 후보 — 한 줄씩\"]}")
 
 _FQ_KIND_KO = {"phenomenon": "현상", "assumption": "전제", "import": "타 분야의 짜임·방법"}
@@ -2858,6 +2895,117 @@ def _merge_nodes(nodes, n):
         if len(out) >= n:
             break
     return out
+
+
+_FOREST_CRIT = (
+    "당신은 이 분야 최고 저널의 편집위원이자 선임 연구자다. 아래는 한 연구자에게 내놓으려는 '큰 물음' 후보다. 이 물음들이 연구자의 몇 해를 걸 만한지 하나씩 공격하라. 듣기 좋게 말하지 않는다.\n"
+    "물음마다 다섯 가지를 본다. ① 정말 숲인가: 한 논문이나 한 그룹이 멈춘 자리를 잇는 것, 재료·조건·치수만 바꾼 것, 한 모델 안의 가정을 의심하는 것은 나무다. "
+    "② 이미 누가 했는가: [서재에서 찾은 문장]에 그 예측을 이미 잰 결과나 같은 물음을 세운 논문이 있으면 그 논문을 들어 말한다(서재에 없다고 세상에 없는 것은 아니다 — 그럴 법하면 그렇게 적는다). "
+    "③ 예측이 틀릴 수 있는가, 그리고 [우리 연구실]의 장비로 잴 수 있는가(분해능·속도·환경·시편). 잴 수 없는 예측은 물음이 아니다. "
+    "④ 걸친 현상과 흔드는 전제가 서재 논문이 실제로 말한 것인가 — 논문을 틀리게 읽었거나 한 편의 결과를 분야의 현상으로 부풀렸으면 짚는다. "
+    "⑤ 이 분야 사람(★ 저널 심사자, [분야 지형]의 대가)이 보기에 그럴듯한가 — 척도가 안 맞는 비유, 이름만 그럴듯한 타 분야 대응은 버린다.\n"
+    "물음마다 verdict 를 정한다: keep(그대로 선다) · fix(고치면 선다 — 고친 물음을 questions 에 같은 id 로 돌려준다; 예측을 잴 수 있게 좁히거나, 이미 한 연구 너머로 옮기거나, 부풀린 근거를 걷어 낸다) · drop(서지 않는다 — questions 에서 빼고 dropped 에 까닭 한 줄). "
+    "weak 에 그 물음의 가장 약한 지점을 한두 문장으로(keep 이어도 적는다 — 연구자가 먼저 알아야 할 것), fixed 에 무엇을 고쳤는지 한 문장(fix 일 때). 버린 자리를 새 물음으로 억지로 채우지 않는다. 다만 후보가 모두 나무였다면 그 까닭에서 보이는 숲의 물음을 하나 세워 넣어도 된다(id 는 새 번호). "
+    "남긴 물음마다 first(첫 논문 한 편의 주장과 핵심 실험)가 [우리 연구실]에서 한 해 안에 되는지 보고 고친다. recommend 와 why 는 심사를 거친 뒤의 것으로 다시 적는다.\n"
+    "JSON 으로만 답하라(한국어, 마크다운 없이). questions 의 꼴은 받은 것과 같다(고치지 않은 칸은 그대로 옮긴다): "
+    "{\"crit\": [{\"id\": \"Q1\", \"verdict\": \"keep|fix|drop\", \"weak\": \"…\", \"fixed\": \"…\"}], \"questions\": [ … ], \"recommend\": \"Q1\", \"why\": \"…\", \"dropped\": [\"…\"]}")
+_CRIT_KO = {"keep": "그대로 섬", "fix": "고쳐서 섬", "drop": "버림", "new": "심사자가 세움"}
+
+
+def _forest_critique(nid, model, eff):
+    """큰 물음을 쓴 뒤 다른 호출(심사자)이 공격하고 고친다 — 서론 구조의 비평(_intro_critique)과 같은 꼴. 물음마다 서재 문장 색인에서 그 예측에 가까운 문장을 찾아 '이미 누가 했나' 의 근거로 준다.
+    받지 못하면 처음 것을 그대로 둔다. (2026-11-25, 사용자: '지금 숲은 좀 대충인 거 같고')"""
+    with _LOCK:
+        nt = _load(nid)
+        fo = (nt or {}).get("forest") or {}
+        if not nt or not fo.get("items"):
+            return
+        nt["forest_pending"] = time.time()
+        nt["forest_stage"] = "crit"
+        _save(nt)
+        pend = nt["forest_pending"]
+    t0 = time.time()
+    res, d, cancelled = None, None, False
+    try:
+        raw = []
+        for x in fo["items"]:
+            q = {k: x.get(k) for k in ("id", "name", "kind", "general", "question", "phenomenon", "assumption", "structure", "method", "source", "from_field", "prediction", "reorganizes", "why_not", "ours", "plausible", "outside", "first", "fit")}
+            q["cites"] = [c.get("key") for c in x.get("cites") or []]
+            q["re_cites"] = [c.get("key") for c in x.get("re_cites") or []]
+            q["near"] = [c.get("key") for c in x.get("near") or []]
+            q["mapping"] = x.get("mapping") or []
+            q["papers_to_get"] = [{k: g.get(k) for k in ("title", "authors", "year", "venue", "why")} for g in x.get("gets") or []]
+            raw.append(q)
+        out = "[이 주제] %s\n" % (nt.get("title") or "")
+        ct = _card_text(nt.get("card"))
+        if ct:
+            out += "\n[주제 카드]\n" + ct[:1800] + "\n"
+        dg = str((nt.get("digest") or {}).get("text") or "").strip()
+        if dg:
+            out += "\n[지금까지의 정리]\n" + dg[:2400] + "\n"
+        dc = _decisions_text(nt)
+        if dc:
+            out += "\n" + dc + "\n"
+        out += "\n[큰 물음 후보 — 추천 %s]\n" % (fo.get("recommend") or "") + json.dumps({"questions": raw}, ensure_ascii=False) + "\n"
+        for x in fo["items"]:   # 물음마다 서재에서 가장 가까운 문장 — 모델 호출 없음
+            try:
+                lt, _refs, li = _lib_hits(nt, " ".join([x.get("name") or "", x.get("question") or "", x.get("prediction") or ""]), "", full=0)
+            except Exception:
+                lt = ""
+            if lt:
+                out += "\n[서재에서 찾은 문장 — %s 의 물음과 예측에 가까운 것]\n%s\n" % (x["id"], lt[:3800])
+        out += "\n" + _FOREST_CRIT
+        system, _st = _background()
+        run = cfg.get("claude_run")
+        res = run(out, timeout=1200, model=model, effort=None, tools="", system=system, job=_job_key(nid, "forest", pend)) if run else None   # 보통 노력 — 서론 구조의 비평과 같다
+        cancelled = bool((res or {}).get("cancelled"))
+        d = _json_of((res or {}).get("text")) if (res and not cancelled) else None
+    except Exception:
+        d = None
+    with _LOCK:
+        nt = _load(nid)
+        if not nt:
+            return
+        nt.pop("forest_pending", None)
+        nt.pop("forest_stage", None)
+        old = nt.get("forest") or {}
+        if cancelled or not isinstance(d, dict) or not old.get("items"):
+            if old and not cancelled:
+                old["crit_err"] = "심사를 받지 못해 처음 것을 그대로 둡니다" + _why()
+            _save(nt)
+            return cancelled
+        S = lambda v, n=500: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+        crit = {}
+        for c in (d.get("crit") if isinstance(d.get("crit"), list) else []):
+            if isinstance(c, dict) and S(c.get("id"), 5):
+                crit[S(c.get("id"), 5)] = {"verdict": c.get("verdict") if c.get("verdict") in ("keep", "fix", "drop") else "keep", "weak": S(_L_RX.sub("", str(c.get("weak") or "")), 1100), "fixed": S(_L_RX.sub("", str(c.get("fixed") or "")), 700)}
+        old_by = {x["id"]: x for x in old["items"]}
+        try:
+            if not (isinstance(d.get("questions"), list) and d["questions"]):
+                raise RuntimeError("no questions")
+            _FOREST_MAT[nid] = old.get("material")
+            _apply_forest(nt, d, res or {}, t0)
+            new = nt["forest"]
+            for x in new["items"]:
+                c = crit.get(x["id"]) or ({"verdict": "new", "weak": "", "fixed": ""} if x["id"] not in old_by else {"verdict": "keep", "weak": "", "fixed": ""})
+                x["crit"] = c
+                o = old_by.get(x["id"])
+                if o and c["verdict"] == "fix":
+                    x["before"] = {"name": o.get("name"), "question": o.get("question"), "prediction": o.get("prediction")}
+                if o and o.get("check") and c["verdict"] == "keep":
+                    x["check"] = o["check"]
+            killed = [{"id": k, "name": old_by[k].get("name"), "question": old_by[k].get("question"), "weak": v.get("weak")} for k, v in crit.items() if v["verdict"] == "drop" and k in old_by]
+            new.update({"t": old.get("t"), "model": old.get("model"), "sec": (old.get("sec") or 0) + round(time.time() - t0), "tok": old.get("tok"), "layers": old.get("layers") or new.get("layers") or [],
+                        "dropped": list(dict.fromkeys((new.get("dropped") or []) + (old.get("dropped") or [])))[:8], "killed": killed, "crit_t": time.time(), "crit_sec": round(time.time() - t0), "crit_tok": (res or {}).get("tok"), "crit_model": (res or {}).get("model", ""), "first_n": len(old["items"])})
+            if old.get("pick") and old["pick"] not in {x["id"] for x in new["items"]}:
+                new["pick"], new["pick_t"] = "", None
+        except Exception:
+            nt["forest"] = old   # 고친 물음을 못 받았으면 처음 것에 심사 의견만 붙인다
+            for x in old["items"]:
+                if crit.get(x["id"]):
+                    x["crit"] = crit[x["id"]]
+            old["crit_t"] = time.time()
+        _save(nt)
 
 
 def _forest_check(nid, model, eff):
@@ -3147,19 +3295,9 @@ def wanted_put(items, src=None):
 
 
 
-def _forest_prompt(nt):
-    out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))
-    seed = nt.get("seed") or {}
-    if seed.get("text"):
-        out += "[출발점]\n" + seed["text"][:3000] + "\n"
-    ct = _card_text(nt.get("card"))
-    if ct:
-        out += "\n[주제 카드]\n" + ct + "\n"
-    if nt.get("plan"):
-        out += "\n[실험 설계서 — 이미 있다; 큰 물음을 고르면 다시 만든다]\n" + _plan_text(nt["plan"], cap=1000) + "\n"
-    fr = _framing_text(nt.get("framing"), brief=True)
-    if fr:
-        out += "\n" + fr
+def _forest_mat(nt):
+    """큰 물음의 재료 — 한 단계 위의 층(짧은 Opus 호출 하나) + 그 층의 낱말로 넓힌 둘레 논문 + 서재의 숲 논문. 「틀」 갈래의 큰 물음과 토의의 '숲을 보고 싶다' 가 같이 쓴다. → (글, 통계)"""
+    out = ""
     layers = _forest_layers(nt)   # 한 단계 넓히기 — 주제가 속한 더 큰 물음의 층 (2026-10-28)
     wide = [w for L in layers for w in (L.get("en") or [])]
     wide_ko = [w for L in layers for w in (L.get("ko") or [])]
@@ -3180,7 +3318,81 @@ def _forest_prompt(nt):
             out += "\n" + text
     st = dict(st or {})
     st["layers"] = layers
+    return out, st
+
+
+def _forest_nt2(nt, question="", prevq=""):
+    """층과 둘레 논문을 고를 때 쓰는 주제의 사본 — 카드가 없는 주제(대화만 한 노트)는 제목만으로는 낱말이 모자라므로,
+    지금까지의 정리 · 최근 물음 · 이 주제의 대상 낱말을 카드의 물음 자리에 얹는다(주제 파일은 건드리지 않는다)."""
+    talk = [str((nt.get("digest") or {}).get("text") or "")[:1500]]
+    talk += [str(m.get("text") or "")[:300] for m in (nt.get("thread") or [])[-9:] if m.get("role") == "user"]
+    talk += [prevq or "", question or "", " ".join(nt.get("subj_terms") or [])]
+    card = dict(nt.get("card") or {})
+    q0 = card.get("question")
+    card["question"] = ((" ".join(str(x) for x in q0) if isinstance(q0, list) else str(q0 or "")) + " " + " ".join(x for x in talk if x)).strip()
+    nt2 = dict(nt)
+    nt2["card"] = card
+    return nt2
+
+
+def _fstage(nid, v):
+    """큰 물음을 찾는 동안 화면에 보일 단계 (layers 층 세우기 · read 논문 고르기 · write 쓰기 · crit 심사 · check 세상 문헌)"""
+    with _LOCK:
+        cur = _load(nid)
+        if cur and cur.get("forest_pending"):
+            cur["forest_stage"] = v
+            _save(cur)
+
+
+def _forest_read(nt, layers):
+    """큰 물음을 쓰기 전에 읽을 논문 — 연구 노트의 논문 읽기(_read_pick · _read_text)를 그대로. 리뷰와 서로 다른 그룹의 대표 논문을 골라 요약을 붙인다. → (글, [{file, short, deep, why}])"""
+    q = ("이 주제가 속한 더 큰 물음을 찾으려 합니다(한 단계 위: %s). 이 주제 둘레에서 분야가 무엇을 두고 엇갈리는지, 무엇을 말없이 전제하는지를 알려 줄 논문을 고릅니다. "
+         "분야를 정리한 리뷰 한두 편, 서로 다른 연구 그룹의 대표 논문, 이 주제의 대상을 가장 직접 다룬 논문입니다." % (" → ".join(str(L.get("name") or "") for L in layers or []) or "아직 세우지 못함"))
+    nt2 = dict(nt)
+    nt2["thread"] = list(nt.get("thread") or []) + [{"role": "user", "text": q}]
+    try:
+        picks, stat = _read_pick(nt2, q, "", hint=list(_intro_cited(nt) or []), job=_job_key(nt.get("id"), "forest", nt.get("forest_pending")))
+        if not picks or (stat or {}).get("cancelled"):
+            return "", []
+        return _read_text(picks)
+    except Exception:
+        return "", []
+
+
+def _forest_talk(nt, question, prevq=""):
+    """토의에서 숲을 청했을 때의 재료 → (글, 통계)."""
+    t0 = time.time()
+    text, st = _forest_mat(_forest_nt2(nt, question, prevq))
+    st = dict(st or {})
+    st["sec"] = round(time.time() - t0, 1)
+    if not text.strip():
+        return "", st
+    return ("[숲을 보는 재료 — 연구자가 틈 메우기가 아니라 큰 물음을 청했다. 이 주제가 속한 더 큰 물음의 층, 그 둘레와 위층에서 분야가 묻는 것, 서재에서 숲을 본 논문들이다]\n" + text.strip() + "\n"), st
+
+
+def _forest_prompt(nt):
+    out = "[이 주제] %s (%s)\n" % (nt.get("title") or "", STATUS_KO.get(nt.get("status"), "아이디어"))
+    seed = nt.get("seed") or {}
+    if seed.get("text"):
+        out += "[출발점]\n" + seed["text"][:3000] + "\n"
+    ct = _card_text(nt.get("card"))
+    if ct:
+        out += "\n[주제 카드]\n" + ct + "\n"
+    if nt.get("plan"):
+        out += "\n[실험 설계서 — 이미 있다; 큰 물음을 고르면 다시 만든다]\n" + _plan_text(nt["plan"], cap=1000) + "\n"
+    fr = _framing_text(nt.get("framing"), brief=True)
+    if fr:
+        out += "\n" + fr
+    _fstage(nt.get("id"), "layers")
+    mtext, st = _forest_mat(_forest_nt2(nt, str((nt.get("forest_opts") or {}).get("req") or "")))   # 카드가 없는 노트도 대화에서 낱말을 얻는다 (2026-11-25)
+    out += mtext
+    _fstage(nt.get("id"), "read")
+    rtext, rinfo = _forest_read(nt, st.get("layers"))   # 논문 층의 한 줄(물음·공백)만으로 쓰지 않고, 고른 논문의 요약을 읽고 쓴다 (2026-11-25)
+    if rtext:
+        out += "\n" + rtext + "\n"
+    st["read"] = [{"file": x.get("file"), "short": x.get("short"), "deep": x.get("deep")} for x in rinfo or []]
     _FOREST_MAT[nt.get("id")] = st
+    _fstage(nt.get("id"), "write")
     out += ("\n[배경도 재료다] 시스템 프롬프트의 공부 장(이 서재로는 답하지 못한 것 · Claude 의 생각의 엇갈림의 까닭 · 근거의 강약), 서재가 많이 인용하는데 없는 뿌리 문헌, 분야 지형(대가 그룹·저널 등급), 서재 목록 전체 — "
             "큰 물음은 한 편의 '어디서 멈췄나' 가 아니라 이것들을 가로지르는 데서 나온다.\n")
     try:
@@ -3228,7 +3440,7 @@ def _apply_forest(nt, d, res, t0):
                       "phenomenon": S(q.get("phenomenon"), 700), "cites": cites_of(q.get("cites"), 10), "assumption": S(q.get("assumption"), 500), "mapping": mapping, "from_field": S(q.get("from_field"), 120),
                       "structure": S(q.get("structure"), 200), "method": S(q.get("method"), 700), "source": S(q.get("source"), 300),
                       "prediction": S(q.get("prediction"), 500), "reorganizes": S(q.get("reorganizes"), 600), "re_cites": cites_of(q.get("re_cites"), 8), "near": cites_of(q.get("near"), 4),
-                      "why_not": S(q.get("why_not"), 400), "ours": S(q.get("ours"), 500), "plausible": S(q.get("plausible"), 300), "outside": S(q.get("outside"), 600), "gets": gets,
+                      "why_not": S(q.get("why_not"), 400), "ours": S(q.get("ours"), 500), "plausible": S(q.get("plausible"), 300), "outside": S(q.get("outside"), 600), "first": S(q.get("first"), 500), "gets": gets,
                       "fit": q.get("fit") if q.get("fit") in ("high", "mid", "low") else "mid"})
     if len(items) < 1:
         raise RuntimeError("큰 물음이 오지 않았습니다")
@@ -3298,6 +3510,10 @@ def _forest_text(fo, brief=False, all_items=False):
                                                                               (" (" + " / ".join("%s %s: %s" % ((t.get("title") or "")[:80], t.get("year") or "", t.get("how") or "") for t in (ck.get("taken") or [])[:3]) + ")") if ck.get("taken") else ""))
         if q.get("prediction"):
             L.append("예측: " + q["prediction"])
+        if q.get("first"):
+            L.append("첫 논문: " + q["first"])
+        if (q.get("crit") or {}).get("weak"):
+            L.append("심사자가 본 가장 약한 지점: " + q["crit"]["weak"])
         if q.get("reorganizes"):
             L.append("다시 정리되는 것: " + q["reorganizes"] + ((" (" + keys(q.get("re_cites")) + ")") if q.get("re_cites") else ""))
         if q.get("near"):
@@ -4335,6 +4551,11 @@ def _bg_job(nid, kind):
             nt["intro_pending"] = time.time()   # 이어서 비평 — 화면은 같은 기다림 막대를 보인다
         _save(nt)
     if kind == "forest" and not err:
+        try:
+            if _forest_critique(nid, model, eff):   # 쓴 것을 심사자가 공격하고 고친다 (2026-11-25) — 취소했으면 여기서 멈춘다
+                return
+        except Exception:
+            pass
         try:
             _forest_check(nid, model, eff)   # 타 분야의 짜임·방법을 세상 문헌으로 확인 + 받을 논문 대기열 (2026-10-28)
         except Exception:
