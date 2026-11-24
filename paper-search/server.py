@@ -4658,6 +4658,9 @@ def on_retranslated(name, sidmap):
         eq_build_start(name)
 
 
+import paperrefs   # 논문의 참고문헌 목록 — 읽기 창·휴대폰에서 인용 번호를 누르면 DOI·서재의 논문 (2026-11-24)
+paperrefs.init(ARCHIVE=ARCHIVE, MAP_DIR=MAPS_DIR, load_json=load_json, save_json=save_json, ref_file=ms._ref_file, paper_meta=ms.paper_meta)
+
 import autotr
 autotr.init(ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, save_json=save_json, settings=_mapper.settings, save_settings=_mapper.save_settings,
             gen_path=gen_path, align_path=align_path, info_path=tr_info_path, oldnum_path=oldnum_path, gen_start=gen_start, job_state=job_state, job_clear=job_clear, jobs_running=jobs_running,
@@ -5564,6 +5567,8 @@ class Handler(BaseHTTPRequestHandler):
             return study.handle_get(self, url)
         if url.path == "/learn" or url.path.startswith("/api/learn"):
             return corpus.handle_get(self, url)   # 서재 학습
+        if url.path in ("/api/refs", "/api/refs/doi"):
+            return paperrefs.handle_get(self, url)   # 논문의 참고문헌 목록 · 항목의 DOI 찾기
         if url.path == "/api/shelf":
             return shelf.handle_get(self, url)    # Claude 채팅이 보는 폴더
         if url.path == "/api/autotr":

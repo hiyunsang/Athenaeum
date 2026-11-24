@@ -188,6 +188,7 @@
   #peek.on { transform: none; }
   #peek .px { position: absolute; top: 9px; right: 9px; width: 30px; height: 30px; border: 0; border-radius: 15px; background: var(--fill); color: var(--text-2); display: flex; align-items: center; justify-content: center; padding: 0; }
   #peek .px svg { width: 15px; height: 15px; }
+  .doc .cref { color: var(--accent); cursor: pointer; }      /* 인용 번호 → 그 참고문헌 (2026-11-24) */
   .pkl { font-size: 12.5px; font-weight: 700; color: var(--accent); margin-bottom: 6px; padding-right: 36px; min-height: 20px; }
   .pke { font-size: 15.5px; line-height: 1.62; overflow-wrap: anywhere; } .pkk { font-size: 14.5px; line-height: 1.62; color: var(--text-2); margin-top: 8px; word-break: keep-all; overflow-wrap: anywhere; }
   .pki { padding: 12px 0; border-top: 1px solid var(--line); } .pkl + .pki { border-top: 0; padding-top: 0; }
@@ -815,7 +816,10 @@ async function viewPaper(file, tab, sent, my, q) {
   if (fg) { placeFigs(doc, file, fg, tab); if (fg.building) figsPoll(file, doc, my); }
   else if (fg === undefined) figsP.then(f => { if (my === view && f && $("doc") === doc) { keepView(() => placeFigs(doc, file, f, tab)); if (f.building) figsPoll(file, doc, my); } });
   if (tab === "translation") { eqTidy(doc, ".s"); await Promise.race([eqRenderM(doc, file, my), new Promise(r => setTimeout(r, 1200))]); if (my !== view) return; }      /* 수식 곁 부스러기를 숨기고, 수식은 전사가 있으면 식으로 — 1.2초까지만 기다린다 */
+  refsGet(file).then(R => { if (my === view && $("doc") === doc) crefMark(doc, R); });   /* 인용 번호·(저자, 연도) → 누르면 그 참고문헌 (2026-11-24) */
   doc.onclick = e => {
+    const cr = e.target.closest(".cref");
+    if (cr) { e.stopPropagation(); e.preventDefault(); return refsGet(file).then(R => peekRefs(file, R, cr.dataset.r)); }
     if (e.target.closest(".eqf, figure.pf, img.eq")) return;      /* 식·그림 누르기는 아래 app 의 처리로 (식 토글 · 크게 보기) — 문장 안에 든 수식 그림도 */
     const s = e.target.closest(".s[data-s]"); if (!s) return;
     const sel = window.getSelection(); if (sel && !sel.isCollapsed) return;
@@ -1003,6 +1007,81 @@ function mathAlign(root) {
     const want = td.classList.contains("mR") ? room : td.classList.contains("mL") ? 0 : free / 2 - off;
     if (want > 1) td.style.paddingLeft = (pl + want) + "px";
   });
+}
+/* 인용 표시를 누를 수 있게 (2026-11-24, 사용자: '논문 읽다가 참고문헌 번호에 따라 바로 doi 열 수 있거나 서재에 있으면 서재에 있는 거 열 수 있게'):
+   /api/refs 가 준 참고문헌 목록에 있는 번호([12] · [3,5–8])나 (저자, 연도)만 a.cref 로 감싼다 — 목록에 없는 것(결정 방향 [110] 같은 것)은 그대로 둔다. reader.html 과 m.html 이 같은 함수 */
+function crefNums(str) {
+  const out = [];
+  String(str).split(/\s*,\s*/).forEach(p => {
+    const r = p.split(/\s*[\u2013\u2014\-~]\s*/);
+    if (r.length === 2 && /^\d+$/.test(r[0]) && /^\d+$/.test(r[1]) && +r[1] > +r[0] && +r[1] - +r[0] <= 30) { for (let k = +r[0]; k <= +r[1]; k++) out.push(k); }
+    else r.forEach(x => { if (/^\d+$/.test(x)) out.push(+x); });
+  });
+  return [...new Set(out)];
+}
+const crefKey = (a, y) => String(a || "").toLowerCase().replace(/[^a-z\u00e0-\u017f]/g, "") + "|" + y;
+function crefIndex(R) {
+  if (R._ix) return R._ix;
+  const byN = {}, byK = {};
+  (R.refs || []).forEach(r => {
+    if (r.n != null) byN[r.n] = r;
+    if (r.key) { (byK[r.key] = byK[r.key] || []).push(r); const last = crefKey(String(r.a || "").split(/\s+/).pop(), r.y); if (last !== r.key) (byK[last] = byK[last] || []).push(r); }
+  });
+  return (R._ix = { byN, byK });
+}
+function crefMark(root, R) {
+  if (!R || !(R.refs || []).length) return 0;
+  const ix = crefIndex(R), num = R.style === "num";
+  const rx = num ? /\[(\d{1,3}(?:\s*[,\u2013\u2014\-~]\s*\d{1,3})*)\]/g
+    : /([A-Z\u00c0-\u017f][A-Za-z\u00c0-\u017f'\u2019\-]+)(?:\s*(?:et al\.?|등|외|and\s+[A-Z\u00c0-\u017f][\w'\u2019\-]+|&\s*[A-Z\u00c0-\u017f][\w'\u2019\-]+|및\s+[A-Z\u00c0-\u017f][\w'\u2019\-]+|[와과]\s*[A-Z\u00c0-\u017f][\w'\u2019\-]+))?[,\s]*\(?\s*((?:19|20)\d{2}[a-z]?)/g;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = []; let n;
+  while ((n = w.nextNode())) { if (n.nodeValue.length > 2 && n.parentElement && !n.parentElement.closest("a, math, figure, .eqjunk, script, style, textarea")) nodes.push(n); }
+  let made = 0;
+  nodes.forEach(node => {
+    const t = node.nodeValue; rx.lastIndex = 0; let m, last = 0, frag = null;
+    while ((m = rx.exec(t))) {
+      let attr = "";
+      if (num) { const ns = crefNums(m[1]).filter(k => ix.byN[k]); if (!ns.length) continue; attr = ns.join(","); }
+      else { const key = crefKey(m[1], m[2]); if (!ix.byK[key]) continue; attr = key; }
+      frag = frag || document.createDocumentFragment();
+      if (m.index > last) frag.appendChild(document.createTextNode(t.slice(last, m.index)));
+      const a = document.createElement("a"); a.className = "cref"; a.dataset.r = attr; a.textContent = m[0]; frag.appendChild(a);
+      last = m.index + m[0].length; made++;
+    }
+    if (frag) { if (last < t.length) frag.appendChild(document.createTextNode(t.slice(last))); node.parentNode.replaceChild(frag, node); }
+  });
+  return made;
+}
+function crefList(R, attr) {
+  if (!R || !attr) return [];
+  const ix = crefIndex(R);
+  return R.style === "num" ? String(attr).split(",").map(k => ix.byN[+k]).filter(Boolean) : (ix.byK[attr] || []);
+}
+const crefDoiUrl = doi => "https://doi.org/" + String(doi).split("/").map(encodeURIComponent).join("/");
+const crefScholar = r => "https://scholar.google.com/scholar?q=" + encodeURIComponent(String(r.t || "").replace(/https?:\/\/\S+/g, "").slice(0, 220));
+/* DOI 가 없는 항목은 누른 때에 서버가 Crossref 에 한 번 물어 찾는다(제목·연도 대조, 결과는 기억) — 끝나면 done(r) */
+function crefFind(file, r, done) {
+  if (r.doi || r.nodoi || r.finding) return;
+  r.finding = true;
+  fetch("/api/refs/doi?file=" + encodeURIComponent(file) + "&i=" + r.i).then(x => x.json()).then(d => { r.finding = false; if (d && d.doi) { r.doi = d.doi; r.found = true; } else if (d && d.none) r.nodoi = true; else r.failed = true; done(r); })
+    .catch(() => { r.finding = false; r.failed = true; done(r); });
+}
+const refsCache = {};
+function refsGet(file) { return refsCache[file] || (refsCache[file] = api("/api/refs?file=" + enc(file)).catch(() => ({ refs: [] }))); }
+function peekRefs(file, R, attr) {   /* 번역의 인용 번호를 누르면 그 참고문헌 — 서재에 있으면 그 논문으로, 아니면 DOI 로 */
+  const rs = crefList(R, attr); if (!rs.length) return;
+  const row = r => {
+    let acts = "";
+    if (r.file) acts += "<a class='pill' href='" + esc(pUrl(r.file)) + "'>★ 서재에서 읽기</a>";
+    if (r.doi) acts += "<a class='pill' target='_blank' rel='noopener' href='" + esc(crefDoiUrl(r.doi)) + "'>DOI 열기 ↗</a>";
+    else if (r.finding) acts += "<span style='color:var(--text-3);font-size:13px'>DOI 찾는 중…</span>";
+    if (!r.doi && r.url && /^https?:/i.test(r.url)) acts += "<a class='pill' target='_blank' rel='noopener' href='" + esc(r.url) + "'>링크 열기 ↗</a>";
+    if (!r.doi && !r.finding) acts += "<a class='pill' target='_blank' rel='noopener' href='" + esc(crefScholar(r)) + "'>제목으로 찾기 ↗</a>";
+    return "<div class='pki'><div class='pkk' style='margin-top:0;color:var(--text)'>" + (r.n != null ? "<b>[" + r.n + "]</b> " : "") + esc(r.t) + "</div><div class='pka' style='margin-top:8px;display:flex;flex-wrap:wrap;gap:8px'>" + acts + "</div></div>";
+  };
+  const ctx = { kind: "refs", file, attr }, draw = () => { openPeek("<div class='pkl'>참고문헌</div>" + rs.map(row).join("")); peekCtx = ctx; };
+  draw();
+  rs.filter(r => !r.doi && !r.file).slice(0, 6).forEach(r => crefFind(file, r, () => { if (peekCtx === ctx) draw(); }));   /* 그 사이 칸을 닫았으면 다시 띄우지 않는다 */
 }
 async function eqRenderM(doc, file, my) {
   const imgs = [...doc.querySelectorAll("img.eq[data-name]")]; if (!imgs.length) return;
