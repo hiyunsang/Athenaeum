@@ -119,6 +119,8 @@
   .seg { display: inline-flex; background: var(--fill); border-radius: 10px; padding: 2px; }
   .seg button { border: 0; background: none; min-width: 60px; height: 30px; padding: 0 12px; border-radius: 8px; font-size: 14px; color: var(--text); }
   .seg button.on { background: var(--seg-on); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .16); }
+  .nseg .seg { display: flex; } .nseg .seg button { flex: 1; min-width: 0; height: 38px; padding: 0 6px; }      /* 연구 노트의 묻기 옵션 (2026-11-25) */
+  .nol { font-size: 13px; font-weight: 700; margin: 16px 0 8px; } .noh { font-size: 13px; line-height: 1.5; color: var(--text-2); margin-top: 8px; min-height: 39px; }
 
   /* 논문 머리 · 읽는 글 */
   .ph { padding: 8px 20px 2px; }
@@ -1384,6 +1386,26 @@ async function viewNotes(my) {
   if (my !== view) return;
   draw(); restorePos(loc0[0]);
 }
+/* 묻기 옵션 — 서재를 얼마나 읽고 답하나 · 모델 (2026-11-25, 사용자: '폰에서는 연구노트 옵션이 안 켜지네'). 이 휴대폰에 기억하고, 고른 적이 없으면 그 주제에서 마지막으로 물은 값(PC 에서 고른 것)을 따른다 */
+const NREAD = [["auto", "요약 읽기"], ["deep", "원문까지"], ["off", "안 읽음"]], NEFF = [["xhigh", "엑스트라"], ["high", "보통"], ["fast", "빠름"]];
+const NREAD_H = { auto: "물음마다 관련 논문을 골라 그 요약을 읽고 답합니다. 보통 1~3분.", deep: "고른 논문의 전문 번역까지 열어 보고 답합니다. 물음마다 5~15분 걸리고 토큰을 많이 씁니다. 바꿀 때까지 이대로 갑니다.", off: "논문을 따로 읽지 않고 서재 목록과 찾은 문장만으로 답합니다." };
+const NEFF_H = { xhigh: "Opus 엑스트라 — 2~4분", high: "Opus 보통 — 1~2분", fast: "Sonnet — 30초쯤" };
+function noteOpt(nt) {
+  const o = (nt && nt.opts) || {}, has = (l, v) => l.some(x => x[0] === v);
+  let rd = lsGet("m_nread", ""), ef = lsGet("m_neff", "");
+  if (!has(NREAD, rd)) rd = o.lib ? "deep" : o.read === "off" ? "off" : "auto";
+  if (!has(NEFF, ef)) ef = has(NEFF, o.effort) ? o.effort : "xhigh";
+  return { read: rd, effort: ef };
+}
+function noteOptSheet(nt, done) {
+  const draw = () => {
+    const c = noteOpt(nt);
+    sheet.innerHTML = "<div class='grab'></div><h3>묻기 옵션</h3><div class='nol'>서재</div><div class='nseg' data-o='read'>" + segHtml(NREAD, c.read) + "</div><div class='noh'>" + NREAD_H[c.read] + "</div>" +
+      "<div class='nol'>모델</div><div class='nseg' data-o='eff'>" + segHtml(NEFF, c.effort) + "</div><div class='noh'>" + NEFF_H[c.effort] + "</div>";
+    sheet.querySelectorAll(".nseg").forEach(g => g.onclick = e => { const b = e.target.closest("[data-seg]"); if (!b) return; lsSet(g.dataset.o === "read" ? "m_nread" : "m_neff", b.dataset.seg); draw(); if (done) done(); });
+  };
+  openSheet(""); draw();
+}
 function newNoteSheet() {
   openSheet("<h3>새 물음</h3><textarea id='nta' placeholder='무엇이 궁금한가요? 분야나 연구 주제에 관해 물어보세요'></textarea><div style='height:12px'></div><button class='pill pri big' id='nsend'>묻기</button><div style='font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.5'>Claude 가 서재의 논문·공부 장을 배경으로 답합니다. 보통 1~3분 걸립니다.</div>");
   $("nsend").onclick = async () => {
@@ -1392,16 +1414,19 @@ function newNoteSheet() {
     try {
       const r = await api("/api/notes", { op: "new", kind: "ask", title: v.split("\n")[0].slice(0, 80) });
       if (r.error || !r.note) throw new Error(r.error || "만들지 못했습니다");
-      const a = await api("/api/notes", { op: "ask", id: r.note.id, question: v, effort: "xhigh", lib: false, study: "auto" });
+      const c = noteOpt(null);
+      const a = await api("/api/notes", { op: "ask", id: r.note.id, question: v, effort: c.effort, lib: c.read === "deep", read: c.read === "off" ? "off" : "auto", study: "auto" });
       if (a.error) toast(a.error);
       closeSheet(); location.hash = "#/n/" + enc(r.note.id);
     } catch (e) { $("nsend").disabled = false; toast(String(e && e.message || "묻지 못했습니다")); }
   };
 }
 async function viewNote(id, my) {
-  shell({ parent: "#/notes", title: "노트", fade: true, chat: true });
+  shell({ parent: "#/notes", title: "노트", fade: true, chat: true, right: "<button class='nb' id='nopt' style='width:auto;padding:0 10px;font-size:15px'>옵션</button>" });
   app.innerHTML = "<div class='chat'><div class='msgs' id='msgs'><div class='sk' style='height:80px;margin:14px 0'></div><div class='sk' style='height:200px;margin:0'></div></div>" + composerHtml("이어서 묻기") + "</div>";
   let nt = null, now0 = Date.now() / 1000, got = Date.now(), ancs = {}, lrefs = {};
+  const optShow = () => { const c = noteOpt(nt), ta = $("cta"); if (ta) ta.placeholder = "이어서 묻기" + (c.read === "deep" ? " · 원문까지" : c.read === "off" ? " · 논문 안 읽음" : ""); };   /* 고른 것이 기본과 다르면 묻는 칸에 보인다 */
+  $("nopt").onclick = () => noteOptSheet(nt, optShow);
   const draw = () => {
     if (!nt) return;
     const th = nt.thread || [], lastC = th.length && th[th.length - 1].role === "claude" ? th[th.length - 1] : null; ancs = {}; lrefs = {};
@@ -1411,7 +1436,7 @@ async function viewNote(id, my) {
       th.map((m, ti) => { if (m.role === "user") return bubble(m.text || "");
         if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
         Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
-        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 서재를 찾아봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + "</span></div>"; }).join("") +
+        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 원문을 열어 봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + "</span></div>"; }).join("") +
       (lastC && !nt.pending && !nt.error && (lastC.choices || []).length ? "<div class='pks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" + lastC.choices.map((c, i) => "<button data-pk='" + i + "'>" + esc(c) + "</button>").join("") + "</div>" : "") +   /* 답 끝의 선택지 — 마지막 답 아래에만 (2026-11-11) */
       (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : nt.stage === "lib" ? "서재를 찾는 중" : nt.stage === "read" ? "읽을 논문을 고르는 중" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
@@ -1440,13 +1465,13 @@ async function viewNote(id, my) {
     if (my !== view) return;
     if (!r.note) { $("msgs").innerHTML = "<div class='empty'><b>이 노트를 찾지 못했습니다</b></div>"; clearInterval(pollT); return; }
     const was = nt && nt.pending, n0 = nt ? (nt.thread || []).length : -1;
-    nt = r.note; now0 = r.now || Date.now() / 1000; got = Date.now(); draw();
+    nt = r.note; now0 = r.now || Date.now() / 1000; got = Date.now(); draw(); optShow();
     if (n0 < 0 || (was && !nt.pending) || (nt.thread || []).length !== n0) toBottom();
     clearInterval(pollT); pollT = nt.pending ? setInterval(pull, 4000) : null;
   };
   const ask = async (v, pick) => {      /* pick = 답 끝의 선택지를 눌러 보낸 것 — 묻는 칸에 쓰던 글은 건드리지 않는다 */
-    const o = (nt && nt.opts) || {};
-    let r; try { r = await api("/api/notes", { op: "ask", id, question: v, effort: o.effort && o.effort !== "max" ? o.effort : "xhigh", lib: false, study: o.study == null ? "auto" : o.study, ms: o.ms || "", pick: pick || undefined }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    const o = (nt && nt.opts) || {}, c = noteOpt(nt);
+    let r; try { r = await api("/api/notes", { op: "ask", id, question: v, effort: c.effort, lib: c.read === "deep", read: c.read === "off" ? "off" : "auto", study: o.study == null ? "auto" : o.study, ms: o.ms || "", pick: pick || undefined }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
     if (my !== view) return;
     if (r.error) { toast(r.error); if (pick) draw(); else putBack(v); return; }
     await pull(); toBottom();
