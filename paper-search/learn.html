@@ -309,9 +309,16 @@ async function renderFieldmap() {
   let h = "<div class='hint' style='margin-bottom:8px'>분야 지도 = 우선 저널(⚙ 설정 → 연결)에 2015년부터 실린 논문 전부의 제목과 초록을 받아 주제로 나누고, 주제마다 편수·시기별 늘고 줆·이끄는 곳을 세고, 초록을 읽혀 '지금 묻는 것 · 옮겨 간 곳 · 되풀이되는 과제 · 쓰임새' 를 적은 것입니다. 연구 노트가 물음마다 같이 읽습니다. 편수와 그룹은 센 값이고, 글은 초록만 읽은 정리라 세부는 틀릴 수 있습니다.</div>";
   const fj = (st.fetched || []).map(f => "<label style='margin-right:10px'><input type='checkbox' class='fmJ' value='" + esc(f.abbr) + "'" + (f.n || !(st.fetched || []).some(x => x.n) ? " checked" : "") + "> " + esc(f.abbr) + (f.n ? " " + f.n + "편" : "") + "</label>").join("");
   h += "<div class='meta'>" + (st.have ? "논문 " + st.n + "편 · 주제 " + st.themes + "개 · " + new Date(st.t * 1000).toLocaleDateString() + " · " + esc(st.model || "") : "아직 만들지 않았습니다") + "</div>" +
-    "<div class='meta'>" + fj + " <select id='fmModel' title='주제를 세우고 초록을 읽을 모델 — Fable 은 긴 제목 목록을 안전장치가 거절한 적이 있어(그러면 Opus 로 넘어갑니다) Opus 가 기본입니다'><option value='opus'>Opus</option><option value='fable'>Fable</option></select> <button class='act' id='fmGo'" + (run.on ? " disabled" : "") + ">" + (st.have ? "다시 만들기" : "만들기") + "</button></div>";
+    "<div class='meta'>" + fj + " <select id='fmModel' title='주제를 세우고 초록을 읽을 모델 — Fable 은 긴 제목 목록을 안전장치가 거절한 적이 있어(그러면 Opus 로 넘어갑니다) Opus 가 기본입니다'><option value='opus'>Opus</option><option value='fable'>Fable</option></select> <button class='act' id='fmGo'" + (run.on ? " disabled" : "") + ">" + (st.have ? "저널 더하기 · 다시 정리" : "만들기") + "</button></div>";
   if (run.on) h += "<div class='hint'>만드는 중 — " + esc(run.msg || run.stage || "") + " · " + Math.round((Date.now() / 1000 - run.t0) / 60) + "분째</div>";
   if (run.err) h += "<div class='hint' style='color:var(--amber)'>" + esc(run.err) + "</div>";
+  const ED = d.editors;      /* 저널의 편집자가 말한 것 — 편집장·객원 편집자가 저널에 쓴 글의 본문을 읽고 정리한 것 */
+  if (ED && (ED.journals || []).length) {
+    const who = x => x.doi ? "<a class='act' target='_blank' rel='noopener' href='https://doi.org/" + esc(x.doi) + "'>" + esc(x.who + " " + x.y) + "</a>" : esc(x.who + " " + x.y);
+    h += "<details class='pb'><summary><b>저널의 편집자가 말한 것</b> <span class='kd'>편집자의 글 " + ED.n + "편(본문)을 읽고 정리 · " + ED.journals.map(j => esc(j.abbr)).join(" · ") + "</span>" +
+      "<div class='ms'>편집장이 저널에 쓴 글(무엇을 기여로 보는가 · 범위 · 받지 않는 것)과 특집호 머리말(편집자가 꼽은 앞선 물음)입니다. 눌러서 펼칩니다.</div></summary>" +
+      ED.journals.map(j => "<div class='sideh' style='padding-left:0;margin-top:8px'>" + esc(j.abbr) + "</div>" + (ED.keys || []).map(kk => (j[kk[0]] || []).map(it => "<div class='mw'><b>" + esc(kk[1]) + "</b> — " + esc(it.t) + " <span class='kd'>(" + (it.src || []).map(who).join("; ") + ")</span></div>").join("")).join("")).join("") + "</details>";
+  }
   let area = null;
   const P = p => "<div class='pbs'>" + (p.doi ? "<a class='act' target='_blank' rel='noopener' href='https://doi.org/" + esc(p.doi) + "'>" + esc(p.first || "") + " " + p.y + "</a>" : esc((p.first || "") + " " + p.y)) + " <span class='kd'>" + esc(p.j) + " · 피인용 " + p.c + "</span> " + esc(p.t) + "</div>";
   (d.themes || []).forEach(t => {
@@ -329,7 +336,8 @@ async function renderFieldmap() {
   $("fmGo").onclick = async () => {
     const js = [...document.querySelectorAll(".fmJ:checked")].map(x => x.value), m = $("fmModel").value;
     if (!js.length) { alert("저널을 하나 이상 고르세요"); return; }
-    if (!confirm("분야 지도를 만듭니다 — " + js.join(" · ") + " 의 2015년부터의 논문 목록과 초록을 받고(아직 안 받은 저널만, 몇 분), 제목 전부를 읽혀 주제를 세운 뒤 주제마다 초록을 읽힙니다. 저널 둘에 15~30분 · 읽는 토큰 40만쯤, 다섯이면 그 서너 배입니다(" + (m === "fable" ? "Fable" : "Opus") + "). 시작할까요?")) return;
+    if (!confirm(st.have ? "고른 저널(" + js.join(" · ") + ") 가운데 아직 지도에 없는 것을 더합니다 — 논문 목록 · 초록 · 편집자의 글을 받고(몇 분), 새 논문을 지금의 주제에 붙인 뒤(맞는 데가 없는 것이 많으면 주제를 더 세웁니다) 주제마다의 글을 다시 씁니다. 저널 셋에 20~40분 · 읽는 토큰 150만쯤입니다. 시작할까요?"
+      : "분야 지도를 만듭니다 — " + js.join(" · ") + " 의 2015년부터의 논문 목록 · 초록 · 편집자의 글을 받고(몇 분), 제목 전부를 읽혀 주제를 세운 뒤 주제마다 초록을 읽힙니다. 저널 둘에 25분 · 읽는 토큰 100만쯤입니다(" + (m === "fable" ? "Fable" : "Opus") + "). 시작할까요?")) return;
     await api("/api/fieldmap", { op: "build", model: m, journals: js }); renderFieldmap();
   };
   if (run.on) fmTimer = setTimeout(renderFieldmap, 8000);

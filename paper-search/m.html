@@ -1424,15 +1424,20 @@ async function viewField(which, my) {
   } else {
     const AK = Object.fromEntries(d.areas || []), TR = d.trend || {}, nameOf = Object.fromEntries((d.themes || []).map(t => [t.k, t.name]));
     const P = p => "<div style='margin-top:7px'>" + (p.doi ? "<a href='https://doi.org/" + esc(p.doi) + "' target='_blank' rel='noopener'>" + esc((p.first || "") + " " + p.y) + "</a>" : esc((p.first || "") + " " + p.y)) + " <span class='no'>" + esc(p.j) + " · 피인용 " + p.c + "</span><br>" + esc(p.t) + "</div>";
+    const ED = d.editors;      /* 저널의 편집자가 말한 것 — 맨 위 카드, 저널마다 펼친다 */
+    const edCard = ED && (ED.journals || []).length ? "<div class='fqc'><div class='fh'><b>저널</b><span>편집자의 글 " + ED.n + "편(본문)을 읽고 정리</span></div><div class='fn'>저널의 편집자가 말한 것</div>" +
+      "<div class='fqq' style='font-size:14.5px;color:var(--text-2)'>편집장이 저널에 쓴 글과 특집호 머리말에서, 저널이 무엇을 바라고 무엇을 받지 않는지를 모았습니다.</div>" +
+      ED.journals.map(j => "<details><summary>" + esc(j.abbr) + "</summary>" + (ED.keys || []).map(kk => (j[kk[0]] || []).length ? "<div class='fl'><b>" + esc(kk[1]) + "</b>" + j[kk[0]].map(it => "<div style='margin-top:7px'>" + esc(it.t) +
+        " <span class='no'>(" + (it.src || []).map(x => esc(x.who + " " + x.y)).join("; ") + ")</span></div>").join("") + "</div>" : "").join("") + "</details>").join("") + "</div>" : "";
     let area = null;
-    h = (d.themes || []).length ? note("이 분야 최고 저널에 " + (d.y0 || 2015) + "년부터 실린 논문 " + (d.n || 0) + "편을 주제로 나눴습니다. 편수와 이끄는 곳은 센 값이고, 글은 제목과 초록만 읽은 정리입니다. 숫자 셋은 2015–18 → 2019–22 → 2023년부터의 편수입니다.") +
+    h = (d.themes || []).length ? edCard + note("이 분야 최고 저널에 " + (d.y0 || 2015) + "년부터 실린 논문 " + (d.n || 0) + "편을 주제로 나눴습니다. 편수와 이끄는 곳은 센 값이고, 글은 제목과 초록만 읽은 정리입니다. 숫자 셋은 2015–18 → 2019–22 → 2023년부터의 편수입니다.") +
       d.themes.map(t => { const per = t.per || [0, 0, 0]; let hd = ""; if (t.area !== area) { area = t.area; hd = "<div class='ch2' style='margin:22px 2px 0'>" + esc(AK[area] || area) + "</div>"; }
         return hd + "<div class='fqc'><div class='fh'><b>" + esc(t.k) + "</b><span>" + t.n + "편 · " + per.join(" → ") + "</span><span class='tg" + (t.trend === "up" ? " hi" : "") + "'>" + esc(TR[t.trend] || "") + "</span><span>서재 " + (t.lib || 0) + "편</span></div>" +
           "<div class='fn'>" + esc(t.name) + "</div><div class='fqq'>" + esc(t.asks || t.scope || "") + "</div>" + line("되풀이되는 과제", (t.open || []).map(esc).join(" · ")) +
           "<details><summary>자세히</summary>" + line("옮겨 간 곳", esc(t.shift)) + line("방법", esc(t.methods)) + line("쓰임새", esc(t.uses)) +
           line("이끄는 곳", (t.groups || []).map(g => esc(g.pi) + " (" + esc(g.inst) + ") " + g.n + "편").join(" · ")) + line("맞닿은 주제", (t.links || []).map(k => esc(k + " " + (nameOf[k] || ""))).join(" · ")) +
           "<div class='fl'><b>많이 인용된 논문 · 최근 논문</b>" + (t.top || []).concat(t.new || []).map(P).join("") + "</div></details></div>"; }).join("")
-      : "<div class='empty'><b>아직 분야 지도가 없습니다</b>PC 의 「학습」 창 → 「분야 지도」 에서 만듭니다.</div>";
+      : edCard + "<div class='empty'><b>아직 분야 지도가 없습니다</b>PC 의 「학습」 창 → 「분야 지도」 에서 만듭니다.</div>";
   }
   app.innerHTML = "<div class='doc'>" + seg + h + "</div>"; bindSeg(); restorePos(loc0[0]);
 }
