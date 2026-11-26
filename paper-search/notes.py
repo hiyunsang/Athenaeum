@@ -967,9 +967,16 @@ _QK_IDEA = re.compile(r"(?:있을까|없을까|없나|어떨까|해\s*볼까|볼
 _QK_FOREST = re.compile(r"숲|큰\s*그림(?:을|를|이|가|도|은|는|에|에서|으로)?\s*(?:찾|내\s*줘|내고|뽑|제시|보여|보고|보면|봐|볼|하고|속하|없|그려)|큰\s*(?:물음|질문|틀|연구|주제)(?:을|를|이|가|도|은|는|에|에서|으로)?\s*(?:찾|내\s*줘|내고|뽑|제시|보여|보고|보면|봐|볼|하고|속하|없|그려)|더\s*큰\s*(?:물음|질문|틀|연구|주제|그림)|한\s*단계\s*위|줌\s*아웃|크게\s*(?:보|봐|봤|볼)|넓게\s*(?:보|봐|볼)|세부\s*공백|틈\s*(?:메우|새)|대단한\s*연구|판을\s*바꾸")
 
 
+# 틀 벗어나기를 청하는 말(2026-11-27, 사용자: 'MTM 의 대단한 연구는 그 전 연구에서 후속 연구로 점프한다 — Axinte 의 두 연구처럼 이전 연구의 좌우 구속을 없앤 것 · 우리 모델에는 그런 게 없다')
+# — 답 끝의 '<저자 연도>의 틀 벗어나 보기' 선택지를 누른 것도. 출발 논문 하나를 놓고, 그 논문의 요약 · 틀 카드 · 그 논문을 인용한 서재 논문과 인용한 문장을 붙여 답한다(_frame_talk).
+_QK_FRAME = re.compile(r"틀\s*(?:을|를|에서|을\s*좀|에서\s*좀)?\s*(?:벗어|깨|뒤집|부수|넘어서|비틀)|틀\s*벗어나기|도약|점프")
+
+
 def _qkind(question):
-    """→ 'forest'(숲을 보고 싶다) | 'judge'(연구가 될 만한가) | 'prior'(선행연구) | 'grow'(더 낫게) | 'idea'(생각을 던져 봄 — 답의 틀은 그대로 두고 세상의 문헌만 같이 본다) | ''"""
+    """→ 'frame'(어느 연구의 틀을 벗어나 보자) | 'forest'(숲을 보고 싶다) | 'judge'(연구가 될 만한가) | 'prior'(선행연구) | 'grow'(더 낫게) | 'idea'(생각을 던져 봄 — 답의 틀은 그대로 두고 세상의 문헌만 같이 본다) | ''"""
     q = (question or "").strip()
+    if _QK_FRAME.search(q):
+        return "frame"
     if _QK_FOREST.search(q):
         return "forest"
     if _QK_JUDGE.search(q):
@@ -1091,7 +1098,7 @@ def _own_research(nt):
     return n >= 2
 
 
-def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False, worldtext="", qkind="", readtext="", readfiles=(), foresttext=""):
+def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked=False, worldtext="", qkind="", readtext="", readfiles=(), foresttext="", frametext="", framehint=False):
     seed = nt.get("seed") or {}
     fr = seed.get("from") or {}
     isask = (nt.get("kind") or "topic") == "ask" and not _own_research(nt)   # 물음 — 분야를 배우려는 대화 (2026-10-27); 제 연구를 다루게 된 물음 노트는 연구 주제처럼 (2026-11-17)
@@ -1209,8 +1216,24 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
                 "물음마다 한 줄 이름을 붙이고, 어떤 서재 논문들에 걸쳐 있는지, 아직 아무도 재지 않았고 틀릴 수 있는 예측 하나('X를 바꾸면 Y가 Z로 바뀐다' 꼴), 우리 연구실에서 그 예측을 시험하는 가장 값싼 실험을 말합니다. "
                 "연구자가 지금 하려는 실험은 버리지 않고, 그 큰 물음을 시험하는 첫 재료로 놓습니다. 다른 분야에서 가져온 것과 서재로 확인하지 못한 것은 '서재 밖:'으로 갈라 적습니다. 이 분야 사람이 보기에 터무니없는 것은 내지 않습니다. "
                 "길이는 2,500자 안쪽입니다. 답 끝의 '선택: ' 줄에는 낸 큰 물음마다 그것을 더 파는 선택지를 하나씩 둡니다.)\n") % ("[숲을 보는 재료]의 [한 단계 위]에서 출발해 " if foresttext else "")
+    # 2026-11-27 틀 벗어나기의 선택지 — 읽은 논문에 틀 카드가 붙어 있고 연구의 방향을 따지는 물음이면, 출발점이 될 논문의 틀을 깨 보는 길을 선택지로 열어 둔다(늘 붙이지는 않는다)
+    # 처음엔 연구가 될까·더 낫게·생각 던지기 물음에만 두었는데, '실리콘으로는 뭐가 남지?' 같은 여느 물음에서는 카드가 붙어도 답이 빈자리 찾기로 갔다(2026-11-27 시험) — 짧은 사실 물음만 뺀다
+    if framehint and qkind in ("judge", "grow", "idea", "") and not ack and not (short and asking) and not isask and note.rstrip().endswith(")"):
+        note = note.rstrip().rstrip(")") + (" [읽은 논문]에 붙은 '깔고 있던 틀' 가운데 이 연구를 크게 만들 만큼 깨 볼 틀이 보이면, 선택지 하나를 '저자 연도의 틀 벗어나 보기' 꼴로 둡니다(그 논문의 저자와 연도를 적습니다). "
+                                            "그런 틀이 보이지 않으면 두지 않습니다.)\n")
+    # 2026-11-27 틀 벗어나기 — 연구자가 어느 연구의 틀을 벗어나는 다음 연구를 청한 물음. 이 한 줄이 위의 것들을 덮는다(고른 선택지 · 짧은 물음이어도)
+    if qkind == "frame":
+        note = ("(연구자가 [출발 논문](또는 [출발점])의 틀을 벗어나는 다음 연구를 청했습니다. 그 연구의 빈칸을 메우는 다음 연구가 아니라, 그 연구가 당연하게 깔고 있던 틀 — 실험의 기하와 경계 조건, 시편이 놓인 방식, "
+                "관찰할 수 있었던 창, 한 조건에 고정해 둔 변수, 해석에 쓴 가정 — 가운데 하나를 없애거나 뒤집어 전에는 가려져 있던 현상을 드러내는 연구입니다. 저자가 한계로 적지 않은 틀일수록 값집니다. "
+                "먼저 그 연구가 깔고 있던 틀을 다섯 개 안팎, 한 줄씩 적고 저자가 한계로 적은 것인지 아닌지 밝힙니다. 이어서 그 틀을 깨는 다음 연구를 셋에서 다섯, 분야에 크게 남을 것부터 적습니다. "
+                "도약마다 무엇을 없애거나 뒤집는지, 그러면 무엇이 새로 보이는지(출발 연구의 어떤 결과가 그 틀 때문에 그렇게 나왔을 수 있는지), 실험을 어떻게 바꾸는지, 깨질 수 있는 생각이 무엇인지 말합니다. "
+                "[이 논문을 인용한 서재 논문]이나 [읽은 논문]이 이미 그 도약을 했으면 그 문장을 들어 그렇다고 밝히고, 그 위에서 한 걸음 더 나간 다음을 냅니다. "
+                "우리 연구실에서 할 수 있는지는 배경의 [우리 연구실]에 비추어 한 구절씩 붙이고, 연구자가 지금 하려는 연구가 있으면 그것이 어느 도약에 닿는지 말합니다. 이 분야 사람이 보기에 터무니없는 것은 내지 않습니다. "
+                "길이는 3,000자 안쪽입니다. 답 끝의 '선택: ' 줄에는 낸 도약마다 그것을 더 파는 선택지를 하나씩 둡니다.)\n")
     if foresttext:
         out += "\n" + foresttext + "\n"
+    if frametext:
+        out += "\n" + frametext + "\n"
     out += "\n[물음]\n" + question + "\n" + note + "\n" + (_RULE_ASK if isask else _RULE)
     if lib:   # 서재 읽기 「원문까지」 — 고른 논문의 전문 번역을 직접 연다 (2026-11-17: 「서재 찾아보기」 와 「논문 읽기」 를 하나로)
         first = ""
@@ -1270,7 +1293,7 @@ def _chatty(q, pick=False):
     전에는 60자 미만이고 물음표·의문사가 없으면 모두 그렇게 보아, 'Ti64 도 이방성있나. 결정방향별로 … 보면 좋을 거 같은대'(48자)가
     「원문까지」 를 켠 채로도 논문을 한 편도 읽지 않고 답했다('제가 가진 것은 제목과 라벨뿐 … 원문을 봐야 압니다')."""
     q = (q or "").strip()
-    if pick or len(q) >= 60 or _CH_ASK.search(q) or _CH_PROPOSE.search(q) or _QK_FOREST.search(q):
+    if pick or len(q) >= 60 or _CH_ASK.search(q) or _CH_PROPOSE.search(q) or _QK_FOREST.search(q) or _QK_FRAME.search(q):
         return False
     for c in re.split(r"[.!…~,\n]+(?:\s+|$)", q):
         c = c.strip()
@@ -1493,15 +1516,26 @@ def _ask_job(nid):
             picks, readstat = _read_pick(nt, question, prevq, hint=hint, job=_ask_jobkey(nid, nt))
             cancelled = bool((readstat or {}).get("cancelled"))
             if picks and not cancelled:
-                readtext, readinfo = _read_text(picks)
+                readtext, readinfo = _read_text(picks, frames=qkind != "prior")   # 틀 카드는 연구의 방향을 따질 때의 재료 — '누가 했나' 에는 붙이지 않는다 (2026-11-27)
         except Exception as e:
             readtext, readinfo, readstat = "", [], {"n": 0, "err": str(e)[:160]}
+        _stage("")
+    frametext, frameinfo = "", None
+    if qkind == "frame" and not cancelled:   # 틀 벗어나기 (2026-11-27) — 출발 논문의 요약·틀 카드 + 그 논문을 인용한 서재 논문과 가리킨 문장(모델 호출 없음, 몇 초)
+        try:
+            _stage("frame")
+            top = max([int(mm.group(1)) for mm in (re.match(r"L(\d+)", k) for k in (librefs or {})) if mm] or [0])
+            frametext, frefs, frameinfo = _frame_talk(nt, question, readinfo, start=top)
+            librefs = dict(librefs or {}, **(frefs or {}))
+        except Exception as e:
+            frametext, frameinfo = "", {"err": str(e)[:160]}
         _stage("")
     try:
         others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
-        ptext = _prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo], foresttext=foresttext)
+        ptext = _prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo], foresttext=foresttext,
+                        frametext=frametext, framehint=any(x.get("frame") for x in readinfo))
         kw = dict(timeout=2400, tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt))   # 읽는 글이 늘어 상한을 25분 → 40분으로 (2026-11-26)
         res = None if (cancelled or not run) else run(ptext, model=model, effort=eff, **kw)
         cancelled = cancelled or bool((res or {}).get("cancelled"))
@@ -1559,6 +1593,8 @@ def _ask_job(nid):
             if forestinfo:   # 숲을 청한 물음에 붙인 재료 — 층의 이름과 편수
                 turn["forest"] = {"layers": [str(L.get("name") or "") for L in forestinfo.get("layers") or []], "near": forestinfo.get("near"), "wide": forestinfo.get("wide"), "forest": forestinfo.get("forest"),
                                   "sec": forestinfo.get("sec"), "err": forestinfo.get("error") or ""}
+            if frameinfo:   # 틀 벗어나기의 출발 논문과, 그 논문을 인용한 서재 논문 (2026-11-27)
+                turn["frame"] = frameinfo
             if new_subject:   # 이 주제의 대상(영어 검색어) — 다음 물음의 서재 찾기에 쓴다
                 nt["subj_terms"] = new_subject
             if worldinfo:   # 세상의 문헌에서 찾아 붙인 것 + 답이 가리킨 논문(⟦W3⟧) (2026-11-11)
@@ -1729,8 +1765,21 @@ def _cut_para(t, n):
     return (t[:k] if k > n * 0.5 else t[:n]).rstrip() + " …(줄임)"
 
 
-def _read_one(fname, cap, deep):
-    """논문 하나의 요약 글 — 앞머리(한줄 요약·노벨티·핵심 결과·한계)는 늘, deep 이면 방법·결과·고찰·결론 절의 요약을 남은 자리에 고르게"""
+def _read_one(fname, cap, deep, frames=False):
+    """논문 하나의 요약 글 — 앞머리(한줄 요약·노벨티·핵심 결과·한계)는 늘, deep 이면 방법·결과·고찰·결론 절의 요약을 남은 자리에 고르게.
+    frames 면 자세히 읽는 논문에 틀 카드(깔고 있던 틀 · 그 틀을 깨는 다음 걸음 — 서재 학습)를 덧붙인다 (2026-11-27)"""
+    body = _read_one_body(fname, cap, deep)
+    if body and frames and deep and cfg.get("frame_text"):
+        try:
+            ft = cfg["frame_text"](fname)
+        except Exception:
+            ft = ""
+        if ft:
+            body += "\n" + ft
+    return body
+
+
+def _read_one_body(fname, cap, deep):
     secs = _summary_secs(fname)
     if not secs:
         card = None
@@ -1764,23 +1813,30 @@ def _read_one(fname, cap, deep):
     return "\n".join(out)
 
 
-def _read_text(picks):
-    """고른 논문 → (물음에 붙일 글, [{file, short, deep, why, chars}])"""
+def _read_text(picks, frames=False):
+    """고른 논문 → (물음에 붙일 글, [{file, short, deep, why, chars, frame}])"""
     L, info = [], []
     has = [bool(_summary_secs(p["file"])) for p in picks]
     deepset = set([i for i, h in enumerate(has) if h][:_READ_DEEP])   # 깊이 읽는 자리는 요약 파일이 있는 논문에게 (요약이 없으면 주석 몇 줄뿐이다)
     for i, p in enumerate(picks):
         deep = i in deepset
-        body = _read_one(p["file"], _READ_DEEP_CHARS if deep else _READ_MORE_CHARS, deep)
+        body = _read_one(p["file"], _READ_DEEP_CHARS if deep else _READ_MORE_CHARS, deep, frames=frames)
         if not body:
             continue
         m = re.match(r"^(\d{4})_[^_]+_([^_]+)_", p["file"])
         short = ("%s %s" % (m.group(2), m.group(1))) if m else p["file"][:30]
         L.append("### %s%s\n%s" % (p["head"], (" — 고른 까닭: " + p["why"]) if p.get("why") else "", body))
-        info.append({"file": p["file"], "short": short, "deep": deep, "why": p.get("why") or "", "chars": len(body)})
+        info.append({"file": p["file"], "short": short, "deep": deep, "why": p.get("why") or "", "chars": len(body), "frame": "**깔고 있던 틀**" in body})
     if not L:
         return "", []
-    return _READ_HEAD % (len(L), sum(1 for x in info if x["deep"])) + "\n\n".join(L) + "\n", info
+    head = _READ_HEAD % (len(L), sum(1 for x in info if x["deep"]))
+    if any(x["frame"] for x in info):
+        head += _READ_FRAME_HEAD
+    return head + "\n\n".join(L) + "\n", info
+
+
+_READ_FRAME_HEAD = ("[몇 편에는 서재 학습이 요약을 읽고 적어 둔 '깔고 있던 틀'(실험의 기하·경계 조건, 시편, 관찰 창, 고정한 변수, 해석의 가정)과 '그 틀을 깨는 다음 걸음'이 붙어 있습니다. "
+                    "연구의 방향이나 새로움을 따질 때 쓰는 재료이고, 물음과 무관하면 꺼내지 않습니다. 다음 걸음은 이미 누가 했는지 확인하지 않은 생각이니, 쓰려면 [읽은 논문]과 [서재에서 찾은 문장]에 비추어 봅니다]\n")
 
 
 # ---------- 고른 원고 — 노트의 물음에 원고의 글을 붙인다 (2026-10-29, 사용자: '너무 멍청해 대답이') ----------
@@ -3628,6 +3684,162 @@ def _forest_talk(nt, question, prevq=""):
     if not text.strip():
         return "", st
     return ("[숲을 보는 재료 — 연구자가 틈 메우기가 아니라 큰 물음을 청했다. 이 주제가 속한 더 큰 물음의 층, 그 둘레와 위층에서 분야가 묻는 것, 서재에서 숲을 본 논문들이다]\n" + text.strip() + "\n"), st
+
+
+# ---------- 틀 벗어나기 — 출발 논문 하나의 틀을 깨는 다음 연구 (2026-11-27) ----------
+# 시험에서 Opus 는 Xu 2021(SEM 안의 나노 절삭)의 요약만 보고도 Zan 2026 이 실제로 한 도약(옆이 막힌 홈 → 옆면이 자유면인 시편)을 첫째로 냈다. 재료는 셋이다:
+# ① 출발 논문의 요약과 틀 카드 ② 서재 안에서 그 논문을 인용한 논문들(서재 인용 색인 — 같은 그룹이 이어 쓴 것일 수 있다)과, 그 논문을 가리킨 문장(참고문헌 번호로 찾는다 — 모델 호출 없음)
+# ③ 우리 연구실(배경). 인용한 문장은 서재 문장 번호(⟦L31 s68⟧)로 붙여 화면에서 눌러 원문을 본다. 출발 논문은 물음이 이름을 든 논문 → '우리 연구' → 고른 논문 가운데 첫째.
+_FT_OWN = re.compile(r"우리|내\s*(?:연구|실험|원고|논문|생각)|지금\s*(?:연구|실험|계획)|이\s*연구|원고")
+_FT_MAXF = 6
+
+
+def _frame_start(question, readinfo):
+    """→ (파일 | '', 이름) — 이름이 'own' 이면 연구자 자신의 연구. 'Xu 2021' 처럼 두 글자 성도 받는다(_answer_cites 는 세 글자부터)"""
+    for m in re.finditer(r"([A-Z][A-Za-zÀ-ž'\-]{1,30}(?:\s+(?:et\s+al\.?|and\s+[A-Z][A-Za-zÀ-ž'\-]+))?)\s*,?\s*\(?((?:19|20)\d{2})[a-c]?(?!\d)", question or ""):
+        fs = _cite_files(m.group(1) + " " + m.group(2)) or []
+        fs = [f for f in fs if not re.search(r"\(\d\)\.pdf$", f, re.I)] or fs   # 같은 논문의 사본('(2)')은 뒤로
+        if len(fs) > 1:
+            f, _rest = _cite_pick(fs, question)
+            fs = [f]
+        if fs:
+            return fs[0], "%s %s" % (m.group(1).split()[0], m.group(2))
+    if _FT_OWN.search(question or ""):
+        return "", "own"
+    for x in readinfo or []:
+        if x.get("deep"):
+            return x["file"], x.get("short") or ""
+    return "", "own"
+
+
+def _ft_short(f):
+    m = re.match(r"^(\d{4})_([^_]+)_([^_]+)_", f or "")
+    return ("%s %s" % (m.group(3), m.group(1)), m.group(2), int(m.group(1))) if m else ((f or "")[:30], "", 0)
+
+
+def _followers(fname, cap=_FT_MAXF):
+    """서재 안에서 이 논문을 인용한 논문 — 서재 인용 색인(OpenAlex 의 참고문헌·피인용). 우선 저널 → 최근, 같은 논문의 사본('(2)')은 하나만"""
+    try:
+        papers = ((cfg["libnet_load"]() if cfg.get("libnet_load") else {}) or {}).get("papers") or {}
+    except Exception:
+        papers = {}
+    me = papers.get(fname) or {}
+    wid = me.get("id")
+    if not wid:
+        return []
+    cits = set(me.get("citers") or [])
+    rows = []
+    for g, r in papers.items():
+        if g == fname or g.startswith("(") or not isinstance(r, dict) or not r.get("id"):
+            continue
+        if wid in (r.get("refs") or []) or r["id"] in cits:
+            rows.append((0 if _is_star(g) else 1, -_ft_short(g)[2], g))
+    rows.sort()
+    out, seen = [], set()
+    for _a, _b, g in rows:
+        k = re.sub(r"\s*\(\d\)(?=\.pdf$)", "", g, flags=re.I)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(g)
+    return out[:cap]
+
+
+_FT_REFLINE = re.compile(r"(?:\b[A-Z]\.\s?(?:[A-Z]\.\s?)*,\s*){2,}|(?:[A-Z][a-z]+,\s(?:[A-Z]\.\s?){1,3},\s*){2,}")   # 참고문헌 목록의 줄 ('D. Xu, T.E.J. Edwards, …' · 'Xu, D., Edwards, T.E., …')
+_FT_CUE = re.compile(r"\b(?:however|but|only|limit|constrain|block|restrict|not\b|unlike|instead|whereas|although|rather|neglect|ignor|assum|ideal|differ)", re.I)   # 앞 연구와 갈라서는 말 — 그런 문장을 먼저
+
+
+def _cite_sents(g, fname, k=4):
+    """논문 g 가 fname 을 가리킨 문장 — g 의 참고문헌 목록에서 fname 의 번호(또는 저자·연도)를 찾고, 그 번호가 든 본문 문장을 정렬표에서 고른다.
+    앞 연구와 갈라서는 말(however · only · constrain …)이 든 문장을 먼저, 그다음 문장 차례로. → [(sid, en, ko, page)]"""
+    try:
+        import paperrefs
+        v = paperrefs.view(g)
+    except Exception:
+        return []
+    hit = [r for r in (v.get("refs") or []) if r.get("file") == fname]
+    if not hit:
+        return []
+    nums = {str(r["n"]) for r in hit if r.get("n")}
+    keys = [(str(r.get("a") or "").split(" ")[0], str(r.get("y") or "")) for r in hit if not r.get("n") and r.get("a")]
+    out = []
+    try:
+        rows = ms._translation_sentences(g)
+    except Exception:
+        rows = []
+    for sid, en, page, ko in rows:
+        if re.match(r"^\s*(?:\d{1,3}\s+)?\[\d{1,3}\]", en) or len(en) > 900 or _FT_REFLINE.search(en):   # 참고문헌 목록의 줄
+            continue
+        ok = bool(nums and set(ms._cite_numbers(en)) & nums)
+        if not ok and keys:
+            ok = any(a and y and re.search(r"(?<![A-Za-z])" + re.escape(a), en) and y in en for a, y in keys)
+        if ok:
+            out.append((str(sid), en, ko or "", page))
+    out.sort(key=lambda x: (0 if _FT_CUE.search(x[1]) else 1, int(re.sub(r"\D", "", x[0]) or 0)))
+    return out[:k]
+
+
+def _frame_talk(nt, question, readinfo, start=0):
+    """틀 벗어나기의 재료 → (글, 서재 문장 번호 {L31 s68: …}, 통계)"""
+    t0 = time.time()
+    f, name = _frame_start(question, readinfo)
+    info = {"start": name, "file": f, "followers": [], "cites": 0}
+    if not f:
+        txt = ("[출발점 — 연구자 자신의 지금 연구입니다. 위의 [주제 카드]·[지금까지의 정리]·[실험 설계서]·[원고]에 적힌 실험과 해석이 그 연구입니다. "
+               "그 연구가 깔고 있는 틀을 이 재료에서 읽습니다. 적혀 있지 않은 조건은 지어내지 않고, 정해지지 않은 것은 정해지지 않았다고 말합니다]\n")
+        info["sec"] = round(time.time() - t0, 1)
+        return txt, {}, info
+    heads = {r["file"]: r["head"] for r in _read_list()[1]}
+    L = ["[출발 논문 — 연구자가 이 연구의 틀을 벗어나는 다음 연구를 청했습니다]", "### " + heads.get(f, f)]
+    body = ""
+    try:
+        body = cfg["summary_body"](f, 14000) if cfg.get("summary_body") else ""
+    except Exception:
+        body = ""
+    L.append(body or "(이 논문의 요약 파일이 없습니다 — 배경 목록의 제목과 라벨, 아래의 문장만 아는 것입니다)")
+    try:
+        ft = cfg["frame_text"](f, cap=2600) if cfg.get("frame_text") else ""
+    except Exception:
+        ft = ""
+    if ft:
+        L.append(ft)
+    refs, n = {}, start
+    fol = _followers(f)
+    if fol:
+        L.append("\n[이 논문을 인용한 서재 논문 %d편 — 서재 인용 색인에서 찾은 것입니다. 같은 그룹이 이어 쓴 연구일 수 있습니다. 이 논문들이 출발 논문의 어떤 틀을 이미 바꿨는지 보는 재료이고, "
+                 "출발 논문을 가리킨 문장이 있으면 그 문장을 ⟦L번호 s번호⟧로 가리킵니다]" % len(fol))
+        for g in fol:
+            short, jr, yr = _ft_short(g)
+            n += 1
+            lab = "L%d" % n
+            L.append("%s %s" % (lab, heads.get(g, g)))
+            c = None
+            try:
+                c = cfg["paper_card"](g) if cfg.get("paper_card") else None
+            except Exception:
+                c = None
+            if c:
+                if c.get("question"):
+                    L.append("  · 물은 것: " + str(c["question"])[:220])
+                if c.get("contribution"):
+                    L.append("  · 한 것: " + str(c["contribution"])[:220])
+            else:
+                try:
+                    ln = cfg["paper_line"](g) if cfg.get("paper_line") else ""
+                except Exception:
+                    ln = ""
+                if ln:
+                    L.append("  · " + ln[:260])
+            ss = _cite_sents(g, f)
+            for sid, en, ko, page in ss:
+                L.append("  s%s (출발 논문을 가리킨 문장): %s" % (sid, en[:420]))
+                refs["%s s%s" % (lab, sid)] = {"file": g, "sid": "s%s" % sid, "en": en, "ko": ko, "page": page, "sec": "", "short": short, "star": _is_star(g), "year": yr, "journal": jr, "tr": True}
+            info["followers"].append({"file": g, "short": short, "sents": len(ss)})
+            info["cites"] += len(ss)
+    else:
+        L.append("\n[서재 안에서 이 논문을 인용한 논문은 찾지 못했습니다(서재 인용 색인 기준). 이미 누가 그 도약을 했는지는 [읽은 논문]과 [서재에서 찾은 문장]에서만 볼 수 있습니다]")
+    info["sec"] = round(time.time() - t0, 1)
+    return "\n".join(L) + "\n", refs, info
 
 
 def _forest_prompt(nt):

@@ -4755,7 +4755,8 @@ corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sa
 ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for, pref_abbrs=pref_file_abbrs, field_text=notes.field_text)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
 notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text,
                  plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map, forest_material=corpus.forest_material,   # 큰 물음의 재료 (2026-10-28)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
-                 world_search=world_search, world_terms=world_terms, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples, claude_usage=claude_usage, problems_text=corpus.problems_text)   # 구독 사용량 · 열린 문제 장부 (2026-11-26)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
+                 world_search=world_search, world_terms=world_terms, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples, claude_usage=claude_usage, problems_text=corpus.problems_text,
+                 frame_text=corpus.frame_text, summary_body=corpus.summary_body, libnet_load=libnet_load)   # 틀 카드 · 틀 벗어나기의 재료(서재 인용 색인) (2026-11-27)   # 구독 사용량 · 열린 문제 장부 (2026-11-26)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
 
 
 # ---------- 분야 지도 (2026-11-26, 사용자: '세계 대가들이랑 이야기하는 정도의 수준을 원하는데 … 그사람은 산업도 잘 알고 연구도 잘 알고 다른분야도 알고') ----------

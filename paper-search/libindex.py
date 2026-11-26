@@ -581,6 +581,8 @@ def format_hits(res, label="L", line_chars=110, card=None, full=0, start=0):
                 lines.append("  · 보인 것: " + " / ".join(x[:160] for x in c["claims"][:(2 if rich else 1)]))
             if rich and c.get("limits"):
                 lines.append("  · 저자가 적은 한계·남은 일(원문): " + c["limits"][0][:260])
+            if rich and c.get("frames"):      # 틀 카드(서재 학습) — 저자가 적지 않은 틀(◇)도 들어 있다 (2026-11-27)
+                lines.append("  · 깔고 있던 틀(◇ = 저자가 적지 않음): " + " / ".join(("◇ " if f.get("stated") == "no" else "") + str(f.get("t") or "")[:150] for f in c["frames"][:2]))
         else:
             if p.get("line"):
                 head += " :: " + p["line"][:line_chars]
