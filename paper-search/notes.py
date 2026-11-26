@@ -1164,8 +1164,15 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
     # ③ 고른 선택지는 짧은 구절이지만 '짧은 말' 이 아니다 — 그 방향으로 두세 문단
     short = (not picked) and len(question) < 60 and not re.search(r"자세히|검토|설계|따져|정리|설명|왜|어떻게|비교|차이|뭐가|무엇", question)
     asking = bool(re.search(r"[?？]|뭘|뭐|어디|어느|언제|얼마|누가|무슨|어떤|(?:나|까|지|가|냐|니|죠)\s*[.!…~]*\s*$", question.strip()))
+    # 2026-11-26: 짧은 말이라고 다 확인·정정이 아니다 — '속도가 늘면 전체적으로 dc가 커진다는 연구가 있는데. 열때문으로 해석하고는 있고'(47자)는 앞 답의 제안을 뒤집는 반론인데,
+    # '한두 문장으로 받고 멈춥니다' 에 걸려 '맞습니다. 제 말은 지나쳤습니다' 로 끝났다(사용자: '여전히 멍청해보이는데'). 확인·정정(_chatty)만 짧게 받고, 그 밖의 짧은 말은 그 말이 판단을 어떻게 바꾸는지 답한다.
+    ack = short and not asking and _chatty(question, picked) and any(m.get("role") == "claude" for m in nt.get("thread") or [])   # 첫 물음이 주제 이름뿐인 것('실리콘 In-SEM 절삭')은 확인·정정이 아니다
     if picked:
         note = "(연구자가 바로 앞 답 끝의 선택지 가운데 이것을 골랐습니다. 이 방향으로 답합니다 — 한 줄 물음이니 두세 문단이면 됩니다. 답 끝에는 새 '선택: ' 줄을 적습니다.)\n"
+    elif short and not asking and not ack:
+        note = ("(연구자가 짧게 새 사실이나 반론, 자기 생각을 말했습니다. 맞다고 받기만 하고 멈추지 않습니다. 그 말이 앞에서 한 판단이나 제안을 어떻게 바꾸는지를 답합니다: 무엇이 무너지고 무엇이 그대로 서는지, "
+                "그 말을 받아들이고도 아직 갈리지 않은 것이 무엇인지, 그래서 연구를 어느 쪽으로 돌려야 하는지입니다. 앞 답이 틀렸으면 한 문장으로 인정하고 넘어갑니다. "
+                "연구자가 든 사실은 [읽은 논문]과 [서재에서 찾은 문장]에서 확인되는 만큼 확인해 말하고, 연구자가 한 말을 되풀이해 들려주지 않습니다. 길이는 1,200자 안쪽이고, 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n")
     elif short and asking:
         note = "(짧은 물음입니다. 한두 문단으로 짧게 답하고 멈춥니다. 새 제안이나 묻지 않은 계산, 지난 답의 정정을 덧붙이지 않습니다. 답 끝에는 연구자가 고를 '선택: ' 줄을 둘에서 넷 적습니다.)\n"
     elif short:
@@ -1175,7 +1182,7 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
         note = "(답의 맨 끝에 연구자가 고를 '선택: ' 줄을 둘에서 넷 적습니다. 지난 답들에 그 줄이 없었더라도 이번 답부터 적습니다.%s)\n" % cap
     # 2026-11-11 물음의 종류에 맞춘 한 줄 — 연구가 되는가 · 선행연구 · 더 낫게. 짧게 물어도('그게 연구가 될까?') 이런 물음은 제대로 따져야 하므로 '짧은 물음' 알림보다 이것이 먼저다.
     # 규칙의 문단보다 이 한 줄이 세다는 것은 2026-10-30·11-11 에 겪었다 — 그래서 무엇부터 말할지를 여기서 정한다. 길이는 여전히 물음을 따른다(서너 문단 안쪽).
-    if qkind in ("judge", "prior", "grow") and not (short and not asking) and not isask:
+    if qkind in ("judge", "prior", "grow") and not ack and not isask:
         size = "1,200자 안쪽" if len(question) < 60 else "2,000자 안쪽"   # 문단 수로 적었더니 2,200~2,900자가 왔다(2026-11-11) — 글자 수로
         seen = "[서재에서 찾은 문장]" + ("과 [세상의 문헌에서 찾은 것]" if worldtext else "")
         # 서재만 보고 답할 때 — '서재에 없다' 와 '아무도 안 했다' 를 가르고, 밖을 볼지는 연구자가 고르게 선택지로 남긴다
@@ -1191,7 +1198,7 @@ def _prompt(nt, question, lib, others, studies="", mstext="", libtext="", picked
         else:
             note = ("(연구를 더 낫게 만드는 방법을 묻는 물음입니다. 지금 계획에서 주장을 가장 약하게 만드는 것이 무엇인지 먼저 말하고, 그것을 메우는 방법을 우리 연구실에서 할 수 있는 것 위주로 두세 가지 말합니다. "
                     "방법마다 그것을 더하면 무엇을 더 말할 수 있게 되는지를 붙입니다. 길이는 %s입니다. 답 끝에는 '선택: ' 줄을 둘에서 넷 적습니다.)\n") % size
-    elif qkind == "prior" and isask and worldtext and not (short and not asking):
+    elif qkind == "prior" and isask and worldtext and not ack:
         note = note.rstrip("\n").rstrip(")") + " 서재 밖의 연구는 [세상의 문헌에서 찾은 것]에서 확인한 것으로 말합니다.)\n"
     # 2026-11-25 숲 — 연구자가 큰 물음을 청한 물음. 이 한 줄이 위의 것들을 덮는다(고른 선택지 · 짧은 물음이어도)
     if qkind == "forest":
@@ -1293,6 +1300,106 @@ def ask_cancel(nid):
     return {"ok": True}
 
 
+# ---------- 빈자리 확인 (2026-11-26, 사용자가 답을 붙이며: '바꾼거 맞나. 여전히 멍청해보이는데 그 이유가 뭘까') ----------
+# 「In-SEM 가공 - 취성 재료」 의 첫 답이 '제가 보기에 비어 있는 자리는 절삭 속도입니다' 라고 했는데, 그 답이 자세히 읽은 여덟 편 안에 속도가 빠를수록 천이 두께가 커진다고 보인
+# Liu 2018(플라이 커팅 · FEM)이 있었다. 재료가 모자란 것이 아니라, 읽을 것은 물음의 낱말로 한 번 고르고 답은 한 번에 쓰므로 답이 쓰는 중에 떠올린 제안(속도)을 서재에 대 보는 단계가 없었다.
+# 연구자는 자기 분야의 논문을 안다 — 있는 연구를 없다고 하면 그 답 전체를 믿지 않게 된다. 그래서 답 초안이 '없다 · 비어 있다 · 평가된 적이 없다' 고 하면:
+# ① 가벼운 모델이 그 주장과, 그것을 뒤집을 논문을 찾을 낱말(영어·한국어)을 뽑고 ② 그 낱말로 서재 문장 색인을 다시 찾고(모델 호출 없음) ③ 답한 모델이 초안과 그 문장을 맞대어 부딪히면 고쳐 쓴다.
+# 값: 가벼운 모델 한 번(10초쯤) + 답한 모델 한 번(배경은 캐시에서 읽는다 — 1~2분). '없다' 는 말이 없는 답과 짧은 확인에는 돌지 않는다.
+_SELF_HINT = re.compile(r"비어 ?있|빈자리|빈 ?칸|공백|아직 [^.\n]{0,30}(?:없|않|못)|적이 없|적은 없|다뤄지지 않|다루지 않|밝혀지지 않|밝히지 못|알려지지 않|가려지지 않|보이지 않습니다|찾지 못했|처음으로|새로움|뿐입니다|만 다뤄")
+_SELF_PLAN = (
+    "아래는 연구 노트에서 Claude 가 연구자에게 쓴 답의 초안입니다. 이 초안이 무엇이 없다고 말한 주장을 찾습니다 — '아직 아무도 하지 않았다', '비어 있다', '평가된 적이 없다', '서재 안에서는 보이지 않는다', '처음이다' 같은 말입니다. "
+    "선행연구가 한 조건에만 머물렀다는 주장('모두 한 속도에서 얻은 것')과, 그런 빈자리 위에 새 연구를 제안한 주장도 넣습니다. 판단이 가장 크게 기대는 것부터 셋까지 고르고, 그런 주장이 없으면 빈 목록입니다.\n"
+    "주장마다 그것을 뒤집을 논문을 서재에서 찾을 낱말을 적습니다. en 은 논문 본문에 그대로 나올 영어 낱말이나 구입니다 — 같은 것을 가리키는 다른 표현도 넣어 넷에서 여덟 개(예: cutting speed, cutting velocity). ko 는 한국어 번역문에 나올 낱말 둘에서 다섯 개입니다. 재료나 대상의 이름도 넣습니다.\n"
+    "JSON 으로만 답합니다(마크다운 없이): {\"claims\": [{\"t\": \"초안의 주장을 한 문장으로\", \"en\": [\"…\"], \"ko\": [\"…\"]}]}\n\n[물음]\n%s\n\n[답 초안]\n%s")
+_SELF_RULE = (
+    "방금 쓴 답 초안을 연구자에게 보내기 전에 한 번 점검합니다. 초안에는 무엇이 없다고 한 주장('아직 아무도 하지 않았다', '비어 있다', '평가된 적이 없다')이 있고, 그 위에 새 연구를 제안한 것도 있습니다. "
+    "연구자는 자기 분야의 논문을 잘 압니다. 이미 있는 연구를 없다고 하면 그 답 전체를 믿지 않게 됩니다.\n"
+    "위의 [초안의 주장과 서재에서 다시 찾은 문장]은 주장마다 그 주장의 낱말로 서재 전체를 다시 찾은 결과입니다(L번호는 논문, s번호는 문장). 주장마다 이 문장과 논문 가운데 그 주장과 부딪히는 것이 있는지 봅니다. "
+    "부딪힌다는 것은 그 논문이 초안이 없다고 한 바로 그것을 이미 했거나 보였다는 뜻입니다. 재료나 규모나 방법이 달라서 주장이 그대로 서는 경우는 부딪히는 것이 아닙니다.\n"
+    "부딪히는 것이 하나도 없으면 첫 줄에 '판정: 그대로'만 적고 끝냅니다.\n"
+    "부딪히는 것이 있으면 첫 줄에 '판정: 고침 — 무엇을 왜 고쳤는지 한 문장'을 적고, 둘째 줄부터 고친 답 전체를 적습니다. 고칠 때는 이렇게 합니다. 그 논문이 이미 무엇을 어떻게 보였는지를 근거 번호와 함께 말합니다. "
+    "그 결과를 받아들이고도 남는 빈자리가 있으면 주장을 그것으로 좁힙니다(그 연구가 재지 않은 것, 검증하지 않은 해석, 닿지 않은 범위). 남는 것이 없으면 그 제안을 내리고 다른 방향을 냅니다. "
+    "초안에서 부딪히지 않는 부분은 그대로 둡니다. 초안의 꼴을 지킵니다: '~습니다'로 끝나는 높임말, 비슷한 길이, 근거 번호(⟦L3 s45⟧ 꼴 — 새로 찾은 문장도 거기 적힌 번호로), 끝의 '선택: ' 줄. 점검했다는 말이나 '초안'이라는 말은 답에 적지 않습니다.\n")
+
+
+def _self_check(nt, question, draft, run, model, eff, system, job, start=0, tools="", add_dirs=(), debug=False):
+    """답 초안의 '없다' 주장을 서재에서 다시 확인한다. → (고친 답 또는 None, 새로 찾은 문장의 refs, 기록 또는 None)
+    tools · add_dirs 는 답을 쓴 호출과 같게 준다 — 도구 목록이 캐시의 맨 앞이라, 다르면 배경 16만 토큰을 캐시에서 못 읽고 새로 읽는다(처음 잰 것: 16.2만 가운데 캐시 2천)"""
+    li = cfg.get("libindex")
+    if not li or not run or len(draft) < 500 or not _SELF_HINT.search(draft):
+        return None, {}, None
+    t0 = time.time()
+    tok = {"in": 0, "cached": 0}
+
+    def add(rr):
+        for k in ("in", "cached"):
+            tok[k] += int(((rr or {}).get("tok") or {}).get(k) or 0)
+    rr = run(_SELF_PLAN % (question[:1500], draft[:9000]), model="sonnet", effort=None, timeout=300, tools="", job=job)
+    if (rr or {}).get("cancelled"):
+        return None, {}, {"cancelled": True}
+    add(rr)
+    d = _json_of((rr or {}).get("text") or "") if rr else None
+    claims = []
+    for c in (d.get("claims") if isinstance(d, dict) else None) or []:
+        if not isinstance(c, dict):
+            continue
+        t = re.sub(r"\s+", " ", str(c.get("t") or "")).strip()[:220]
+        en = [re.sub(r"\s+", " ", str(x)).strip()[:40] for x in (c.get("en") if isinstance(c.get("en"), list) else []) if str(x).strip()][:8]
+        ko = [re.sub(r"\s+", " ", str(x)).strip()[:20] for x in (c.get("ko") if isinstance(c.get("ko"), list) else []) if str(x).strip()][:5]
+        if len(t) >= 8 and (en or ko):
+            claims.append({"t": t, "en": en, "ko": ko})
+    info = {"claims": [c["t"] for c in claims[:3]], "hits": 0, "verdict": "", "sec": 0}
+    if not claims:
+        info.update(verdict="none", sec=round(time.time() - t0), tok=tok)
+        return None, {}, info
+    blocks, refs, off = [], {}, start
+    for c in claims[:3]:
+        try:
+            res = li.search(c["t"] + " " + " ".join(c["ko"]), context=nt.get("title") or "", wait=False, extra=", ".join(c["en"]), k=18, per_paper=4, max_papers=7, chars=6500)
+        except Exception:
+            res = {}
+        if not res.get("n"):
+            blocks.append("주장: %s\n(이 낱말이 맞는 서재 문장을 찾지 못했습니다)" % c["t"])
+            continue
+        try:
+            text, r = li.format_hits(res, card=cfg.get("paper_card"), full=4, start=off)
+        except TypeError:      # 시험 틀의 옛 libindex — 번호를 이어 매기지 못하면 이 주장은 건너뛴다
+            continue
+        off += len(res.get("papers") or [])
+        refs.update(r)
+        info["hits"] += res["n"]
+        blocks.append("주장: %s\n%s" % (c["t"], text))
+    if not info["hits"]:
+        info.update(verdict="nohits", sec=round(time.time() - t0), tok=tok)
+        return None, {}, info
+    vp = "[연구 주제] %s\n\n[물음]\n%s\n\n[답 초안]\n%s\n\n[초안의 주장과 서재에서 다시 찾은 문장]\n%s\n\n%s" % (nt.get("title") or "", question, draft, "\n\n".join(blocks), _SELF_RULE)
+    if tools:
+        vp += "(이 점검에서는 파일을 열지 않습니다. 위에 준 문장과 논문 카드만 보고 판정합니다.)\n"
+    rv = run(vp, model=model, effort=eff, timeout=1500, tools=tools, add_dirs=add_dirs, system=system, job=job)
+    if (rv or {}).get("cancelled"):
+        return None, {}, {"cancelled": True}
+    add(rv)
+    out = ((rv or {}).get("text") or "").strip()
+    m = re.search(r"(?m)^[\s*#>\[\(]*판정\s*[:：]\s*\**\s*(그대로|고침)[*\]\)]*[ \t]*(?:[—–\-:：][ \t]*)?([^\n]*)", out[:1500])   # 앞에 한두 줄이 붙어 와도 읽는다
+    fixed = None
+    if m and m.group(1) == "고침":
+        body = out[m.end():].strip()
+        if len(body) >= max(300, int(len(draft) * 0.4)):
+            fixed = body
+            info.update(verdict="fixed", why=m.group(2).strip()[:300], draft=draft[:12000])
+        else:
+            info.update(verdict="kept", why="고친 글이 너무 짧아 처음 쓴 답을 두었습니다")
+    elif m:
+        info["verdict"] = "kept"
+    else:      # 판정 줄이 없다 — 처음 쓴 답을 그대로 두고, 무엇이 왔는지 머리만 남긴다
+        info.update(verdict="noanswer", why=(out[:200] or "빈 응답"))
+    if debug:
+        info.update(blocks="\n\n".join(blocks), out=out[:6000])
+    info.update(sec=round(time.time() - t0), tok=tok)
+    return fixed, (refs if fixed else {}), info
+
+
 def _ask_job(nid):
     nt = _load(nid)
     if not nt or not nt.get("thread"):
@@ -1302,6 +1409,7 @@ def _ask_job(nid):
     lib = bool((nt.get("opts") or {}).get("lib"))
     t0 = time.time()
     res, err, cancelled, fallback = None, "", False, ""
+    gapinfo = None
     stext, anchors, picked = "", {}, []
     try:   # 관련 공부 장 (2026-10-29) — 못 골라도 물음은 간다
         picked = _study_pick(nt, (nt.get("opts") or {}).get("study", "auto"))
@@ -1375,7 +1483,7 @@ def _ask_job(nid):
         libtext, librefs, libinfo = "", {}, {"n": 0, "err": str(e)[:120]}
     readtext, readinfo, readstat = "", [], None
     q0 = question.strip()
-    chatty = _chatty(q0, nt["thread"][-1].get("pick") or qkind == "forest")
+    chatty = _chatty(q0, nt["thread"][-1].get("pick") or qkind == "forest") and any(m.get("role") == "claude" for m in nt["thread"])   # 첫 물음은 짧아도(주제 이름뿐이어도) 읽고 답한다
     if chatty:   # 「원문까지」 를 계속 켜 두고 쓸 수 있게 됐다(2026-11-23) — 짧은 확인·정정에는 원문을 열지 않는다(도구 없이 바로 답)
         lib = False
     if _read_mode((nt.get("opts") or {}).get("read")) != "off" and not chatty:   # 관련 논문을 먼저 고르고 그 요약을 읽는다 (2026-11-17) — 짧은 확인·정정에는 하지 않는다
@@ -1401,6 +1509,23 @@ def _ask_job(nid):
             fallback = "Fable 의 안전장치가 이 물음을 받지 않아 Opus 로 답했습니다" if "안전장치" in _why() else "Fable 사용량 한도에 걸려 Opus 로 답했습니다"
             res = run(ptext, model="opus", effort="xhigh", **kw)
             cancelled = bool((res or {}).get("cancelled"))
+        if res and (res.get("text") or "").strip() and not cancelled and not chatty and qkind != "forest":   # 빈자리 확인 (2026-11-26) — '없다' 고 한 주장을 서재에서 다시 찾아 부딪히면 고쳐 쓴다
+            try:
+                _stage("check")
+                top = max([int(mm.group(1)) for mm in (re.match(r"L(\d+)", k) for k in (librefs or {})) if mm] or [0])
+                fixed, vrefs, gapinfo = _self_check(nt, question, res["text"].strip(), run, "opus" if fallback else model, "xhigh" if fallback else eff, system, _ask_jobkey(nid, nt), start=top, tools=kw["tools"], add_dirs=kw["add_dirs"])
+                if (gapinfo or {}).get("cancelled"):
+                    cancelled, gapinfo = True, None
+                elif gapinfo:
+                    gt = gapinfo.get("tok") or {}
+                    rt = res.get("tok") or {}
+                    res = dict(res, tok={"in": int(rt.get("in") or 0) + int(gt.get("in") or 0), "cached": int(rt.get("cached") or 0) + int(gt.get("cached") or 0)})
+                    if fixed:
+                        res["text"] = fixed
+                        librefs = dict(librefs or {}, **vrefs)
+            except Exception as e:
+                gapinfo = {"verdict": "error", "why": str(e)[:160]}
+            _stage("")
         if not cancelled and (not res or not (res.get("text") or "").strip()):
             err = "Claude 응답이 없습니다" + _why()
     except Exception as e:
@@ -1455,6 +1580,8 @@ def _ask_job(nid):
                 used_l = _lib_anchors(librefs, text)
                 if used_l:
                     turn["lib_refs"] = used_l
+            if gapinfo and gapinfo.get("verdict") not in (None, "", "none"):   # '없다' 고 한 주장을 서재에서 다시 확인한 기록 (2026-11-26) — fixed 면 처음 쓴 답(draft)도 남긴다
+                turn["selfcheck"] = gapinfo
             if readinfo:   # 이 물음에 답하려고 읽은 논문 (2026-11-17)
                 turn["read"] = readinfo
                 if readstat and readstat.get("tok"):
@@ -2138,9 +2265,52 @@ def _answer_cites(text):
         surf = m.group(0).strip()
         if surf in out:
             continue
-        f = _cite_file(m.group(1) + " " + m.group(2))
+        fs = _cite_files(m.group(1) + " " + m.group(2))
+        also = []
+        if len(fs) > 1:      # 같은 저자·연도의 서재 논문이 여럿(Liu 2018 이 셋) — 바로 뒤에 적은 저널, 그 논문을 말한 자리의 글과 가장 겹치는 것으로 (2026-11-26)
+            jm = re.match(r"\s*[\(（]\s*★?\s*([A-Za-z&\-]{2,12})\s*[\)）,]", text[m.end():m.end() + 24])
+            if jm:
+                same = [f for f in fs if re.match(r"^\d{4}_%s_" % re.escape(jm.group(1)), f, re.I)]
+                fs = same or fs
+            if len(fs) > 1:
+                ctx = " ".join(text[max(0, x.start() - 220):x.end() + 260] for x in re.finditer(re.escape(surf), text))
+                f, also = _cite_pick(fs, ctx)
+                fs = [f]
+        f = fs[0] if fs else None
         out[surf] = {"file": f, "star": _is_star(f) if f else False}
+        if also:
+            out[surf]["also"] = also[:3]
     return out
+
+
+def _ctx_bag(s):
+    s = (s or "").lower()
+    ko = set()
+    for w in re.findall(r"[가-힣]{2,}", s):
+        ko.update(w[i:i + 2] for i in range(len(w) - 1))
+    return set(re.findall(r"[a-z][a-z\-]{3,}", s)), ko
+
+
+def _cite_pick(files, ctx):
+    """같은 저자·연도의 서재 논문 가운데, 답이 그 논문을 말한 자리의 글(ctx)과 제목·한 줄 요약·카드가 가장 많이 겹치는 것 → (파일, 나머지)"""
+    cen, cko = _ctx_bag(ctx)
+    scored = []
+    for i, f in enumerate(files):
+        doc = re.sub(r"\.pdf$", "", f, flags=re.I).split("_", 3)[-1]
+        try:
+            doc += " " + (cfg["paper_line"](f) or "") if cfg.get("paper_line") else ""
+        except Exception:
+            pass
+        try:
+            c = cfg["paper_card"](f) if cfg.get("paper_card") else None
+            if c:
+                doc += " " + " ".join(str(c.get(k) or "") for k in ("question", "contribution")) + " " + " ".join(str(x) for x in (c.get("claims") or [])[:4])
+        except Exception:
+            pass
+        den, dko = _ctx_bag(doc)
+        scored.append((-(2 * len(cen & den) + len(cko & dko)), i, f))
+    scored.sort()
+    return scored[0][2], [f for _s, _i, f in scored[1:]]
 
 
 # ---------- 지금까지의 정리 · 연구자에 관해 기억하는 것 (2026-11-09, 사용자: '이것도 기억을 잘 못하더라') ----------
@@ -2162,7 +2332,8 @@ _CITE_RULE = (
     "\n\n하나 더 합니다. 아래 [답이 든 서재 논문]은 새 문답의 Claude 답이 이름을 든 논문과, 서재의 요약에 적힌 그 논문의 내용입니다. "
     "답이 그 논문에 관해 한 말 — 어떤 장치와 방법으로 보았나, 어떤 재료와 규모인가, 무엇을 보였나 — 가운데 요약과 분명히 어긋나는 것만 cite_issues 에 적습니다. "
     "논문 여럿을 한 묶음으로 부른 말('in-SEM 연구들', '세 연구 모두')도 그 논문 하나하나에 대한 말로 봅니다. 예를 들어 요약에는 고속 카메라와 DIC 로 보았다고 적혀 있는데 답이 SEM 안에서 깎은 연구로 묶었으면 어긋난 것입니다. "
-    "어긋난다는 것은 답의 말과 요약이 함께 참일 수 없다는 뜻입니다. 요약에 없어서 확인할 수 없는 것, 표현만 다른 것, 요약을 줄여 말한 것, 요약이 더 자세히 적었을 뿐인 것, 논문의 제목이 그대로 말하고 있는 것은 넣지 않습니다. 망설여지면 넣지 않습니다. 어긋난 것이 없으면 빈 목록입니다. 어긋난 말은 정리의 '세운 사실'에 넣지 않습니다.\n"
+    "어긋난다는 것은 답의 말과 요약이 함께 참일 수 없다는 뜻입니다. 요약에 없어서 확인할 수 없는 것, 표현만 다른 것, 요약을 줄여 말한 것, 요약이 더 자세히 적었을 뿐인 것, 논문의 제목이 그대로 말하고 있는 것은 넣지 않습니다. 망설여지면 넣지 않습니다. 어긋난 것이 없으면 빈 목록입니다. 어긋난 말은 정리의 '세운 사실'에 넣지 않습니다. "
+    "목록에 '같은 저자·연도의 다른 서재 논문'이 함께 적혀 있으면 서재에 이름이 같은 논문이 여럿이라는 뜻입니다. 답의 말이 그 가운데 어느 하나와 맞으면 어긋난 것이 아니니 넣지 않습니다.\n"
     "이때는 JSON 에 한 칸을 더합니다: \"cite_issues\": [{\"paper\": \"목록의 이름 그대로\", \"said\": \"답이 한 말(짧게)\", \"is\": \"요약에 적힌 것(짧게)\"}]")
 
 
@@ -2176,7 +2347,12 @@ def _cite_material(turn, cap=6):
         if f and f not in seen:
             seen.add(f)
             items.append((1 if f in lfiles else 0, len(items), key, f))
+            for g in (v or {}).get("also") or []:      # 같은 저자·연도의 다른 서재 논문 — 답의 말이 이쪽과 맞으면 어긋난 것이 아니다
+                if g not in seen:
+                    seen.add(g)
+                    items.append((1 if f in lfiles else 0, len(items), key + " (같은 저자·연도의 다른 서재 논문)", g))
     items.sort()
+    cap += sum(1 for it in items[:cap] if (cites.get(it[2]) or {}).get("also"))
     tags = cfg["load_json"](cfg["TAGS_PATH"], {}) if cfg.get("TAGS_PATH") else {}
     mlab = _method_labels()
     L, names = [], {}
@@ -2473,8 +2649,8 @@ def _lib_index():
     return idx
 
 
-def _cite_file(key):
-    """'Zan 2026' · '(Zan et al., 2026)' · 'Kümmel 2015' → 서재 파일 또는 None (연도 같고 성이 앞부분부터 같으면)"""
+def _cite_files(key):
+    """'Zan 2026' · '(Zan et al., 2026)' · 'Kümmel 2015' → 서재 파일 모두(연도 같고 성이 앞부분부터 같으면) — 없으면 빈 목록"""
     k = str(key or "")
     m = re.search(r"((?:19|20)\d{2})", k)
     if not m:
@@ -2490,10 +2666,18 @@ def _cite_file(key):
     for au in cands[:3]:
         if len(au) < 2:
             continue
-        for y, a, f in idx:
-            if y == yr and (a == au or (len(au) >= 3 and (a.startswith(au) or au.startswith(a)))):
-                return f
-    return None
+        fs = [f for y, a, f in idx if y == yr and a == au]      # 성이 꼭 같은 것이 있으면 그것만('Liu' 에 'Li' 를 섞지 않는다)
+        if not fs and len(au) >= 3:
+            fs = [f for y, a, f in idx if y == yr and (a.startswith(au) or au.startswith(a))]
+        if fs:
+            return fs
+    return []
+
+
+def _cite_file(key):
+    """'Zan 2026' → 서재 파일 하나 또는 None (같은 저자·연도가 여럿이면 이름 차례의 첫째 — 가려 잡아야 하면 _cite_files 와 _cite_pick)"""
+    fs = _cite_files(key)
+    return fs[0] if fs else None
 
 
 _FEAS_KO = {True: "우리", False: "외부", None: "모름"}
@@ -4905,6 +5089,22 @@ def handle_get(h, url):
         nt = _load(_q(url, "id")) or {}
         text, refs, info = _lib_hits(nt, _q(url, "q") or "", full=_LIB_FULL if _qkind(_q(url, "q") or "") else 0, extra=_q(url, "x") or "", subject=_q(url, "s") or "")   # x = 보탤 영어 낱말, s = 대상의 낱말
         return h._send(200, {"info": info, "refs": refs, "text": text})
+    if p == "/api/notes/selfcheck":           # 진단 — 이미 받은 답(?id=&i=대화의 번호)을 초안 삼아 빈자리 확인을 돌려 본다. 노트는 바꾸지 않는다 (2026-11-26). 가벼운 모델 한 번 + 답한 모델 한 번이 든다
+        nt = _load(_q(url, "id")) or {}
+        th = nt.get("thread") or []
+        try:
+            i = int(_q(url, "i") or -1)
+        except ValueError:
+            i = -1
+        if not (0 < i < len(th)) or th[i].get("role") != "claude":
+            return h._send(200, {"error": "그 번호는 답이 아닙니다"})
+        a, q = th[i], next((m.get("text") or "" for m in reversed(th[:i]) if m.get("role") == "user"), "")
+        model, eff = _EFFORT.get(_q(url, "effort") or (nt.get("opts") or {}).get("effort"), _EFFORT["xhigh"])
+        lib = bool(a.get("lib"))
+        top = max([int(mm.group(1)) for mm in (re.match(r"L(\d+)", k) for k in (a.get("lib_refs") or {})) if mm] or [0])
+        fixed, refs, info = _self_check(nt, q, a.get("text") or "", cfg.get("claude_run"), model, eff, _background()[0], "notes:gapdiag:%d" % int(time.time()), start=max(top, 24),
+                                       tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), debug=True)
+        return h._send(200, {"info": info, "fixed": fixed, "refs": sorted(refs)})
     if p == "/api/notes/worldraw":           # 시험 틀용 — 서버의 world_search 를 글 그대로 불러 날것을 준다: ?text=
         fn = cfg.get("world_search")
         try:

@@ -555,13 +555,13 @@ def merge_subject(res, subject, max_add=4, per_paper=3, min_sents=3):
     return {"added": len(new), "about": len(cand)}
 
 
-def format_hits(res, label="L", line_chars=110, card=None, full=0):
+def format_hits(res, label="L", line_chars=110, card=None, full=0, start=0):
     """search 의 결과 → (글, {"L1 s45": {file, sid, en, ko, page, sec, short, star, year, journal}}). 글은 논문마다 머리줄 + 문장 줄.
     card(stem) 을 주면(서재 학습의 논문 카드 — corpus.paper_card) 머리줄 아래에 그 논문이 무엇을 묻고 무엇을 보였는지를 붙인다. 앞의 full 편은 한 것·주장 둘·저자가 적은 한계까지,
     나머지는 물은 것과 주장 하나만(글자 수를 아끼려고) (2026-11-11)"""
     lines, refs = [], {}
     for i, p in enumerate(res.get("papers") or []):
-        lab = "%s%d" % (label, i + 1)
+        lab = "%s%d" % (label, start + i + 1)      # start: 번호를 이어 매길 때(연구 노트의 빈자리 확인이 다시 찾은 문장 — 처음 찾은 것과 겹치지 않게)
         head = "%s %s%s%s %s — %s%s" % (lab, "★" if p.get("star") else "", p.get("year") or "", (" " + p["journal"]) if p.get("journal") else "", p.get("author") or p.get("short", "").split(" ")[0], (p.get("title") or "")[:90],
                                         " (물음이 가리킨 논문)" if p.get("mention") else (" (이 물음의 대상을 다룬 서재 논문 — 그 말이 든 문장 %d개)" % p.get("nsubj", 0)) if p.get("subj") else "")
         c = None

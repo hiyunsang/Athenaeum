@@ -568,8 +568,9 @@ function msgHtml(m, i) {
   const lh = m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개(" + m.libhits.papers + "편)를 봄" : "";   /* 물음의 낱말로 색인에서 찍어 붙인 문장 — 머리줄은 flex 라 span 을 끼우면 줄이 갈린다 */
   const rh = (m.read || []).length ? " · 논문 " + m.read.length + "편을 읽음(" + esc(m.read.slice(0, 6).map(x => x.short).join(", ")) + (m.read.length > 6 ? " 외 " + (m.read.length - 6) + "편" : "") + ")" : "";   /* 이 물음에 답하려고 골라 읽은 논문의 요약 (2026-11-17) */
   const wh = m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편을 봄" : "";   /* 학술 데이터베이스에서 방금 찾아 붙인 논문(제목·초록) */
+  const gc = m.selfcheck, gh = gc && (gc.verdict === "fixed" || gc.verdict === "kept") ? " · 없다고 한 주장 " + (gc.claims || []).length + "개를 서재에서 다시 확인" + (gc.verdict === "fixed" ? "해 고침" : "") : "";   /* 빈자리 확인 (2026-11-26) */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
-    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 원문을 열어 봄" : "") + lh + rh + wh + (m.fallback ? " · " + esc(m.fallback) : "") + (usageText(m.usage) ? " · 한도 사용 " + esc(usageText(m.usage)) : "") +
+    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 원문을 열어 봄" : "") + lh + rh + wh + gh + (m.fallback ? " · " + esc(m.fallback) : "") + (usageText(m.usage) ? " · 한도 사용 " + esc(usageText(m.usage)) : "") +
     ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + cissueHtml(m) + "</div>";
 }
 /* 답이 든 서재 논문을 요약과 견줘 어긋난 말 — 답 뒤의 정리 호출이 같이 본다 */
@@ -721,7 +722,7 @@ function renderThread() {
   if (cur.pending) {
     const eff = (cur.opts || {}).effort || "xhigh", T = expect(eff);
     const tk = () => { const el2 = Date.now() / 1000 - cur.pending, b = $("askBar"), e2 = $("askEta"); if (!b) { clearInterval(tick); return; }
-      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (cur.stage === "world" ? "세상의 문헌을 찾는 중 · " : cur.stage === "lib" ? "서재를 찾는 중 · " : cur.stage === "read" ? "읽을 논문을 고르는 중 · " : cur.stage === "forest" ? "숲을 볼 재료를 모으는 중 · " : el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
+      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (cur.stage === "world" ? "세상의 문헌을 찾는 중 · " : cur.stage === "lib" ? "서재를 찾는 중 · " : cur.stage === "read" ? "읽을 논문을 고르는 중 · " : cur.stage === "forest" ? "숲을 볼 재료를 모으는 중 · " : cur.stage === "check" ? "없다고 한 것을 서재에서 다시 확인하는 중 · " : el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
     tk(); tick = setInterval(tk, 1000);
   }
 }
