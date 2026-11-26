@@ -83,6 +83,9 @@
   .chain .c .pr { font-style: italic; } .chain .c .de { color: var(--text-2); font-size: 12.5px; } .chain .c .an { color: var(--text-2); font-size: 12.5px; }
   .empty { padding: var(--s5) 0; color: var(--text-3); font-size: 13px; line-height: 1.6; }
   button.sm { padding: 2px 8px; font-size: 12px; }
+  .pb { padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 13px; line-height: 1.55; } .pb summary { cursor: pointer; list-style: none; } .pb summary::-webkit-details-marker { display: none; }
+  .pb .kd { color: var(--text-3); font-size: 12px; } .pb .st { font-size: 11px; font-weight: 600; color: var(--amber); } .pb .st.partial { color: var(--text-2); } .pb .st.addressed { color: var(--green); }
+  .pb .ms { color: var(--text-2); } .pb .mw { color: var(--text-2); font-size: 12.5px; padding-left: 12px; } .pb .pbs { color: var(--text-3); font-size: 12.5px; padding: 3px 0 3px 12px; }   /* 열린 문제 장부 (2026-11-26) */
   .mv { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; line-height: 1.5; } .mv .mh { font-weight: 600; } .mv .mh .kd { color: var(--text-3); font-weight: 400; font-size: 12px; } .mv .mh .sc { font-size: 11px; font-weight: 600; color: var(--amber); } .mv.forest .mh .sc { color: var(--green); } .mv .mh a { font-weight: 400; } .mv .ms { color: var(--text-2); font-size: 12.5px; } .mv .mw { color: var(--text-3); font-size: 12px; }
 </style>
 </head>
@@ -119,7 +122,7 @@
     <div class="nx" id="nx"></div>
   </div>
   <div id="main">
-    <div class="tabs"><a data-tab="know" class="on">바탕 — 이 저널은 이렇게 쓴다</a><a data-tab="papers">논문 주석</a><a data-tab="moves">연구 갈래 — 숲과 나무</a></div>
+    <div class="tabs"><a data-tab="know" class="on">바탕 — 이 저널은 이렇게 쓴다</a><a data-tab="papers">논문 주석</a><a data-tab="moves">연구 갈래 — 숲과 나무</a><a data-tab="problems">열린 문제</a><a data-tab="fieldmap">분야 지도</a></div>
     <div class="page" id="pg"></div>
   </div>
 </div>
@@ -270,7 +273,68 @@ async function renderMoves() {
   h += "<div class='sideh' style='padding-left:0'>숲 " + F.length + "</div>" + F.map(row).join("") + "<details style='margin-top:10px'><summary class='sideh' style='padding-left:0;cursor:pointer'>나무 " + T.length + "</summary>" + T.map(row).join("") + "</details>";
   $("pg").innerHTML = h;
 }
-document.querySelectorAll(".tabs a").forEach(a => a.onclick = () => { document.querySelectorAll(".tabs a").forEach(x => x.classList.toggle("on", x === a)); tab = a.dataset.tab; if (tab === "know") renderKnowList(); else if (tab === "moves") renderMoves(); else renderPapers(); });
+/* ---- 열린 문제 장부 (2026-11-26) — 저자들이 스스로 적은 한계·남은 일을 같은 문제끼리 묶은 것. 연구 노트가 물음마다 같이 읽는다 ---- */
+let pbTimer = null;
+async function renderProblems() {
+  clearTimeout(pbTimer);
+  const d = await api("/api/learn/problems"); if (tab !== "problems") return;
+  const st = d.status || {}, run = st.run || {};
+  let h = "<div class='hint' style='margin-bottom:8px'>열린 문제 장부 = 서재의 저자들이 논문에 스스로 적은 한계와 남은 일(서재 학습의 주석)을 같은 문제끼리 묶고, 서재의 논문 전부에 비추어 그 뒤에 누가 손댔는지와 무엇이 남았는지를 판정한 것입니다. 연구 노트가 물음마다 이 장부를 같이 읽습니다. 판정은 서재 안의 논문만 보고 한 것이라, 서재 밖에서 이미 풀렸을 수 있습니다.</div>";
+  h += "<div class='meta'>" + (st.have ? "문제 " + st.n + "개 · 문장 " + st.n_used + " / " + st.n_sents + " · 논문 " + st.n_papers + "편 · " + new Date(st.t * 1000).toLocaleDateString() + " · " + esc(st.model || "") + (st.ann_now && st.ann && st.ann_now > st.ann * 1.15 ? " · 그 뒤 주석이 " + (st.ann_now - st.ann) + "편 늘었습니다" : "") : "아직 만들지 않았습니다") +
+    " &nbsp;<select id='pbModel' title='묶고 판정할 모델'><option value='fable'>Fable</option><option value='opus'>Opus</option></select> <button class='act' id='pbGo'" + (run.on ? " disabled" : "") + ">" + (st.have ? "다시 만들기" : "만들기") + "</button>" + (st.have ? " <button class='act' id='pbMd'>md 복사</button>" : "") + "</div>";
+  if (run.on) h += "<div class='hint'>만드는 중 — " + esc(run.msg || run.stage || "") + " · " + Math.round((Date.now() / 1000 - run.t0) / 60) + "분째 (10~25분 걸립니다)</div>";
+  if (run.err) h += "<div class='hint' style='color:var(--amber)'>" + esc(run.err) + "</div>";
+  const link = (file, short, sid) => "<a class='act' target='athenaeum_reader' href='/view?file=" + encodeURIComponent(file) + (sid ? "&kind=translation&sent=" + encodeURIComponent(sid) : "") + "&nolog=1'>" + esc(short) + "</a>";
+  h += (d.items || []).map(x => "<details class='pb'><summary><b>" + esc(x.id) + " " + esc(x.name) + "</b> <span class='kd'>" + esc(x.kind_ko) + " · 무게 " + x.weight + " · 논문 " + x.papers + "편" + ((x.years || []).length ? " (" + x.years[0] + "–" + x.years[1] + ")" : "") + (x.star ? " · ★" + x.star : "") + "</span> <span class='st " + esc(x.status) + "'>" + esc(x.status_ko) + "</span>" +
+    "<div class='ms'>" + esc(x.statement) + "</div></summary>" +
+    (x.why_hard ? "<div class='mw'>어려운 까닭: " + esc(x.why_hard) + "</div>" : "") +
+    (x.progress || []).map(g => "<div class='mw'>진전: " + link(g.file, g.short) + " — " + esc(g.how) + "</div>").join("") +
+    (x.remains ? "<div class='mw'>남은 것: " + esc(x.remains) + "</div>" : "") +
+    (x.members || []).map(m => "<div class='pbs'>" + (m.star ? "★ " : "") + link(m.file, m.short, m.sid) + " <span class='kd'>" + esc(m.journal || "") + " · " + (m.act === "future" ? "남은 일" : "한계") + "</span> " + esc(m.t) + "</div>").join("") + "</details>").join("");
+  $("pg").innerHTML = h;
+  $("pbGo").onclick = async () => {
+    const m = $("pbModel").value;
+    if (!confirm("열린 문제 장부를 " + (st.have ? "다시 " : "") + "만듭니다 — 한계·남은 일 문장 전부를 한 번에 읽혀 묶고(호출 1), 서재 논문 전부에 비추어 판정합니다(호출 4~6). 10~25분, 읽는 토큰 60만쯤(" + (m === "fable" ? "Fable" : "Opus") + "). 시작할까요?")) return;
+    await api("/api/learn", { op: "problems", model: m }); renderProblems();
+  };
+  const md = $("pbMd"); if (md) md.onclick = async () => { const r = await api("/api/learn/problems?md=1"); try { await navigator.clipboard.writeText(r.md || ""); md.textContent = "복사됨"; } catch (e) { alert("복사하지 못했습니다"); } };
+  if (run.on) pbTimer = setTimeout(renderProblems, 8000);
+}
+/* ---- 분야 지도 (2026-11-26) — 우선 저널의 최근 논문 전부를 주제로 나눈 것. 연구 노트가 물음마다 같이 읽는다 ---- */
+let fmTimer = null;
+async function renderFieldmap() {
+  clearTimeout(fmTimer);
+  const d = await api("/api/fieldmap"); if (tab !== "fieldmap") return;
+  const st = d.status || {}, run = st.run || {}, TR = d.trend || {}, AK = Object.fromEntries(d.areas || []);
+  let h = "<div class='hint' style='margin-bottom:8px'>분야 지도 = 우선 저널(⚙ 설정 → 연결)에 2015년부터 실린 논문 전부의 제목과 초록을 받아 주제로 나누고, 주제마다 편수·시기별 늘고 줆·이끄는 곳을 세고, 초록을 읽혀 '지금 묻는 것 · 옮겨 간 곳 · 되풀이되는 과제 · 쓰임새' 를 적은 것입니다. 연구 노트가 물음마다 같이 읽습니다. 편수와 그룹은 센 값이고, 글은 초록만 읽은 정리라 세부는 틀릴 수 있습니다.</div>";
+  const fj = (st.fetched || []).map(f => "<label style='margin-right:10px'><input type='checkbox' class='fmJ' value='" + esc(f.abbr) + "'" + (f.n || !(st.fetched || []).some(x => x.n) ? " checked" : "") + "> " + esc(f.abbr) + (f.n ? " " + f.n + "편" : "") + "</label>").join("");
+  h += "<div class='meta'>" + (st.have ? "논문 " + st.n + "편 · 주제 " + st.themes + "개 · " + new Date(st.t * 1000).toLocaleDateString() + " · " + esc(st.model || "") : "아직 만들지 않았습니다") + "</div>" +
+    "<div class='meta'>" + fj + " <select id='fmModel' title='주제를 세우고 초록을 읽을 모델 — Fable 은 긴 제목 목록을 안전장치가 거절한 적이 있어(그러면 Opus 로 넘어갑니다) Opus 가 기본입니다'><option value='opus'>Opus</option><option value='fable'>Fable</option></select> <button class='act' id='fmGo'" + (run.on ? " disabled" : "") + ">" + (st.have ? "다시 만들기" : "만들기") + "</button></div>";
+  if (run.on) h += "<div class='hint'>만드는 중 — " + esc(run.msg || run.stage || "") + " · " + Math.round((Date.now() / 1000 - run.t0) / 60) + "분째</div>";
+  if (run.err) h += "<div class='hint' style='color:var(--amber)'>" + esc(run.err) + "</div>";
+  let area = null;
+  const P = p => "<div class='pbs'>" + (p.doi ? "<a class='act' target='_blank' rel='noopener' href='https://doi.org/" + esc(p.doi) + "'>" + esc(p.first || "") + " " + p.y + "</a>" : esc((p.first || "") + " " + p.y)) + " <span class='kd'>" + esc(p.j) + " · 피인용 " + p.c + "</span> " + esc(p.t) + "</div>";
+  (d.themes || []).forEach(t => {
+    if (t.area !== area) { area = t.area; h += "<div class='sideh' style='padding-left:0;margin-top:10px'>" + esc(AK[area] || area) + "</div>"; }
+    const per = t.per || [0, 0, 0];
+    h += "<details class='pb'><summary><b>" + esc(t.k) + " " + esc(t.name) + "</b> <span class='kd'>" + esc(t.en || "") + " · " + t.n + "편 · " + per.join(" → ") + " " + esc(TR[t.trend] || "") + " · 서재 " + (t.lib || 0) + "편</span>" +
+      "<div class='ms'>" + esc(t.asks || t.scope || "") + "</div></summary>" +
+      (t.shift ? "<div class='mw'>옮겨 간 곳: " + esc(t.shift) + "</div>" : "") + ((t.open || []).length ? "<div class='mw'>과제: " + t.open.map(esc).join(" · ") + "</div>" : "") +
+      (t.methods ? "<div class='mw'>방법: " + esc(t.methods) + "</div>" : "") + (t.uses ? "<div class='mw'>쓰임새: " + esc(t.uses) + "</div>" : "") +
+      ((t.groups || []).length ? "<div class='mw'>이끄는 곳: " + t.groups.map(g => esc(g.pi) + " (" + esc(g.inst) + ") " + g.n).join(" · ") + "</div>" : "") +
+      ((t.links || []).length ? "<div class='mw'>맞닿은 주제: " + t.links.map(esc).join(", ") + "</div>" : "") +
+      (t.top || []).map(P).join("") + (t.new || []).map(P).join("") + "</details>";
+  });
+  $("pg").innerHTML = h;
+  $("fmGo").onclick = async () => {
+    const js = [...document.querySelectorAll(".fmJ:checked")].map(x => x.value), m = $("fmModel").value;
+    if (!js.length) { alert("저널을 하나 이상 고르세요"); return; }
+    if (!confirm("분야 지도를 만듭니다 — " + js.join(" · ") + " 의 2015년부터의 논문 목록과 초록을 받고(아직 안 받은 저널만, 몇 분), 제목 전부를 읽혀 주제를 세운 뒤 주제마다 초록을 읽힙니다. 저널 둘에 15~30분 · 읽는 토큰 40만쯤, 다섯이면 그 서너 배입니다(" + (m === "fable" ? "Fable" : "Opus") + "). 시작할까요?")) return;
+    await api("/api/fieldmap", { op: "build", model: m, journals: js }); renderFieldmap();
+  };
+  if (run.on) fmTimer = setTimeout(renderFieldmap, 8000);
+}
+document.querySelectorAll(".tabs a").forEach(a => a.onclick = () => { document.querySelectorAll(".tabs a").forEach(x => x.classList.toggle("on", x === a)); tab = a.dataset.tab; if (tab === "know") renderKnowList(); else if (tab === "moves") renderMoves(); else if (tab === "problems") renderProblems(); else if (tab === "fieldmap") renderFieldmap(); else renderPapers(); });
 refresh().then(() => renderKnowList());
 setInterval(refresh, 15000);
 </script>

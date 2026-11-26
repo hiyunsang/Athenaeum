@@ -28,7 +28,7 @@ STATUS = ["idea", "review", "adopt", "hold"]
 STATUS_KO = {"idea": "아이디어", "review": "검토 중", "adopt": "채택", "hold": "보류"}
 KIND = ["topic", "ask"]                      # topic 연구 주제(심사하듯 따진다) · ask 물음(분야를 배우려는 대화 — 2026-10-27)
 KIND_KO = {"topic": "연구 주제", "ask": "물음"}
-_EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None)}
+_EFFORT = {"xhigh": ("opus", "xhigh"), "max": ("opus", "max"), "high": ("opus", None), "fast": ("sonnet", None), "fable": ("fable", "xhigh")}   # fable: 2026-11-26 사용자 '페이블 써도 돼' — 한도가 따로 있어 화면이 사용량을 같이 보인다
 _LIB_MAX = 104000        # 서재 블록의 위 끝(글자) — 한 줄 요약을 실을 때의 상한
 _LIB_LINE = 0            # 논문마다 한 줄 요약의 길이(0 = 싣지 않는다). 서재가 419편이 되자 옛 상한(62,000자)에서 줄마다 20자가 남아 요약이 저절로 통째로 빠져 있었다(2026-11-17 에 알아챔).
                          # 90자씩 되살리면 배경이 9.2만 → 13.3만 자(물음마다 읽는 토큰 +3만)라 기본은 싣지 않고, 대신 줄마다 방법 라벨을 붙인다(+7천 자). 요약의 앞 90자는 대개 제목을 되풀이하는 배경 절이다
@@ -109,6 +109,15 @@ def sweep_stale():
             _save(nt)
             n += 1
     return n
+
+
+def _usage():
+    """마지막 Claude 호출이 알려 준 구독 사용량(서버의 claude_usage) — 모르면 None"""
+    try:
+        u = cfg["claude_usage"]() if cfg.get("claude_usage") else None
+        return u if (u and u.get("windows")) else None
+    except Exception:
+        return None
 
 
 def _why():
@@ -574,6 +583,24 @@ def _hist_block(limit=20):
     return "\n".join(out), {"searches": len(items)}
 
 
+def _fieldmap_block():
+    """분야 지도(fieldmap.text) — 분야 전체가 요즘 무엇을 묻고 누가 이끄는가 (2026-11-26). 지도 파일이 바뀔 때만 글이 달라진다(캐시)"""
+    try:
+        text = cfg["fieldmap_text"]() if cfg.get("fieldmap_text") else ""
+    except Exception:
+        text = ""
+    return (text or ""), {"fieldmap": len(re.findall(r"(?m)^T\d+ ", text or "")), "fieldmap_chars": len(text or "")}
+
+
+def _problems_block():
+    """분야의 열린 문제 장부(서재 학습이 만들어 둔 것 — corpus.problems_text) — 대가가 머리에 넣고 있는 '아직 안 풀린 것' 의 목록 (2026-11-26). 장부 파일이 바뀔 때만 글이 달라진다(캐시)"""
+    try:
+        text = cfg["problems_text"]() if cfg.get("problems_text") else ""
+    except Exception:
+        text = ""
+    return (text or ""), {"problems": text.count("\nP") if text else 0, "problems_chars": len(text or "")}
+
+
 def _gap_block(n=25):
     g = _BG.get("gaps")
     if not g or time.time() - g["t"] > 12 * 3600:
@@ -687,7 +714,7 @@ def _background():
     """시스템 프롬프트 — 물음마다 글자 하나까지 같아야 캐시가 맞는다(시각·주제 목록은 넣지 않는다). → (글, 통계)"""
     stats = {}
     blocks = []
-    for fn in (_lab_block, _craft_block, _lib_block, _study_block, _hist_block, _gap_block, _ms_block):
+    for fn in (_lab_block, _craft_block, _fieldmap_block, _problems_block, _lib_block, _study_block, _hist_block, _gap_block, _ms_block):
         try:
             text, st = fn()
         except Exception as e:
@@ -696,7 +723,7 @@ def _background():
         if text:
             blocks.append(text)
     head = ("당신은 기계가공·정밀가공 분야 연구자의 연구 공저자이자 토의 상대다. 연구자가 연구 주제를 던지고 함께 따진다 — 이 주제가 설 만한가, 무엇이 이미 밝혀졌고 무엇이 비었는가, "
-            "어떤 실험·해석으로 보일 수 있는가, 어디에 낼 것인가. 아래는 연구자가 가진 것·아는 것 전부다: 우리 연구실(장비·역량 — 연구자가 적어 둔 것, 있을 때만), 연구를 보는 눈(연구가 설 만한지를 따지는 기준), 서재(모은 논문 모두), 그 서재로 쓴 공부 장, 지난 논문 탐색, 서재의 인용 이웃, 쓰고 있는 원고. "
+            "어떤 실험·해석으로 보일 수 있는가, 어디에 낼 것인가. 아래는 연구자가 가진 것·아는 것 전부다: 우리 연구실(장비·역량 — 연구자가 적어 둔 것, 있을 때만), 연구를 보는 눈(연구가 설 만한지를 따지는 기준), 분야 지도(이 분야 최고 저널의 최근 논문 전부를 주제로 나눈 것 — 만들어 두었을 때만), 분야의 열린 문제 장부(서재의 저자들이 스스로 적은 한계·남은 일을 묶은 것 — 만들어 두었을 때만), 서재(모은 논문 모두), 그 서재로 쓴 공부 장, 지난 논문 탐색, 서재의 인용 이웃, 쓰고 있는 원고. "
             "토의는 이것을 바탕으로 한다 — 서재 안의 논문을 들어 말하고, 서재에 없는 것은 그렇다고 밝히고, 실험·측정은 우리 연구실에서 되는지 가른다.\n\n")
     text = head + "\n\n".join(blocks)
     stats["chars"] = len(text)
@@ -726,7 +753,7 @@ _RULE = (
     "연구자가 실제로 재서 쓰고 있는 값은 뜻이 통하는 값이라고 보고 출발합니다. '만약 다른 뜻이라면'을 가정해 그 위에 조언을 쌓거나, 연구자의 값을 다른 값으로 바꾸라고 하지 않습니다. 뜻이 둘로 갈려 답이 달라질 때만 어느 뜻인지 고르는 말을 선택 줄에 넣습니다.\n\n"
     "논문은 (첫 저자 연도)로 가리킵니다. 서재에 있는 논문은 서재의 요약, 공부 장, [서재에서 찾은 문장]에 적힌 만큼만 말하고, 거기 없는 세부나 수치를 덧붙이지 않습니다. 배경의 서재 목록은 논문마다 제목과 라벨뿐인 색인입니다. [읽은 논문]이 있으면 그 논문들은 요약 전문을 읽은 것이니 거기 적힌 대로 말하면 됩니다. 그 논문이 어떤 장치와 방법으로 무엇을 보았는지는 그 줄이나 라벨, [서재에서 찾은 문장], 공부 장에 적혀 있을 때만 말합니다. 적혀 있지 않으면 제목에서 짐작하지 않습니다. 특히 논문 여럿을 '~한 연구들'로 묶을 때는 묶음에 넣는 논문마다 그 방법이 적혀 있는지 봅니다. in situ(실시간 관찰)라고만 적힌 연구는 고속 카메라나 DIC 로 본 연구일 수 있고, SEM 안에서 깎은 연구라는 뜻이 아닙니다. 보기로 들 논문이 마땅치 않으면 확인되는 논문만 들고 멈춥니다. "
     "[세상의 문헌에서 찾은 것]에 있는 논문은 서재에 없어도 실제로 찾아 확인한 논문이니, 본문에서 ⟦W3⟧처럼 번호를 붙여 씁니다. 두 곳 어디에도 없이 당신의 기억으로만 보태는 내용은 "
-    "'서재 밖:'으로 시작하는 문단 하나에 모아 두어 연구자가 확인할 수 있게 합니다. 그런 내용은 적을수록 좋습니다. 수치나 인용을 지어내지 않습니다. 같은 말을 하는 논문을 여럿 나열하지 않습니다. "
+    "'서재 밖:'으로 시작하는 문단 하나에 모아 두어 연구자가 확인할 수 있게 합니다. 이 분야를 오래 한 사람이라면 알고 있을 것은 판단에 도움이 되면 씁니다 — 고전적인 결과, 다른 재료나 다른 공정에서 이미 알려진 현상, 현장에서 실제로 문제가 되는 것, 옆 분야가 같은 문제를 다루는 방법 같은 것입니다. 서재의 논문 몇 편만 보아서는 나오지 않는 연결이 여기서 나옵니다. 다만 확실한 만큼만 말합니다. 저자나 연도가 확실하지 않으면 이름을 지어내지 않고 '그런 연구가 있는 것으로 압니다'라고만 하며, 수치나 인용을 지어내지 않습니다. 같은 말을 하는 논문을 여럿 나열하지 않습니다. "
     "당신이 계산하거나 어림한 값은 그 자리에서 '제 계산으로는'이라고 한 번만 밝힙니다.\n\n"
     "근거의 무게를 가립니다. 우선 저널(서재 목록에 ★로 표시된 IJMTM, JMPT, CIRP Annals, Precision Engineering, JMSE)은 이 분야의 최고 저널입니다. 거기 실린 결과와 리뷰, [분야 지형]에 적힌 대가 그룹의 결과는 "
     "분야의 정설로 쓰고, 그 밖 저널의 단일 논문 결과는 '그 연구에서는'처럼 조건을 붙여 씁니다. 우리 연구도 이 최고 저널을 기준으로 세웁니다. 우리가 대학원 연구실이라고 해서 목표를 낮추거나 "
@@ -769,7 +796,7 @@ _RULE_ASK = (
     "큰 그림(무엇이 왜 문제이고 어떤 설명들이 겨루는가)에서 시작해 이 논문이나 이 질문이 그 안에서 서는 자리, 서재의 다른 논문이 말하는 것의 순서로 갑니다. 묻지 않았으면 새로움, 실험 설계, 저널, 약점을 따지지 않습니다.\n\n"
     "답의 길이는 질문에 맞춥니다. 한 줄 질문에는 한두 문단, '자세히'라고 했을 때만 길게 씁니다. 결론을 먼저 말하고 풀이를 붙입니다. 지난 답에서 이미 한 말과 연구자가 이미 아는 것은 반복하지 않습니다.\n\n"
     "근거는 배경(서재, 공부 장, 지난 탐색)과 [출발점]의 요약입니다. 논문은 (첫 저자 연도)로 가리키고, 서재의 논문은 요약이나 공부 장에 적힌 만큼만 말합니다. 배경의 서재 목록은 논문마다 제목과 라벨뿐인 색인입니다. [읽은 논문]이 있으면 그 논문들은 요약 전문을 읽은 것이니 거기 적힌 대로 말하면 됩니다. 그 논문이 어떤 장치와 방법으로 무엇을 보았는지는 그 줄이나 라벨, [서재에서 찾은 문장], 공부 장에 적혀 있을 때만 말합니다. 적혀 있지 않으면 제목에서 짐작하지 않습니다. 특히 논문 여럿을 '~한 연구들'로 묶을 때는 묶음에 넣는 논문마다 그 방법이 적혀 있는지 봅니다. in situ(실시간 관찰)라고만 적힌 연구는 고속 카메라나 DIC 로 본 연구일 수 있고, SEM 안에서 깎은 연구라는 뜻이 아닙니다. 보기로 들 논문이 마땅치 않으면 확인되는 논문만 들고 멈춥니다. 서재에 없는 논문이나 당신의 기억으로 보태는 내용은 "
-    "'서재 밖:'으로 시작하는 문단 하나에 모읍니다. 수치나 인용을 지어내지 않고, 문장마다 '제 생각'이라고 달지 않습니다. 모르는 사실은 '~라면'으로 경우를 나누기보다 짧게 묻되, 답이 그 사실에 갈릴 때만 묻습니다.\n\n"
+    "'서재 밖:'으로 시작하는 문단 하나에 모읍니다. 이 분야를 오래 한 사람이라면 알고 있을 것은 판단에 도움이 되면 씁니다 — 고전적인 결과, 다른 재료나 다른 공정에서 이미 알려진 현상, 현장에서 실제로 문제가 되는 것, 옆 분야가 같은 문제를 다루는 방법 같은 것입니다. 서재의 논문 몇 편만 보아서는 나오지 않는 연결이 여기서 나옵니다. 다만 확실한 만큼만 말합니다. 저자나 연도가 확실하지 않으면 이름을 지어내지 않고 '그런 연구가 있는 것으로 압니다'라고만 하며, 수치나 인용을 지어내지 않고, 문장마다 '제 생각'이라고 달지 않습니다. 모르는 사실은 '~라면'으로 경우를 나누기보다 짧게 묻되, 답이 그 사실에 갈릴 때만 묻습니다.\n\n"
     "연구자가 뜻을 적지 않고 쓴 기호나 줄임말이 나오면 스스로 뜻을 찾아 읽습니다. 먼저 [원고]와 [지금까지의 정리]의 용어, 지난 대화에서 연구자가 그 말을 어떻게 썼는지 봅니다. 거기에 없으면 이 분야의 연구자가 당연히 떠올릴 뜻으로 읽습니다. 그렇게 읽었다는 것은 필요할 때 반 문장으로만 밝히고 바로 답합니다. "
     "연구자가 실제로 재서 쓰고 있는 값은 뜻이 통하는 값이라고 보고 출발합니다. '만약 다른 뜻이라면'을 가정해 그 위에 조언을 쌓거나, 연구자의 값을 다른 값으로 바꾸라고 하지 않습니다. 뜻이 둘로 갈려 답이 달라질 때만 어느 뜻인지 고르는 말을 선택 줄에 넣습니다.\n\n"
     "설명의 무게도 가립니다. 우선 저널(★)과 리뷰, [분야 지형]의 대가 그룹이 세운 것은 분야의 정설로, 그 밖 저널의 단일 논문 결과는 '한 연구에서는'으로, 독자가 어느 쪽인지 알게 씁니다.\n\n"
@@ -1238,7 +1265,7 @@ def _ask_job(nid):
     model, eff = _EFFORT.get((nt.get("opts") or {}).get("effort"), _EFFORT["xhigh"])
     lib = bool((nt.get("opts") or {}).get("lib"))
     t0 = time.time()
-    res, err, cancelled = None, "", False
+    res, err, cancelled, fallback = None, "", False, ""
     stext, anchors, picked = "", {}, []
     try:   # 관련 공부 장 (2026-10-29) — 못 골라도 물음은 간다
         picked = _study_pick(nt, (nt.get("opts") or {}).get("study", "auto"))
@@ -1305,7 +1332,7 @@ def _ask_job(nid):
     else:      # 검색 계획을 세우지 않은 물음 — 이 주제에서 지난번에 세운 대상의 낱말을 쓴다(그 대상을 다룬 서재 논문이 늘 같이 가게)
         new_subject, subject = None, list(nt.get("subj_terms") or [])
     try:   # 서재 문장 색인 (2026-11-09) — 물음의 낱말이 맞는 서재 문장 50개쯤을 물음에 붙인다(모델 호출 없음, 0.1초). 물음을 푼 영어 낱말이 있으면 같이 쓴다
-        libtext, librefs, libinfo = _lib_hits(nt, question, prevq, full=6 if qkind else 0, extra=", ".join(terms), subject=", ".join(subject))
+        libtext, librefs, libinfo = _lib_hits(nt, question, prevq, full=_LIB_FULL if qkind else 0, extra=", ".join(terms), subject=", ".join(subject))
         if planinfo and isinstance(libinfo, dict):
             libinfo["plan"] = planinfo
     except Exception as e:
@@ -1330,9 +1357,14 @@ def _ask_job(nid):
         others = [o for o in list_notes() if o["id"] != nid and o.get("kind") != "ask"]
         system, _st = _background()
         run = cfg.get("claude_run")
-        res = None if cancelled else run(_prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo], foresttext=foresttext), timeout=1500, model=model, effort=eff, tools="Read,Grep,Glob" if lib else "",
-                  add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt)) if run else None
+        ptext = _prompt(nt, question, lib, others, studies=stext, mstext=mstext, libtext=libtext, picked=bool(nt["thread"][-1].get("pick")), worldtext=worldtext, qkind=qkind, readtext=readtext, readfiles=[x["file"] for x in readinfo], foresttext=foresttext)
+        kw = dict(timeout=2400, tools="Read,Grep,Glob" if lib else "", add_dirs=[cfg["GEN_DIR"], cfg["ARCHIVE"]] if lib else (), system=system, job=_ask_jobkey(nid, nt))   # 읽는 글이 늘어 상한을 25분 → 40분으로 (2026-11-26)
+        res = None if (cancelled or not run) else run(ptext, model=model, effort=eff, **kw)
         cancelled = cancelled or bool((res or {}).get("cancelled"))
+        if model == "fable" and not cancelled and not (res and (res.get("text") or "").strip()) and ("한도" in _why() or "안전장치" in _why()):   # Fable 의 한도는 따로이고, 안전장치가 정상 물음을 거절할 때도 있다 — 그러면 Opus 로 한 번 더 묻고 그렇게 알린다
+            fallback = "Fable 의 안전장치가 이 물음을 받지 않아 Opus 로 답했습니다" if "안전장치" in _why() else "Fable 사용량 한도에 걸려 Opus 로 답했습니다"
+            res = run(ptext, model="opus", effort="xhigh", **kw)
+            cancelled = bool((res or {}).get("cancelled"))
         if not cancelled and (not res or not (res.get("text") or "").strip()):
             err = "Claude 응답이 없습니다" + _why()
     except Exception as e:
@@ -1359,6 +1391,10 @@ def _ask_job(nid):
                     "model": res.get("model", ""), "tok": res.get("tok"), "turns": res.get("turns", 1), "lib": lib}
             if qkind:
                 turn["qkind"] = qkind
+            if fallback:
+                turn["fallback"] = fallback
+            if res.get("usage"):   # 이 답이 끝났을 때의 구독 사용량 — 창마다 쓴 비율 (2026-11-26)
+                turn["usage"] = [{"key": w.get("key"), "name": w.get("name"), "used": w.get("used"), "resets": w.get("resets")} for w in res["usage"] if isinstance(w, dict)][:5]
             if forestinfo:   # 숲을 청한 물음에 붙인 재료 — 층의 이름과 편수
                 turn["forest"] = {"layers": [str(L.get("name") or "") for L in forestinfo.get("layers") or []], "near": forestinfo.get("near"), "wide": forestinfo.get("wide"), "forest": forestinfo.get("forest"),
                                   "sec": forestinfo.get("sec"), "err": forestinfo.get("error") or ""}
@@ -1414,16 +1450,20 @@ def _ask_job(nid):
 # 이제 물음마다 ① 가벼운 모델이 서재 목록(번호·제목·라벨·한 줄 요약 — 시스템 프롬프트라 한 시간은 캐시)을 보고 읽어야 할 논문을 여섯 편까지 고르고
 # ② 그 논문의 요약 파일(논문 전문을 읽고 절마다 정리해 둔 글 — 가운데 1만 2천 자)을 물음에 붙인다: 앞의 세 편은 절마다의 요약까지(편마다 8천 자), 다음 세 편은 핵심만(2천6백 자).
 # 값: 고르기 10~20초(가벼운 모델, 캐시), 답하는 모델이 읽는 글 +3만 자쯤(토큰 2만 남짓). 옵션의 「논문 읽기」 로 끈다.
-_READ_DEEP, _READ_MORE = 3, 3
-_READ_DEEP_CHARS, _READ_MORE_CHARS = 8000, 2600
+# 2026-11-26 사용자: '여섯편과 쉰개는 에반데. 더 보고 답해도 돼. 연구노트 대답은 조금 느려도 돼. 다른 것관 달라.' — 열여섯 편까지 고르고(여덟 편은 절마다, 여덟 편은 핵심만), 서재 문장은 120개(논문 24편)까지.
+# 모델의 창은 100만 토큰이라(2026-11-26 재 봄: Opus 5.5·Fable 5.2·Sonnet 5.5 모두) 걸리는 것은 창이 아니라 시간과 구독 사용량이다 — 물음에 붙는 글이 2만 4천 자에서 많게는 9만 자로 는다.
+_READ_DEEP, _READ_MORE = 8, 8
+_READ_DEEP_CHARS, _READ_MORE_CHARS = 9000, 3000
+_LIB_K, _LIB_PER, _LIB_PAPERS, _LIB_CHARS, _LIB_FULL = 120, 8, 24, 32000, 10   # 서재 문장: 문장 수 · 논문마다 · 논문 수 · 글자 · 카드를 자세히 붙일 편수
 _READ_HEAD_SECS = ("한줄 요약", "노벨티와 기여", "핵심 결과", "한계")
 _READ_BODY_SKIP = re.compile(r"초록|abstract|서론|introduction|읽을 가치|감사|acknowledg|참고문헌|reference|부록|appendix|저자|credit|이해|conflict|data availab", re.I)
 _READ_PICK_RULE = (
     "연구자가 연구 노트에서 Claude 에게 물었습니다. 답하기 전에 서재에서 어느 논문을 읽어야 하는지 고릅니다. 시스템 프롬프트에 서재의 논문 목록이 있습니다(K번호 · 연도 · 저널 · 첫 저자 — 제목 [라벨] :: 한 줄 요약).\n"
-    "이 물음에 제대로 답하려면 내용을 읽어야 하는 논문을, 관련이 깊은 차례로 여섯 편까지 고릅니다. 고르는 기준은 이렇습니다. 물음이 이름을 든 논문은 반드시 넣습니다. "
+    "이 물음에 제대로 답하려면 내용을 읽어야 하는 논문을, 관련이 깊은 차례로 열여섯 편까지 고릅니다(앞의 여덟 편은 자세히, 뒤의 여덟 편은 핵심만 읽습니다). 고르는 기준은 이렇습니다. 물음이 이름을 든 논문은 반드시 넣습니다. "
     "주제의 재료·공정·현상을 직접 다룬 논문, 물음이 찾는 방법이나 장치(예: SEM 안에서 깎는 실험)를 실제로 쓴 논문을 넣습니다 — 방법은 라벨과 한 줄 요약으로 확인하고, 제목의 낱말만 비슷한 논문은 넣지 않습니다. "
-    "분야를 정리한 리뷰가 있으면 한 편 넣습니다. 바로 앞 답이 기댄 논문이 이번 물음에도 필요하면 넣습니다. "
-    "물음이 문헌과 무관하면(인사, 확인, 화면이나 일정에 관한 말) 빈 목록입니다. 억지로 여섯을 채우지 않습니다.\n"
+    "그 분야를 오래 한 사람이라면 함께 떠올렸을 논문도 넣습니다 — 같은 현상을 다른 재료나 다른 방법으로 본 논문, 결과가 엇갈리는 논문, 이 물음이 딛고 선 전제나 모델을 처음 세운 논문입니다. "
+    "분야를 정리한 리뷰가 있으면 두 편까지 넣습니다. 바로 앞 답이 기댄 논문이 이번 물음에도 필요하면 넣습니다. "
+    "물음이 문헌과 무관하면(인사, 확인, 화면이나 일정에 관한 말) 빈 목록입니다. 관련이 없는 논문으로 수를 채우지 않습니다 — 여덟 편이 맞으면 여덟 편만 고릅니다.\n"
     "JSON 으로만 답합니다: {\"papers\": [{\"k\": 12, \"why\": \"왜 읽어야 하는지 한 구절\"}]}")
 _READ_HEAD = ("[읽은 논문 — 이 물음에 답하려고 서재에서 고른 논문 %d편의 요약입니다. 요약은 논문 전문을 읽고 절마다 정리해 둔 글입니다. 앞의 %d편은 절마다의 요약까지, 나머지는 핵심만 실었습니다. "
               "이 논문들에 관해서는 여기 적힌 것을 근거로 말하고, 여기 적히지 않은 세부는 덧붙이지 않습니다. 선행연구를 들 때는 먼저 이 논문들에서 찾습니다. "
@@ -1978,7 +2018,7 @@ def _lib_hits(nt, question, prev="", full=0, extra="", subject=""):
         return "", {}, None
     title = nt.get("title") or ""
     try:
-        res = li.search(question, context=title, wait=False, extra=extra)
+        res = li.search(question, context=title, wait=False, extra=extra, k=_LIB_K, per_paper=_LIB_PER, max_papers=_LIB_PAPERS, chars=_LIB_CHARS)
     except TypeError:      # 시험 틀의 옛 libindex
         res = li.search(question, context=title, wait=False)
     used_prev = False
@@ -4780,7 +4820,8 @@ def handle_get(h, url):
             return h._send(200, f.read(), "text/html; charset=utf-8")
     if p == "/api/notes":
         return h._send(200, {"items": list_notes(), "version": VERSION, "status": STATUS, "status_ko": STATUS_KO, "kind": KIND, "kind_ko": KIND_KO, "card_keys": CARD_KEYS, "card_ko": CARD_KO,
-                             "plan_keys": PLAN_KEYS, "reviewers": REVIEWERS, "studies": _study_choices(), "manuscripts": _ms_choices()})   # studies = 다 쓴 공부 장 · manuscripts = 원고(묻는 칸의 고르기, 2026-10-29)
+                             "plan_keys": PLAN_KEYS, "reviewers": REVIEWERS, "studies": _study_choices(), "manuscripts": _ms_choices(), "usage": _usage(),
+                             "field": {"problems": _problems_block()[1].get("problems") or 0, "themes": _fieldmap_block()[1].get("fieldmap") or 0}})   # 열린 문제 장부 · 분야 지도가 있나(폰의 노트 목록이 「분야」 줄을 보일지)   # studies = 다 쓴 공부 장 · manuscripts = 원고(묻는 칸의 고르기, 2026-10-29)
     if p == "/api/notes/studies":            # 이 주제에 맞는 공부 장 — 알아서 고를 때 무엇이 뽑히나 (2026-10-29)
         nt = _load(_q(url, "id")) or {}
         try:
@@ -4797,7 +4838,7 @@ def handle_get(h, url):
             st = ms._LIBX_STAGE.get(w["xid"]) or {}
             if st.get("stage"):
                 w["stage"] = st["stage"]
-        return h._send(200, {"note": nt, "now": time.time()} if nt else {"error": "찾지 못했습니다"})
+        return h._send(200, {"note": nt, "now": time.time(), "usage": _usage()} if nt else {"error": "찾지 못했습니다"})
     if p == "/api/notes/designs":            # 유사 연구의 설계 — 서재 주석에서 (토큰 0, 2026-10-26)
         nt = _load(_q(url, "id")) or {}
         try:
@@ -4826,7 +4867,7 @@ def handle_get(h, url):
         return h._send(200, {"items": memory_list(), "kind_ko": _MEM_KO})
     if p == "/api/notes/libhits":            # 이 물음에 서재 문장 색인이 무엇을 찾나 — 진단 (2026-11-09): ?id=&q=
         nt = _load(_q(url, "id")) or {}
-        text, refs, info = _lib_hits(nt, _q(url, "q") or "", full=6 if _qkind(_q(url, "q") or "") else 0, extra=_q(url, "x") or "", subject=_q(url, "s") or "")   # x = 보탤 영어 낱말, s = 대상의 낱말
+        text, refs, info = _lib_hits(nt, _q(url, "q") or "", full=_LIB_FULL if _qkind(_q(url, "q") or "") else 0, extra=_q(url, "x") or "", subject=_q(url, "s") or "")   # x = 보탤 영어 낱말, s = 대상의 낱말
         return h._send(200, {"info": info, "refs": refs, "text": text})
     if p == "/api/notes/worldraw":           # 시험 틀용 — 서버의 world_search 를 글 그대로 불러 날것을 준다: ?text=
         fn = cfg.get("world_search")

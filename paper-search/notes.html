@@ -234,7 +234,15 @@ const FOREST_IC = (() => {
 })();
 const FOREST_STAGE = { layers: "한 단계 위의 층을 세우는 중", read: "읽을 논문을 고르는 중", write: "큰 물음을 쓰는 중", crit: "심사자가 물음을 따져 보는 중", check: "타 분야의 짜임·방법을 세상 문헌으로 확인하는 중" };
 const CRIT_KO = { keep: "그대로 섬", fix: "고쳐서 섬", "new": "심사자가 세움" };
-const EFFORT = { xhigh: "Opus · 엑스트라 (2~4분)", max: "Opus · 최대 (10분 넘게 · 이번 물음만)", high: "Opus · 보통 (1~2분)", fast: "Sonnet · 빠름 (30초)" };
+const EFFORT = { xhigh: "Opus · 엑스트라 (2~5분)", fable: "Fable · 엑스트라 (가장 깊게 · 3~8분 · 한도가 따로)", max: "Opus · 최대 (10분 넘게 · 이번 물음만)", high: "Opus · 보통 (1~3분)", fast: "Sonnet · 빠름 (30초~1분)" };
+/* 구독 사용량 — 마지막 Claude 호출이 알려 준 값(창마다 쓴 비율). 서버의 /api/notes · /api/notes/get 이 같이 준다 (2026-11-26, 사용자: '사용량 리밋 얼마나 남아있는진 확인하며 쓰고 싶다') */
+let USAGE = null;
+function usageText(ws, long) {
+  ws = (ws || []).filter(w => w && w.used != null); if (!ws.length) return "";
+  const d = t => { const x = new Date(t * 1000); return (x.getMonth() + 1) + "/" + x.getDate() + " " + x.getHours() + "시"; };
+  return ws.map(w => (w.name || w.key) + " " + w.used + "%" + (long && w.resets ? "(" + d(w.resets) + "에 풀림)" : "")).join(" · ");
+}
+
 let META = { status: ["idea", "review", "adopt", "hold"], status_ko: { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" }, kind_ko: { topic: "연구 주제", ask: "물음" }, card_keys: [], card_ko: {}, plan_ko: {}, reviewer_ko: {} };
 const FROM_KO = { study: "공부 장", explore: "논문 탐색", ms: "원고", paper: "논문" };   /* 출발점이 어디서 왔나 */
 let items = [], cur = null, curId = lsGet("notes_last", ""), pollT = null, tick = null, draft = "", cardSaveT = null, bgStats = null, labInfo = null, labSaveT = null, wanted = [];
@@ -298,7 +306,7 @@ function setPanel(on) {
 // ---------- 목록 ----------
 async function loadList() {
   let r; try { r = await api("/api/notes"); } catch (e) { return; }
-  items = r.items || []; if (r.status) { META = r; META.plan_ko = Object.fromEntries(r.plan_keys || []); META.reviewer_ko = Object.fromEntries(r.reviewers || []); } renderList();
+  items = r.items || []; if (r.usage) USAGE = r.usage; if (r.status) { META = r; META.plan_ko = Object.fromEntries(r.plan_keys || []); META.reviewer_ko = Object.fromEntries(r.reviewers || []); } renderList();
   loadWanted(false);
 }
 async function loadWanted(sync) {   /* 받을 논문 대기열 — 큰 물음이 적은 서재 밖 원 논문·리뷰 (2026-10-28) */
@@ -350,6 +358,7 @@ function renderList() {
 async function open(id) {
   let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(id)); } catch (e) { return; }
   if (r.error || !r.note) { alert(r.error || "찾지 못했습니다"); return; }
+  if (r.usage) USAGE = r.usage;
   cur = r.note; curId = cur.id; lsSet("notes_last", curId); draft = "";
   try { history.replaceState(null, "", "/notes?id=" + encodeURIComponent(curId)); } catch (e) {}
   if (panelOpen && narrow()) setPanel(false);
@@ -361,6 +370,7 @@ async function refresh() {   // 답·카드가 왔는지 (읽던 자리·쓰던 
   if (!cur) return;
   let r; try { r = await api("/api/notes/get?id=" + encodeURIComponent(cur.id)); } catch (e) { return; }
   if (!cur || r.error || !r.note || r.note.id !== cur.id) return;
+  if (r.usage) USAGE = r.usage;
   const keys = n => [n.thread, n.pending, n.error, n.card, n.card_pending, n.card_error, n.plan, n.plan_pending, n.plan_error, n.plan_edited, n.objections, n.review_pending, n.review_error, n.ms, n.draft_pending, n.draft_error, n.intro, n.intro_pending, n.intro_error, n.intro_edited, n.matrix, n.matrix_pending, n.matrix_error, n.argmap, n.argmap_pending, n.argmap_error, n.gapcheck, n.gapcheck_pending, n.gapcheck_error, n.framing, n.framing_pending, n.framing_error, n.forest, n.forest_pending, n.forest_error, n.forest_stage, n.trees, n.trees_pending, n.trees_error, n.digest, n.digest_pending, n.digest_error];
   const before = JSON.stringify(keys(cur)), after = JSON.stringify(keys(r.note));
   const wasPending = !!cur.pending, dgT = (cur.digest || {}).t || 0;
@@ -524,10 +534,10 @@ function msgHtml(m, i) {
       if (/^L/.test(id)) { const r = lrf[id]; return r ? "<a class='lref' data-lk='" + esc(id) + "' data-mi='" + i + "' title='" + esc((r.star ? "★ " : "") + (r.short || "") + (r.journal ? " · " + r.journal : "") + (r.paper ? " — 논문" : (r.page != null ? " · p." + (r.page + 1) : "")) + " · 누르면 원문과 번역") + "'>" + esc(id) + "</a>" : esc(id); }
       const a = anc[id]; return a ? "<a class='stc' data-st='" + esc(a.sid) + "' data-si='" + a.si + "' data-u='" + esc(a.key) + "' data-cid='" + esc(id) + "'" + (a.fb ? " data-fb='1'" : "") + " title='" + esc(("공부 「" + (titles[a.sid] || "") + "」 — " + (a.claim || a.t || "")).slice(0, 220)) + " · 누르면 그 논지와 근거 원문'>" + esc(id) + "</a>" : esc(id); }).join(" "));
   const lh = m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개(" + m.libhits.papers + "편)를 봄" : "";   /* 물음의 낱말로 색인에서 찍어 붙인 문장 — 머리줄은 flex 라 span 을 끼우면 줄이 갈린다 */
-  const rh = (m.read || []).length ? " · 논문 " + m.read.length + "편을 읽음(" + esc(m.read.map(x => x.short).join(", ")) + ")" : "";   /* 이 물음에 답하려고 골라 읽은 논문의 요약 (2026-11-17) */
+  const rh = (m.read || []).length ? " · 논문 " + m.read.length + "편을 읽음(" + esc(m.read.slice(0, 6).map(x => x.short).join(", ")) + (m.read.length > 6 ? " 외 " + (m.read.length - 6) + "편" : "") + ")" : "";   /* 이 물음에 답하려고 골라 읽은 논문의 요약 (2026-11-17) */
   const wh = m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편을 봄" : "";   /* 학술 데이터베이스에서 방금 찾아 붙인 논문(제목·초록) */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
-    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 원문을 열어 봄" : "") + lh + rh + wh +
+    (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 원문을 열어 봄" : "") + lh + rh + wh + (m.fallback ? " · " + esc(m.fallback) : "") + (usageText(m.usage) ? " · 한도 사용 " + esc(usageText(m.usage)) : "") +
     ((m.studies || []).length ? " · 공부 " + m.studies.map(x => "「" + esc(clip(x.title, 26)) + "」").join(" ") + " 을 봄" : "") + (m.ms ? " · 원고 「" + esc(clip(m.ms.title, 26)) + "」 을 봄" : "") + "</div>" + citeMark(link(claudeHtml(m.text)), m.cites) + cissueHtml(m) + "</div>";
 }
 /* 답이 든 서재 논문을 요약과 견줘 어긋난 말 — 답 뒤의 정리 호출이 같이 본다 */
@@ -684,7 +694,7 @@ function renderThread() {
   }
 }
 const durKey = eff => "notes_ask_dur|" + eff;
-function expect(eff) { const v = +lsGet(durKey(eff), 0); return v || (eff === "max" ? 200 : eff === "fast" ? 40 : 110); }
+function expect(eff) { const v = +lsGet(durKey(eff), 0); return v || (eff === "max" ? 300 : eff === "fable" ? 260 : eff === "fast" ? 50 : 170); }
 const seen = new Set();
 function remember(eff, sec) { const k = eff + "|" + sec; if (seen.has(k)) return; seen.add(k); const v = +lsGet(durKey(eff), 0); lsSet(durKey(eff), Math.round(v ? v * 0.6 + sec * 0.4 : sec)); }
 function renderAsk() {
@@ -710,9 +720,10 @@ function renderAsk() {
     "<select id='askStudy' title='주제와 맞는 다 쓴 공부 장의 논지·엇갈림·답하지 못한 것·식을 물음에 붙입니다 — 알아서 = 맞는 장 둘까지(없으면 안 붙음). 답의 C1.2 같은 번호를 누르면 그 논지와 근거 원문이 뜹니다'>" + studyOpts + "</select>" +
     "<select id='askMs' title='고른 원고의 글(제목·초록·절·그림 캡션)을 물음에 붙입니다 — 우리 실험의 장비·조건·측정값·기호의 뜻을 알고 답하게. 「알아서」 는 주제와 맞는 원고가 있을 때만 붙입니다. 붙으면 토큰 1만~2만이 더 듭니다'>" + msOpts + "</select>" +
     "<select id='askWorld' title='기본은 서재만 보고 답합니다. 「세상 문헌에서 찾아 줘」 라고 묻거나 답 끝의 그런 선택지를 누르면, 그 물음에서만 학술 데이터베이스(OpenAlex·Scopus)에서 가까운 논문 스무 편쯤의 제목과 초록을 찾아 같이 봅니다(15~45초 더 걸림). 「물음마다」 로 두면 이 주제에서는 연구가 될 만한지·선행연구를 물을 때마다 찾습니다 — 서재에 논문이 거의 없는 새 주제에 맞습니다'>" + worldOpts + "</select>" +
-    "<select id='askRead' title='서재 읽기 — 「골라서 요약 읽기」(기본): 가벼운 모델이 이 물음에 읽어야 할 논문을 여섯 편까지 고르고, Claude 가 그 논문의 요약 전문을 읽고 답합니다(고르는 데 10~20초, 토큰 2만쯤 더). 「골라서 원문까지」: 그 위에 고른 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(물음마다 5~15분, 토큰 수십만 — 다른 것으로 바꿀 때까지 계속 이렇게 답합니다. 짧은 확인·정정에는 원문을 열지 않습니다). 「안 읽음」: 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
+    "<select id='askRead' title='서재 읽기 — 「골라서 요약 읽기」(기본): 가벼운 모델이 이 물음에 읽어야 할 논문을 열여섯 편까지 고르고, Claude 가 그 논문의 요약을 읽고 답합니다(여덟 편은 절마다 자세히, 여덟 편은 핵심만 — 고르는 데 10~20초, 토큰 5만~7만쯤 더). 「골라서 원문까지」: 그 위에 고른 논문의 전문 번역을 직접 열어 수치·조건·방법을 확인합니다(물음마다 5~15분, 토큰 수십만 — 다른 것으로 바꿀 때까지 계속 이렇게 답합니다. 짧은 확인·정정에는 원문을 열지 않습니다). 「안 읽음」: 제목·라벨과 낱말로 찾은 문장만 보고 답합니다'>" +
     [["auto", "서재: 골라서 요약 읽기"], ["deep", "서재: 골라서 원문까지"], ["off", "서재: 안 읽음"]].map(([v, t]) => "<option value='" + v + "'" + (readSel() === v ? " selected" : "") + ">" + t + "</option>").join("") + "</select>" +
     "<span class='fsz'><button class='act' data-f='-1' title='글씨 작게'>A−</button><button class='act' data-f='1' title='글씨 크게'>A+</button></span>" +
+    (USAGE && usageText(USAGE.windows) ? "<span class='hint' style='margin-left:6px' title='Claude 구독의 사용량입니다 — 창마다 지금까지 쓴 비율. 마지막 Claude 호출이 알려 준 값이라 그 뒤 다른 곳에서 쓴 것은 다음 호출에서 반영됩니다'>한도 사용: " + esc(usageText(USAGE.windows, true)) + "</span>" : "") +
     "</span></div><div class='hint' id='askMsg'></div></div>";
   const ot = $("askOptTg"); if (ot) ot.onclick = () => { lsSet("notes_askopts", lsGet("notes_askopts", "0") === "1" ? "0" : "1"); renderAsk(); };
   const t = $("askIn"); t.oninput = () => { draft = t.value; }; t.addEventListener("keydown", e => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); send(); } });
@@ -959,7 +970,7 @@ function introHtml(answered) {   /* 서론 구조 (2026-10-24) */
 }
 async function startJob(kind, btn) {
   if (btn) btn.disabled = true;
-  const body = { op: kind, id: cur.id, effort: lsGet("notes_effort", "xhigh") === "fast" ? "fast" : "xhigh" };
+  const body = { op: kind, id: cur.id, effort: (e => (e === "fast" || e === "fable") ? e : "xhigh")(lsGet("notes_effort", "xhigh")) };   /* 큰 물음·설계서 같은 배경 작업도 고른 모델로 — Fable 을 골랐으면 Fable */
   if (kind === "intro") { const q = $("introReq"); body.req = q ? q.value : ""; }
   if (kind === "framing") { const q = $("frReq"); body.req = q ? q.value : ""; }
   if (kind === "forest") { const q = $("fqReq"); body.req = q ? q.value : ""; }
@@ -1268,8 +1279,8 @@ function bgHtml() {
   h += (bgStats.lab ? "<div class='kv'><span>우리 연구실</span><span>" + fmtTok(bgStats.lab) + " 자</span></div>" : "") + "<div class='kv'><span>서재</span><span>논문 " + (bgStats.papers || 0) + "편 (요약 " + (bgStats.summaries || 0) + "편)</span></div><div class='kv'><span>공부 장</span><span>" + (bgStats.studies || 0) + "개</span></div>" +
     "<div class='kv'><span>탐색 기록</span><span>" + (bgStats.searches || 0) + "건</span></div><div class='kv'><span>인용 이웃</span><span>서재에 없는 논문 " + (bgStats.gaps || 0) + "편</span></div><div class='kv'><span>원고</span><span>" + (bgStats.manuscripts || 0) + "편</span></div>" +
     "<div class='kv'><span>배경 글</span><span>" + fmtTok(bgStats.chars || 0) + " 자 <a class='act' href='/api/notes/bg?text=1' target='_blank' title='Claude 에게 가는 배경 글 그대로'>보기</a></span></div>" +
-    (bgStats.libidx && bgStats.libidx.ready ? "<div class='kv'><span>서재 문장 색인</span><span title='물음마다 낱말이 맞는 문장 50개쯤을 물음에 붙입니다 — 모델 호출 없이'>문장 " + (bgStats.libidx.sents || 0).toLocaleString() + "개 · 논문 " + (bgStats.libidx.papers || 0) + "편</span></div>" : "") +
-    "<div class='hint' style='margin-top:6px;line-height:1.5'>첫 물음에 이만큼을 읽고, 한 시간 안의 다음 물음은 캐시에서 읽습니다. 서재·공부·탐색이 바뀌면 다시 읽습니다. 물음마다 따로 붙는 것: 서재 문장 색인에서 찍은 문장(토큰 4천쯤) · 지금까지의 정리 · 기억 · 공부 장 · 원고.</div>";
+    (bgStats.libidx && bgStats.libidx.ready ? "<div class='kv'><span>서재 문장 색인</span><span title='물음마다 낱말이 맞는 문장 120개쯤을 물음에 붙입니다 — 모델 호출 없이'>문장 " + (bgStats.libidx.sents || 0).toLocaleString() + "개 · 논문 " + (bgStats.libidx.papers || 0) + "편</span></div>" : "") +
+    "<div class='hint' style='margin-top:6px;line-height:1.5'>첫 물음에 이만큼을 읽고, 한 시간 안의 다음 물음은 캐시에서 읽습니다. 서재·공부·탐색이 바뀌면 다시 읽습니다. 물음마다 따로 붙는 것: 서재 문장 색인에서 찍은 문장(토큰 1만쯤) · 골라 읽는 논문 열여섯 편의 요약(토큰 5만~7만) · 지금까지의 정리 · 기억 · 공부 장 · 원고.</div>";
   return h;
 }
 function bindBg() { const b = $("bgLoad"); if (b) b.onclick = async () => { b.disabled = true; b.textContent = "세는 중…"; try { bgStats = await api("/api/notes/bg"); try { bgStats.libidx = await api("/api/libindex"); } catch (e2) {} } catch (e) { bgStats = null; } renderCard(); }; }

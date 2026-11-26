@@ -546,13 +546,31 @@ def claude_config_dir():
     return str(mapper.settings().get("claude_config_dir") or "").strip()
 
 
+_SESSION_ENV_KEEP = {"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_GIT_BASH_PATH"}
+
+
+def session_env_names(env=None):
+    """이 프로세스가 Claude Code·Claude 데스크톱 앱의 세션에서 띄워졌을 때 물려받는 환경 변수의 이름들(값은 보지 않는다)"""
+    env = os.environ if env is None else env
+    if not (env.get("CLAUDECODE") or env.get("CLAUDE_CODE_ENTRYPOINT") or env.get("CLAUDE_CODE_SESSION_ID")):
+        return []
+    return sorted(k for k in env if k.upper().startswith(("CLAUDE", "MCP_")) and k.upper() not in _SESSION_ENV_KEEP)
+
+
 def claude_env():
-    """claude 를 부를 때의 환경 변수 — 전용 계정 폴더가 있으면 CLAUDE_CONFIG_DIR 을 얹는다. 없으면 None(그대로 상속)."""
-    d = claude_config_dir()
-    if not d:
-        return None
+    """claude 를 부를 때의 환경 변수(언제나 dict).
+    ① 전용 계정 폴더가 있으면 CLAUDE_CONFIG_DIR 을 얹는다.
+    ② claude.ai 커넥터를 끈다(ENABLE_CLAUDEAI_MCP_SERVERS=false) — Athenaeum 은 커넥터를 쓰지 않는데, 계정에 연결된 커넥터들의
+       도구 설명이 요청에 같이 실리면 호출마다 10만 토큰이 더 든다(2026-11-26 재 봄: 논문 고르기 호출 6.9만 → 17.7만, 캐시도 깨진다).
+    ③ 서버가 Claude Code·데스크톱 앱의 세션에서 띄워졌으면(Claude 가 재시작 도구로 켠 서버가 그랬다) 그 세션의 변수(CLAUDECODE · CLAUDE_CODE_* · MCP_* …)를 뺀다 —
+       그 변수들이 있으면 claude 가 데스크톱 앱의 일부처럼 굴어 커넥터를 붙인다. 사용자가 일부러 둔 변수(CLAUDE_CONFIG_DIR · CLAUDE_CODE_GIT_BASH_PATH)와 세션 밖의 환경은 건드리지 않는다."""
     env = dict(os.environ)
-    env["CLAUDE_CONFIG_DIR"] = d
+    for k in session_env_names(env):
+        env.pop(k, None)
+    env["ENABLE_CLAUDEAI_MCP_SERVERS"] = "false"
+    d = claude_config_dir()
+    if d:
+        env["CLAUDE_CONFIG_DIR"] = d
     return env
 
 
@@ -820,6 +838,115 @@ LABEL_NOTES = {
 
 CLAUDE_STATE = {"err": "", "t": 0}   # 마지막 Claude 호출 실패 이유 (로그인 만료·한도). 성공하면 지워진다
 
+# ---------- 구독 사용량 (2026-11-26, 사용자: 'Fable 써도 돼. 근데 사용량 리밋 얼마나 남아있는진 확인하며 쓰고 싶다') ----------
+# claude -p 를 stream-json 으로 부르면 호출마다 rate_limit_event 가 한 줄 온다 — 창(주간 등)마다 쓴 비율(utilization 0~1)과 풀리는 시각.
+# 따로 물어보는 길은 없다(호출을 해야 온다): 마지막 호출이 알려 준 값을 기억해 두고(파일에도 — 서버를 다시 켠 뒤에도 보이게) 화면이 GET /api/claude_usage 로 읽는다.
+# 창의 이름은 CLI 가 주는 그대로다. 2026-11-26 에 본 것: 모든 모델에 seven_day, Fable 호출에는 seven_day_overage_included 가 하나 더 온다(무엇의 한도인지는 문서로 확인하지 못했다 — 이름을 그대로 둔다).
+CLAUDE_USAGE = {"t": 0, "model": "", "windows": {}, "dir": None, "loaded": False}
+_USAGE_LOCK = threading.Lock()
+_USAGE_NAMES = {"five_hour": "5시간", "seven_day": "주간", "seven_day_opus": "Opus 주간", "seven_day_sonnet": "Sonnet 주간", "seven_day_overage_included": "Fable 쪽 주간"}
+_USAGE_ORDER = ["seven_day", "seven_day_overage_included", "seven_day_opus", "seven_day_sonnet", "five_hour"]
+
+
+def _usage_path():
+    return os.path.join(tempfile.gettempdir(), "athenaeum_claude_usage.json")
+
+
+def _usage_load():
+    if CLAUDE_USAGE["loaded"]:
+        return
+    CLAUDE_USAGE["loaded"] = True
+    try:
+        d = json.load(io.open(_usage_path(), encoding="utf-8"))
+        if isinstance(d, dict) and isinstance(d.get("windows"), dict) and (d.get("dir") or "") == (claude_config_dir() or ""):
+            CLAUDE_USAGE.update(t=d.get("t") or 0, model=d.get("model") or "", windows=d["windows"], dir=d.get("dir") or "")
+    except Exception:
+        pass
+
+
+def _usage_note(info, model=""):
+    """rate_limit_event 의 rate_limit_info → CLAUDE_USAGE. 창마다 {util, resets, status, t, model}"""
+    if not isinstance(info, dict):
+        return
+    wins = {}
+    uw = info.get("unifiedWindows")
+    if isinstance(uw, dict):
+        for k, v in uw.items():
+            if isinstance(v, dict):
+                wins[str(k)] = {"util": v.get("utilization"), "resets": v.get("resetsAt"), "status": str(v.get("status") or "")}
+    k = info.get("rateLimitType")
+    if k and str(k) not in wins:
+        wins[str(k)] = {"util": info.get("utilization"), "resets": info.get("resetsAt"), "status": str(info.get("status") or "")}
+    if not wins:
+        return
+    now = time.time()
+    with _USAGE_LOCK:
+        _usage_load()
+        cur = dict(CLAUDE_USAGE.get("windows") or {}) if (CLAUDE_USAGE.get("dir") or "") == (claude_config_dir() or "") else {}
+        for k, v in wins.items():
+            v["t"], v["model"] = now, model
+            cur[k] = v
+        for k in [k for k, v in cur.items() if isinstance(v.get("resets"), (int, float)) and v["resets"] < now - 60]:   # 이미 풀린 창의 옛 값
+            cur.pop(k, None)
+        CLAUDE_USAGE.update(t=now, model=model, windows=cur, dir=claude_config_dir() or "")
+        try:
+            tmp = _usage_path() + ".%d.tmp" % os.getpid()
+            with io.open(tmp, "w", encoding="utf-8") as fh:
+                json.dump({"t": now, "model": model, "windows": cur, "dir": CLAUDE_USAGE["dir"]}, fh, ensure_ascii=False)
+            os.replace(tmp, _usage_path())
+        except Exception:
+            pass
+
+
+def claude_usage():
+    """마지막 Claude 호출이 알려 준 구독 사용량 → {t, model, windows: [{key, name, used(0~100 또는 None), resets, status, t, model}]}. 아직 모르면 windows 가 빈다.
+    used 는 그 창에서 쓴 비율(%)이다 — 남은 것은 100 에서 뺀 값. 값은 마지막 호출 때의 것이라 t(그때)를 같이 준다."""
+    with _USAGE_LOCK:
+        _usage_load()
+        now = time.time()
+        wins = CLAUDE_USAGE.get("windows") or {}
+        out = []
+        for k in _USAGE_ORDER + sorted(x for x in wins if x not in _USAGE_ORDER):
+            v = wins.get(k)
+            if not isinstance(v, dict):
+                continue
+            if isinstance(v.get("resets"), (int, float)) and v["resets"] < now:
+                continue
+            u = v.get("util")
+            out.append({"key": k, "name": _USAGE_NAMES.get(k, k), "used": round(float(u) * 100) if isinstance(u, (int, float)) else None, "resets": v.get("resets"),
+                        "status": v.get("status") or "", "t": v.get("t") or 0, "model": v.get("model") or ""})
+        return {"t": CLAUDE_USAGE.get("t") or 0, "model": CLAUDE_USAGE.get("model") or "", "windows": out}
+
+
+def _claude_stream(out):
+    """claude -p 의 출력 → (결과 dict, rate_limit_info 또는 None). stream-json(줄마다 JSON 하나)과 옛 json(한 덩이) 둘 다 읽는다."""
+    res, rl = None, None
+    for ln in (out or "").splitlines():
+        ln = ln.strip()
+        if not ln.startswith("{"):
+            continue
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if not isinstance(d, dict):
+            continue
+        t = d.get("type")
+        if t == "result":
+            res = d
+        elif t == "rate_limit_event" and isinstance(d.get("rate_limit_info"), dict):
+            rl = d["rate_limit_info"]
+        elif res is None and t is None and ("result" in d or "is_error" in d):   # 옛 CLI 의 한 줄 JSON
+            res = d
+    if res is None:
+        try:
+            res = json.loads(out[out.index("{"):out.rindex("}") + 1])
+        except (ValueError, AttributeError):
+            res = {}
+        if not isinstance(res, dict):
+            res = {}
+    return res, rl
+
 
 def _note_claude(rc, out, err=""):
     """AI 호출(claude -p · codex exec) 결과를 보고 문제를 기억한다. 조용히 None 을 돌려주던 호출들이 '왜 안 됐는지' 알릴 수 있게. 엔진에 맞는 안내문."""
@@ -842,8 +969,11 @@ def _note_claude(rc, out, err=""):
     if "authenticate" in low or "oauth" in low or "/login" in low or "not logged in" in low:
         msg = ("Athenaeum 전용 Claude 계정 폴더에 로그인되어 있지 않거나 만료됐습니다 — ⚙ 환경설정 → AI 「로그인 창 열기」 에서 /login" if claude_config_dir()
                else "Claude Code 로그인이 만료됐습니다 — 터미널에서 claude 를 실행하고 /login 으로 다시 로그인하세요")
-    elif "usage limit" in low or "rate limit" in low or "limit reached" in low:
-        msg = "Claude 구독 사용량 한도에 걸렸습니다 — 잠시 뒤 다시 시도하세요"
+    elif "safeguards flagged" in low or "safeguard" in low and "flagged" in low:
+        msg = "Fable 의 안전장치가 이 요청을 받지 않았습니다(정상적인 글도 가끔 걸립니다) — 다른 모델(Opus)로 다시 시도하세요"
+    elif "usage limit" in low or "rate limit" in low or "limit reached" in low or re.search(r"(reached|hit) your [a-z0-9 .\-]{0,28}limit", low):
+        msg = ("Fable 사용량 한도에 걸렸습니다 — 다른 모델(Opus)로 바꿔 묻거나 한도가 풀린 뒤 다시 시도하세요" if "fable" in low
+               else "Claude 구독 사용량 한도에 걸렸습니다 — 잠시 뒤 다시 시도하세요")
     else:
         msg = "Claude 호출 실패: " + ((err or out or "응답 없음").strip()[:120])
     CLAUDE_STATE.update(err=msg, t=time.time())
@@ -2495,8 +2625,8 @@ def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=N
     exe = find_claude()
     if not exe:
         return None
-    args = [exe, "-p", "--model", model, "--output-format", "json"] + (["--effort", effort] if effort else [])
-    extra = (["--tools", tools] if tools is not None else []) + [x for d in add_dirs for x in ("--add-dir", d)]
+    args = [exe, "-p", "--model", model, "--output-format", "stream-json", "--verbose"] + (["--effort", effort] if effort else [])   # stream-json: 줄마다 사건 하나 — 끝의 result 줄이 옛 json 출력과 같고, rate_limit_event 줄이 구독 사용량을 알려 준다
+    extra = (["--tools", tools] if tools is not None else []) + [x for d in add_dirs for x in ("--add-dir", d)] + ["--strict-mcp-config"]   # MCP 서버·커넥터를 붙이지 않는다(쓰지 않는데 도구 설명만 10만 토큰)
     kw = dict(_no_window(), cwd=cwd or claude_cwd())
     env = claude_env()
     if env:
@@ -2517,20 +2647,21 @@ def claude_run(prompt, timeout=600, model="opus", effort=None, tools=None, cwd=N
             rc, out, err = _claude_proc(args, ((system or "") + prompt).encode("utf-8"), timeout, kw, job)   # 옛 CLI: 옵션 없이, 배경은 물음 앞에
             if job and claude_cancelled(job):
                 return {"cancelled": True, "text": ""}
-        try:
-            d = json.loads(out[out.index("{"):out.rindex("}") + 1])
-        except ValueError:
-            d = {}
+        d, rl = _claude_stream(out)
         text = str(d.get("result") or "").strip()
-        _note_claude(rc if not d.get("is_error") else 1, text or out, err)
-        if not text or d.get("is_error"):
-            return None
         usage = d.get("modelUsage") or {}
         main = max(usage, key=lambda k: (usage[k] or {}).get("outputTokens", 0)) if usage else ""
+        try:
+            _usage_note(rl, main or model)
+        except Exception:
+            pass
+        _note_claude(rc if not d.get("is_error") else 1, text or (json.dumps(d, ensure_ascii=False)[:1500] if d else out[-1500:]), err)   # 글이 없을 때 스트림 전체를 넘기지 않는다(첫 줄의 도구·명령 목록에 login 같은 낱말이 있다)
+        if not text or d.get("is_error"):
+            return None
         num = lambda u, k: int((u or {}).get(k) or 0)
         cached = sum(num(u, "cacheReadInputTokens") for u in usage.values())
         tin = cached + sum(num(u, "inputTokens") + num(u, "cacheCreationInputTokens") for u in usage.values())
-        return {"text": text, "model": main, "turns": d.get("num_turns") or 1, "tok": {"in": tin, "cached": cached} if tin else None}
+        return {"text": text, "model": main, "turns": d.get("num_turns") or 1, "tok": {"in": tin, "cached": cached} if tin else None, "usage": claude_usage()["windows"] if rl else None}
     except Exception:
         return None
     finally:
@@ -4624,7 +4755,51 @@ corpus.init(BASE=BASE, ARCHIVE=ARCHIVE, GEN_DIR=GEN_DIR, load_json=load_json, sa
 ms.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, note_load=notes._load, kstats=corpus.stats_for, kband=corpus.band_for, pref_abbrs=pref_file_abbrs, field_text=notes.field_text)   # 쓰기 지시문에 바탕·같은 자리의 실제 문단, 논증 모형에 연결된 연구 노트
 notes.cfg.update(knowledge=corpus.knowledge_text, exemplars=corpus.exemplars_text, kband=corpus.band_for, designs=corpus.similar_designs, designs_text=corpus.designs_text,
                  plan_search=plan_search, build_boolean=build_boolean, openalex_boolean=openalex_boolean, owned_map=owned_map, forest_material=corpus.forest_material,   # 큰 물음의 재료 (2026-10-28)   # 서론 구조의 분포 점검 · 유사 연구의 설계 · 공백 검증(탐색 기계)(2026-10-26)
-                 world_search=world_search, world_terms=world_terms, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
+                 world_search=world_search, world_terms=world_terms, paper_card=corpus.paper_card, forest_examples=corpus.forest_examples, claude_usage=claude_usage, problems_text=corpus.problems_text)   # 구독 사용량 · 열린 문제 장부 (2026-11-26)   # 대화 안의 선행연구: 세상의 문헌 · 서재 논문 카드 · 숲 논문의 보기 (2026-11-11)
+
+
+# ---------- 분야 지도 (2026-11-26, 사용자: '세계 대가들이랑 이야기하는 정도의 수준을 원하는데 … 그사람은 산업도 잘 알고 연구도 잘 알고 다른분야도 알고') ----------
+# 우선 저널의 최근 논문 전부(제목·초록·교신저자·기관 — OpenAlex, 초록은 Scopus 로 채움)를 주제로 나눠 '지금 묻는 것 · 옮겨 간 곳 · 되풀이되는 과제 · 이끄는 곳' 을 정리해 둔다(관련맵\분야지도\).
+# 연구 노트의 배경에 들어간다. 저절로 만들지 않는다 — /learn 의 「분야 지도」 나 POST /api/fieldmap {op: build}.
+import fieldmap
+
+
+def _fieldmap_journals():
+    """[(파일 약어, 이름, OpenAlex source id)] — 우선 저널(⚙ 설정 → 연결)"""
+    try:
+        pref_source_ids()      # 캐시(저널ID.json)를 채운다
+    except Exception:
+        pass
+    cache = load_json(_PREF_ID_PATH, {}) or {}
+    try:
+        m = {intake.normalize_journal(k): str(v) for k, v in (load_json(os.path.join(BASE, "수집설정.json"), {}).get("저널약어") or {}).items()}
+    except Exception:
+        m = {}
+    out = []
+    for name in preferred_journals():
+        hit = cache.get(_jnorm(name)) or {}
+        if not hit.get("id"):
+            continue
+        try:
+            ab = (m.get(intake.normalize_journal(name)) or intake.auto_abbrev(name)).upper()
+        except Exception:
+            ab = re.sub(r"[^A-Z]", "", name.title())[:6] or "J"
+        out.append((ab, name, hit["id"]))
+    return out
+
+
+def _fieldmap_lib_titles():
+    """서재 논문의 제목(파일 이름의 제목 부분 — 80자에서 잘려 있다) — 지도의 주제마다 '서재에 몇 편' 을 세는 데 쓴다"""
+    out = []
+    for f in archive_pdfs():
+        m = re.match(r"^\d{4}_[^_]+_[^_]+_(.+)\.pdf$", f, re.I)
+        if m:
+            out.append(m.group(1))
+    return out
+
+
+fieldmap.init(MAPS_DIR=MAPS_DIR, load_json=load_json, save_json=save_json, claude_run=claude_run, journals=_fieldmap_journals, elsevier_key=_elsevier_key, lib_titles=_fieldmap_lib_titles)
+notes.cfg.update(fieldmap_text=fieldmap.text)
 
 
 # ---------- Claude 채팅이 보는 폴더 (2026-11-07, 사용자: '데이터베이스를 폴더째 공유해서 클로드 chat 에서도 쓸 수 있게 … 라이브러리식으로 필요한 정보만 쏙쏙') ----------
@@ -5573,6 +5748,10 @@ class Handler(BaseHTTPRequestHandler):
             return shelf.handle_get(self, url)    # Claude 채팅이 보는 폴더
         if url.path == "/api/autotr":
             return autotr.handle_get(self, url)   # 자동 번역의 상태 (⚙ 설정 → AI)
+        if url.path == "/api/fieldmap":       # 분야 지도 (2026-11-26)
+            return fieldmap.handle_get(self, url)
+        if url.path == "/api/claude_usage":   # 마지막 Claude 호출이 알려 준 구독 사용량 (2026-11-26). session_env = 서버가 Claude 세션에서 물려받은 변수 이름(있으면 claude_env 가 걸러 낸다 — 진단용)
+            return self._send(200, dict(claude_usage(), session_env=session_env_names()))
         if url.path == "/api/libindex":
             return self._send(200, libindex.status())   # 서재 문장 색인의 상태 (연구 노트의 「Claude 가 아는 것」)
         if url.path == "/notes" or url.path.startswith("/api/notes/") or (url.path == "/api/notes" and "file" not in parse_qs(url.query)):
@@ -6162,6 +6341,8 @@ class Handler(BaseHTTPRequestHandler):
             return corpus.handle_post(self, body)
         if self.path == "/api/shelf":
             return shelf.handle_post(self, body)
+        if self.path == "/api/fieldmap":
+            return fieldmap.handle_post(self, body)   # 분야 지도 만들기 (2026-11-26)
         if self.path == "/api/autotr":
             return autotr.handle_post(self, body)   # 자동 번역: settings · queue_missing · run_now · clear_fails
         if self.path.startswith("/api/notes/") or (self.path == "/api/notes" and not body.get("file")):

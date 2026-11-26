@@ -1397,6 +1397,45 @@ async function viewStudyChat(st, cid, my) {
 
 /* ---------- 노트 (연구 노트) ---------- */
 const NSTAT = { idea: "아이디어", review: "검토 중", adopt: "채택", hold: "보류" };
+/* 분야 — 열린 문제 장부와 분야 지도 (2026-11-26). 연구 노트가 물음마다 같이 읽는 것을 사람도 훑어볼 수 있게. 만드는 것은 PC 의 「학습」 창에서 */
+let notesField = null;
+async function viewField(which, my) {
+  which = which === "map" ? "map" : "prob";
+  shell({ parent: "#/notes", title: "분야", fade: true });
+  const loc0 = savedY(curHash);
+  const seg = "<div class='nseg' style='margin:10px 0 6px'>" + segHtml([["prob", "열린 문제"], ["map", "분야 지도"]], which) + "</div>";
+  const bindSeg = () => app.querySelectorAll(".nseg [data-seg]").forEach(b => b.onclick = () => { if (b.dataset.seg !== which) location.replace("#/field" + (b.dataset.seg === "map" ? "/map" : "")); });
+  app.innerHTML = "<div class='doc'>" + seg + skeleton() + "</div>"; bindSeg();
+  let d; try { d = await api(which === "map" ? "/api/fieldmap" : "/api/learn/problems"); } catch (e) { if (my === view && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
+  if (my !== view) return;
+  const line = (k, v, cls) => v ? "<div class='fl" + (cls ? " " + cls : "") + "'><b>" + k + "</b>" + v + "</div>" : "";
+  const note = t => "<div style='font-size:13px;line-height:1.55;color:var(--text-3);margin:4px 2px 0'>" + t + "</div>";
+  let h = "";
+  if (which === "prob") {
+    h = (d.items || []).length ? note("서재 논문 " + (d.n_papers || 0) + "편의 저자들이 스스로 적은 한계와 남은 일 " + (d.n_sents || 0) + "문장을 같은 문제끼리 묶었습니다. 무거운 문제부터 놓았고, 풀렸는지는 서재 안의 논문만 보고 판정했습니다.") +
+      d.items.map(x => "<div class='fqc'><div class='fh'><b>" + esc(x.id) + "</b><span class='tg'>" + esc(x.kind_ko) + "</span><span class='tg" + (x.status === "open" ? " hi" : "") + "'>" + esc(x.status_ko) + "</span><span>무게 " + x.weight + " · 논문 " + x.papers + "편" +
+        ((x.years || []).length ? " · " + x.years[0] + "–" + x.years[1] : "") + (x.star ? " · ★" + x.star : "") + "</span></div>" +
+        "<div class='fn'>" + esc(x.name) + "</div><div class='fqq'>" + esc(x.statement) + "</div>" + line("남은 것", esc(x.remains)) +
+        "<details><summary>자세히</summary>" + line("어려운 까닭", esc(x.why_hard)) +
+        ((x.progress || []).length ? "<div class='fl'><b>서재 안의 진전</b>" + x.progress.map(g => "<div style='margin-top:4px'><a href='" + pUrl(g.file, "summary") + "'>" + esc(g.short) + "</a> — " + esc(g.how) + "</div>").join("") + "</div>" : "") +
+        "<div class='fl'><b>그 말을 한 문장</b>" + (x.members || []).slice(0, 12).map(m => "<div style='margin-top:7px'>" + (m.star ? "★ " : "") + "<a href='" + pUrl(m.file, "translation", m.sid, m.t) + "'>" + esc(m.short) + "</a> <span class='no'>" + esc(m.journal || "") + "</span><br>" + esc(m.t) + "</div>").join("") +
+        ((x.members || []).length > 12 ? "<div class='no' style='margin-top:6px'>외 " + (x.members.length - 12) + "문장</div>" : "") + "</div></details></div>").join("")
+      : "<div class='empty'><b>아직 열린 문제 장부가 없습니다</b>PC 의 「학습」 창 → 「열린 문제」 에서 만듭니다.</div>";
+  } else {
+    const AK = Object.fromEntries(d.areas || []), TR = d.trend || {}, nameOf = Object.fromEntries((d.themes || []).map(t => [t.k, t.name]));
+    const P = p => "<div style='margin-top:7px'>" + (p.doi ? "<a href='https://doi.org/" + esc(p.doi) + "' target='_blank' rel='noopener'>" + esc((p.first || "") + " " + p.y) + "</a>" : esc((p.first || "") + " " + p.y)) + " <span class='no'>" + esc(p.j) + " · 피인용 " + p.c + "</span><br>" + esc(p.t) + "</div>";
+    let area = null;
+    h = (d.themes || []).length ? note("이 분야 최고 저널에 " + (d.y0 || 2015) + "년부터 실린 논문 " + (d.n || 0) + "편을 주제로 나눴습니다. 편수와 이끄는 곳은 센 값이고, 글은 제목과 초록만 읽은 정리입니다. 숫자 셋은 2015–18 → 2019–22 → 2023년부터의 편수입니다.") +
+      d.themes.map(t => { const per = t.per || [0, 0, 0]; let hd = ""; if (t.area !== area) { area = t.area; hd = "<div class='ch2' style='margin:22px 2px 0'>" + esc(AK[area] || area) + "</div>"; }
+        return hd + "<div class='fqc'><div class='fh'><b>" + esc(t.k) + "</b><span>" + t.n + "편 · " + per.join(" → ") + "</span><span class='tg" + (t.trend === "up" ? " hi" : "") + "'>" + esc(TR[t.trend] || "") + "</span><span>서재 " + (t.lib || 0) + "편</span></div>" +
+          "<div class='fn'>" + esc(t.name) + "</div><div class='fqq'>" + esc(t.asks || t.scope || "") + "</div>" + line("되풀이되는 과제", (t.open || []).map(esc).join(" · ")) +
+          "<details><summary>자세히</summary>" + line("옮겨 간 곳", esc(t.shift)) + line("방법", esc(t.methods)) + line("쓰임새", esc(t.uses)) +
+          line("이끄는 곳", (t.groups || []).map(g => esc(g.pi) + " (" + esc(g.inst) + ") " + g.n + "편").join(" · ")) + line("맞닿은 주제", (t.links || []).map(k => esc(k + " " + (nameOf[k] || ""))).join(" · ")) +
+          "<div class='fl'><b>많이 인용된 논문 · 최근 논문</b>" + (t.top || []).concat(t.new || []).map(P).join("") + "</div></details></div>"; }).join("")
+      : "<div class='empty'><b>아직 분야 지도가 없습니다</b>PC 의 「학습」 창 → 「분야 지도」 에서 만듭니다.</div>";
+  }
+  app.innerHTML = "<div class='doc'>" + seg + h + "</div>"; bindSeg(); restorePos(loc0[0]);
+}
 async function viewNotes(my) {
   shell({ root: "notes", title: "노트", fade: true, right: "<button class='nb' id='nnew' aria-label='새 물음'>" + IC.plus + "</button>" });
   $("nnew").onclick = newNoteSheet;
@@ -1404,18 +1443,25 @@ async function viewNotes(my) {
   const draw = () => {
     const row = n => "<a class='row' href='#/n/" + esc(enc(n.id)) + "'><div class='t ko cl2'>" + esc(n.title) + "</div>" + (n.last ? "<div class='g cl1'>" + esc(n.last) + "</div>" : "") + "<div class='m'>" +
       (n.pending ? "<span class='tg hi'>답하는 중</span>" : "") + "<span>" + (n.kind === "ask" ? "물음" : (NSTAT[n.status] || "주제")) + " · 답 " + (n.answers || 0) + " · " + ago(n.updated || n.t) + "</span></div></a>";
-    app.innerHTML = "<div class='lt'>노트</div>" + ((notesList || []).length ? "<div class='grp'>" + notesList.map(row).join("") + "</div>" :
+    const fd = notesField && (notesField.problems || notesField.themes) ? "<div class='grp'><a class='row' href='#/field'><div class='t ko cl1'>분야</div><div class='g cl1'>" + [notesField.problems ? "열린 문제 " + notesField.problems + "개" : "", notesField.themes ? "분야 지도 " + notesField.themes + "주제" : ""].filter(Boolean).join(" · ") + " — Claude 가 물음마다 같이 읽는 것</div></a></div>" : "";
+    app.innerHTML = "<div class='lt'>노트</div>" + fd + ((notesList || []).length ? "<div class='grp'>" + notesList.map(row).join("") + "</div>" :
       "<div class='empty'><b>아직 연구 노트가 없습니다</b>오른쪽 위의 + 를 눌러 궁금한 것을 물어보세요. Claude 가 서재 전체를 배경으로 답합니다.</div>");
   };
   if (notesList) draw(); else app.innerHTML = "<div class='lt'>노트</div>" + skeleton();
-  try { notesList = (await api("/api/notes")).items || []; } catch (e) { if (my === view && !notesList && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
+  try { const r0 = await api("/api/notes"); notesList = r0.items || []; notesField = r0.field || null; } catch (e) { if (my === view && !notesList && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
   if (my !== view) return;
   draw(); restorePos(loc0[0]);
 }
 /* 묻기 옵션 — 서재를 얼마나 읽고 답하나 · 모델 (2026-11-25, 사용자: '폰에서는 연구노트 옵션이 안 켜지네'). 이 휴대폰에 기억하고, 고른 적이 없으면 그 주제에서 마지막으로 물은 값(PC 에서 고른 것)을 따른다 */
-const NREAD = [["auto", "요약 읽기"], ["deep", "원문까지"], ["off", "안 읽음"]], NEFF = [["xhigh", "엑스트라"], ["high", "보통"], ["fast", "빠름"]];
-const NREAD_H = { auto: "물음마다 관련 논문을 골라 그 요약을 읽고 답합니다. 보통 1~3분.", deep: "고른 논문의 전문 번역까지 열어 보고 답합니다. 물음마다 5~15분 걸리고 토큰을 많이 씁니다. 바꿀 때까지 이대로 갑니다.", off: "논문을 따로 읽지 않고 서재 목록과 찾은 문장만으로 답합니다." };
-const NEFF_H = { xhigh: "Opus 엑스트라 — 2~4분", high: "Opus 보통 — 1~2분", fast: "Sonnet — 30초쯤" };
+const NREAD = [["auto", "요약 읽기"], ["deep", "원문까지"], ["off", "안 읽음"]], NEFF = [["fable", "Fable"], ["xhigh", "Opus"], ["high", "보통"], ["fast", "빠름"]];
+let NUSE = null;   /* 구독 사용량 — 마지막 Claude 호출이 알려 준 값 (/api/notes/get 이 같이 준다, 2026-11-26) */
+function useText(ws, long) {
+  ws = (ws || []).filter(w => w && w.used != null); if (!ws.length) return "";
+  const d = t => { const x = new Date(t * 1000); return (x.getMonth() + 1) + "/" + x.getDate() + " " + x.getHours() + "시"; };
+  return ws.map(w => (w.name || w.key) + " " + w.used + "% 씀" + (long && w.resets ? " (" + d(w.resets) + "에 풀림)" : "")).join(" · ");
+}
+const NREAD_H = { auto: "물음마다 관련 논문을 열여섯 편까지 골라 그 요약을 읽고 답합니다. 보통 2~5분.", deep: "고른 논문의 전문 번역까지 열어 보고 답합니다. 물음마다 5~15분 걸리고 토큰을 많이 씁니다. 바꿀 때까지 이대로 갑니다.", off: "논문을 따로 읽지 않고 서재 목록과 찾은 문장만으로 답합니다." };
+const NEFF_H = { fable: "Fable 엑스트라 — 가장 깊게 생각합니다. 3~8분. 한도가 따로 있어 다 쓰면 Opus 로 답합니다.", xhigh: "Opus 엑스트라 — 2~5분", high: "Opus 보통 — 1~3분", fast: "Sonnet — 30초~1분" };
 function noteOpt(nt) {
   const o = (nt && nt.opts) || {}, has = (l, v) => l.some(x => x[0] === v);
   let rd = lsGet("m_nread", ""), ef = lsGet("m_neff", "");
@@ -1427,13 +1473,14 @@ function noteOptSheet(nt, done) {
   const draw = () => {
     const c = noteOpt(nt);
     sheet.innerHTML = "<div class='grab'></div><h3>묻기 옵션</h3><div class='nol'>서재</div><div class='nseg' data-o='read'>" + segHtml(NREAD, c.read) + "</div><div class='noh'>" + NREAD_H[c.read] + "</div>" +
-      "<div class='nol'>모델</div><div class='nseg' data-o='eff'>" + segHtml(NEFF, c.effort) + "</div><div class='noh'>" + NEFF_H[c.effort] + "</div>";
+      "<div class='nol'>모델</div><div class='nseg' data-o='eff'>" + segHtml(NEFF, c.effort) + "</div><div class='noh'>" + NEFF_H[c.effort] + "</div>" +
+      (NUSE && useText(NUSE.windows) ? "<div class='nol'>구독 사용량</div><div class='noh' style='min-height:0'>" + esc(useText(NUSE.windows, true)) + "<br><span style='color:var(--text-3)'>마지막으로 Claude 를 부른 때의 값입니다.</span></div>" : "");
     sheet.querySelectorAll(".nseg").forEach(g => g.onclick = e => { const b = e.target.closest("[data-seg]"); if (!b) return; lsSet(g.dataset.o === "read" ? "m_nread" : "m_neff", b.dataset.seg); draw(); if (done) done(); });
   };
   openSheet(""); draw();
 }
 function newNoteSheet() {
-  openSheet("<h3>새 물음</h3><textarea id='nta' placeholder='무엇이 궁금한가요? 분야나 연구 주제에 관해 물어보세요'></textarea><div style='height:12px'></div><button class='pill pri big' id='nsend'>묻기</button><div style='font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.5'>Claude 가 서재의 논문·공부 장을 배경으로 답합니다. 보통 1~3분 걸립니다.</div>");
+  openSheet("<h3>새 물음</h3><textarea id='nta' placeholder='무엇이 궁금한가요? 분야나 연구 주제에 관해 물어보세요'></textarea><div style='height:12px'></div><button class='pill pri big' id='nsend'>묻기</button><div style='font-size:12.5px;color:var(--text-3);margin-top:10px;line-height:1.5'>Claude 가 서재의 논문·공부 장을 배경으로 답합니다. 보통 2~5분 걸립니다.</div>");
   $("nsend").onclick = async () => {
     const v = $("nta").value.trim(); if (v.length < 2) { $("nta").focus(); return; }
     $("nsend").disabled = true;
@@ -1462,7 +1509,7 @@ async function viewNote(id, my) {
       th.map((m, ti) => { if (m.role === "user") return bubble(m.text || "");
         if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
         Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
-        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 원문을 열어 봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + "</span></div>"; }).join("") +
+        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 원문을 열어 봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + (m.fallback ? " · " + esc(m.fallback) : "") + (m === lastC && useText(m.usage) ? " · 한도 " + esc(useText(m.usage)) : "") + "</span></div>"; }).join("") +
       (lastC && !nt.pending && !nt.error && (lastC.choices || []).length ? "<div class='pks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" + lastC.choices.map((c, i) => "<button data-pk='" + i + "'>" + esc(c) + "</button>").join("") + "</div>" : "") +   /* 답 끝의 선택지 — 마지막 답 아래에만 (2026-11-11) */
       (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : nt.stage === "lib" ? "서재를 찾는 중" : nt.stage === "read" ? "읽을 논문을 고르는 중" : nt.stage === "forest" ? "숲을 볼 재료를 모으는 중" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
@@ -1491,6 +1538,7 @@ async function viewNote(id, my) {
     if (my !== view) return;
     if (!r.note) { $("msgs").innerHTML = "<div class='empty'><b>이 노트를 찾지 못했습니다</b></div>"; clearInterval(pollT); return; }
     const was = nt && nt.pending, n0 = nt ? (nt.thread || []).length : -1;
+    if (r.usage) NUSE = r.usage;
     nt = r.note; now0 = r.now || Date.now() / 1000; got = Date.now(); draw(); optShow();
     if (n0 < 0 || (was && !nt.pending) || (nt.thread || []).length !== n0) toBottom();
     clearInterval(pollT); pollT = nt.pending ? setInterval(pull, 4000) : null;
@@ -1562,7 +1610,7 @@ async function viewForest(id, my) {
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel_job", id, kind: "forest" }); } catch (e) {} pull(); };
     const g = $("fgo"); if (g) g.onclick = async () => {
       g.disabled = true; req = ($("freq") || {}).value || ""; delete forestReq[id];
-      let r; try { r = await api("/api/notes", { op: "forest", id, effort: noteOpt(nt).effort === "fast" ? "fast" : "xhigh", req }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+      let r; try { r = await api("/api/notes", { op: "forest", id, effort: (e => (e === "fast" || e === "fable") ? e : "xhigh")(noteOpt(nt).effort), req }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
       if (r.error) { toast(r.error); g.disabled = false; return; }
       req = ""; await pull(); window.scrollTo(0, 0);
     };
@@ -2077,7 +2125,7 @@ function onRoute() {
   closePeek(); if (sheet.classList.contains("on")) closeSheet(); setBars(true); { const qb = $("quizbox"); if (qb) qb.remove(); }
   curHash = location.hash; const my = ++view;
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } });
-  const r = parts[0] || "", depth = r === "p" || r === "n" || r === "f" ? 1 : r === "s" ? (parts[2] != null && parts[2] !== "" ? 2 : 1) : 0;
+  const r = parts[0] || "", depth = r === "p" || r === "n" || r === "f" || r === "field" ? 1 : r === "s" ? (parts[2] != null && parts[2] !== "" ? 2 : 1) : 0;
   const key = depth ? r + "/" + parts[1] + (r === "f" ? "/" + (parts[2] || "") + "/" + (parts[3] || "") : "") + (depth === 2 ? "/x" : "") : "root";
   if (stack.length > 1 && stack[stack.length - 2] === key) stack.pop(); else if (stack[stack.length - 1] !== key) stack.push(key);
   app.classList.remove("push", "fade"); void app.offsetWidth;
@@ -2090,6 +2138,7 @@ function onRoute() {
   if (r === "n" && parts[1] && parts[2] === "forest") return done(viewForest(parts[1], my));
   if (r === "n" && parts[1]) return done(viewNote(parts[1], my));
   if (r === "f" && parts[1]) return done(viewFound(parts[1], parts[2], parts[3], my));
+  if (r === "field") return done(viewField(parts[1], my));
   if (r === "find") return done(viewFind(my));
   if (r === "lib") return done(viewLib(my));
   if (r === "study") return done(viewStudies(my));

@@ -540,6 +540,26 @@ def _lab_files():
     return {"연구실.md": "\n".join(L)}, {}
 
 
+def _field_files():
+    """분야의 열린 문제 장부(서재 학습 — corpus) · 분야 지도(fieldmap) — 만들어 두었을 때만 (2026-11-26)"""
+    out = {}
+    try:
+        import corpus
+        t = corpus.problems_md()
+        if t:
+            out["열린 문제 장부.md"] = t
+    except Exception:
+        pass
+    try:
+        import fieldmap
+        t = fieldmap.md()
+        if t:
+            out["분야 지도.md"] = t
+    except Exception:
+        pass
+    return out, {}
+
+
 def _hist_files():
     d = cfg["load_json"](os.path.join(cfg["HIST_DIR"], "_목록.json"), {}) or {}
     items = d.get("items") if isinstance(d, dict) else d
@@ -704,6 +724,7 @@ def _index_files(papers, metas, out):
          "- `번역\\` — 전문 번역(한국어). 파일 이름은 `논문\\` 과 같습니다.",
          "- `원고\\` — 쓰고 있는 논문. `<제목>\\원고.md` · `대화.md`",
          "- `연구실.md` — 우리 연구실의 장비와 할 수 있는 것 · `탐색 기록.md` — 지난 논문 탐색",
+         "- `열린 문제 장부.md` — 서재의 저자들이 스스로 적은 한계·남은 일을 묶은, 분야의 아직 안 풀린 문제들(있을 때만) · `분야 지도.md` — 이 분야 최고 저널의 최근 논문 전부를 주제로 나눈 것(있을 때만). 연구 주제를 이야기할 때 먼저 봅니다.",
          "- `%s\\` — 이 대화에서 정리한 것을 Athenaeum 으로 보내는 자리(맨 아래)" % INBOX,
          "",
          "## 찾는 차례",
@@ -977,7 +998,7 @@ def _sync(out, force, t0):
 
     # 4) 한 개짜리 · 차례 · 읽어보기 (언제나 다시 만들어 보고, 글이 다를 때만 쓴다)
     extra = {}
-    for label, fn in (("연구실", _lab_files), ("탐색 기록", _hist_files)):
+    for label, fn in (("연구실", _lab_files), ("탐색 기록", _hist_files), ("분야", _field_files)):
         try:
             extra.update(fn()[0])
         except Exception as e:
@@ -1043,7 +1064,8 @@ def _stamp(out):
         for r in rows:
             h.update(("%s|%d|%d\n" % r).encode("utf-8", "replace"))
     h.update(_sig(cfg["TAGS_PATH"], cfg["LABELS_PATH"], os.path.join(cfg["BASE"], "설정.json"), os.path.join(cfg["BASE"], "수집설정.json"),
-                  os.path.join(cfg["HIST_DIR"], "_목록.json"), os.path.join(out, STATE)).encode("utf-8"))
+                  os.path.join(cfg["HIST_DIR"], "_목록.json"), os.path.join(out, STATE),
+                  os.path.join(cfg["GEN_DIR"], "주석", "_열린문제.json"), os.path.join(os.path.dirname(cfg["HIST_DIR"]), "분야지도", "지도.json")).encode("utf-8"))   # 열린 문제 장부 · 분야 지도 (2026-11-26)
     return h.hexdigest()
 
 

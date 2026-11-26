@@ -61,6 +61,16 @@ def in_job(pid):
         return None
 
 
+def clean_env():
+    """서버에 물려줄 환경 — 이 도구를 Claude Code·Claude 데스크톱 앱 안에서 돌리면 그 세션의 변수(CLAUDECODE · CLAUDE_CODE_* · MCP_* …)가 서버로, 서버가 부르는 claude 로 내려간다.
+    그러면 claude 가 데스크톱 앱의 일부처럼 굴어 계정의 커넥터(도구 설명 10만 토큰)를 붙였다(2026-11-26). 사용자가 일부러 둔 CLAUDE_CONFIG_DIR · CLAUDE_CODE_GIT_BASH_PATH 는 둔다."""
+    env = dict(os.environ)
+    if env.get("CLAUDECODE") or env.get("CLAUDE_CODE_ENTRYPOINT") or env.get("CLAUDE_CODE_SESSION_ID"):
+        for k in [k for k in env if k.upper().startswith(("CLAUDE", "MCP_")) and k.upper() not in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_GIT_BASH_PATH")]:
+            env.pop(k, None)
+    return env
+
+
 def start_server():
     """서버를 띄우고 어떻게 띄웠는지 돌려준다: 'shell'(탐색기를 거쳐) | 'direct'(이 프로세스가 직접)."""
     vbs = os.path.join(PS, "Athenaeum_시작.vbs")
@@ -68,7 +78,7 @@ def start_server():
     if PORT == 8770 and "--direct" not in sys.argv and os.path.isfile(vbs) and os.path.isfile(explorer):
         try:
             # explorer.exe <파일> 은 이미 떠 있는 셸에게 그 파일을 열게 하고 바로 끝난다(종료 코드는 늘 1 — 오류가 아니다)
-            subprocess.Popen([explorer, vbs], close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen([explorer, vbs], close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=clean_env())
             return "shell"
         except Exception:
             pass
@@ -77,7 +87,7 @@ def start_server():
 
 
 def start_direct():
-    subprocess.Popen([pythonw(), os.path.join(PS, "server.py")], cwd=PS, creationflags=DETACHED, close_fds=True,
+    subprocess.Popen([pythonw(), os.path.join(PS, "server.py")], cwd=PS, creationflags=DETACHED, close_fds=True, env=clean_env(),
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -113,9 +123,11 @@ def running_jobs():
 
 
 def claude_procs():
-    """서버가 띄운 claude 프로세스 [(pid, 시작 시각)] — 부모가 서버이거나 명령줄에 -p 가 있는 것. 데스크톱 앱의 claude(stream-json)는 뺀다."""
+    """서버가 띄운 claude 프로세스 [(pid, 시작 시각)] — 부모가 서버이거나 명령줄에 -p 가 있는 것. 데스크톱 앱의 claude 는 뺀다.
+    데스크톱 앱의 것은 '--input-format stream-json' 으로 돌고 -p 가 없다. 전에는 'stream-json' 이 든 것을 통째로 뺐는데, 2026-11-26 부터 서버도
+    '-p … --output-format stream-json' 으로 부른다(구독 사용량을 읽으려고) — 그대로 두면 서버의 호출이 하나도 안 보여 도는 물음을 끊게 된다."""
     parents = server_pids()
-    cmd = ('Get-CimInstance Win32_Process | Where-Object { $_.Name -like "claude*" -and $_.CommandLine -notlike "*stream-json*" } '
+    cmd = ('Get-CimInstance Win32_Process | Where-Object { $_.Name -like "claude*" -and $_.CommandLine -notlike "*--input-format*" -and $_.CommandLine -notlike "*--type=*" } '
            '| ForEach-Object { $_.ProcessId.ToString() + "|" + $_.ParentProcessId + "|" + $_.CreationDate.ToString("HH:mm:ss") + "|" + $_.CommandLine }')
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, creationflags=NO_WINDOW, timeout=60)
