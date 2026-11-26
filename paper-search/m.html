@@ -89,6 +89,14 @@
   /* 읽을 논문(★, 2026-11-08): 줄의 오른쪽 위 단추(44px) · 논문 머리의 알약 · 올라오는 창의 주제 줄 · 서재의 주제 거르기 줄 */
   .tg.st { color: var(--gold); }
   .row.pr .t { padding-right: 36px; }
+  /* 노트 목록의 편집 — 줄을 골라 지운다 (2026-11-26) */
+  .row.npick { padding-left: 52px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+  .row.npick::before { content: ""; position: absolute; left: 16px; top: 50%; width: 22px; height: 22px; margin-top: -11px; box-sizing: border-box; border: 1.5px solid var(--line-2); border-radius: 50%; }
+  .row.npick.pkd::before { background: var(--accent); border-color: var(--accent); }
+  .row.npick.pkd::after { content: ""; position: absolute; left: 24px; top: 50%; width: 5px; height: 10px; margin-top: -7px; border: solid var(--surface); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .nedbar { position: fixed; z-index: 21; left: 16px; right: 16px; bottom: calc(var(--tab-h) + var(--sab) + 10px); }
+  .nedbar button { width: 100%; height: 50px; border: 0; border-radius: 14px; background: var(--red); color: var(--surface); font-size: 16px; font-weight: 600; font-family: inherit; } .nedbar button:disabled { opacity: .35; }
+  .nb.tx { width: auto; padding: 0 10px; font-size: 15px; font-weight: 500; white-space: nowrap; }
   .starb { position: absolute; right: 4px; top: 5px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--text-3); cursor: pointer; }
   .starb svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
   .starb.on { color: var(--gold); } .starb.on svg { fill: currentColor; }
@@ -1441,18 +1449,54 @@ async function viewField(which, my) {
   }
   app.innerHTML = "<div class='doc'>" + seg + h + "</div>"; bindSeg(); restorePos(loc0[0]);
 }
+async function noteDelete(ids) {   /* 서버는 파일을 없애지 않고 PC 의 연구노트\_지움 으로 옮긴다 */
+  let r; try { r = await api("/api/notes", { op: "delete", ids }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+  if (r.error) { toast(r.error); return false; }
+  if (!r.n) { toast("지우지 못했습니다 — PC 의 Athenaeum 을 다시 켠 뒤 해 보세요"); return false; }
+  notesList = (notesList || []).filter(n => !ids.includes(n.id));
+  ids.forEach(id => { try { localStorage.removeItem("m_draft_#/n/" + enc(id)); } catch (e) {} });
+  return true;
+}
+function noteDelSheet(ids, title, done) {
+  openSheet("<h3>" + (ids.length === 1 ? "이 노트를 지울까요?" : "노트 " + ids.length + "개를 지울까요?") + "</h3><div class='noh' style='min-height:0;margin-bottom:10px'>" + (title ? "「" + esc(title.slice(0, 70)) + "」<br>" : "") +
+    "목록에서 사라집니다. 파일은 연구실 PC 의 연구노트 폴더 안 _지움 폴더로 옮겨 두므로, 잘못 지웠으면 거기서 되옮기면 돌아옵니다.</div><button class='mi red' id='ndgo'>지우기</button><button class='mi' id='ndno'>취소</button>");
+  $("ndno").onclick = closeSheet;
+  $("ndgo").onclick = async () => { $("ndgo").disabled = true; const ok = await noteDelete(ids); closeSheet(); if (ok) { toast(ids.length === 1 ? "노트를 지웠습니다" : "노트 " + ids.length + "개를 지웠습니다"); if (done) done(); } };
+}
 async function viewNotes(my) {
-  shell({ root: "notes", title: "노트", fade: true, right: "<button class='nb' id='nnew' aria-label='새 물음'>" + IC.plus + "</button>" });
-  $("nnew").onclick = newNoteSheet;
+  let ed = null;   /* 편집 — 지울 노트를 고르는 중이면 고른 id 의 Set */
+  shell({ root: "notes", title: "노트", fade: true });
   const loc0 = savedY(curHash);
+  const bar = () => {
+    const nl = nav.querySelector(".nl"), nr = nav.querySelector(".nr"), all = (notesList || []).length;
+    if (ed) {
+      nl.innerHTML = "<button class='nb tx' id='nall'>" + (all && ed.size === all ? "선택 해제" : "모두 선택") + "</button>"; nr.innerHTML = "<button class='nb tx' id='nedone' style='font-weight:600'>완료</button>";
+      $("nall").onclick = () => { ed = ed.size === all ? new Set() : new Set(notesList.map(n => n.id)); draw(); };
+      $("nedone").onclick = () => { ed = null; draw(); };
+    } else {
+      nl.innerHTML = all ? "<button class='nb tx' id='nedit'>편집</button>" : ""; nr.innerHTML = "<button class='nb' id='nnew' aria-label='새 물음'>" + IC.plus + "</button>";
+      if ($("nedit")) $("nedit").onclick = () => { ed = new Set(); draw(); };
+      $("nnew").onclick = newNoteSheet;
+    }
+  };
   const draw = () => {
-    const row = n => "<a class='row' href='#/n/" + esc(enc(n.id)) + "'><div class='t ko cl2'>" + esc(n.title) + "</div>" + (n.last ? "<div class='g cl1'>" + esc(n.last) + "</div>" : "") + "<div class='m'>" +
-      (n.pending ? "<span class='tg hi'>답하는 중</span>" : "") + "<span>" + (n.kind === "ask" ? "물음" : (NSTAT[n.status] || "주제")) + " · 답 " + (n.answers || 0) + " · " + ago(n.updated || n.t) + "</span></div></a>";
+    if (ed) ed = new Set([...ed].filter(id => (notesList || []).some(n => n.id === id)));
+    if (ed && !(notesList || []).length) ed = null;
+    bar();
+    const body = n => "<div class='t ko cl2'>" + esc(n.title) + "</div>" + (n.last ? "<div class='g cl1'>" + esc(n.last) + "</div>" : "") + "<div class='m'>" +
+      (n.pending ? "<span class='tg hi'>답하는 중</span>" : "") + "<span>" + (n.kind === "ask" ? "물음" : (NSTAT[n.status] || "주제")) + " · 답 " + (n.answers || 0) + " · " + ago(n.updated || n.t) + "</span></div>";
+    const row = n => ed ? "<div class='row npick" + (ed.has(n.id) ? " pkd" : "") + "' data-nid='" + esc(n.id) + "'>" + body(n) + "</div>" : "<a class='row' href='#/n/" + esc(enc(n.id)) + "'>" + body(n) + "</a>";
+    if (ed) {
+      app.innerHTML = "<div class='lt'>노트</div><div class='grp'>" + notesList.map(row).join("") + "</div><div style='height:70px'></div><div class='nedbar'><button id='nedel'" + (ed.size ? "" : " disabled") + ">" + (ed.size ? ed.size + "개 지우기" : "지울 노트를 고르세요") + "</button></div>";
+      app.querySelectorAll(".row.npick").forEach(r => r.onclick = () => { const id = r.dataset.nid; if (ed.has(id)) ed.delete(id); else ed.add(id); const y = window.scrollY; draw(); window.scrollTo(0, y); });
+      $("nedel").onclick = () => { const ids = [...ed]; noteDelSheet(ids, ids.length === 1 ? (notesList.find(n => n.id === ids[0]) || {}).title : "", () => { ed = null; if (my === view) draw(); }); };
+      return;
+    }
     const fd = notesField && (notesField.problems || notesField.themes) ? "<div class='grp'><a class='row' href='#/field'><div class='t ko cl1'>분야</div><div class='g cl1'>" + [notesField.problems ? "열린 문제 " + notesField.problems + "개" : "", notesField.themes ? "분야 지도 " + notesField.themes + "주제" : ""].filter(Boolean).join(" · ") + " — Claude 가 물음마다 같이 읽는 것</div></a></div>" : "";
     app.innerHTML = "<div class='lt'>노트</div>" + fd + ((notesList || []).length ? "<div class='grp'>" + notesList.map(row).join("") + "</div>" :
       "<div class='empty'><b>아직 연구 노트가 없습니다</b>오른쪽 위의 + 를 눌러 궁금한 것을 물어보세요. Claude 가 서재 전체를 배경으로 답합니다.</div>");
   };
-  if (notesList) draw(); else app.innerHTML = "<div class='lt'>노트</div>" + skeleton();
+  if (notesList) draw(); else { bar(); app.innerHTML = "<div class='lt'>노트</div>" + skeleton(); }
   try { const r0 = await api("/api/notes"); notesList = r0.items || []; notesField = r0.field || null; } catch (e) { if (my === view && !notesList && String(e && e.message) !== "login") app.innerHTML = failHtml(); return; }
   if (my !== view) return;
   draw(); restorePos(loc0[0]);
@@ -1479,8 +1523,10 @@ function noteOptSheet(nt, done) {
     const c = noteOpt(nt);
     sheet.innerHTML = "<div class='grab'></div><h3>묻기 옵션</h3><div class='nol'>서재</div><div class='nseg' data-o='read'>" + segHtml(NREAD, c.read) + "</div><div class='noh'>" + NREAD_H[c.read] + "</div>" +
       "<div class='nol'>모델</div><div class='nseg' data-o='eff'>" + segHtml(NEFF, c.effort) + "</div><div class='noh'>" + NEFF_H[c.effort] + "</div>" +
-      (NUSE && useText(NUSE.windows) ? "<div class='nol'>구독 사용량</div><div class='noh' style='min-height:0'>" + esc(useText(NUSE.windows, true)) + "<br><span style='color:var(--text-3)'>마지막으로 Claude 를 부른 때의 값입니다.</span></div>" : "");
+      (NUSE && useText(NUSE.windows) ? "<div class='nol'>구독 사용량</div><div class='noh' style='min-height:0'>" + esc(useText(NUSE.windows, true)) + "<br><span style='color:var(--text-3)'>마지막으로 Claude 를 부른 때의 값입니다.</span></div>" : "") +
+      (nt && nt.id ? "<div style='height:14px'></div><button class='mi red' id='ndel1'>이 노트 지우기</button>" : "");
     sheet.querySelectorAll(".nseg").forEach(g => g.onclick = e => { const b = e.target.closest("[data-seg]"); if (!b) return; lsSet(g.dataset.o === "read" ? "m_nread" : "m_neff", b.dataset.seg); draw(); if (done) done(); });
+    const d1 = $("ndel1"); if (d1) d1.onclick = () => noteDelSheet([nt.id], nt.title || "", () => location.replace("#/notes"));
   };
   openSheet(""); draw();
 }

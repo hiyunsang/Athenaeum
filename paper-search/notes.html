@@ -63,6 +63,13 @@
   .oi.on { background: var(--sel-bg); border-left-color: var(--accent); }
   .oi .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .oi .m { color: var(--text-3); font-size: 11px; margin-top: 2px; } .oi .m .run { color: var(--accent); }
+  /* 목록에서 지우기 — 줄마다(올리면 보임) · 여러 개 고르기 (2026-11-26) */
+  .oi { position: relative; } #index .oi .t { padding-right: 56px; }
+  .oidel { position: absolute; right: 4px; top: 6px; opacity: 0; } .oi:hover .oidel, .oidel:focus { opacity: 1; }
+  @media (hover: none) { .oidel { opacity: .6; } }
+  #index .oi.tidy { padding-left: 34px; } .oi .ck { position: absolute; left: 11px; top: 12px; width: 14px; height: 14px; box-sizing: border-box; border: 1.5px solid var(--line-2); border-radius: 3px; }
+  .oi.pk .ck { background: var(--accent); border-color: var(--accent); }
+  .tidybar { display: flex; justify-content: flex-end; align-items: center; gap: var(--s2); padding-top: var(--s2); min-height: 26px; } .tidybar .hint { margin-right: auto; }
   .empty { padding: var(--s4) var(--s3); color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
   /* 가운데: 토의 */
   #thwrap { flex: 1; min-height: 0; overflow-y: auto; position: relative; }   /* 논지 popover 의 기준 */
@@ -340,8 +347,10 @@ function renderList() {
       "<p>정해진 것은 머리줄의 「카드 · 계획」 에서 주제 카드로 정리하고, 거기서 논문 탐색·공부로 이어집니다. 연구 주제가 아니라 분야를 배우려는 대화로 쓰려면 연 뒤 맨 위 제목 옆의 고르기에서 「물음」 으로 바꿉니다.</p><p class='hint'>첫 물음은 배경을 읽느라 1~2분 걸리고 토큰을 많이 읽습니다(그 뒤 한 시간은 캐시).</p></div>";
     return;
   }
-  let h = "";
-  const row = x => "<a class='oi" + (cur && x.id === cur.id ? " on" : "") + "' data-id='" + esc(x.id) + "'><div class='t'>" + esc(x.title) + "</div><div class='m'>" + fmtDate(x.updated || x.t) +
+  if (tidy) tidy = new Set([...tidy].filter(id => items.some(x => x.id === id)));
+  let h = tidy ? "<div class='tidybar'><span class='hint'>지울 주제를 고릅니다</span><button class='act' id='tdAll'>" + (tidy.size === items.length ? "모두 풀기" : "모두 고르기") + "</button><button class='act warn' id='tdDel'" + (tidy.size ? "" : " disabled") + ">고른 " + tidy.size + "개 지우기</button><button class='act' id='tdEnd'>끝</button></div>"
+    : "<div class='tidybar'><button class='act' id='tdOn' title='주제를 여러 개 골라 한꺼번에 지웁니다'>여러 개 지우기</button></div>";
+  const row = x => "<a class='oi" + (cur && x.id === cur.id ? " on" : "") + (tidy ? " tidy" + (tidy.has(x.id) ? " pk" : "") : "") + "' data-id='" + esc(x.id) + "'>" + (tidy ? "<span class='ck'></span>" : "<button class='act oidel' data-del='" + esc(x.id) + "' title='이 주제를 지웁니다'>지우기</button>") + "<div class='t'>" + esc(x.title) + "</div><div class='m'>" + fmtDate(x.updated || x.t) +
       (x.pending ? " · <span class='run'>Claude 생각 중</span>" : x.answers ? " · 답 " + x.answers : " · 아직 묻지 않음") + (x.from === "paper" ? " · 논문에서" : "") + (x.card ? " · 카드" : "") + (x.forest ? " · 큰 물음" + (x.forest_pick ? " " + x.forest_pick : "") : "") + (x.trees ? " · 작은 물음" + (x.trees_pick ? " " + x.trees_pick : "") : "") + (x.framing ? " · 틀" + (x.framing_pick ? " " + x.framing_pick : "") : "") + (x.plan ? " · 설계서" : "") + (x.intro ? " · 서론" + (x.intro_drafts ? "(" + x.intro_drafts + "문단 씀)" : "") : "") + (x.open ? " · 반론 " + x.open : "") + (x.ms ? " · 원고" : "") + (x.busy ? " · <span class='run'>만드는 중</span>" : "") + "</div></a>";
   const asks = items.filter(x => x.kind === "ask");   /* 물음 — 분야를 배우려는 대화는 상태와 무관하게 한 묶음 (2026-10-27) */
   if (asks.length) h += "<div class='sideh'>물음 <span class='n'>" + asks.length + "</span></div>" + asks.map(row).join("");
@@ -351,7 +360,30 @@ function renderList() {
     h += xs.map(row).join("");
   });
   el.innerHTML = h;
-  el.querySelectorAll(".oi").forEach(a => a.onclick = () => open(a.dataset.id));
+  el.querySelectorAll(".oi").forEach(a => a.onclick = e => {
+    const d = e.target.closest("[data-del]");
+    if (d) { e.preventDefault(); e.stopPropagation(); delNotes([d.dataset.del]); return; }
+    if (tidy) { const id = a.dataset.id; if (tidy.has(id)) tidy.delete(id); else tidy.add(id); renderList(); return; }
+    open(a.dataset.id);
+  });
+  const on = (id, f) => { const b = $(id); if (b) b.onclick = f; };
+  on("tdOn", () => { tidy = new Set(); renderList(); });
+  on("tdEnd", () => { tidy = null; renderList(); });
+  on("tdAll", () => { tidy = tidy.size === items.length ? new Set() : new Set(items.map(x => x.id)); renderList(); });
+  on("tdDel", () => delNotes([...tidy]));
+}
+let tidy = null;   /* 여러 개 지우기 — 고른 주제의 id (null 이면 보통 목록) */
+async function delNotes(ids) {   /* 서버는 파일을 없애지 않고 연구노트\_지움 으로 옮긴다 */
+  if (!ids.length) return;
+  const one = ids.length === 1 ? (items.find(x => x.id === ids[0]) || {}).title || "" : "";
+  if (!confirm((ids.length === 1 ? "「" + one.slice(0, 60) + "」 주제와 토의를 지울까요?" : "주제 " + ids.length + "개와 그 토의를 지울까요?") +
+    "\n\n목록에서 사라집니다. 파일은 연구노트 폴더 안의 _지움 폴더로 옮겨 두므로, 잘못 지웠으면 거기서 되옮기면 돌아옵니다.")) return;
+  let r; try { r = await api("/api/notes", { op: "delete", ids }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+  if (r.error) { alert(r.error); return; }
+  const gone = cur && ids.includes(cur.id);
+  if (gone) { cur = null; curId = ""; lsSet("notes_last", ""); try { history.replaceState(null, "", "/notes"); } catch (e) {} }
+  tidy = null; await loadList();
+  if (gone) { renderMain(); renderCard(); }
 }
 
 // ---------- 주제 열기 ----------
@@ -405,7 +437,7 @@ function renderMain() {
   $("thwrap").innerHTML = h;
   const ti = $("title"); fit(ti, 28); ti.oninput = () => fit(ti, 28); ti.onchange = () => saveFields({ title: ti.value.replace(/\s+/g, " ").trim() });
   ti.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ti.blur(); } });
-  $("delBtn").onclick = async () => { if (!confirm("이 주제와 토의를 지울까요?")) return; await api("/api/notes", { op: "delete", id: cur.id }); cur = null; curId = ""; lsSet("notes_last", ""); await loadList(); renderMain(); renderCard(); };
+  $("delBtn").onclick = () => delNotes([cur.id]);
   $("mdBtn").onclick = async () => { const r = await api("/api/notes", { op: "md", id: cur.id }); if (r.error) { alert(r.error); return; } try { await navigator.clipboard.writeText(r.md); $("mdBtn").textContent = "복사됨"; setTimeout(() => $("mdBtn").textContent = "md 복사", 1500); } catch (e) { prompt("복사:", r.md); } };
   renderThread(); renderAsk();
 }

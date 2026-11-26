@@ -201,6 +201,42 @@ def list_notes():
     return out
 
 
+TRASH = "_지움"
+
+
+def delete_notes(ids):
+    """주제를 지운다 — 여러 개도 한 번에(2026-11-26, 사용자: '그전까지 해놓은 연구노트 다 지우고 새로 시작하려는데, 이거 삭제키도 없다?').
+    파일을 없애지 않고 연구노트\\_지움\\ 으로 옮긴다: 목록·배경·Claude 채팅 폴더에서는 사라지고(모두 '_' 로 시작하지 않는 .json 파일만 본다),
+    잘못 지웠으면 그 파일을 연구노트 폴더로 되옮기면 돌아온다. 답이나 배경 작업을 기다리는 주제는 그 호출부터 끊는다. → {ok, n, trash}"""
+    trash = os.path.join(cfg["DIR"], TRASH)
+    n = 0
+    for nid in ids or []:
+        nid = os.path.basename(str(nid or ""))
+        fp = _path(nid)
+        if not nid or nid.startswith("_") or not os.path.isfile(fp) or os.path.dirname(os.path.abspath(fp)) != os.path.abspath(cfg["DIR"]):
+            continue
+        try:
+            nt = _load(nid) or {}
+            if nt.get("pending"):
+                ask_cancel(nid)
+            for kind in _JOBKINDS:
+                if nt.get(kind + "_pending"):
+                    job_cancel(nid, kind)
+        except Exception:
+            pass
+        with _LOCK:
+            try:
+                os.makedirs(trash, exist_ok=True)
+                dst = os.path.join(trash, nid + ".json")
+                if os.path.exists(dst):
+                    dst = os.path.join(trash, "%s_%s.json" % (nid, time.strftime("%Y%m%d_%H%M%S")))
+                os.replace(fp, dst)
+                n += 1
+            except OSError:
+                pass
+    return {"ok": True, "n": n, "trash": TRASH}
+
+
 def new_note(body):
     title = re.sub(r"\s+", " ", str(body.get("title") or "")).strip()[:120]
     seed_text = str(body.get("seed") or "").strip()[:4000]
@@ -4935,11 +4971,8 @@ def handle_post(h, body):
             return h._send(200, memory_del(str(body.get("mid") or "")))
         if op == "save":
             return h._send(200, save_fields(nid, body))
-        if op == "delete":
-            fp = _path(nid)
-            if os.path.isfile(fp) and os.path.dirname(os.path.abspath(fp)) == os.path.abspath(cfg["DIR"]):
-                os.remove(fp)
-            return h._send(200, {"ok": True})
+        if op == "delete":                        # ids 가 오면 여러 개 — 파일은 _지움 폴더로 옮긴다
+            return h._send(200, delete_notes(body.get("ids") if isinstance(body.get("ids"), list) else [nid]))
         if op == "md":
             nt = _load(nid)
             if not nt:
