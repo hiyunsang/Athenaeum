@@ -1614,7 +1614,7 @@ def forest_material(topic=None, journals=None, cited=(), ko=None, k=40, cap=1600
             break
         L.append(b)
         size += len(b)
-    W = []
+    W, up = [], []
     if wide or wide_ko:
         up = [r for r in _rank_annotated(wide, journals, (), wide_ko, exclude=[stem for _t, _s, stem, _a in near]) if r[1] >= 2.0][:k2]
         if up:
@@ -1642,12 +1642,30 @@ def forest_material(topic=None, journals=None, cited=(), ko=None, k=40, cap=1600
                 break
             F.append(b)
             size += len(b)
+    # 둘레·위층 논문이 깔고 있던 틀 — 틀 카드가 있는 논문만 (2026-11-27). 저자가 적지 않은 틀(◇)이 여러 그룹에 되풀이되면 흔들 전제의 후보다
+    T = []
+    for tier, sc, stem, ann in near + up:
+        r = frame_of(stem)
+        if not r:
+            continue
+        fs = [f for f in r.get("frames") or [] if f.get("stated") in ("no", "half")][:3]
+        if not fs:
+            continue
+        y, j, au = _meta(stem)
+        b = "— %s %s (%s): %s" % (au, y, j, " / ".join("%s[%s] %s" % ("◇ " if f.get("stated") == "no" else "△ ", FRAME_KO.get(f.get("kind"), ""), f.get("t")) for f in fs))
+        if size + len(b) > cap + 5000:
+            break
+        T.append(b)
+        size += len(b)
+    if T:
+        T.insert(0, "[둘레 논문이 깔고 있던 틀 — 서재 학습의 틀 카드가 있는 %d편(카드는 일부 논문에만 있다). ◇ = 저자가 한계로 적지 않은 틀, △ = 비슷한 말만 한 틀. "
+                    "서로 다른 그룹의 논문 여럿이 같은 틀을 깔고 있으면 그 틀이 흔들 전제의 후보다]" % len(T))
     st = moves_status()
     head = ""
     if st["n"]:
         head = "[서재 %d편의 연구 갈래 — 숲 %d · 나무 %d; %s]\n" % (st["n"], st["forest"], st["tree"], " · ".join("%s %d" % (MOVE_KO[m], st["by"].get(m, 0)) for m in MOVES if st["by"].get(m)))
-    text = head + "\n".join(L) + "\n" + ("\n".join(W) + "\n" if W else "") + ("\n".join(F) + "\n" if F else "")
-    return text, {"near": len(L) - 1, "wide": max(0, len(W) - 1), "forest": len(forest), "forest_shown": min(len(forest), 14), "tagged": st["n"], "chars": len(text)}
+    text = head + "\n".join(L) + "\n" + ("\n".join(W) + "\n" if W else "") + ("\n".join(T) + "\n" if T else "") + ("\n".join(F) + "\n" if F else "")
+    return text, {"near": len(L) - 1, "wide": max(0, len(W) - 1), "forest": len(forest), "forest_shown": min(len(forest), 14), "tagged": st["n"], "chars": len(text), "frames": max(0, len(T) - 1)}
 
 
 # ---------- 배경 학습 ----------

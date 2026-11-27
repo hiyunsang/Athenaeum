@@ -139,6 +139,11 @@
   .fqc table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin-top: 4px; } .fqc td { border-top: 1px solid var(--line); padding: 5px 6px 5px 0; vertical-align: top; } .fqc td:first-child { color: var(--text-2); width: 44%; }
   .fqc .fa { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .fqm { font-size: 13px; line-height: 1.6; color: var(--text-3); margin: 6px 0; } .fqm b { color: var(--text-2); }
+  .fmseg { margin: 10px 0 4px; } .fmseg .seg { display: flex; } .fmseg .seg button { flex: 1; min-width: 0; height: 38px; }      /* 숲 화면의 두 출발점 (2026-11-27) */
+  .ftrow { display: block; width: 100%; text-align: left; border: 0; background: var(--card); border-radius: 14px; padding: 12px 14px; margin: 8px 0; color: var(--text); font-family: inherit; }
+  .ftrow b { font-size: 15px; } .ftrow .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13.5px; color: var(--text-2); margin-top: 3px; line-height: 1.45; }
+  .ftrow .g { font-size: 12.5px; color: var(--text-3); margin-top: 4px; } .ftrow .g.ok { color: var(--green); }
+  .ftq { width: 100%; box-sizing: border-box; height: 44px; border: 0; border-radius: 12px; background: var(--fill); padding: 0 14px; font-size: 16px; color: var(--text); font-family: inherit; margin: 6px 0; }
   .fqreq { width: 100%; box-sizing: border-box; min-height: 70px; border: 0; border-radius: 14px; background: var(--fill); padding: 11px 14px; font-size: 16px; line-height: 1.5; color: var(--text); font-family: inherit; resize: none; margin: 10px 0; }
   .nseg .seg { display: flex; } .nseg .seg button { flex: 1; min-width: 0; height: 38px; padding: 0 6px; }      /* 연구 노트의 묻기 옵션 (2026-11-25) */
   .nol { font-size: 13px; font-weight: 700; margin: 16px 0 8px; } .noh { font-size: 13px; line-height: 1.5; color: var(--text-2); margin-top: 8px; min-height: 39px; }
@@ -1560,9 +1565,9 @@ async function viewNote(id, my) {
       th.map((m, ti) => { if (m.role === "user") return bubble(m.text || "");
         if (m.role === "chat") return "<div class='mc doc' style='border-left:3px solid var(--amber);padding-left:12px'>" + md(m.text || "", { math: true, minH: 3 }) + "</div><div class='mm'><span>Claude 채팅에서 가져온 글</span></div>";
         Object.assign(ancs, m.anchors || {}); Object.assign(lrefs, m.lib_refs || {});
-        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 원문을 열어 봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.frame && m.frame.start ? " · " + (m.frame.start === "own" ? "우리 연구" : esc(m.frame.start)) + "의 틀에서" : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + (m.fallback ? " · " + esc(m.fallback) : "") + (m === lastC && useText(m.usage) ? " · 한도 " + esc(useText(m.usage)) : "") + "</span></div>"; }).join("") +
+        return "<div data-ti='" + ti + "'>" + markCites(answer(m.text || "", { anchors: m.anchors || {}, lrefs: m.lib_refs || {}, wrefs: m.world_refs || {} }), m.cites) + ((m.cite_issues || []).length ? "<div class='cis'>서재의 요약과 어긋난 말" + m.cite_issues.map(x => "<div><b>" + esc(x.key) + "</b> — 답: " + esc(x.said) + " / 요약: " + esc(x.is) + "</div>").join("") + "</div>" : "") + "</div><div class='mm'><span>" + esc(m.model || "") + (m.sec ? " · " + fmtDur(Math.round(m.sec)) : "") + (m.lib ? " · 원문을 열어 봄" : "") + (m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개" : "") + ((m.read || []).length ? " · 논문 " + m.read.length + "편 읽음" : "") + (m.frame && m.frame.start ? " · " + (m.frame.start === "own" ? "우리 연구" : esc(m.frame.start)) + "의 틀에서" + (m.frame.built ? "(틀 카드를 새로 만듦)" : "") : "") + (m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편" : "") + (m.fallback ? " · " + esc(m.fallback) : "") + (m === lastC && useText(m.usage) ? " · 한도 " + esc(useText(m.usage)) : "") + "</span></div>"; }).join("") +
       (lastC && !nt.pending && !nt.error && (lastC.choices || []).length ? "<div class='pks'><div class='pkh'>이어갈 방향 — 누르면 그 말로 바로 묻습니다</div>" + lastC.choices.map((c, i) => "<button data-pk='" + i + "'>" + esc(c) + "</button>").join("") + "</div>" : "") +   /* 답 끝의 선택지 — 마지막 답 아래에만 (2026-11-11) */
-      (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : nt.stage === "lib" ? "서재를 찾는 중" : nt.stage === "read" ? "읽을 논문을 고르는 중" : nt.stage === "forest" ? "숲을 볼 재료를 모으는 중" : nt.stage === "check" ? "없다고 한 것을 서재에서 다시 확인하는 중" : nt.stage === "frame" ? "출발 논문을 인용한 서재 논문을 찾는 중" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
+      (nt.pending ? waitHtml(nt.stage === "world" ? "세상의 문헌을 찾는 중" : nt.stage === "lib" ? "서재를 찾는 중" : nt.stage === "read" ? "읽을 논문을 고르는 중" : nt.stage === "forest" ? "숲을 볼 재료를 모으는 중" : nt.stage === "check" ? "없다고 한 것을 서재에서 다시 확인하는 중" : nt.stage === "frame" ? "출발 논문을 인용한 서재 논문을 찾는 중" : nt.stage === "framecard" ? "출발 논문의 틀 카드를 만드는 중 (1~2분)" : "Claude 가 답하는 중", got - Math.max(0, now0 - nt.pending) * 1000, true) : "") + (nt.error ? "<div class='merr'>" + esc(nt.error) + "</div>" : "") +
       (!th.length && !nt.pending ? "<div class='empty' style='padding:36px 10px'>이 주제에 관해 물어보세요.</div>" : "");
     $("msgs").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => { const c = ((lastC || {}).choices || [])[+b.dataset.pk]; if (!c) return; $("msgs").querySelectorAll("[data-pk]").forEach(x => x.disabled = true); ask(c, true); });
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel", id }); } catch (e) {} pull(); };
@@ -1613,7 +1618,7 @@ async function viewNote(id, my) {
 async function viewForest(id, my) {
   shell({ parent: "#/n/" + enc(id), title: "큰 물음", fade: true });
   app.innerHTML = "<div class='doc' id='fbox'>" + skeleton() + "</div>";
-  let nt = null, now0 = Date.now() / 1000, got = Date.now(), req = forestReq[id] || "";
+  let nt = null, now0 = Date.now() / 1000, got = Date.now(), req = forestReq[id] || "", fmode = lsGet("m_fmode", "forest") === "frame" ? "frame" : "forest", fcand = null, fq = "", fbusy = false;
   const cite = c => c.file ? "<a href='" + pUrl(c.file, "summary") + "'>" + esc(c.key) + " ✓</a>" : "<span class='no'>" + esc(c.key) + " ?</span>";
   const cites = cs => (cs || []).length ? " (" + cs.map(cite).join(", ") + ")" : "";
   const line = (k, v, cls) => v ? "<div class='fl" + (cls ? " " + cls : "") + "'><b>" + k + "</b>" + v + "</div>" : "";
@@ -1640,7 +1645,9 @@ async function viewForest(id, my) {
     if (!nt) return;
     const q = nt.forest, pend = nt.forest_pending, m = (q && q.material) || {}, answered = (nt.thread || []).some(t => t.role === "claude");
     const ta0 = $("freq"); if (ta0) req = ta0.value;
-    let h = "<div class='ch2'>" + esc(nt.title || "") + "</div><div class='ch1'>큰 물음 — 숲</div>";
+    let h = "<div class='ch2'>" + esc(nt.title || "") + "</div><div class='ch1'>큰 물음 — 숲</div>" +
+      "<div class='fmseg'>" + segHtml([["forest", "분야에서"], ["frame", "논문의 틀에서"]], fmode) + "</div>";
+    if (fmode === "frame") { $("fbox").innerHTML = h + frameHtml(); bindFrame(); return; }
     if (pend) h += waitHtml(FOREST_STAGE[nt.forest_stage] || "큰 물음을 찾는 중", got - Math.max(0, now0 - pend) * 1000, true) + "<div class='fqm'>10~15분쯤 걸립니다. 연구실 PC 에서 도니 화면을 끄거나 다른 화면으로 가도 됩니다.</div>";
     if (nt.forest_error) h += "<div class='merr'>" + esc(nt.forest_error) + "</div>";
     if (q && (q.items || []).length) {
@@ -1657,7 +1664,7 @@ async function viewForest(id, my) {
     if (!pend) h += "<textarea class='fqreq' id='freq' placeholder='요청(선택) — 예: 전제를 흔드는 물음 위주로 / In-SEM 이 아니어도 되는 물음'>" + esc(req) + "</textarea>" +
       "<button class='pill pri big' id='fgo'" + (answered ? "" : " disabled") + ">" + IC_FOREST_BTN + (q ? "큰 물음 다시 찾기" : "큰 물음 찾기") + "</button>" +
       "<div class='fqm' style='text-align:center'>" + (answered ? "Opus 로 10~15분 · 토큰을 꽤 씁니다(수십만)" : "먼저 이 노트에서 한 번은 묻고 답을 받아야 합니다") + "</div>";
-    $("fbox").innerHTML = h;
+    $("fbox").innerHTML = h; bindSegF();
     const x = $("waitX"); if (x) x.onclick = async () => { x.disabled = true; try { await api("/api/notes", { op: "cancel_job", id, kind: "forest" }); } catch (e) {} pull(); };
     const g = $("fgo"); if (g) g.onclick = async () => {
       g.disabled = true; req = ($("freq") || {}).value || ""; delete forestReq[id];
@@ -1676,6 +1683,39 @@ async function viewForest(id, my) {
       location.hash = "#/n/" + enc(id);
     });
   };
+  /* 논문의 틀에서 — 논문 하나를 골라 그 논문이 깔고 있던 틀(시편 · 기하 · 관찰 창 · 해석의 가정)을 깨는 다음 연구를 묻는다. 답은 토의에 붙는다(그 논문을 인용한 서재 논문이 이미 한 도약도 같이 본다) */
+  const frameHtml = () => {
+    let h = "<p style='color:var(--text-2);font-size:14.5px;line-height:1.65;margin:10px 0'>논문 하나를 고르면, 그 논문이 깔고 있던 틀(시편 · 실험의 기하 · 관찰 창 · 해석의 가정)을 깨는 다음 연구를 찾습니다. 서재에서 그 논문을 인용한 논문이 이미 한 도약도 같이 봅니다. 답은 이 노트의 토의에 붙습니다.</p>" +
+      "<input class='ftq' id='ftq' type='search' placeholder='서재에서 찾기 — 저자 · 제목 낱말' value='" + esc(fq) + "'>";
+    if (fcand == null) return h + skeleton();
+    h += (fq ? "" : "<button class='ftrow' data-fown='1'><b>우리 연구의 틀</b><div class='t'>이 노트의 카드 · 정리 · 원고에 적힌 우리 실험이 깔고 있는 틀에서 출발합니다</div></button>") +
+      (fcand.length ? "<div class='fqm'>" + (fq ? "찾은 논문" : "이 토의가 읽거나 든 논문") + "</div>" : "<div class='fqm'>" + (fq ? "맞는 논문이 없습니다" : "아직 이 토의가 읽은 논문이 없습니다 — 위에서 찾아 고르세요") + "</div>") +
+      fcand.map((x, i) => "<button class='ftrow' data-fi='" + i + "'><b>" + esc(x.short) + "</b><div class='t'>" + esc(x.head) + "</div><div class='g" + (x.card ? " ok" : "") + "'>" +
+        (x.card ? "틀 카드 있음" : x.summary ? "틀 카드는 고르면 만듭니다 — 1~2분 더" : "요약이 없어 틀을 읽기 어렵습니다") + "</div></button>").join("");
+    return h;
+  };
+  const loadCand = async () => {
+    let r; try { r = await api("/api/notes/frames?id=" + enc(id) + (fq ? "&q=" + enc(fq) : "")); } catch (e) { r = { items: [] }; }
+    if (my !== view) return;
+    fcand = r.items || []; if (fmode === "frame") draw();
+  };
+  const goFrame = async (x) => {
+    if (fbusy || !nt) return; if (nt.pending) { toast("아직 답을 기다리고 있습니다"); return; }
+    fbusy = true;
+    const o = nt.opts || {}, c = noteOpt(nt), q = (x ? x.short : "우리 연구") + "의 틀 벗어나 보기";
+    let r; try { r = await api("/api/notes", { op: "ask", id, question: q, frame_file: x ? x.file : undefined, effort: c.effort, lib: c.read === "deep", read: c.read === "off" ? "off" : "auto", study: o.study == null ? "auto" : o.study, ms: o.ms || "" }); } catch (e) { r = { error: "서버에 닿지 못했습니다" }; }
+    fbusy = false;
+    if (r.error) { toast(r.error); return; }
+    location.hash = "#/n/" + enc(id);
+  };
+  const bindSegF = () => { const sg = $("fbox").querySelector(".fmseg .seg"); if (sg) sg.onclick = e => { const b = e.target.closest("[data-seg]"); if (!b || b.dataset.seg === fmode) return; fmode = b.dataset.seg; lsSet("m_fmode", fmode); if (fmode === "frame" && fcand == null) loadCand(); draw(); }; };
+  const bindFrame = () => {
+    bindSegF();
+    const inp = $("ftq"); let tm = null;
+    if (inp) inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { fq = inp.value.trim(); fcand = null; loadCand(); }, 350); };
+    $("fbox").querySelectorAll("[data-fi]").forEach(b => b.onclick = () => goFrame(fcand[+b.dataset.fi]));
+    const ow = $("fbox").querySelector("[data-fown]"); if (ow) ow.onclick = () => goFrame(null);
+  };
   const pull = async () => {
     let r; try { r = await api("/api/notes/get?id=" + enc(id)); } catch (e) { return; }
     if (my !== view) return;
@@ -1683,9 +1723,10 @@ async function viewForest(id, my) {
     const sig = n => JSON.stringify([n.forest_pending, n.forest_stage, n.forest_error, (n.forest || {}).t, (n.forest || {}).crit_t, (n.forest || {}).check_t, (n.forest || {}).pick]);
     const changed = !nt || sig(nt) !== sig(r.note);
     nt = r.note; now0 = r.now || Date.now() / 1000; got = Date.now();
-    if (changed) draw();
+    if (changed && !(fmode === "frame" && fcand != null)) draw();      /* 틀 쪽을 보는 중에는 찾기 칸이 덮이지 않게 */
     clearInterval(pollT); pollT = nt.forest_pending ? setInterval(pull, 5000) : null;
   };
+  if (fmode === "frame") loadCand();
   await pull();
 }
 

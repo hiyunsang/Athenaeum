@@ -1267,6 +1267,9 @@ def ask(nid, body):
             turn["pick"] = True
         if body.get("forest"):   # 숲 키로 보낸 물음 (2026-11-25) — 적은 말이 무엇이든 한 단계 위의 큰 물음으로 답한다
             turn["forest"] = True
+        ff = os.path.basename(str(body.get("frame_file") or ""))
+        if ff and ff.lower().endswith(".pdf") and os.path.isfile(os.path.join(cfg["ARCHIVE"], ff)):   # 「논문의 틀에서」 로 고른 출발 논문 (2026-11-27) — 같은 저자·연도가 여럿이어도 헷갈리지 않게
+            turn["frame_file"] = ff
         if th and th[-1].get("role") == "user" and nt.get("error"):
             th[-1] = turn
         else:
@@ -1346,11 +1349,12 @@ _SELF_RULE = (
     "초안에서 부딪히지 않는 부분은 그대로 둡니다. 초안의 꼴을 지킵니다: '~습니다'로 끝나는 높임말, 비슷한 길이, 근거 번호(⟦L3 s45⟧ 꼴 — 새로 찾은 문장도 거기 적힌 번호로), 끝의 '선택: ' 줄. 점검했다는 말이나 '초안'이라는 말은 답에 적지 않습니다.\n")
 
 
-def _self_check(nt, question, draft, run, model, eff, system, job, start=0, tools="", add_dirs=(), debug=False):
+def _self_check(nt, question, draft, run, model, eff, system, job, start=0, tools="", add_dirs=(), debug=False, plan=None, rule=None, hint=None, minlen=500):
     """답 초안의 '없다' 주장을 서재에서 다시 확인한다. → (고친 답 또는 None, 새로 찾은 문장의 refs, 기록 또는 None)
-    tools · add_dirs 는 답을 쓴 호출과 같게 준다 — 도구 목록이 캐시의 맨 앞이라, 다르면 배경 16만 토큰을 캐시에서 못 읽고 새로 읽는다(처음 잰 것: 16.2만 가운데 캐시 2천)"""
+    tools · add_dirs 는 답을 쓴 호출과 같게 준다 — 도구 목록이 캐시의 맨 앞이라, 다르면 배경 16만 토큰을 캐시에서 못 읽고 새로 읽는다(처음 잰 것: 16.2만 가운데 캐시 2천)
+    plan · rule · hint 는 원고 대화가 쓴다(2026-11-27): 답의 꼴(JSON 과 대안)이 달라 주장 뽑기·고쳐 쓰기의 지시와 '없다' 를 알아보는 말(영어 포함)을 바꿔 준다."""
     li = cfg.get("libindex")
-    if not li or not run or len(draft) < 500 or not _SELF_HINT.search(draft):
+    if not li or not run or len(draft) < minlen or not (hint or _SELF_HINT).search(draft):
         return None, {}, None
     t0 = time.time()
     tok = {"in": 0, "cached": 0}
@@ -1358,7 +1362,7 @@ def _self_check(nt, question, draft, run, model, eff, system, job, start=0, tool
     def add(rr):
         for k in ("in", "cached"):
             tok[k] += int(((rr or {}).get("tok") or {}).get(k) or 0)
-    rr = run(_SELF_PLAN % (question[:1500], draft[:9000]), model="sonnet", effort=None, timeout=300, tools="", job=job)
+    rr = run((plan or _SELF_PLAN) % (question[:1500], draft[:9000]), model="sonnet", effort=None, timeout=300, tools="", job=job)
     if (rr or {}).get("cancelled"):
         return None, {}, {"cancelled": True}
     add(rr)
@@ -1396,7 +1400,7 @@ def _self_check(nt, question, draft, run, model, eff, system, job, start=0, tool
     if not info["hits"]:
         info.update(verdict="nohits", sec=round(time.time() - t0), tok=tok)
         return None, {}, info
-    vp = "[연구 주제] %s\n\n[물음]\n%s\n\n[답 초안]\n%s\n\n[초안의 주장과 서재에서 다시 찾은 문장]\n%s\n\n%s" % (nt.get("title") or "", question, draft, "\n\n".join(blocks), _SELF_RULE)
+    vp = "[연구 주제] %s\n\n[물음]\n%s\n\n[답 초안]\n%s\n\n[초안의 주장과 서재에서 다시 찾은 문장]\n%s\n\n%s" % (nt.get("title") or "", question, draft, "\n\n".join(blocks), rule or _SELF_RULE)
     if tools:
         vp += "(이 점검에서는 파일을 열지 않습니다. 위에 준 문장과 논문 카드만 보고 판정합니다.)\n"
     rv = run(vp, model=model, effort=eff, timeout=1500, tools=tools, add_dirs=add_dirs, system=system, job=job)
@@ -1448,7 +1452,7 @@ def _ask_job(nid):
     except Exception:
         mstext, msinfo = "", None
     libtext, librefs, libinfo = "", {}, None
-    qkind = "forest" if nt["thread"][-1].get("forest") else _qkind(question)   # 숲(숲 키 · 숲을 청하는 말) · 연구가 되는가 · 선행연구 · 더 낫게
+    qkind = "forest" if nt["thread"][-1].get("forest") else "frame" if nt["thread"][-1].get("frame_file") else _qkind(question)   # 숲(숲 키 · 숲을 청하는 말) · 연구가 되는가 · 선행연구 · 더 낫게
     prevq = next((m.get("text") or "" for m in reversed((nt.get("thread") or [])[:-1]) if m.get("role") == "user"), "")
     worldtext, worldrefs, worldinfo = "", {}, None
     wmode = _world_mode((nt.get("opts") or {}).get("world"))
@@ -1525,7 +1529,19 @@ def _ask_job(nid):
         try:
             _stage("frame")
             top = max([int(mm.group(1)) for mm in (re.match(r"L(\d+)", k) for k in (librefs or {})) if mm] or [0])
-            frametext, frefs, frameinfo = _frame_talk(nt, question, readinfo, start=top)
+            ff = nt["thread"][-1].get("frame_file")
+            f0, _n0 = _frame_start(question, readinfo, ff)
+            built = None
+            if f0 and cfg.get("frame_build") and cfg.get("frame_text") and not cfg["frame_text"](f0):   # 틀 카드가 없는 논문 — 그 자리에서 하나 (Opus 한 번, 1~2분)
+                _stage("framecard")
+                try:
+                    built = bool(cfg["frame_build"](f0))
+                except Exception:
+                    built = False
+                _stage("frame")
+            frametext, frefs, frameinfo = _frame_talk(nt, question, readinfo, start=top, ff=ff)
+            if built is not None:
+                frameinfo["built"] = built
             librefs = dict(librefs or {}, **(frefs or {}))
         except Exception as e:
             frametext, frameinfo = "", {"err": str(e)[:160]}
@@ -3131,6 +3147,7 @@ _FOREST_RULE = (
     "연구자가 던진 주제를 놓고 '큰 물음' 을 2~4개 낸다. 큰 물음은 틈 메우기가 아니다 — 남이 하다 만 것, 거의 다 한 것, 남이 한 것들 사이의 빈 칸(새 재료·새 조건·새 치수에 같은 방법)은 내지 않는다(그런 후보가 떠오르면 dropped 에 한 줄로 적고 버린다). 큰 물음은 세 갈래 가운데 하나에서 나온다:\n"
     "① phenomenon 현상: [이 주제 둘레에서 분야가 묻는 것]·[한 단계 위]·배경의 공부 장(엇갈림의 까닭·답하지 못한 것)·서재 목록을 가로질러 셋 이상의 논문에서 되풀이되거나 서로 엇갈리는 현상을 찾고, 그것들을 한 번에 설명할 숨은 변수·조건·틀을 묻는다. "
     "② assumption 전제: 그 논문들이 말없이 공유하는 전제(평면변형·정상 상태·균질·날카로운 공구·단열 전단·연속체 같은)를 찾아 그것이 어디서 깨지며 깨지면 무엇이 달라지는지 묻는다 — 누가 어디서 전제하는지를 서재 논문으로 든다. "
+    "[둘레 논문이 깔고 있던 틀] 이 있으면 그것이 전제의 첫 재료다 — 서로 다른 그룹의 논문 여럿이 같은 틀(◇ 저자가 적지 않은 것)을 깔고 있으면 그 틀이 흔들 전제의 후보다. 카드는 일부 논문에만 있으니 카드가 없는 논문의 틀은 [읽은 논문]에서 읽는다. "
     "흔드는 전제는 서로 다른 연구 그룹 셋 이상이 공유하는 분야의 전제여야 한다; 한 그룹의 모델이 둔 가정(그 모델 안의 두 단계가 한 기전인가 같은)을 의심하는 것은 그 그룹 연구의 나무다 — dropped 에. "
     "③ import 타 분야의 연구 짜임·방법: 다른 분야(유체·파괴역학·마찰화학·지질·생태·통계물리·역학 …)에서 연구의 짜임이나 방법론을 가져온다 — 그 분야의 내용(사실·수치·재료)을 이 문제에 섞는 것이 아니다. 가져올 수 있는 것은 둘: "
     "(가) 그 분야가 물음을 세우는 꼴 — 변수를 어떤 축으로 놓고, 무엇을 대조군·영가설로 두며, 어떤 양의 어떤 꼴(문턱·지수·척도 법칙·분포)로 판정하는가 (나) 측정·해석의 방법 — 실험 설계·통계·역산·척도화·시험 절차. "
@@ -3694,8 +3711,11 @@ _FT_OWN = re.compile(r"우리|내\s*(?:연구|실험|원고|논문|생각)|지�
 _FT_MAXF = 6
 
 
-def _frame_start(question, readinfo):
-    """→ (파일 | '', 이름) — 이름이 'own' 이면 연구자 자신의 연구. 'Xu 2021' 처럼 두 글자 성도 받는다(_answer_cites 는 세 글자부터)"""
+def _frame_start(question, readinfo, ff=None):
+    """→ (파일 | '', 이름) — 이름이 'own' 이면 연구자 자신의 연구. 'Xu 2021' 처럼 두 글자 성도 받는다(_answer_cites 는 세 글자부터).
+    ff = 화면에서 고른 출발 논문(그것이 먼저)"""
+    if ff:
+        return ff, _ft_short(ff)[0]
     for m in re.finditer(r"([A-Z][A-Za-zÀ-ž'\-]{1,30}(?:\s+(?:et\s+al\.?|and\s+[A-Z][A-Za-zÀ-ž'\-]+))?)\s*,?\s*\(?((?:19|20)\d{2})[a-c]?(?!\d)", question or ""):
         fs = _cite_files(m.group(1) + " " + m.group(2)) or []
         fs = [f for f in fs if not re.search(r"\(\d\)\.pdf$", f, re.I)] or fs   # 같은 논문의 사본('(2)')은 뒤로
@@ -3779,10 +3799,10 @@ def _cite_sents(g, fname, k=4):
     return out[:k]
 
 
-def _frame_talk(nt, question, readinfo, start=0):
+def _frame_talk(nt, question, readinfo, start=0, ff=None):
     """틀 벗어나기의 재료 → (글, 서재 문장 번호 {L31 s68: …}, 통계)"""
     t0 = time.time()
-    f, name = _frame_start(question, readinfo)
+    f, name = _frame_start(question, readinfo, ff)
     info = {"start": name, "file": f, "followers": [], "cites": 0}
     if not f:
         txt = ("[출발점 — 연구자 자신의 지금 연구입니다. 위의 [주제 카드]·[지금까지의 정리]·[실험 설계서]·[원고]에 적힌 실험과 해석이 그 연구입니다. "
@@ -3840,6 +3860,37 @@ def _frame_talk(nt, question, readinfo, start=0):
         L.append("\n[서재 안에서 이 논문을 인용한 논문은 찾지 못했습니다(서재 인용 색인 기준). 이미 누가 그 도약을 했는지는 [읽은 논문]과 [서재에서 찾은 문장]에서만 볼 수 있습니다]")
     info["sec"] = round(time.time() - t0, 1)
     return "\n".join(L) + "\n", refs, info
+
+
+def frame_candidates(nid, query=""):
+    """출발 논문 후보 → {items: [{file, short, head, card, summary}], own} — 이 토의의 답이 자세히 읽은 논문 · 든 서재 논문 · 고른 출발 논문 (최근 것부터),
+    query 가 있으면 서재 목록(제목·저자·저널·라벨)에서 낱말이 모두 든 논문"""
+    rows = _read_list()[1]
+    heads = {r["file"]: r["head"] for r in rows}
+    files = []
+    if (query or "").strip():
+        ws = [w for w in re.split(r"\s+", query.lower().strip()) if w]
+        files = [r["file"] for r in rows if all(w in (r["head"] + " " + r["file"]).lower() for w in ws)][:14]
+    else:
+        nt = _load(nid) if nid else None
+        for m in reversed((nt or {}).get("thread") or []):
+            if m.get("role") == "user" and m.get("frame_file"):
+                files.append(m["frame_file"])
+            if m.get("role") != "claude":
+                continue
+            files += [x.get("file") for x in m.get("read") or [] if x.get("deep") and x.get("file")]
+            files += [(v or {}).get("file") for v in (m.get("cites") or {}).values() if (v or {}).get("file")]
+            if len(dict.fromkeys(files)) >= 14:
+                break
+        files += list(_intro_cited(nt) or []) if nt else []
+    out = []
+    for f in dict.fromkeys(f for f in files if f and f in heads):
+        st = os.path.splitext(f)[0]
+        out.append({"file": f, "short": _ft_short(f)[0], "head": heads.get(f, f)[:200],
+                    "card": bool(cfg.get("frame_text") and cfg["frame_text"](f)), "summary": os.path.isfile(os.path.join(cfg["GEN_DIR"], st + ".요약.md"))})
+        if len(out) >= 14:
+            break
+    return {"items": out, "q": query or ""}
 
 
 def _forest_prompt(nt):
@@ -5271,6 +5322,8 @@ def handle_get(h, url):
             if st.get("stage"):
                 w["stage"] = st["stage"]
         return h._send(200, {"note": nt, "now": time.time(), "usage": _usage()} if nt else {"error": "찾지 못했습니다"})
+    if p == "/api/notes/frames":             # 「논문의 틀에서」 출발 논문 후보 (2026-11-27): ?id= → 이 토의가 읽은·든 논문 · ?q= 로 서재에서 찾기
+        return h._send(200, frame_candidates(_q(url, "id"), _q(url, "q") or ""))
     if p == "/api/notes/designs":            # 유사 연구의 설계 — 서재 주석에서 (토큰 0, 2026-10-26)
         nt = _load(_q(url, "id")) or {}
         try:

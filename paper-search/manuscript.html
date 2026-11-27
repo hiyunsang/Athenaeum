@@ -341,6 +341,11 @@
   .wsbox { padding: 0 0 8px; font-size: 12.5px; color: var(--text-2); line-height: 1.7; }
   .wsbox input[type=text] { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r); padding: 3px 6px; font: inherit; font-size: 12px; background: var(--surface); }
   .wsbox label { display: block; cursor: pointer; }
+  /* 답 속의 서재 문장 번호(L3 s45) — 누르면 원문과 번역 (연구 노트와 같은 꼴, 2026-11-27) */
+  .lref { color: var(--text-2); cursor: pointer; font-size: 10.5px; font-weight: 600; border: 1px solid var(--line-2); border-radius: 3px; padding: 0 3px; margin-left: 2px; text-decoration: none; white-space: nowrap; }
+  .lref:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+  .lrefpop { position: fixed; z-index: 60; background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 8px 24px #0003; padding: 8px 10px 10px; font-size: 12.5px; line-height: 1.6; max-height: 60vh; overflow: auto; }
+  .lrefpop .lph { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; } .lrefpop .lpen { color: var(--text); } .lrefpop .lpko { color: var(--text-2); margin-top: 6px; }
 </style>
 <script src="/ui.js"></script>
 </head>
@@ -1485,6 +1490,39 @@ const cById = id => (doc.comments || []).find(c => String(c.id) === String(id));
 let fbOpen = null, fbProposal = null;   // 펼쳐진 논의 카드 / 고쳐 본 문단 제안
 // 논의 글: 굵게, 제목 줄(# …)은 굵은 줄로, 인용(> …)은 들여 쓴 글로, `코드`
 const fbFmt = t => esc(t).replace(/^#{1,4}\s*(.+)$/gm, "<b>$1</b>").replace(/^&gt; ?(.*)\n?/gm, "<span class='q'>$1</span>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
+/* 원고 대화의 답 — 서재 문장 번호(⟦L3 s45⟧)를 누를 수 있게. 답에 쓰인 번호만 서버가 lib_refs 로 준다 (2026-11-27) */
+const libFmt = (x, m, i) => { const h = fbFmt(x.text || ""), R = x.lib_refs || {};
+  return h.replace(/\s*\u27e6([^\u27e7]{1,80})\u27e7/g, (all, inner) => inner.split(/\s*[,·;]\s*/).map(k => k.trim()).filter(k => R[k]).map(k => "<a href='#' class='lref' data-mid='" + esc(m.id) + "' data-ti='" + i + "' data-lk='" + esc(k) + "'>" + esc(k) + "</a>").join("")); };
+const libMeta = x => { const b = [], sc = x.selfcheck || {};
+  if (x.libhits && x.libhits.n) b.push("서재 문장 " + x.libhits.n + "개");
+  if ((x.read || []).length) b.push("논문 " + x.read.length + "편을 읽음");
+  if (!b.length && x.looked) b.push("서재를 찾아봄");
+  if (sc.verdict === "fixed") b.push("'없다' 고 한 말을 서재에서 다시 확인해 고침" + (sc.why ? " — " + String(sc.why).slice(0, 80) : ""));
+  else if (sc.verdict === "kept" || sc.verdict === "nohits") b.push("'없다' 고 한 말을 서재에서 다시 확인함");
+  if (x.lib_skip) b.push(x.lib_skip);
+  return b.join(" · "); };
+const subsupEsc = t => esc(t || "").replace(/&lt;(\/?)(sub|sup)&gt;/g, "<$1$2>");
+function libPopClose() { const p = document.getElementById("lrefPop"); if (p) p.remove(); document.removeEventListener("mousedown", libPopOff, true); }
+function libPopOff(e) { const p = document.getElementById("lrefPop"); if (p && !p.contains(e.target)) libPopClose(); }
+function libPop(a) {
+  libPopClose();
+  const m = ((doc && doc.memos) || []).find(x => x.id === a.dataset.mid), x = m && (m.thread || [])[+a.dataset.ti], r = x && (x.lib_refs || {})[a.dataset.lk];
+  if (!r) return;
+  const enc = encodeURIComponent, where = [r.journal, r.page != null ? "p." + (r.page + 1) : "", r.sec].filter(Boolean).join(" · "), whole = r.paper || r.tr === false;
+  const view = whole ? "/view?file=" + enc(r.file) + "&kind=summary" : "/view?file=" + enc(r.file) + "&kind=translation&sent=" + enc(r.sid || "") + "&q=" + enc((r.en || "").slice(0, 120));
+  const pop = document.createElement("div"); pop.id = "lrefPop"; pop.className = "lrefpop";
+  pop.innerHTML = "<div class='lph'><b>" + esc(a.dataset.lk) + "</b><span class='hint'>" + (r.star ? "★ " : "") + esc(r.short || "") + (where ? " · " + esc(where) : "") + "</span><span style='flex:1'></span>" +
+    "<a class='act' href='" + view + "' target='athenaeum_reader' title='읽기 창에서 그 자리를 엽니다'>" + (whole ? "논문 열기 ↗" : "논문에서 이 문장 보기 ↗") + "</a><button class='act' data-x>닫기</button></div>" +
+    (r.paper ? "" : "<div class='lpen'>" + subsupEsc(r.en) + "</div>" + (r.ko ? "<div class='lpko'>" + subsupEsc(r.ko) + "</div>" : "<div class='hint'>번역이 없는 논문입니다</div>"));
+  document.body.appendChild(pop);
+  const rc = a.getBoundingClientRect(), W = Math.min(520, innerWidth - 16);
+  pop.style.width = W + "px"; pop.style.left = Math.max(8, Math.min(rc.left, innerWidth - W - 8)) + "px";
+  pop.style.top = (rc.bottom + 6 + pop.offsetHeight > innerHeight - 8 ? Math.max(8, rc.top - pop.offsetHeight - 6) : rc.bottom + 6) + "px";
+  pop.querySelector("[data-x]").onclick = libPopClose;
+  setTimeout(() => document.addEventListener("mousedown", libPopOff, true), 0);
+}
+document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("a.lref[data-lk]"); if (!a) return; e.preventDefault(); e.stopPropagation(); libPop(a); }, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && document.getElementById("lrefPop")) libPopClose(); });
 function planHtml(pl) {
   const th = [...(pl.themes || [])].sort((a, b) => (a.priority || 9) - (b.priority || 9));
   return "<div style='margin:4px 0 10px'>" + (pl.first ? "<div class='hint' style='margin-bottom:4px'>먼저: " + esc(pl.first) + "</div>" : "") +
@@ -2805,7 +2843,7 @@ function chatThreadHtml(m) {
   const altBody = (base, a) => { const b = cl ? cleanDiff(base, a) : wordDiff(base, a); return { html: b, cut: cl && !/<ins>/.test(b) && normWs(a).length < normWs(base).length }; };
   return th.map((x, i) => x.role === "user" ? x.quiet ? "" : "<div class='fbmsg user'><b>나:</b> " + (x.swap ? "대안으로 바꿈" + (x.swap.undone ? " <span class='hint' style='display:inline'>— 되돌렸음</span>"
         : i === lastSwap ? " · <a href='#' class='act' data-undo='" + i + "' title='바꿔 넣은 글을 고치기 전의 글로 되돌립니다 (글 칸에서 Ctrl+Z 로도 되돌릴 수 있습니다)'>고치기 전으로 되돌리기</a>" : "") : esc(x.text)) + "</div>"
-    : "<div class='fbmsg claude'>" + fbFmt(x.text || "") + (x.model || x.looked || x.whole || x.ev || x.stylus ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.stylus || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", x.looked ? "서재를 찾아봄" : "", tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + chatEditsBlock(m, x, i) + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (x.wide ? " · <b style='color:var(--text-2);font-weight:600' title='고른 글만이 아니라 앞뒤 문장까지 함께 고친 글입니다 — 바꾸면 그 범위가 통째로 바뀝니다'>앞뒤 문장까지 고침</b>" : "") + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
+    : "<div class='fbmsg claude'>" + libFmt(x, m, i) + (x.model || x.looked || x.whole || x.ev || x.stylus || x.lib_skip ? "<div class='hint' style='margin-top:4px;font-size:11px'>" + esc([x.model, { max: "최대", xhigh: "엑스트라", high: "높음" }[x.effort] || "", x.stylus || "", x.whole ? "원고 전체를 봄" : "", x.ev ? "근거 「" + (x.ev.topic || "").slice(0, 24) + "」 를 봄" : "", libMeta(x), tokNote(x.tok), (x.refs || []).filter(r => r.file).length ? "인용 [" + (x.refs || []).filter(r => r.file).map(r => r.n).join(", ") + "] 은 서재에 있음" : ""].filter(Boolean).join(" · ")) + "</div>" : "") + chatEditsBlock(m, x, i) + (x.alts || []).map((a, k) => { const d = altBody(x.base || m.quote, a); return "<div class='selalt'><div class='hint'>대안 " + (k + 1) + (x.wide ? " · <b style='color:var(--text-2);font-weight:600' title='고른 글만이 아니라 앞뒤 문장까지 함께 고친 글입니다 — 바꾸면 그 범위가 통째로 바뀝니다'>앞뒤 문장까지 고침</b>" : "") + (d.cut ? " · 말을 뺀 곳만 있음" : "") + viewLink + "</div><div class='rvdiff" + (cl ? " clean" : "") + "'>" + d.html + "</div>" + flowNote((x.altflow || [])[k]) +
         "<div class='acts'><button class='btn pri' data-alt='" + i + ":" + k + "'>이걸로 바꾸기</button><button class='btn' data-copy='" + i + ":" + k + "'>복사</button></div></div>"; }).join("") +
       (x.rw || []).map((r, k) => rwHtml(m, x, i, k)).join("") + citeLegend((x.alts || []).length || (x.rw || []).length ? Object.assign({}, x, { text: (x.alts || []).join(" ") + " " + (x.rw || []).map(r => r.text).join(" ") }) : x) + "</div>").join("");
 }
@@ -3015,7 +3053,7 @@ function chatEvHtml() {
 }
 const chatLibHtml = () => chatLibBase() + chatEvHtml();
 const chatLibBase = () => "<label class='chLibL' title='켜 두면 Claude 가 지금 원고 전체(제목·초록·모든 절·그림 캡션·참고문헌)를 읽고 답합니다 — 이 논문이 무엇을 했는지, 다른 절에서 뭐라고 썼는지 알고. 끄면 고른 글이 든 문단만 보고 답합니다(조금 빠름)'><input type='checkbox' class='chWhole'" + (chatWhole() ? " checked" : "") + "> 원고 전체</label>" +
-  "<label class='chLibL' title='켜 두면 Claude 가 내 논문모음(요약·전문 번역)을 직접 찾아 읽고 답합니다 — 인용이 맞는지, 어느 논문이 무엇을 했는지. 문헌이 필요 없는 물음에는 찾지 않습니다. 찾아볼 때는 1~2분 걸리고 사용량이 늘어납니다. 끄면 원고와 자료만 보고 빨리 답합니다'><input type='checkbox' class='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>";
+  "<label class='chLibL' title='켜 두면 답하기 전에 서재를 찾아 읽습니다 — 물음에 맞는 서재 문장을 미리 만들어 둔 색인에서 꺼내고, 관련 논문을 열 편까지 골라 그 요약을 읽은 뒤 답합니다(연구 노트와 같은 길). 답 속의 번호를 누르면 원문이 뜹니다. 답이 선행연구에 없다고 하면 보내기 전에 서재에서 한 번 더 확인합니다. 표현만 다듬는 물음에는 찾지 않습니다. 끄면 원고와 자료만 보고 답합니다'><input type='checkbox' class='chLib'" + (chatLib() ? " checked" : "") + "> 서재 찾아보기</label>";
 const chatInputHtml = (id, ph, sc) => "<textarea class='chIn' data-id='" + id + "' rows='2' placeholder='" + ph + "'>" + esc(chatDraft[id] || "") + "</textarea>" +
   "<div class='mpal'>" + chipsFor(sc).map((c, k) => "<button class='btn' data-chip='" + k + "' title='" + esc(c[1]) + "'>" + esc(c[0]) + "</button>").join("") + "</div>";
 function chatCardHtml(m) {

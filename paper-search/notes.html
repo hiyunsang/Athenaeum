@@ -193,6 +193,8 @@
     .page { padding: var(--s4) var(--s4) var(--s6); } #askbox .in { padding: var(--s3) var(--s4) var(--s4); }
     .navix { padding: 5px 9px; }
   }
+  .ftbox { border: 1px solid var(--line); padding: 7px 10px 8px; margin: 6px 0 10px; } .ftbox .fth { font-size: 12.5px; margin-bottom: 5px; } .ftbox .fth .hint { display: inline; }   /* 논문의 틀에서 (2026-11-27) */
+  .ftbox .ftr { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .ftbox select { flex: 1 1 180px; min-width: 0; max-width: 100%; font-size: 12.5px; } .ftbox input { flex: 0 1 130px; min-width: 90px; font-size: 12.5px; }
 </style>
 <script src="/ui.js"></script>
 </head>
@@ -568,7 +570,7 @@ function msgHtml(m, i) {
   const lh = m.libhits && m.libhits.n ? " · 서재 문장 " + m.libhits.n + "개(" + m.libhits.papers + "편)를 봄" : "";   /* 물음의 낱말로 색인에서 찍어 붙인 문장 — 머리줄은 flex 라 span 을 끼우면 줄이 갈린다 */
   const rh = (m.read || []).length ? " · 논문 " + m.read.length + "편을 읽음(" + esc(m.read.slice(0, 6).map(x => x.short).join(", ")) + (m.read.length > 6 ? " 외 " + (m.read.length - 6) + "편" : "") + ")" : "";   /* 이 물음에 답하려고 골라 읽은 논문의 요약 (2026-11-17) */
   const wh = m.world && m.world.n ? " · 세상 문헌 " + m.world.n + "편을 봄" : "";   /* 학술 데이터베이스에서 방금 찾아 붙인 논문(제목·초록) */
-  const fm = m.frame, fh = fm && fm.start ? " · " + (fm.start === "own" ? "우리 연구" : "「" + esc(fm.start) + "」") + "의 틀에서 출발" + ((fm.followers || []).length ? " · 그 논문을 인용한 서재 논문 " + fm.followers.length + "편" + (fm.cites ? "(가리킨 문장 " + fm.cites + "개)" : "") : "") : "";   /* 틀 벗어나기 (2026-11-27) */
+  const fm = m.frame, fh = fm && fm.start ? " · " + (fm.start === "own" ? "우리 연구" : "「" + esc(fm.start) + "」") + "의 틀에서 출발" + (fm.built ? "(틀 카드를 새로 만듦)" : "") + ((fm.followers || []).length ? " · 그 논문을 인용한 서재 논문 " + fm.followers.length + "편" + (fm.cites ? "(가리킨 문장 " + fm.cites + "개)" : "") : "") : "";   /* 틀 벗어나기 (2026-11-27) */
   const gc = m.selfcheck, gh = gc && (gc.verdict === "fixed" || gc.verdict === "kept") ? " · 없다고 한 주장 " + (gc.claims || []).length + "개를 서재에서 다시 확인" + (gc.verdict === "fixed" ? "해 고침" : "") : "";   /* 빈자리 확인 (2026-11-26) */
   return "<div class='msg'><div class='who'><img src='/logo/claude_mascot.png' alt='' onerror='this.remove()'>Claude · " + esc(m.model || "") + (m.sec ? " · " + fmtDur(m.sec) : "") +
     (m.tok ? " · 읽은 토큰 " + fmtTok(m.tok.in) + (m.tok.cached ? " (캐시 " + fmtTok(m.tok.cached) + ")" : "") : "") + (m.lib && m.turns > 1 ? " · 원문을 열어 봄" : "") + lh + rh + fh + wh + gh + (m.fallback ? " · " + esc(m.fallback) : "") + (usageText(m.usage) ? " · 한도 사용 " + esc(usageText(m.usage)) : "") +
@@ -723,7 +725,7 @@ function renderThread() {
   if (cur.pending) {
     const eff = (cur.opts || {}).effort || "xhigh", T = expect(eff);
     const tk = () => { const el2 = Date.now() / 1000 - cur.pending, b = $("askBar"), e2 = $("askEta"); if (!b) { clearInterval(tick); return; }
-      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (cur.stage === "world" ? "세상의 문헌을 찾는 중 · " : cur.stage === "lib" ? "서재를 찾는 중 · " : cur.stage === "read" ? "읽을 논문을 고르는 중 · " : cur.stage === "forest" ? "숲을 볼 재료를 모으는 중 · " : cur.stage === "check" ? "없다고 한 것을 서재에서 다시 확인하는 중 · " : cur.stage === "frame" ? "출발 논문을 인용한 서재 논문을 찾는 중 · " : el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
+      b.style.width = Math.round(Math.min(0.92, el2 / T * 0.9) * 100) + "%"; e2.textContent = (cur.stage === "world" ? "세상의 문헌을 찾는 중 · " : cur.stage === "lib" ? "서재를 찾는 중 · " : cur.stage === "read" ? "읽을 논문을 고르는 중 · " : cur.stage === "forest" ? "숲을 볼 재료를 모으는 중 · " : cur.stage === "check" ? "없다고 한 것을 서재에서 다시 확인하는 중 · " : cur.stage === "frame" ? "출발 논문을 인용한 서재 논문을 찾는 중 · " : cur.stage === "framecard" ? "출발 논문의 틀 카드를 만드는 중(1~2분) · " : el2 > T ? "예상(" + fmtDur(T) + ")보다 오래 걸리고 있습니다 · " : "Claude 생각 중 · ") + fmtDur(el2) + "째"; };
     tk(); tick = setInterval(tk, 1000);
   }
 }
@@ -886,6 +888,8 @@ function renderCard() {
   /* 설계서 · 반론 · 원고 초안 (2026-10-19) */
   const jobBtn = (id, kind) => { const b = $(id); if (b) b.onclick = () => startJob(kind, b); };
   jobBtn("matrixGo", "matrix"); jobBtn("argmapGo", "argmap"); jobBtn("gapcheckGo", "gapcheck"); jobBtn("framingGo", "framing"); jobBtn("forestGo", "forest"); jobBtn("treesGo", "trees");
+  const ftg = $("ftGo"); if (ftg) ftg.onclick = sendFrame;
+  const ftf = $("ftFind"); if (ftf) ftf.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); frameFind = ftf.value.trim(); frameLoad(frameFind); } };
   const qpick = async qid => { const r = await api("/api/notes", { op: "forest_pick", id: cur.id, qid }); if (r.error) { alert(r.error); return; } cur.forest = r.note.forest; renderCard(); renderListSoon(); };   /* 큰 물음 고르기 (2026-10-28) */
   el.querySelectorAll("[data-qpick]").forEach(r => r.onchange = () => { if (r.checked) qpick(r.dataset.qpick); });
   const qu = $("qUnpick"); if (qu) qu.onclick = () => qpick("");
@@ -1149,12 +1153,41 @@ function treesHtml() {   /* 작은 물음 — 나무: 한 편의 논문으로 �
   return h;
 }
 const FQ_KIND = { phenomenon: "현상", assumption: "전제", import: "타 분야의 짜임·방법" }, EXISTS_KO = { yes: "그렇게 서 있음", partly: "일부만 확인", no: "확인 안 됨" }, ALREADY_KO = { none: "없음", partial: "일부", done: "있음" };
+/* 숲의 두 번째 출발점 — 논문 하나의 틀에서 (2026-11-27, 사용자: '숲이랑 틀 벗어나기가 사실 비슷한 거 아닌가'). 큰 물음은 분야에서 출발하고, 이것은 논문 한 편이 깔고 있던 틀(시편·기하·관찰 창·가정)에서
+   출발한다. 고르면 그 논문을 출발점으로 묻고 답이 토의에 붙는다 — 그 논문을 인용한 서재 논문이 이미 한 도약도 같이 본다. 틀 카드가 없는 논문은 그 자리에서 만든다(Opus 한 번, 1~2분) */
+let frameCand = {}, frameFind = "";
+function frameStartHtml(answered) {
+  const c = frameCand[cur.id];
+  if (!c) { frameLoad(); }
+  const items = (c && c.items) || [];
+  return "<div class='ftbox'><div class='fth'><b>논문의 틀에서</b> <span class='hint'>논문 하나가 깔고 있던 틀(시편 · 실험의 기하 · 관찰 창 · 해석의 가정)을 깨는 다음 연구 — 답은 토의에 붙습니다</span></div>" +
+    "<div class='ftr'><select id='ftSel' title='출발 논문 — 이 토의가 읽거나 든 논문, 또는 아래에서 찾은 논문'>" +
+    "<option value=''>우리 연구(카드 · 정리 · 원고)의 틀</option>" + items.map((x, i) => "<option value='" + i + "'>" + esc(x.short) + (x.card ? " ✓" : "") + " — " + esc(x.head.slice(0, 70)) + "</option>").join("") + "</select>" +
+    "<input id='ftFind' type='search' placeholder='서재에서 찾기' value='" + esc(frameFind) + "' title='저자 · 제목 낱말 — Enter'>" +
+    "<button class='act' id='ftGo'" + (answered && !cur.pending ? "" : " disabled title='" + (cur.pending ? "답을 기다리는 중입니다" : "먼저 한 번은 토의해야 합니다") + "'") + ">틀 벗어나 보기</button></div>" +
+    "<div class='hint'>✓ = 틀 카드 있음. 카드가 없는 논문은 고르면 만들고 답합니다(1~2분 더).</div></div>";
+}
+async function frameLoad(q) {
+  const id = cur.id;
+  let r; try { r = await api("/api/notes/frames?id=" + encodeURIComponent(id) + (q ? "&q=" + encodeURIComponent(q) : "")); } catch (e) { r = { items: [] }; }
+  frameCand[id] = r; if (cur && cur.id === id && cardTab === "framing") renderCard();
+}
+async function sendFrame() {
+  const sel = $("ftSel"), x = sel && sel.value !== "" ? ((frameCand[cur.id] || {}).items || [])[+sel.value] : null;
+  const eff = ($("askEff") || {}).value || lsGet("notes_effort", "xhigh"), rsel = ($("askRead") || {}).value || lsGet("notes_read", "auto"), study = ($("askStudy") || {}).value || "auto", msv = ($("askMs") || {}).value || "none", world = ($("askWorld") || {}).value || "auto";
+  const b = $("ftGo"); if (b) b.disabled = true;
+  let r; try { r = await api("/api/notes", { op: "ask", id: cur.id, question: (x ? x.short : "우리 연구") + "의 틀 벗어나 보기", frame_file: x ? x.file : undefined, effort: eff, lib: rsel === "deep", study, ms: msv === "none" ? "" : msv, world, read: rsel === "off" ? "off" : "auto" }); } catch (e) { r = { error: "서버 연결 실패" }; }
+  if (r.error) { alert(r.error); if (b) b.disabled = false; return; }
+  cur = r.note; renderThread(); renderAsk(); renderListSoon(); schedulePoll(); showTalk();
+  const w = $("thwrap"); if (w) w.scrollTop = w.scrollHeight;
+}
 function forestHtml() {   /* 큰 물음 — 숲을 보는 출발점, 틀 앞에서 고른다 (2026-10-28, 사용자: '네가 내는 주제는 남이 한 것 틈에서 찾는 나무 연구 — 숲을 보고 타 분야 구조를 가져오는 것을 반영할 수 없나') */
   const q = cur.forest, pend = cur.forest_pending, answered = (cur.thread || []).some(m => m.role === "claude");
   let h = "<div class='sec secline'>큰 물음 — 숲" + (q && q.pick ? "<span class='n' style='background:var(--green)'>" + esc(q.pick) + "</span>" : "") + "<span class='r'>" +
     (pend ? "<span style='color:var(--accent)'>" + (FOREST_STAGE[cur.forest_stage] || "찾는 중") + "…" + "</span> <button class='act' data-cancel='forest'>취소</button>"
       : "<button class='act' id='forestGo'" + (answered ? "" : " disabled title='먼저 한 번은 토의해야 합니다'") + " title='틈 메우기가 아닌 물음 — 여러 논문에 걸친 현상 · 분야가 공유하는 전제 · 다른 분야의 연구 짜임·방법(대응표)에서 출발하는 물음 2~4개 — 주제가 속한 한 단계 위의 층으로 재료를 넓혀 재료 없이도 서는 물음을 하나 이상. 물음마다 틀릴 수 있는 예측 하나, 다시 정리되는 기존 결과, 왜 아직 안 됐나, 우리 연구실로 되는가, 받을 논문(서재 밖). 쓰기 전에 논문 여섯 편쯤을 골라 읽고, 쓴 뒤에는 심사자가 물음마다 따져 고치거나 버립니다. 타 분야의 짜임은 세상 문헌(OpenAlex)으로 확인합니다 — Opus 10~15분'>" + (q ? "큰 물음 다시 찾기" : "큰 물음 찾기") + "</button>") + "</span></div>";
   if (cur.forest_error) h += "<div class='warnbox'>" + esc(cur.forest_error) + "</div>";
+  h += frameStartHtml(answered);
   if (q) {
     const m = q.material || {};
     h += "<div class='cm'>" + fmtDate(q.t) + " · " + esc(q.model || "Claude") + (q.sec ? " · " + fmtDur(q.sec) : "") + " · 물음 " + q.items.length + (m.near ? " · 둘레 논문 " + m.near + "편" : "") + (m.tagged ? " · 서재 갈래 " + m.tagged + "편(숲 " + (m.forest || 0) + ")" : " · <span style='color:var(--amber)'>서재 갈래 없음 — 학습 창의 「연구 갈래 붙이기」</span>") + (q.pick ? " · 고른 물음 " + esc(q.pick) + " <button class='act' id='qUnpick'>선택 풀기</button>" : " · 아직 고르지 않음(추천 " + esc(q.recommend || "") + ")") + "</div>";
