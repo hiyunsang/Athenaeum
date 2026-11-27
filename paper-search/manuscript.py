@@ -3180,12 +3180,48 @@ def _gen():
 
 
 def save_ref(doc, name, data):
-    """참고 그림(아이패드 스케치·PPT) 저장 → 이미지 파일명 목록"""
+    """연구자의 초안(손그림 사진·캡처·PowerPoint 파일) 저장 → 이미지 파일명 목록 (2026-11-27 다시 씀).
+    .pptx 는 안의 그림만 꺼내던 것을 도형까지 읽어 쪽마다 그린다(schematic/pptx_draft — PowerPoint 는 띄우지 않는다).
+    그 쪽의 도형 목록(글·자리)은 그림 옆에 <그림>.txt 로 두어 구도 제안과 그리기가 같이 읽는다."""
+    import random
     gen = _gen()
     ref_dir = os.path.join(cfg["FIG_DIR"], "refs")
-    base = "%s_%s" % (doc["id"], time.strftime("%H%M%S"))
+    os.makedirs(ref_dir, exist_ok=True)
+    base = "dr_%s_%s%02d" % (doc["id"], time.strftime("%Y%m%d%H%M%S"), random.randint(0, 99))
+    ext = os.path.splitext(name or "")[1].lower()
+    if ext == ".pptx":
+        from schematic import pptx_draft
+        src = os.path.join(ref_dir, base + ".pptx")
+        open(src, "wb").write(data)
+        try:
+            slides = pptx_draft.read(src, max_slides=3)
+        except Exception as e:
+            slides, err = [], str(e)[:120]
+        else:
+            err = ""
+        out = []
+        for s in slides:
+            sp = os.path.join(ref_dir, "%s_s%d.svg" % (base, s["n"]))
+            pp = os.path.join(ref_dir, "%s_s%d.png" % (base, s["n"]))
+            io.open(sp, "w", encoding="utf-8").write(s["svg"])
+            if render_png(sp, pp, s["w"], s["h"], 1):
+                io.open(pp + ".txt", "w", encoding="utf-8").write(s["outline"])
+                out.append(os.path.basename(pp))
+        if out:
+            return {"images": out, "note": "PowerPoint 쪽 %d개를 읽었습니다 — 도형과 글의 자리를 같이 넘깁니다" % len(out)}
+        paths, note = gen.pptx_to_images(src, ref_dir, base)   # 도형이 없으면 안에 붙여 둔 그림이라도
+        if not paths:
+            raise RuntimeError("PowerPoint 파일에서 도형이나 그림을 찾지 못했습니다" + (" (" + err + ")" if err else "") + " — 쪽을 캡처해 붙여 넣어 주세요")
+        return {"images": [os.path.basename(p) for p in paths], "note": "PowerPoint 안의 그림 %d장을 꺼냈습니다" % len(paths)}
     paths, note = gen.save_ref_image(data, name, ref_dir, base)
     return {"images": [os.path.basename(p) for p in paths], "note": note}
+
+
+def _draft_list(names):
+    """화면이 보낸 초안 이름 → refs 폴더 안의 그림 경로들 (폴더 밖은 받지 않는다)"""
+    ref_dir = os.path.join(cfg["FIG_DIR"], "refs")
+    paths = [os.path.join(ref_dir, os.path.basename(str(n))) for n in (names or [])[:3]]
+    return [p for p in paths if os.path.isfile(p) and p.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))]
 
 
 # ---------- 도식의 그림체 — 서재의 논문 그림을 예시로 (2026-11-19) ----------
@@ -3257,15 +3293,56 @@ _FIG_PLAN = (
 _FIG_FORMS = ("cutting", "grinding", "setup", "flow", "steps", "compare", "graph", "micro", "mechanics", "general")
 
 
+_FIG_PLAN_DRAFT = (
+    "연구자가 직접 그린 초안 %d장이 있다. **먼저 Read 도구로 각 파일을 열어 본다**:\n%s\n%s"
+    "초안을 어떻게 쓸지(use)를 정한다 — 연구자의 말([연구자가 덧붙인 말]·[바탕 글])이 먼저, 말이 없으면 초안의 됨됨이로:\n"
+    "- copy (그대로 정돈): '이대로·비슷하게·깔끔하게만·그대로' 처럼 초안의 구성을 지키라고 했을 때, 또는 말이 없고 초안이 이미 짜임이 선 그림일 때. 구성·배치·요소·글은 그대로, 선·간격·글자만 정돈.\n"
+    "- upgrade (다듬어 올리기): '더 낫게·업그레이드·논문용으로·보완·발전' 처럼 나아지게 해 달라고 했을 때, 또는 말이 없고 초안이 거친 손그림·메모일 때. "
+    "초안이 보이려는 요소·관계·차례와 큰 틀은 지키고 짜임·위계·물리적 정확성·빠진 것을 논문 그림 수준으로.\n"
+    "- sidegrade (다르게 그리기): '다르게·다른 방식·새 구도·다른 버전' 처럼 같은 내용을 다른 길로 보여 달라고 했을 때. 내용은 같게, 구도·형식·보는 방향은 다르게.\n"
+    "%s"
+    "구도 후보는 use 에 맞춘다: copy 면 첫 후보가 초안의 구도 그대로(title 끝에 ' — 초안대로'), 다른 후보는 초안을 조금 바꾼 것 하나까지. "
+    "upgrade 면 첫 후보는 초안의 큰 틀을 지키며 나아지게 한 것, 둘째는 더 크게 손본 것. sidegrade 면 모든 후보가 초안과 다른 구도.\n"
+    "draft 에 적는다: use · why(그렇게 본 까닭 한 문장 — 연구자의 말이나 초안의 모습에서) · reads(초안이 그리는 것 한 문장) · "
+    "keep(초안에서 지킬 것 2~5개, 짧은 구절) · change(바꾸거나 더할 것 0~5개 — copy 면 정돈할 것만; 바탕 글과 초안이 어긋나는 곳이 있으면 여기에 적는다).\n"
+    "물음(questions)에는 초안으로 이미 정해진 것을 넣지 않는다.\n"
+    'JSON 에 "draft": {"use": "copy|upgrade|sidegrade", "why": "...", "reads": "...", "keep": ["..."], "change": ["..."]} 를 더한다.\n\n')
+_FIG_USE_KO = {"copy": "그대로 정돈", "upgrade": "다듬어 올리기", "sidegrade": "다르게 그리기"}
+
+
 def fig_plan(body):
-    """그리기 전의 구상: 바탕 글을 읽고 구도 후보 둘·셋과 연구자가 정할 것을 선택지로 낸다 (가벼운 모델 한 번)."""
+    """그리기 전의 구상: 바탕 글을 읽고 구도 후보 둘·셋과 연구자가 정할 것을 선택지로 낸다 (가벼운 모델 한 번).
+    연구자의 초안이 있으면 그것을 읽고 어떻게 쓸지(그대로 정돈 · 다듬어 올리기 · 다르게 그리기)도 정한다 (2026-11-27)."""
     text = (body.get("text") or "").strip()
     note = (body.get("note") or "").strip()
-    if len(text) < 20 and len(note) < 10:
-        raise RuntimeError("바탕 글이나 설명을 먼저 적어 주세요")
+    drafts = _draft_list(body.get("drafts"))
+    if len(text) < 20 and len(note) < 10 and not drafts:
+        raise RuntimeError("바탕 글이나 설명, 또는 초안을 먼저 넣어 주세요")
     t0 = time.time()
-    prompt = _FIG_PLAN + ("[바탕 글]\n%s\n\n" % text[:5000] if text else "") + ("[연구자가 덧붙인 말]\n%s\n" % note[:1500] if note else "")
-    r = cfg["claude_json"](prompt, timeout=200, model="sonnet") or {}
+    head = ""
+    if drafts:
+        ols = ""
+        for p in drafts:
+            try:
+                ol = io.open(p + ".txt", encoding="utf-8").read().strip()
+            except OSError:
+                ol = ""
+            if ol:
+                ols += "[%s — PowerPoint 의 도형 목록. 글자와 자리는 이 목록이 정확하다]\n%s\n" % (os.path.basename(p), ol[:5000])
+        use = body.get("use") if body.get("use") in _FIG_USE_KO else ""
+        head = _FIG_PLAN_DRAFT % (len(drafts), "\n".join("- " + p for p in drafts), ols,
+                                  ("연구자가 쓰임을 이미 골랐다: %s (%s) — 그대로 따르고 why 에는 그 쓰임으로 할 때 주의할 점을 적는다.\n" % (use, _FIG_USE_KO[use])) if use else "")
+    prompt = _FIG_PLAN + head + ("[바탕 글]\n%s\n\n" % text[:5000] if text else "") + ("[연구자가 덧붙인 말]\n%s\n" % note[:1500] if note else "[연구자가 덧붙인 말]\n(없음)\n" if drafts else "")
+    if drafts:
+        run = cfg.get("claude_run")
+        r = {}
+        for _ in range(2):     # 그림을 읽고 쓴 답이 JSON 으로 안 읽힐 때가 가끔 있다 — 한 번 더
+            res = run(prompt, timeout=300, model="sonnet", tools="Read", add_dirs=[os.path.dirname(drafts[0])], images=drafts) if run else None
+            r = _json_in((res or {}).get("text") or "") or {}
+            if r.get("options"):
+                break
+    else:
+        r = cfg["claude_json"](prompt, timeout=200, model="sonnet") or {}
     opts = []
     for o in (r.get("options") or [])[:3]:
         if not isinstance(o, dict) or not str(o.get("title") or "").strip():
@@ -3281,7 +3358,14 @@ def fig_plan(body):
             ch = [_norm_ws(str(c))[:60] for c in (q.get("choices") or [])[:4] if str(c).strip()]
             if len(ch) >= 2:
                 qs.append({"q": _norm_ws(str(q["q"]))[:120], "choices": ch})
-    return {"read": _norm_ws(str(r.get("read") or ""))[:240], "options": opts, "questions": qs, "sec": round(time.time() - t0)}
+    out = {"read": _norm_ws(str(r.get("read") or ""))[:240], "options": opts, "questions": qs, "sec": round(time.time() - t0)}
+    dr = r.get("draft") if isinstance(r.get("draft"), dict) else None
+    if drafts and dr:
+        u = str(dr.get("use") or "").strip().lower()
+        out["draft"] = {"use": u if u in _FIG_USE_KO else "upgrade", "why": _norm_ws(str(dr.get("why") or ""))[:240], "reads": _norm_ws(str(dr.get("reads") or ""))[:240],
+                        "keep": [_norm_ws(str(x))[:80] for x in (dr.get("keep") or [])[:6] if str(x).strip()],
+                        "change": [_norm_ws(str(x))[:100] for x in (dr.get("change") or [])[:6] if str(x).strip()]}
+    return out
 
 
 def fig_meta(body):
@@ -3440,7 +3524,7 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     """설명(+참고 그림) → Claude 가 lib 로 그리는 스크립트 → SVG/PNG. fig_id 가 있으면 그 그림의 스크립트를 수정 요청으로 고친다."""
     gen = _gen()
     ref_dir = os.path.join(cfg["FIG_DIR"], "refs")
-    ref_paths = [os.path.join(ref_dir, os.path.basename(r)) for r in (refs or []) if os.path.isfile(os.path.join(ref_dir, os.path.basename(r)))]
+    ref_paths = _draft_list(refs)     # 연구자의 초안 (그림 파일만)
     fig = next((f for f in doc["figures"] if f["id"] == fig_id), None) if fig_id else None
     prev = (fig or {}).get("source", {}).get("script") if fig else None
     if fig and not spec:
@@ -3461,6 +3545,17 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
         except Exception:
             pass
     code, svg, log = gen.generate(gspec, ref_paths, prev_script=prev, feedback=feedback, log=log, prior_scripts=prior, style_images=style_paths)
+    dinfo = None
+    if ref_paths:   # 연구자의 초안을 어떻게 썼나 — 알아서 정했으면 스크립트 첫 줄에서 읽어, 고칠 때도 같은 쓰임으로 가게 spec 에 적는다
+        u, why, diffs = gen.draft_notes(code)
+        dd = dict((spec or {}).get("draft") or {})
+        judged = dd.get("use") not in gen.DRAFT_USES
+        use = u if (judged and u) else (dd.get("use") if not judged else None)
+        dinfo = {"use": use, "why": why or dd.get("why") or "", "diffs": diffs, "judged": judged}
+        if judged and use:
+            spec = dict(spec or {}, draft=dict(dd, use=use, why=dinfo["why"]))
+        if use:
+            log.append("초안의 쓰임: %s%s" % (gen.DRAFT_USES[use][0], (" — " + dinfo["why"]) if dinfo["why"] else ""))
     new = fig is None
     if new:   # 번호는 지금의 원고에서 — 지운 그림의 번호도 다시 쓰지 않는다(지운 표시 fig_gone 과 겹친다)
         with _REV_LOCK:
@@ -3475,6 +3570,8 @@ def claude_figure(doc, spec, refs=(), fig_id=None, feedback=None):
     if prev:
         hist = (hist + [{"t": fig.get("t", 0), "script": prev, "feedback": feedback or ""}])[-10:]
     fig["source"] = {"type": "claude", "spec": spec or {}, "refs": [os.path.basename(p) for p in ref_paths], "script": code, "history": hist}
+    if dinfo:
+        fig["source"]["draft"] = dinfo
     base = "%s_%s" % (doc["id"], fig["id"])
     svg_path = os.path.join(cfg["FIG_DIR"], base + ".svg"); png_path = os.path.join(cfg["FIG_DIR"], base + ".png")
     io.open(svg_path, "w", encoding="utf-8").write(svg)

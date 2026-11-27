@@ -49,6 +49,19 @@
   .ex:hover .zm { opacity: 1; }
   .exfoot { padding: 0 10px 9px; font-size: 12px; color: var(--text-3); }
   .cat { font-size: 12px; color: var(--text-3); line-height: 1.6; margin: 6px 0; } .cat input { width: 170px; font-size: 12px; }
+  /* 연구자의 초안 */
+  .drop { border: 1px dashed var(--line-2); padding: 8px 10px; margin-top: 8px; font-size: 12px; color: var(--text-3); line-height: 1.55; }
+  #left.dragon .drop { border-color: var(--accent); background: var(--sel-bg); color: var(--text); }
+  .drs { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+  .dr { border: 1px solid var(--line); background: #fff; position: relative; cursor: zoom-in; }
+  .dr img { height: 86px; max-width: 170px; object-fit: contain; display: block; }
+  .dr .x { position: absolute; right: 2px; top: 2px; background: var(--surface); border: 1px solid var(--line-2); font-size: 11px; line-height: 1.3; padding: 0 5px; cursor: pointer; color: var(--text-2); }
+  .dr .pp { position: absolute; left: 2px; bottom: 2px; background: var(--surface); font-size: 10.5px; padding: 0 4px; color: var(--text-3); }
+  .dradd { width: 86px; height: 86px; border: 1px dashed var(--line-2); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-3); cursor: pointer; text-align: center; }
+  .dradd:hover { background: var(--hover); }
+  .druse { font-size: 12.5px; color: var(--text-2); margin-top: 6px; } .druse .chips { display: inline-flex; margin: 0 0 0 4px; vertical-align: middle; }
+  .drread { font-size: 12px; color: var(--text-2); line-height: 1.55; margin: 2px 0 8px; padding-left: 8px; border-left: 2px solid var(--line-2); }
+  .cmp { display: flex; gap: 10px; flex-wrap: wrap; padding: 6px 0; } .cmp img { height: 120px; max-width: 260px; object-fit: contain; background: #fff; border: 1px solid var(--line); cursor: zoom-in; }
   .gobar { display: flex; gap: 10px; align-items: center; margin-top: var(--s3); flex-wrap: wrap; }
   .pbar2 { height: 3px; background: var(--line); margin-top: 6px; } .pbar2 i { display: block; height: 100%; width: 3%; background: var(--accent); transition: width 1s linear; }
   /* 오른쪽: 만든 그림 */
@@ -90,7 +103,9 @@
   <div id="left">
     <div class="step"><h2><span class="no">1</span>무엇을 그리나<span class="hint"><button class="act" id="fromMs" title="원고의 절에서 문단을 골라 바탕 글로 가져옵니다">원고에서 고르기</button></span></h2>
       <textarea id="src" rows="6" placeholder="바탕 글 — 그림으로 옮길 원고의 대목을 붙여 넣습니다. 이 글이 말하는 것만 그립니다(글에 없는 수치를 지어내지 않습니다)."></textarea>
-      <textarea id="note" rows="2" style="margin-top:6px" placeholder="덧붙일 말 (없어도 됩니다) — 예: 세 상태를 나란히, 치수선은 빼고. 바탕 글 없이 여기에만 설명해도 됩니다."></textarea>
+      <textarea id="note" rows="2" style="margin-top:6px" placeholder="덧붙일 말 (없어도 됩니다) — 예: 세 상태를 나란히, 치수선은 빼고. 초안을 넣었다면 '이거랑 비슷하게'·'업그레이드해서'·'다른 방식으로' 처럼 적어 주세요."></textarea>
+      <div id="drafts"></div>
+      <input type="file" id="drFile" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pptx,image/*" multiple hidden>
     </div>
     <div class="step"><h2><span class="no">2</span>구도<span class="hint" id="planHint"></span></h2><div id="plan"></div></div>
     <div class="step"><h2><span class="no">3</span>그림체<span class="hint" id="styleHint"></span></h2><div id="style"></div></div>
@@ -130,8 +145,15 @@ const imgUrl = x => "/figimg?file=" + encodeURIComponent(x.file) + "&name=" + en
 const exKey = x => x.file.replace(/\.pdf$/i, "") + "|" + x.img;
 
 let docId = QS.get("id") || lsGet("fig_doc", ""), msList = [], figs = [], curFig = null, msDoc = null;
-let S = { plan: null, planFor: "", opt: 0, ans: {}, form: "auto", fam: "", ex: [], base: "color", flt: "", more: false, where: "" };
-let cat = null, saved = [], busy = false, planBusy = false, catTimer = null;
+let S = { plan: null, planFor: "", opt: 0, ans: {}, form: "auto", fam: "", ex: [], base: "color", flt: "", more: false, where: "", drafts: [], use: "auto" };
+let cat = null, saved = [], busy = false, planBusy = false, catTimer = null, drBusy = false, drMsg = "", drWarn = false;
+/* 연구자의 초안을 어떻게 쓸지 — 알아서면 덧붙인 말과 초안을 보고 구도 제안(또는 그리는 쪽)이 정한다 */
+const USES = [["auto", "알아서", "덧붙인 말과 초안을 보고 정합니다 — '비슷하게' 면 그대로, '업그레이드' 면 다듬어, '다르게' 면 다른 구도로"],
+  ["copy", "그대로 정돈", "구성·배치·요소·글은 초안 그대로 두고 선·간격·글자만 깔끔하게"],
+  ["upgrade", "다듬어 올리기", "초안의 요소·관계·큰 틀은 지키고 짜임·위계·물리적 정확성·빠진 것을 논문 그림 수준으로"],
+  ["sidegrade", "다르게 그리기", "초안이 전하는 내용은 같게, 구도·형식·보는 방향은 다르게"]];
+const USE_KO = Object.fromEntries(USES.map(u => [u[0], u[1]]));
+const drUrl = n => "/fig/refs/" + encodeURIComponent(n);
 
 /* ---------- 원고 · 그림 목록 ---------- */
 async function init() {
@@ -144,13 +166,81 @@ async function init() {
   $("src").oninput = $("note").oninput = () => { saveDraft(); renderPlan(); };
   $("fromMs").onclick = openMsPick;
   $("go").onclick = draw;
+  $("drFile").onchange = () => { const fs = [...$("drFile").files]; $("drFile").value = ""; addDrafts(fs); };
+  document.addEventListener("paste", e => {      /* Ctrl+V — 캡처나 PowerPoint 에서 복사한 도형(그림으로 붙는다) */
+    const fs = [...((e.clipboardData || {}).items || [])].filter(i => i.kind === "file").map(i => i.getAsFile()).filter(Boolean);
+    if (!fs.length || $("ov").style.display === "flex") return;
+    e.preventDefault(); addDrafts(fs);
+  });
+  const L = $("left");
+  L.addEventListener("dragover", e => { if ([...(e.dataTransfer.types || [])].includes("Files")) { e.preventDefault(); L.classList.add("dragon"); } });
+  L.addEventListener("dragleave", e => { if (e.target === L || !L.contains(e.relatedTarget)) L.classList.remove("dragon"); });
+  L.addEventListener("drop", e => { L.classList.remove("dragon"); if (e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); addDrafts([...e.dataTransfer.files]); } });
   loadDraft(); goHint(); renderPlan(); renderStyle();
   if (!msList.length) { $("right").innerHTML = "<div class='intro'>원고가 아직 없습니다. 그림은 원고에 딸려 저장됩니다 — 홈의 「원고」 에서 원고를 하나 만든 뒤 다시 열어 주세요.</div>"; return; }
   lsSet("fig_doc", docId);
   loadFigs(); loadCat(); api("/api/ms/figure/style", { op: "list" }).then(r => { saved = (r && r.styles) || []; renderStyle(); });
 }
-function loadDraft() { let d = {}; try { d = JSON.parse(lsGet("fig_draft_" + docId, "{}")) || {}; } catch (e) {} $("src").value = d.text || ""; $("note").value = d.note || ""; S.where = d.where || ""; S.plan = null; S.ans = {}; S.opt = 0; }
-function saveDraft() { lsSet("fig_draft_" + docId, JSON.stringify({ text: $("src").value, note: $("note").value, where: S.where })); }
+function loadDraft() { let d = {}; try { d = JSON.parse(lsGet("fig_draft_" + docId, "{}")) || {}; } catch (e) {} $("src").value = d.text || ""; $("note").value = d.note || ""; S.where = d.where || ""; S.plan = null; S.ans = {}; S.opt = 0;
+  S.drafts = Array.isArray(d.drafts) ? d.drafts.filter(x => x && x.img).slice(0, 3) : []; S.use = USE_KO[d.use] ? d.use : "auto"; drMsg = ""; drWarn = false; renderDrafts(); }
+function saveDraft() { lsSet("fig_draft_" + docId, JSON.stringify({ text: $("src").value, note: $("note").value, where: S.where, drafts: S.drafts, use: S.use })); }
+
+/* ---------- 1. 연구자의 초안 (2026-11-27) ---------- */
+function renderDrafts() {
+  const el = $("drafts"); if (!el) return;
+  const pj = S.plan && S.plan.draft;
+  let h = "";
+  if (!S.drafts.length) {
+    h = "<div class='drop'>내 초안 — 손그림 사진·캡처·PowerPoint 파일을 끌어 놓거나 Ctrl+V 로 붙여 넣습니다 · <button class='act' id='drPick'>파일 고르기</button>" +
+      (drBusy ? "<br>올리는 중…" : "") + (drMsg ? "<br><span class='" + (drWarn ? "warn" : "") + "'>" + esc(drMsg) + "</span>" : "") + "</div>";
+  } else {
+    h = "<div class='drs'>" + S.drafts.map((d, i) => "<div class='dr' data-dz='" + i + "' title='" + esc(d.from || "") + "'><img src='" + drUrl(d.img) + "'><span class='x' data-dx='" + i + "' title='이 초안 빼기'>✕</span>" + (d.ppt ? "<span class='pp'>PPT</span>" : "") + "</div>").join("") +
+      (S.drafts.length < 3 ? "<div class='dradd' id='drPick' title='초안을 더 넣습니다(셋까지) — 끌어 놓기·Ctrl+V 도 됩니다'>" + (drBusy ? "올리는 중…" : "+ 초안") + "</div>" : "") + "</div>" +
+      "<div class='druse'>초안을 어떻게 쓸까<span class='chips'>" + USES.map(u => "<button class='chipb" + (S.use === u[0] ? " on" : "") + "' data-use='" + u[0] + "' title='" + esc(u[2]) + "'>" + u[1] + "</button>").join("") + "</span></div>" +
+      "<div class='hint'>" + (S.use !== "auto" ? esc(USES.find(u => u[0] === S.use)[2]) :
+        pj ? "구도 제안은 <b>" + esc(USE_KO[pj.use] || pj.use) + "</b>로 봤습니다" + (pj.why ? " — " + esc(pj.why) : "") :
+        "덧붙인 말과 초안을 보고 정합니다 — 구도 제안을 받으면 무엇으로 봤는지 먼저 보입니다") + "</div>" +
+      (drMsg ? "<div class='hint" + (drWarn ? " warn" : "") + "'>" + esc(drMsg) + "</div>" : "");
+  }
+  el.innerHTML = h;
+  if ($("drPick")) $("drPick").onclick = () => $("drFile").click();
+  el.querySelectorAll("[data-dx]").forEach(b => b.onclick = e => { e.stopPropagation(); S.drafts.splice(+b.dataset.dx, 1); drMsg = ""; drWarn = false; saveDraft(); renderDrafts(); renderPlan(); goHint(); });
+  el.querySelectorAll("[data-dz]").forEach(d => d.onclick = () => { const x = S.drafts[+d.dataset.dz]; if (x) zoomImg(drUrl(x.img), "내 초안" + (x.from ? " · " + x.from : "")); });
+  el.querySelectorAll("[data-use]").forEach(b => b.onclick = () => { S.use = b.dataset.use; saveDraft(); renderDrafts(); renderPlan(); goHint(); });
+}
+const readB64 = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => no(r.error); r.readAsDataURL(f); });
+async function imgB64(f) {     /* 큰 사진은 2000px 로 줄여 올린다 — 손그림 사진은 수 MB 라서 */
+  try {
+    const bm = await createImageBitmap(f), big = Math.max(bm.width, bm.height);
+    const keep = /^image\/(png|jpeg|webp|gif)$/.test(f.type) && big <= 2000;
+    if (keep) return { b64: await readB64(f), ext: { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" }[f.type] };
+    const k = Math.min(1, 2000 / big), cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(bm.width * k)); cv.height = Math.max(1, Math.round(bm.height * k));
+    const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bm, 0, 0, cv.width, cv.height);
+    const jpg = f.type === "image/jpeg";
+    return { b64: cv.toDataURL(jpg ? "image/jpeg" : "image/png", 0.9).split(",")[1], ext: jpg ? ".jpg" : ".png" };
+  } catch (e) { return { b64: await readB64(f), ext: (f.name.match(/\.[^.]+$/) || [".png"])[0].toLowerCase() }; }
+}
+async function addDrafts(files) {
+  if (!docId) { alert("그림을 넣을 원고를 먼저 골라 주세요."); return; }
+  files = files.filter(f => /\.(png|jpe?g|gif|webp|bmp|pptx)$/i.test(f.name || "") || /^image\//.test(f.type || ""));
+  if (!files.length) { drMsg = "PNG·JPG 그림이나 PowerPoint(.pptx) 파일만 넣을 수 있습니다"; drWarn = true; renderDrafts(); return; }
+  drBusy = true; drMsg = ""; drWarn = false; renderDrafts();
+  for (const f of files) {
+    if (S.drafts.length >= 3) { drMsg = "초안은 셋까지만 넣습니다"; drWarn = true; break; }
+    const ppt = /\.pptx$/i.test(f.name || "");
+    let b64, ext;
+    try { if (ppt) { b64 = await readB64(f); ext = ".pptx"; } else ({ b64, ext } = await imgB64(f)); } catch (e) { drMsg = "파일을 읽지 못했습니다"; drWarn = true; continue; }
+    const r = await api("/api/ms/figure/refs", { id: docId, name: "draft" + ext, b64 });
+    if (r.error) { drMsg = r.error; drWarn = true; continue; }
+    (r.images || []).forEach(img => { if (S.drafts.length < 3) S.drafts.push({ img, from: f.name && !/^image\.\w+$/.test(f.name) ? f.name : "붙여 넣은 그림", ppt }); });
+    if (ppt) drMsg = r.note || "";
+  }
+  drBusy = false; saveDraft(); renderDrafts(); renderPlan(); goHint();
+}
+function zoomImg(src, title) { const ov = $("ov"); ov.style.display = "flex";
+  ov.innerHTML = "<div class='box'><div class='oh'><b>" + esc(title || "") + "</b><span style='flex:1'></span><button id='ovX'>닫기</button></div><div class='zoom'><img src='" + src + "'></div></div>";
+  $("ovX").onclick = () => { ov.style.display = "none"; }; }
 async function loadFigs(keep) {
   if (!docId) return;
   const r = await api("/api/ms/figure/meta", { id: docId, op: "list" });
@@ -161,35 +251,37 @@ async function loadFigs(keep) {
 }
 
 /* ---------- 2. 구도 ---------- */
-function planKey() { return $("src").value.trim() + "\n" + $("note").value.trim(); }
+function planKey() { return $("src").value.trim() + "\n" + $("note").value.trim() + "\n" + S.drafts.map(d => d.img).join(",") + "\n" + S.use; }
 function renderPlan() {
-  const el = $("plan"), has = $("src").value.trim().length >= 20 || $("note").value.trim().length >= 10;
+  const el = $("plan"), has = $("src").value.trim().length >= 20 || $("note").value.trim().length >= 10 || S.drafts.length > 0;
   const stale = S.plan && S.planFor !== planKey();
-  $("planHint").textContent = S.plan ? "" : "가벼운 모델이 글을 읽고 구도 후보를 냅니다 · 15~30초";
-  if (planBusy) { el.innerHTML = "<div class='hint'>글을 읽고 구도를 생각하는 중…</div><div class='pbar2'><i id='planBar'></i></div>"; return; }
+  $("planHint").textContent = S.plan ? "" : "가벼운 모델이 글" + (S.drafts.length ? "과 초안" : "") + "을 읽고 구도 후보를 냅니다 · " + (S.drafts.length ? "30~60초" : "15~30초");
+  if (planBusy) { el.innerHTML = "<div class='hint'>" + (S.drafts.length ? "글과 초안을 읽고" : "글을 읽고") + " 구도를 생각하는 중…</div><div class='pbar2'><i id='planBar'></i></div>"; return; }
   if (!S.plan) {
     el.innerHTML = "<div class='rowl'><button class='primary' id='planGo'" + (has ? "" : " disabled") + ">구도 제안 받기</button><span class='hint'>또는 형식만 고르기</span><select id='formSel'>" + FORMS.map(([k, v]) => "<option value='" + k + "'" + (k === S.form ? " selected" : "") + ">" + v + "</option>").join("") + "</select></div>" +
-      (has ? "" : "<div class='hint'>위에 바탕 글이나 설명을 먼저 적어 주세요.</div>") + (S.planErr ? "<div class='hint warn'>" + esc(S.planErr) + "</div>" : "");
+      (has ? "" : "<div class='hint'>위에 바탕 글이나 설명을 적거나 초안을 넣어 주세요.</div>") + (S.planErr ? "<div class='hint warn'>" + esc(S.planErr) + "</div>" : "");
     $("planGo").onclick = getPlan; $("formSel").onchange = () => { S.form = $("formSel").value; };
     return;
   }
   const p = S.plan;
+  const pd = p.draft;
   el.innerHTML = (p.read ? "<div class='read'>" + esc(p.read) + "</div>" : "") +
+    (pd ? "<div class='drread'>초안 — " + esc(pd.reads || "") + (pd.keep.length ? "<br>지킬 것: " + pd.keep.map(esc).join(" · ") : "") + (pd.change.length ? "<br>" + (pd.use === "copy" ? "정돈할 것" : "바꾸거나 더할 것") + ": " + pd.change.map(esc).join(" · ") : "") + "</div>" : "") +
     p.options.map((o, i) => "<div class='opt" + (i === S.opt ? " on" : "") + "' data-o='" + i + "'><div class='t'>" + esc(o.title) + "<span>" + esc(FORM_KO[o.form] || "") + (i === 0 ? " · 권함" : "") + "</span></div><div class='l'>" + esc(o.layout) + "</div>" +
       (o.elements.length ? "<div class='e'>넣을 것: " + o.elements.map(esc).join(" · ") + "</div>" : "") + (o.why && i === S.opt ? "<div class='e'>" + esc(o.why) + "</div>" : "") + "</div>").join("") +
     p.questions.map((q, qi) => "<div class='qq'>" + esc(q.q) + "</div><div class='chips'>" + q.choices.map((c, ci) => "<button class='chipb" + ((S.ans[qi] == null ? 0 : S.ans[qi]) === ci ? " on" : "") + "' data-q='" + qi + "' data-c='" + ci + "'>" + esc(c) + "</button>").join("") + "</div>").join("") +
-    "<div class='rowl' style='margin-top:10px'>" + (stale ? "<span class='hint warn'>글이 바뀌었습니다 —</span>" : "") + "<button class='act' id='planGo'>다시 받기</button><button class='act' id='planX'>구도 없이 형식만 고르기</button></div>";
+    "<div class='rowl' style='margin-top:10px'>" + (stale ? "<span class='hint warn'>글이나 초안이 바뀌었습니다 —</span>" : "") + "<button class='act' id='planGo'>다시 받기</button><button class='act' id='planX'>구도 없이 형식만 고르기</button></div>";
   el.querySelectorAll(".opt").forEach(d => d.onclick = () => { S.opt = +d.dataset.o; renderPlan(); });
   el.querySelectorAll(".chipb").forEach(b => b.onclick = () => { S.ans[+b.dataset.q] = +b.dataset.c; renderPlan(); });
   $("planGo").onclick = getPlan; $("planX").onclick = () => { S.plan = null; renderPlan(); };
 }
 async function getPlan() {
   if (planBusy) return; planBusy = true; S.planErr = ""; const key = planKey(); renderPlan();
-  const t0 = Date.now(), tm = setInterval(() => { const b = $("planBar"); if (b) b.style.width = Math.min(95, (Date.now() - t0) / 250) + "%"; }, 1000);
-  const r = await api("/api/ms/figure/plan", { id: docId, text: $("src").value.trim(), note: $("note").value.trim() });
+  const t0 = Date.now(), slow = S.drafts.length ? 500 : 250, tm = setInterval(() => { const b = $("planBar"); if (b) b.style.width = Math.min(95, (Date.now() - t0) / slow) + "%"; }, 1000);
+  const r = await api("/api/ms/figure/plan", { id: docId, text: $("src").value.trim(), note: $("note").value.trim(), drafts: S.drafts.map(d => d.img), use: S.use === "auto" ? "" : S.use });
   clearInterval(tm); planBusy = false;
   if (r.error || !(r.options || []).length) { S.planErr = r.error || "구도를 받지 못했습니다"; S.plan = null; } else { S.plan = r; S.planFor = key; S.opt = 0; S.ans = {}; }
-  renderPlan();
+  renderPlan(); renderDrafts();
 }
 
 /* ---------- 3. 그림체 ---------- */
@@ -305,7 +397,8 @@ $("ov").addEventListener("mousedown", e => { if (e.target === $("ov")) $("ov").s
 /* ---------- 4. 그리기 ---------- */
 function goHint() {
   const m = $("model").value, d = +lsGet("fig_dur_" + m, 0);
-  $("goHint").textContent = (S.ex.length ? "본보기 " + S.ex.length + "장의 그림체로 · " : "") + (d ? "지난번 " + fmtDur(d) : (m === "opus" ? "보통 3~7분" : "보통 1~2분")) + " · 만든 뒤 말로 고치고 PPT 로 받습니다";
+  const pj = S.plan && S.plan.draft, use = S.use !== "auto" ? S.use : (pj ? pj.use : "");
+  $("goHint").textContent = (S.drafts.length ? "초안 " + S.drafts.length + "장" + (use ? " · " + USE_KO[use] : "") + " · " : "") + (S.ex.length ? "본보기 " + S.ex.length + "장의 그림체로 · " : "") + (d ? "지난번 " + fmtDur(d) : (m === "opus" ? "보통 3~7분" : "보통 1~2분")) + " · 만든 뒤 말로 고치고 PPT 로 받습니다";
 }
 function waitBar(host, label, expect) {
   const t0 = Date.now(); host.innerHTML = "<div class='hint'><span id='wbT'></span></div><div class='pbar2'><i id='wbI'></i></div>";
@@ -316,9 +409,12 @@ function waitBar(host, label, expect) {
 async function draw() {
   if (busy || !docId) return;
   const text = $("src").value.trim(), note = $("note").value.trim();
-  if (text.length < 10 && note.length < 6) { alert("바탕 글이나 설명을 먼저 적어 주세요."); return; }
+  if (text.length < 10 && note.length < 6 && !S.drafts.length) { alert("바탕 글이나 설명을 적거나 초안을 넣어 주세요."); return; }
   busy = true; $("go").disabled = true;
   const o = S.plan ? S.plan.options[S.opt] : null, desc = [];
+  /* 초안의 쓰임: 연구자가 고른 것 → 구도 제안이 본 것 → 알아서(그리는 쪽이 덧붙인 말을 보고 정한다) */
+  const pj = S.plan && S.plan.draft, use = S.use !== "auto" ? S.use : (pj ? pj.use : "auto"), same = pj && pj.use === use;
+  const draft = S.drafts.length ? { use, why: same ? pj.why : "", keep: same ? pj.keep : [], change: same ? pj.change : [] } : null;
   if (o) { desc.push("[구도] " + o.title + " — " + o.layout); if (o.elements.length) desc.push("[넣을 것] " + o.elements.join("; "));
     const qa = S.plan.questions.map((q, i) => q.q + " → " + q.choices[S.ans[i] == null ? 0 : S.ans[i]]); if (qa.length) desc.push("[연구자가 정한 것] " + qa.join(" / ")); }
   if (note) desc.push((o ? "[덧붙인 말] " : "") + note);
@@ -327,7 +423,8 @@ async function draw() {
   const refs = S.ex.length ? await pickRefs() : [];
   const spec = { description: desc.join("\n"), domain: o ? o.form : S.form, complexity: $("cx").value, style: refs.length ? "refs" : S.base, size: $("size").value, lang: $("lang").value,
     style_refs: refs.map(x => x.img), style_keys: refs.map(x => x.key).filter(Boolean), source: text ? { text, para: "", where: S.where || "" } : null, model };
-  const r = await api("/api/ms/figure/generate", { id: docId, spec, refs: [], fig: null, feedback: null });
+  if (draft) spec.draft = draft;
+  const r = await api("/api/ms/figure/generate", { id: docId, spec, refs: S.drafts.map(d => d.img), fig: null, feedback: null });
   const sec = stop(); busy = false; $("go").disabled = false;
   if (r.error) { $("goProg").innerHTML = "<div class='hint warn'>⚠ " + esc(r.error) + "</div>"; return; }
   lsSet("fig_dur_" + model, Math.round(sec)); $("goProg").innerHTML = ""; goHint();
@@ -347,7 +444,7 @@ let capTimer = null;
 function renderStage() {
   const el = $("right"), f = figs.find(x => x.id === curFig);
   if (!figs.length) {
-    el.innerHTML = "<div class='intro'><b>그림 만들기</b><br>왼쪽의 네 걸음을 차례로 갑니다.<br>① 그림으로 옮길 글을 붙여 넣거나 원고에서 고릅니다.<br>② 「구도 제안 받기」 를 누르면 그 글에 맞는 구도 후보가 둘이나 셋 나옵니다 — 하나를 고르고, 물음이 있으면 선택지를 고릅니다.<br>" +
+    el.innerHTML = "<div class='intro'><b>그림 만들기</b><br>왼쪽의 네 걸음을 차례로 갑니다.<br>① 그림으로 옮길 글을 붙여 넣거나 원고에서 고릅니다. 직접 그린 초안(손그림 사진·캡처·PowerPoint 파일)이 있으면 끌어 놓거나 Ctrl+V 로 넣습니다 — 덧붙인 말을 보고 초안을 그대로 정돈할지, 다듬어 올릴지, 다르게 그릴지 정합니다.<br>② 「구도 제안 받기」 를 누르면 그 글에 맞는 구도 후보가 둘이나 셋 나옵니다 — 하나를 고르고, 물음이 있으면 선택지를 고릅니다.<br>" +
       "③ 그림체는 좋은 논문의 그림에서 고릅니다. 갈래를 누르면 본보기 그림이 펼쳐지고, 셋까지 고르면 그 선·색·글꼴·라벨 다는 방식으로 그립니다.<br>④ 「그리기」. 만든 그림은 여기 오른쪽에 뜨고, 말로 고치거나 PPT 파일로 받아 PowerPoint 에서 도형과 글을 직접 손봅니다.</div>"; return;
   }
   const sp = (f.source || {}).spec || {}, src = (sp.source || {}).text || "", made = f.source && f.source.type === "claude";
@@ -359,10 +456,15 @@ function renderStage() {
     "<div class='hint' id='fNote'>" + esc(pptNote(f)) + "</div>" +
     (made ? "<div class='fld'><label>고치기</label><textarea id='fFb' rows='2' placeholder='말로 적으면 그리기 코드를 고쳐 다시 그립니다 — 예: 화살표를 더 굵게, 칩을 더 길게, 범례는 빼고'></textarea><div class='gobar' style='margin-top:6px'><button id='fRefine'>이렇게 고쳐 줘</button><span class='hint'>1~3분</span></div><div id='fProg'></div></div>" : "") +
     "<div class='fld'><div class='two'><div><label>캡션 (한국어)</label><textarea id='fCap' rows='2'>" + esc(f.caption || "") + "</textarea></div><div><label>Caption (English)</label><textarea id='fCapEn' rows='2'>" + esc(f.caption_en || "") + "</textarea></div></div></div>" +
+    (made && (f.source.refs || []).length ? (() => { const dd = f.source.draft || {}, u = dd.use || (sp.draft || {}).use;
+      return "<details class='src' open><summary>내 초안과 견주기" + (u && USE_KO[u] ? " — " + USE_KO[u] + (dd.judged ? " (알아서 정함)" : "") : "") + "</summary>" +
+        "<div class='cmp'>" + f.source.refs.map(n => "<img data-cz='" + esc(n) + "' src='" + drUrl(n) + "' title='크게'>").join("") + "</div>" +
+        (dd.why ? "<div>" + esc(dd.why) + "</div>" : "") + ((dd.diffs || []).length ? "<div>초안과 다르게 한 곳: " + dd.diffs.map(esc).join(" · ") + "</div>" : "") + "</details>"; })() : "") +
     (src ? "<details class='src'><summary>이 그림의 바탕 글" + ((sp.source || {}).where ? " — " + esc(sp.source.where) : "") + "</summary><div>" + esc(src) + "</div></details>" : "") +
     (made && sp.description ? "<details class='src'><summary>구도와 덧붙인 말</summary><div>" + esc(sp.description) + "</div></details>" : "") +
     (made ? "<pre class='code' id='fCodeBox' style='display:none'>" + esc(f.source.script || "") + "</pre>" : "");
   el.querySelectorAll("[data-f]").forEach(t => t.onclick = () => { curFig = t.dataset.f; renderStage(); });
+  el.querySelectorAll("[data-cz]").forEach(t => t.onclick = () => zoomImg(drUrl(t.dataset.cz), "내 초안"));
   if ($("fPpt")) $("fPpt").onclick = async () => { const b = $("fPpt"); b.disabled = true; b.textContent = "만드는 중…";
     const r = await api("/api/ms/figure/pptx", { id: docId, fig: f.id }); b.disabled = false; b.textContent = "PPT 받기";
     if (r.error) { alert("⚠ " + r.error); return; }

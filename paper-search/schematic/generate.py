@@ -55,6 +55,70 @@ STYLE_REF_RULES = ("그림체 예시 %d장이 있다. **먼저 Read 도구로 �
                    "스크립트 맨 위에 그림체를 상수로 적는다(INK, SW, FONT, 색 몇 개) — text(..., family=FONT) 처럼 그 상수로만 그린다:\n%s\n")
 
 
+# 연구자의 초안 — 어떻게 쓸지(쓰임)는 연구자의 말을 보고 정한다 (2026-11-27, 사용자: '그림에 내가 그린 초안도 넣을 수 있게.
+# 이걸 어떻게 참고하는지는 내가 쓴 글 보고 알아서. 이거랑 비슷하게 만들라는 건지 업그레이드하라는 건지 옆그레이드하라는 건지 판단해')
+DRAFT_USES = {
+    "copy": ("그대로 정돈",
+             "초안의 구성·배치·요소·글·차례를 그대로 지킨다. 바꾸는 것은 그림의 됨됨이뿐이다 — 선을 곧게, 간격과 정렬을 고르게, 글자 크기를 맞추고, "
+             "손으로 그려 삐뚤어진 비율은 의도로 보이는 값으로. 요소를 더하거나 빼지 않는다(초안의 오타만 바로잡는다)."),
+    "upgrade": ("다듬어 올리기",
+                "초안이 보이려는 것(요소·관계·차례)과 배치의 큰 틀(무엇이 왼쪽·위에 있는가)은 지키고, 그림을 논문에 실을 수준으로 올린다: "
+                "주인공은 크게 곁가지는 작게(위계), 겹침과 빈 곳 정리, 물리적으로 맞게(공구 경사각·칩이 나가는 방향·힘의 방향), 라벨과 기호 정돈, "
+                "바탕 글이 말하는데 초안에 빠진 것은 더한다. 초안의 틀을 까닭 없이 바꾸지 않는다."),
+    "sidegrade": ("다르게 그리기",
+                  "초안이 전하는 내용(요소와 그 관계)은 같게 두고, 구도·형식·보는 방향을 초안과 다르게 해서 같은 말을 다른 길로 보인다 "
+                  "(예: 상자와 화살표의 흐름도 → 단면 도식, 한 장 → 단계 패널, 옆에서 본 것 → 위에서 본 것). 초안의 배치를 따르지 않는다."),
+}
+
+
+def draft_block(spec, ref_images, has_style):
+    """그리기 지시에 붙는 [연구자의 초안] — 쓰임에 따라 무엇을 지키고 무엇을 바꾸는지. PowerPoint 초안은 도형 목록(글·자리)을 같이."""
+    d = (spec or {}).get("draft") or {}
+    use = d.get("use") if d.get("use") in DRAFT_USES else "auto"
+    s = ("연구자가 직접 그린 초안 %d장이 있다. **먼저 Read 도구로 각 파일을 열어 본다**:\n%s\n" % (len(ref_images), "\n".join("- " + p for p in ref_images)))
+    for p in ref_images:
+        try:
+            ol = io.open(p + ".txt", encoding="utf-8").read().strip()
+        except OSError:
+            ol = ""
+        if ol:
+            s += "[%s — PowerPoint 의 도형 목록. 글자와 자리는 이 목록이 정확하다(그림은 대강 그린 것)]\n%s\n" % (os.path.basename(p), ol[:6000])
+    if use == "auto":
+        s += ("초안을 어떻게 쓸지는 연구자의 말([그림 설명]·[바탕 글] 앞뒤의 말)을 보고 셋 가운데 하나로 정한다:\n" +
+              "".join("- %s: %s\n" % (v[0], v[1]) for v in DRAFT_USES.values()) +
+              "'이대로·비슷하게·깔끔하게만' 이면 그대로 정돈, '더 낫게·업그레이드·논문용으로·보완' 이면 다듬어 올리기, '다르게·다른 방식·새 구도' 면 다르게 그리기. "
+              "말이 없으면 초안의 됨됨이로 — 거친 손그림·메모면 다듬어 올리기, 이미 짜임이 선 그림이면 그대로 정돈.\n"
+              "스크립트 첫 줄에 `# 초안의 쓰임: <그대로 정돈|다듬어 올리기|다르게 그리기> — <그렇게 본 까닭 한 문장>` 을 적는다.\n")
+    else:
+        s += "초안의 쓰임: **%s** (연구자가 정한 것) — %s\n" % DRAFT_USES[use]
+        s += "스크립트 첫 줄에 `# 초안의 쓰임: %s` 를 적는다.\n" % DRAFT_USES[use][0]
+    for k, lab in (("keep", "초안에서 지킬 것"), ("change", "바꾸거나 더할 것")):
+        xs = [str(x) for x in (d.get(k) or []) if str(x).strip()][:6]
+        if xs:
+            s += "[%s] %s\n" % (lab, "; ".join(xs))
+    s += ("- 초안에 연구자가 적어 둔 글·기호·수치는 연구자의 것이니 바탕 글에 없어도 쓴다(지어내지는 않는다). 초안과 바탕 글이 어긋나면 바탕 글을 따르고, "
+          "스크립트 둘째 줄부터 `# 초안과 다름: <어디가 어떻게>` 를 한 줄씩 적는다.\n"
+          "- 손그림의 선 떨림·연필 자국·종이 그림자·글씨체는 그리지 않는다 — 깔끔한 벡터 도식으로.\n" +
+          ("- 선·색·글꼴은 아래 그림체 예시를 따른다(초안의 색은 '무엇이 같은 색인가' 만 살린다).\n" if has_style
+           else "- 초안의 색 구분(무엇이 같은 색인가)은 살리되 색 자체는 위 [스타일]로 정돈한다.\n"))
+    return s
+
+
+def draft_notes(code):
+    """스크립트 첫머리 주석에서 (쓰임, 까닭, [초안과 다름…])"""
+    use, why, diffs = None, "", []
+    for ln in (code or "").splitlines()[:12]:
+        m = re.match(r"\s*#\s*초안의 쓰임\s*[:：]\s*(그대로 정돈|다듬어 올리기|다르게 그리기)\s*(?:[—–-]+\s*(.*))?$", ln)
+        if m:
+            use = next(k for k, v in DRAFT_USES.items() if v[0] == m.group(1))
+            why = (m.group(2) or "").strip()[:200]
+            continue
+        m = re.match(r"\s*#\s*초안과 다름\s*[:：]\s*(.+)$", ln)
+        if m:
+            diffs.append(m.group(1).strip()[:200])
+    return use, why, diffs[:6]
+
+
 def _lib_api():
     try:
         sys.path.insert(0, BASE)
@@ -88,8 +152,7 @@ def build_prompt(spec, ref_images=(), prev_script=None, feedback=None, error=Non
         if (spec.get("style_note") or "").strip():
             refs += "[그림체 메모 — 이 예시들을 미리 보고 적어 둔 것. 그림에서 본 것과 함께 따른다]\n%s\n" % spec["style_note"].strip()[:1200]
     if ref_images:
-        refs += ("참고 그림 %d장이 있다. **먼저 Read 도구로 각 파일을 열어 보고** 구성·배치·요소·라벨을 그대로 따르되 깔끔한 벡터 도식으로 다시 그려라 "
-                "(손그림이면 의도를 해석해 정돈, PPT 슬라이드면 배치를 유지):\n%s\n" % (len(ref_images), "\n".join("- " + p for p in ref_images)))
+        refs += draft_block(spec, ref_images, bool(style_images))
     src = spec.get("source") or {}
     body = ""
     if (src.get("text") or "").strip():
@@ -98,7 +161,7 @@ def build_prompt(spec, ref_images=(), prev_script=None, feedback=None, error=Non
             body += "[문단 — 그 대목이 든 문단]\n%s\n\n" % src["para"].strip()[:5000]
         body += "[그림 설명 — 연구자가 덧붙인 말]\n%s\n\n" % (spec.get("description") or "(없음 — 바탕 글에 맞게 그린다)")
     else:
-        body += "[그림 설명]\n%s\n\n" % (spec.get("description") or "(설명 없음 - 참고 그림을 따라 그려라)")
+        body += "[그림 설명]\n%s\n\n" % (spec.get("description") or ("(설명 없음 — 초안을 보고 그린다)" if ref_images else "(설명 없음)"))
     if prev_script:
         body += "[이전 스크립트]\n```python\n%s\n```\n\n" % prev_script
     if feedback:
@@ -204,7 +267,7 @@ def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None, pri
     style_images = [p for p in (style_images or []) if os.path.isfile(p)]
     ref_dirs = [os.path.dirname(p) for p in list(ref_images) + style_images]
     imgs = list(ref_images) + style_images
-    if not prev_script and not feedback:
+    if not prev_script and not feedback and not ref_images:   # 초안이 있으면 틀을 주지 않는다 — 앞 그림의 구도가 초안과 겨룬다
         seed, why = find_seed(spec, prior_scripts)
         if seed:
             prev_script = seed
@@ -221,7 +284,7 @@ def generate(spec, ref_images=(), prev_script=None, feedback=None, log=None, pri
         ok, res = run_script(code)
         if ok:
             log.append("실행 성공 (시도 %d)" % (attempt + 1))
-            if save_template(spec, code):
+            if not ref_images and save_template(spec, code):   # 초안으로 그린 그림은 틀로 두지 않는다 — 연구자의 초안 내용이 스크립트에 든다
                 log.append("이 분야의 시작 틀로 저장")
             return code, res, log
         log.append("실행 오류 (시도 %d): %s" % (attempt + 1, res.strip().splitlines()[-1][:160] if res.strip() else "?"))
@@ -264,15 +327,36 @@ def save_ref_image(data, name, out_dir, base):
         open(p, "wb").write(data)
         return pptx_to_images(p, out_dir, base)
     if ext not in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"):
-        raise RuntimeError("지원하지 않는 형식: " + ext + " (PNG/JPG/PPTX)")
+        raise RuntimeError("지원하지 않는 형식: " + ext + " — PNG·JPG 그림이나 PowerPoint(.pptx) 파일을 넣어 주세요 (아이폰 사진(HEIC)은 JPG 로 바꿔서)")
     p = os.path.join(out_dir, base + ext)
     open(p, "wb").write(data)
-    # 너무 큰 사진(아이패드 스캔)은 2000px 로 줄여 Claude 가 읽기 쉽게
+    # 너무 큰 사진(아이패드 스캔·휴대폰 사진)은 2000px 로 줄이고, Claude 가 못 읽는 BMP 는 PNG 로
     try:
         from PIL import Image
         im = Image.open(p)
+        if ext == ".bmp":
+            q = os.path.join(out_dir, base + ".png")
+            im.convert("RGB").save(q); os.remove(p); p, im = q, Image.open(q)
         if max(im.size) > 2000:
             im.thumbnail((2000, 2000)); im.save(p)
+    except ImportError:      # 포터블판에는 PIL 이 없다 — PyMuPDF 로
+        try:
+            import fitz
+            pix = fitz.Pixmap(p)
+            if pix.alpha and ext in (".jpg", ".jpeg"):
+                pix = fitz.Pixmap(pix, 0)
+            k = 2000.0 / max(pix.width, pix.height)
+            if k < 1 or ext == ".bmp":
+                if k < 1:
+                    pix = fitz.Pixmap(pix, max(1, int(pix.width * k)), max(1, int(pix.height * k)), None)
+                q = os.path.join(out_dir, base + (".jpg" if ext in (".jpg", ".jpeg") else ".png"))
+                pix.save(q)
+                if q != p:
+                    os.remove(p); p = q
+        except Exception:
+            pass
     except Exception:
         pass
+    if p.lower().endswith(".bmp"):
+        raise RuntimeError("BMP 를 바꾸지 못했습니다 — PNG 로 저장해 넣어 주세요")
     return [p], "저장"
